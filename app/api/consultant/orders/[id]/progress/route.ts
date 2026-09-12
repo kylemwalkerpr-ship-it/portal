@@ -1,4 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentConsultant()
@@ -12,7 +13,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const { data: order } = await auth.db
     .from('orders')
-    .select('id, status, consultant_id')
+    .select('id, status, consultant_id, progress')
     .eq('id', id)
     .eq('consultant_id', auth.profile.id)
     .single()
@@ -36,6 +37,20 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     .maybeSingle()
   if (error) return Response.json({ error: error.message }, { status: 500 })
   if (!data) return Response.json({ error: 'Order status changed by another request — refresh and try again.' }, { status: 409 })
+
+  const nextStatus = String(data.status || order.status)
+  if (Number(order.progress ?? -1) !== progress || nextStatus !== String(order.status)) {
+    await recordOrderActivity(auth.db, {
+      orderId: id,
+      actorId: auth.profile.id,
+      actorRole: 'consultant',
+      fromStatus: order.status,
+      toStatus: nextStatus,
+      note: nextStatus !== String(order.status)
+        ? `Progress updated to ${progress}% and order moved to ${nextStatus.replace(/_/g, ' ')}.`
+        : `Progress updated to ${progress}%.`,
+    })
+  }
 
   return Response.json({ order: data })
 }
