@@ -46,6 +46,22 @@ const FISCAL_HOUSING_RE = /\bfy\d{2,4}\b/i
 const QUOTED_HOUSING_DOC_RE =
   /["'][^"']*\b(?:fy\d{2,4}|stk|stockton|housing rates|meal plan|room and)\b[^"']*["']/i
 
+/**
+ * Real search demand that is outside YouSafe's ranking mission when it stands
+ * alone. These terms are not malformed "junk": we keep them visible in raw
+ * analytics so the team can measure topical pollution. They simply must not
+ * become an SEO Factory / Master Engine action unless immigration, document,
+ * admissions, or tenancy/legal intent is also present.
+ */
+const CAMPUS_LIFESTYLE_RE =
+  /\b(?:student housing|campus housing|housing rates?|dorms?|residence halls?|meal plans?|dining plans?|campus dining|parking rates?|student neighborhoods?|student neighbourhoods?|campus life|commute|accommodation|apartments?|rent ranges?)\b/i
+
+const MISSION_ANCHOR_RE =
+  /\b(?:visa|permit|immigration|f-?1|student route|i-?20|cas|sevis|cpt|opt|stem opt|pgwp|work authorization|work authorisation|work permit|express entry|pnp|permanent residence|permanent resident|sponsor(?:ship)?|admission|application|documents?|checklist|proof of funds|loa|pal|caq|status|eligibility|arrival documents?)\b/i
+
+const TENANCY_LEGAL_RE =
+  /\b(?:tenant|tenancy|landlord|lease|eviction|discrimination|fair housing|rights?|deposit dispute|rental dispute)\b/i
+
 /** Max word count for a plausible keyword phrase; longer strings are pasted text. */
 const MAX_KEYWORD_WORDS = 8
 
@@ -80,6 +96,34 @@ export function isFileOrUrlLikeTerm(term: string): boolean {
 }
 
 /**
+ * True when a real query belongs to an off-mission campus-lifestyle family
+ * without an immigration/document/admissions or tenancy/legal anchor.
+ *
+ * Important: this is intentionally separate from `isJunkQuery`. Raw GSC
+ * reporting may still show these terms; action surfaces must use
+ * `isActionableDemandQuery` instead.
+ */
+export function isOffMissionDemandQuery(term: string): boolean {
+  const t = sanitizeDemandTerm(term)
+  if (!t || !CAMPUS_LIFESTYLE_RE.test(t)) return false
+  if (MISSION_ANCHOR_RE.test(t)) return false
+  if (TENANCY_LEGAL_RE.test(t)) return false
+  return true
+}
+
+/** A demand term the SEO systems are allowed to turn into an action. */
+export function isActionableDemandQuery(term: string): boolean {
+  const t = sanitizeDemandTerm(term)
+  if (!t) return false
+  return !isJunkQuery(t) && !isOffMissionDemandQuery(t)
+}
+
+/** Generic signal-list guard shared by engine feeders and opportunity loaders. */
+export function filterActionableDemandSignals<T extends { term?: unknown }>(signals: T[]): T[] {
+  return signals.filter((signal) => isActionableDemandQuery(String(signal.term || '')))
+}
+
+/**
  * True when a query string is noise (a filename/URL/pasted blob), not a real
  * keyword. Empty strings are also considered junk.
  */
@@ -103,11 +147,11 @@ export function isJunkQuery(term: string): boolean {
 }
 
 /**
- * Junk check for content-job topics / primary keywords (pipeline backstop).
- * Same junk heuristics as `isJunkQuery` EXCEPT the max-word-count rule, so a
- * legitimate long-tail topic like "how to apply for a uk spouse visa step by
- * step guide" is never rejected — only GSC-leak junk (PDF paths, quoted doc
- * stamps, brand/numeric pastes) is refused before a job is generated.
+ * Junk/off-mission check for content-job topics / primary keywords (pipeline
+ * backstop). Same malformed-input heuristics as `isJunkQuery` EXCEPT the
+ * max-word-count rule, plus the actionable-demand boundary: a legitimate
+ * long-tail immigration topic remains allowed, while a clean but off-mission
+ * campus-lifestyle topic is refused before generation.
  */
 export function isJunkTopic(term: string): boolean {
   const t = sanitizeDemandTerm(term)
@@ -120,6 +164,7 @@ export function isJunkTopic(term: string): boolean {
   if (MEAL_PLAN_RE.test(t)) return true
   if (FISCAL_HOUSING_RE.test(t) && /\b(?:stk|stockton|pacific|housing|rates|meal)\b/i.test(t)) return true
   if (QUOTED_HOUSING_DOC_RE.test(t)) return true
+  if (isOffMissionDemandQuery(t)) return true
   const quoted = t.match(/"[^"]+"/g) || []
   if (quoted.length >= 2) return true
   return false
@@ -135,7 +180,9 @@ export function isJunkTopic(term: string): boolean {
  *                 position > 20, zero clicks). Counted in the mix, never
  *                 treated as demand.
  * - `eligible`  — everything else. This is the only class that may become a
- *                 factory play.
+ *                 factory play. Callers deciding whether to ACT must also use
+ *                 `isActionableDemandQuery` so off-mission real demand stays
+ *                 observable without becoming a mission.
  */
 export type GscQueryClass = 'eligible' | 'junk' | 'deep_tail'
 
