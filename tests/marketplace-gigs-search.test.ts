@@ -115,16 +115,14 @@ describe('GET /api/marketplace/gigs — search query safety', () => {
     expect(lastQuery.orCalls).toHaveLength(0)
   })
 
-  it('category filters OR in NULL categories — uncategorized active gigs stay visible', async () => {
-    // Regression: a plain `category.in.(…)` never matches NULL, so every
-    // active gig with an unset/out-of-taxonomy category silently vanished
-    // from the AllGigsDrawer, category pages, and filtered discovery even
-    // though admin counted them as live inventory.
+  it('category filters require real taxonomy membership — uncategorized gigs do not leak into every shelf', async () => {
+    // Uncategorized inventory remains visible when no category is selected,
+    // but a category URL/count must represent only that taxonomy.
     const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?category=immigration&limit=20')
     expect(res.status).toBe(200)
     expect(lastQuery.orCalls).toHaveLength(1)
     const filter = lastQuery.orCalls[0]
-    expect(filter).toContain('category.is.null')
+    expect(filter).not.toContain('category.is.null')
     expect(filter).toContain('category.in.(')
     // Taxonomy terms survive — quoted values with spaces, no FTS leaking in.
     expect(filter).toContain('"Immigration Services"')

@@ -98,9 +98,9 @@ export async function GET(req: Request) {
     }
   }
   if (categories.length > 0) {
-    // OR-filter (not a plain `in`) so uncategorized gigs (category IS NULL)
-    // stay visible: PostgREST `in` never matches NULL, which silently hid
-    // active inventory from every category-filtered surface.
+    // Category shelves are strict ranking/discovery surfaces. Uncategorized
+    // legacy gigs remain available in the unfiltered Marketplace, but must not
+    // be injected into every category and inflate unrelated service counts.
     const categoryOr = buildCategoryOrFilter(categories)
     if (categoryOr) query = query.or(categoryOr)
   }

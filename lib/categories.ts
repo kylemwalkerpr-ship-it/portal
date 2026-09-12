@@ -812,14 +812,12 @@ export function getCategoryPath(
 
 /**
  * Build a PostgREST `.or()` filter string that matches a gig's `category`
- * column against every taxonomy term of the selected categories AND also
- * matches NULL categories.
+ * column against the taxonomy terms owned by the selected categories.
  *
- * Why: PostgREST `category.in.(...)` never matches NULL, so any active gig
- * whose `category` is unset (or a legacy string outside the taxonomy) was
- * silently dropped from every category-filtered surface — the AllGigsDrawer
- * (which always sends category params), category pages, and filtered
- * discovery — even though admin counts them as live inventory.
+ * Category-filtered public surfaces must be truthful: an uncategorized gig
+ * cannot belong simultaneously to Immigration, Education, Legal, Career, etc.
+ * Untagged legacy inventory remains visible on the unfiltered Marketplace and
+ * should be repaired by the taxonomy backfill, not injected into every shelf.
  *
  * Returns null when no terms resolve (caller should skip the filter).
  */
@@ -830,7 +828,7 @@ export function buildCategoryOrFilter(categoryIds: CategoryId[]): string | null 
   // double quotes are escaped by doubling. Quote every term so spaces and
   // reserved chars survive the or= parser.
   const inList = terms.map((t) => `"${String(t).replace(/"/g, '""')}"`).join(',')
-  return `category.is.null,category.in.(${inList})`
+  return `category.in.(${inList})`
 }
 
 /**

@@ -5,7 +5,7 @@
  *  1. lib/marketplaceFacets.ts::computeFacetCounts runs the DB COUNTs with
  *     the exact same filters as the listing API:
  *       - jurisdiction counts use jurisdictionCountryOrFilter (OR'd, NULL-inclusive)
- *       - category counts use buildCategoryOrFilter (OR'd, NULL-inclusive)
+ *       - category counts use buildCategoryOrFilter (strict taxonomy membership)
  *     and NEVER throws — a failed COUNT yields `null`, not 0.
  *  2. The gig-facets API route delegates to the lib (no second count implementation).
  *  3. The landing consumes the same counts and falls back per-field to its
@@ -69,6 +69,15 @@ describe('marketplaceFacets — counting contract', () => {
     expect(counts.jurisdictionCounts.au).toBe(7)
     expect(counts.providerTypeCounts).toEqual({ attorney: 7, consultant: 7 })
     expect(counts.total).toBe(7)
+  })
+
+  test('category counts never include uncategorized inventory', async () => {
+    const seen: string[] = []
+    const db = fakeDb({ onOrFilter: (or) => (seen.push(or), 5) })
+    await computeFacetCounts(db)
+    const categoryFilters = seen.filter((filter) => filter.includes('category.in.('))
+    expect(categoryFilters.length).toBe(CATEGORIES.length)
+    for (const filter of categoryFilters) expect(filter).not.toContain('category.is.null')
   })
 
   test('jurisdiction counts carry the NULL-inclusive OR filter', async () => {
