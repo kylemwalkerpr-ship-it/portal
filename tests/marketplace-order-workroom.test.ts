@@ -10,6 +10,7 @@ describe('Marketplace order workroom', () => {
   const timeline = read('components/orders/OrderActivityTimeline.tsx')
   const dock = read('components/orders/OrderMessengerDock.tsx')
   const activityRoute = read('app/api/orders/[id]/activity/route.ts')
+  const startRoute = read('app/api/messages/start/route.ts')
   const studentOrderRoute = read('app/api/student/orders/[id]/route.ts')
   const audit = read('lib/orderActivityAudit.ts')
   const escrow = read('app/api/orders/[id]/escrow/route.ts')
@@ -71,6 +72,20 @@ describe('Marketplace order workroom', () => {
     expect(dock).toContain('contextKind="order"')
     expect(dock).toContain('presentation="popover"')
     expect(dock).toContain('counterpartProfileId={profileId}')
+  })
+
+  test('order Messenger bootstraps from the order itself and never depends on Activity participant lookup', () => {
+    expect(dock).toContain("fetch('/api/messages/start'")
+    expect(dock).toContain("context_kind: 'order'")
+    expect(dock).toContain('context_id: orderId')
+    expect(dock).toContain('counterpart_profile_id')
+    expect(dock).toContain('Retry connection')
+    expect(dock).not.toContain('/api/orders/${encodeURIComponent(orderId)}/activity')
+
+    expect(startRoute).toContain(".select('client_id, consultant_id, attorney_id')")
+    expect(startRoute).toContain('resolveOrderProviderProfileId')
+    expect(startRoute).toContain('counterpart_profile_id: counterpartId')
+    expect(startRoute).toContain('counterpart,')
   })
 
   test('future order transitions write the same durable audit stream', () => {
