@@ -4,9 +4,18 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { F } from '@/components/marketplace/tokens'
-import { FILE_SHOP_FILTERS, FILE_SHOP_PRODUCTS, type FileShopCategory, type FileShopProduct } from '@/lib/files-shop-catalog'
+import {
+  FILE_SHOP_PRODUCTS,
+  type FileShopCategory,
+  type FileShopProduct,
+} from '@/lib/files-shop-catalog'
+import {
+  FILE_SHOP_BUYER_CATEGORIES,
+  getFileShopBuyerCategory,
+  type FileShopBuyerCategory,
+} from '@/lib/files-shop-buyer-categories'
 
-type FilterId = 'all' | FileShopCategory
+type FilterId = 'all' | FileShopBuyerCategory
 
 /**
  * Shop palette — CSS custom-property references driven by the marketplace
@@ -35,8 +44,8 @@ const DISPLAY = F.display.includes('fraunces') ? F.display : "var(--font-fraunce
 const UI = F.ui.includes('outfit') ? F.ui : "var(--font-outfit), 'Outfit', system-ui, sans-serif"
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
-// Category badges sit on top of cover *photos*, so they keep fixed pastel washes
-// for legibility regardless of the active palette.
+// File format stays visible on the cover even though primary navigation is now
+// buyer-intent based.
 const CAT_TONE: Record<FileShopCategory, { wash: string; ink: string; label: string }> = {
   spreadsheet: { wash: '#C5E8E3', ink: '#06534D', label: 'Workbook' },
   guide: { wash: '#D2E6D4', ink: '#24502B', label: 'Guide' },
@@ -45,28 +54,51 @@ const CAT_TONE: Record<FileShopCategory, { wash: string; ink: string; label: str
 }
 
 export default function FilesShop() {
-  const [filter, setFilter] = useState<FilterId>('all')
+  const [filter, setFilter] = useState<FilterId | null>(null)
   const [query, setQuery] = useState('')
+
+  const publishedProducts = useMemo(() => FILE_SHOP_PRODUCTS.filter((p) => p.published), [])
+
+  const categoryCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      FILE_SHOP_BUYER_CATEGORIES.map((category) => [category.id, 0]),
+    ) as Record<FileShopBuyerCategory, number>
+
+    for (const product of publishedProducts) {
+      const category = getFileShopBuyerCategory(product.id)
+      if (category) counts[category] += 1
+    }
+    return counts
+  }, [publishedProducts])
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return FILE_SHOP_PRODUCTS.filter((p) => {
-      if (!p.published) return false
-      if (filter !== 'all' && p.cat !== filter) return false
-      if (!q) return true
-      return `${p.title} ${p.desc} ${p.format} ${p.bullets.join(' ')}`.toLowerCase().includes(q)
-    })
-  }, [filter, query])
 
-  const featured = FILE_SHOP_PRODUCTS.filter(
-    (p) => p.published && (p.id === 'consultant-toolkit' || p.id === 'ai-prompts-business'),
+    return publishedProducts.filter((product) => {
+      const buyerCategory = getFileShopBuyerCategory(product.id)
+      if (filter && filter !== 'all' && buyerCategory !== filter) return false
+      if (!q) return filter !== null
+      return `${product.title} ${product.desc} ${product.format} ${product.bullets.join(' ')}`
+        .toLowerCase()
+        .includes(q)
+    })
+  }, [filter, publishedProducts, query])
+
+  const featured = publishedProducts.filter(
+    (p) => p.id === 'consultant-toolkit' || p.id === 'ai-prompts-business',
   )
+
+  const activeCategory =
+    filter && filter !== 'all'
+      ? FILE_SHOP_BUYER_CATEGORIES.find((category) => category.id === filter)
+      : null
+  const hasSearch = query.trim().length > 0
+  const showResults = filter !== null || hasSearch
 
   return (
     <div className="ys-files-shop">
       <style>{SHOP_CSS}</style>
 
-      {/* Announcement strip */}
       <div className="ys-shop-bar">
         <div className="ys-shop-wrap">
           <span>⚡ Instant download</span>
@@ -88,20 +120,20 @@ export default function FilesShop() {
           <div className="ys-shop-hero-grid">
             <div>
               <p className="ys-shop-kicker">The YouSafe file shop</p>
-              <h1>Tools you can open today and run the business with.</h1>
+              <h1>Find the right file without digging through the whole catalog.</h1>
               <p className="ys-shop-lede">
-                Immigration preparation packs, spreadsheets, templates, and short guides in one catalog.
-                Choose a focused download, review exactly what is included, and get access without a
-                subscription. Checkout remains securely on Payhip.
+                Start with what you need: immigration preparation, business, marketing, personal
+                planning, career, or wedding and creative resources. File format stays clearly labelled
+                on every product, and checkout remains securely on Payhip.
               </p>
               <div className="ys-shop-cta-row">
-                <a className="ys-shop-btn primary" href="#catalog">Browse the catalog</a>
+                <a className="ys-shop-btn primary" href="#catalog">Shop by category</a>
                 <Link className="ys-shop-btn ghost" href="/">Back to marketplace</Link>
               </div>
             </div>
             <aside className="ys-shop-stats" aria-label="Shop facts">
-              <Stat n={String(FILE_SHOP_PRODUCTS.filter((p) => p.published).length)} label="files in catalog" />
-              <Stat n="$7–79" label="one-time USD price" />
+              <Stat n={String(publishedProducts.length)} label="files in catalog" />
+              <Stat n={String(FILE_SHOP_BUYER_CATEGORIES.length)} label="buyer-friendly categories" />
               <Stat n="0" label="subscriptions" />
               <Stat n="Payhip" label="secure checkout" />
             </aside>
@@ -112,8 +144,8 @@ export default function FilesShop() {
       <section className="ys-shop-featured" aria-labelledby="featured-heading">
         <div className="ys-shop-wrap">
           <div className="ys-shop-section-head">
-            <p className="ys-shop-kicker">Start here</p>
-            <h2 id="featured-heading">Most used this week</h2>
+            <p className="ys-shop-kicker">Popular downloads</p>
+            <h2 id="featured-heading">A few practical starting points</h2>
           </div>
           <div className="ys-shop-featured-rail">
             {featured.map((p) => (
@@ -127,8 +159,11 @@ export default function FilesShop() {
         <div className="ys-shop-wrap">
           <div className="ys-shop-section-head row">
             <div>
-              <p className="ys-shop-kicker">Full catalog</p>
-              <h2>Every file, in one catalog</h2>
+              <p className="ys-shop-kicker">Shop by category</p>
+              <h2>What are you looking for?</h2>
+              <p className="ys-shop-section-copy">
+                Choose a category first. You can still search the entire shop or open all files when you want to browse broadly.
+              </p>
             </div>
             <label className="ys-shop-search">
               <span className="sr-only">Search files</span>
@@ -136,41 +171,93 @@ export default function FilesShop() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search visa packs, workbooks, planners…"
+                placeholder="Search visa packs, planners, business tools…"
               />
             </label>
           </div>
 
-          <div className="ys-shop-filters" role="tablist" aria-label="File type">
-            {FILE_SHOP_FILTERS.map((pill) => (
+          <div className="ys-shop-category-grid" aria-label="Shop categories">
+            {FILE_SHOP_BUYER_CATEGORIES.map((category) => (
               <button
-                key={pill.id}
+                key={category.id}
                 type="button"
-                role="tab"
-                aria-selected={filter === pill.id}
-                className={filter === pill.id ? 'on' : undefined}
-                onClick={() => setFilter(pill.id)}
+                aria-pressed={filter === category.id}
+                className={filter === category.id ? 'on' : undefined}
+                onClick={() => setFilter(category.id)}
               >
-                {pill.label}
+                <span className="ys-shop-category-count">{categoryCounts[category.id]} files</span>
+                <strong>{category.label}</strong>
+                <span className="ys-shop-category-description">{category.description}</span>
+                <span className="ys-shop-category-action">Browse category →</span>
               </button>
             ))}
           </div>
 
-          <p className="ys-shop-count">
-            {visible.length} {visible.length === 1 ? 'file' : 'files'}
-            {filter !== 'all' ? ` in ${FILE_SHOP_FILTERS.find((f) => f.id === filter)?.label}` : ''}
-          </p>
+          <div className="ys-shop-all-row">
+            <button
+              type="button"
+              className={filter === 'all' ? 'ys-shop-all-files on' : 'ys-shop-all-files'}
+              aria-pressed={filter === 'all'}
+              onClick={() => setFilter('all')}
+            >
+              Browse all {publishedProducts.length} files
+            </button>
+            {(filter !== null || hasSearch) && (
+              <button
+                type="button"
+                className="ys-shop-reset"
+                onClick={() => {
+                  setFilter(null)
+                  setQuery('')
+                }}
+              >
+                Back to categories
+              </button>
+            )}
+          </div>
 
-          {visible.length === 0 ? (
-            <div className="ys-shop-empty">
-              <p>No files match that search. Try a category instead.</p>
-              <button type="button" onClick={() => { setQuery(''); setFilter('all') }}>Clear filters</button>
+          {showResults ? (
+            <div className="ys-shop-results" aria-live="polite">
+              <div className="ys-shop-results-head">
+                <div>
+                  <p className="ys-shop-kicker">
+                    {activeCategory?.label ?? (filter === 'all' ? 'All files' : 'Search results')}
+                  </p>
+                  <h3>
+                    {activeCategory?.label ??
+                      (filter === 'all' ? 'Every instant download' : `Results for “${query.trim()}”`)}
+                  </h3>
+                </div>
+                <p className="ys-shop-count">
+                  {visible.length} {visible.length === 1 ? 'file' : 'files'}
+                </p>
+              </div>
+
+              {visible.length === 0 ? (
+                <div className="ys-shop-empty">
+                  <p>No files match that search in the selected category.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('')
+                      setFilter(null)
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              ) : (
+                <div className="ys-shop-grid">
+                  {visible.map((p) => (
+                    <ProductCard key={p.id} product={p} />
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
-            <div className="ys-shop-grid">
-              {visible.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
+            <div className="ys-shop-category-prompt">
+              <strong>Start with a category above.</strong>
+              <span>You will only see the products relevant to that need.</span>
             </div>
           )}
         </div>
@@ -183,18 +270,18 @@ export default function FilesShop() {
           <div className="ys-shop-trust-grid">
             <article>
               <span>01</span>
-              <h3>Pick a file</h3>
-              <p>Format, page count, and what it does — named on the listing. No unlock-the-rest upsells.</p>
+              <h3>Choose the right category</h3>
+              <p>Start with your goal instead of sorting through unrelated formats and products.</p>
             </article>
             <article>
               <span>02</span>
-              <h3>Checkout on Payhip</h3>
-              <p>Card and PayPal on a PCI-certified cart. YouSafe never stores your card on this page.</p>
+              <h3>Review the exact file</h3>
+              <p>Format and what the download includes are shown before you leave for checkout.</p>
             </article>
             <article>
               <span>03</span>
-              <h3>Download immediately</h3>
-              <p>The receipt email carries the file. Open it the same day — Excel, Sheets, Word, PowerPoint, or PDF.</p>
+              <h3>Checkout on Payhip</h3>
+              <p>Complete secure checkout and receive the purchased file through Payhip.</p>
             </article>
           </div>
           <p className="ys-shop-return">
@@ -263,7 +350,7 @@ function FeaturedCard({ product: p }: { product: FileShopProduct }) {
         <Cover product={p} large />
       </a>
       <div className="ys-shop-card-body">
-        <span className="ys-shop-badge">Bestseller</span>
+        <span className="ys-shop-badge">Popular</span>
         <h3>{p.title}</h3>
         <p>{p.desc}</p>
         <a className="ys-shop-buy always" href={p.href} rel="noopener noreferrer">
@@ -293,7 +380,6 @@ const SHOP_CSS = `
   .ys-shop-crumbs a { color: ${V.ink}; text-decoration: none; transition: color .2s ${EASE}, opacity .2s ${EASE}; }
   .ys-shop-crumbs a:hover { color: ${V.teal}; }
 
-  /* Announcement strip */
   .ys-shop-bar {
     background: ${V.paper2};
     border-bottom: 1px solid ${V.rule};
@@ -304,7 +390,6 @@ const SHOP_CSS = `
   }
   .ys-shop-bar span { opacity: 0.9; white-space: nowrap; }
 
-  /* Hero */
   .ys-shop-hero {
     padding: 44px 0 56px;
     background: radial-gradient(120% 160% at 85% -10%, ${V.paper3} 0%, ${V.paper} 55%);
@@ -313,9 +398,9 @@ const SHOP_CSS = `
   .ys-shop-hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.65fr); gap: 40px; align-items: center; }
   .ys-shop-hero h1 {
     font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(36px, 5vw, 58px);
-    line-height: 1.06; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 16ch; color: ${V.ink};
+    line-height: 1.06; letter-spacing: -0.03em; margin: 0 0 16px; max-width: 17ch; color: ${V.ink};
   }
-  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${V.inkMid}; opacity: 1; max-width: 54ch; margin: 0 0 28px; font-weight: 500; }
+  .ys-shop-lede { font-size: 16px; line-height: 1.6; color: ${V.inkMid}; max-width: 58ch; margin: 0 0 28px; font-weight: 500; }
   .ys-shop-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
   .ys-shop-btn {
     display: inline-flex; align-items: center; justify-content: center;
@@ -326,9 +411,8 @@ const SHOP_CSS = `
   .ys-shop-btn.primary { background: ${V.teal}; color: #fff; }
   .ys-shop-btn.primary:hover { background: ${V.tealDeep}; transform: translateY(-1px); }
   .ys-shop-btn.ghost { background: transparent; color: ${V.ink}; border: 1px solid ${V.rule}; }
-  .ys-shop-btn.ghost:hover { border-color: ${V.ink}; color: ${V.ink}; }
+  .ys-shop-btn.ghost:hover { border-color: ${V.ink}; }
 
-  /* Stats — light cards that pop against the wood */
   .ys-shop-stats {
     display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${V.cardRule};
     border: 1px solid ${V.cardRule}; border-radius: 16px; overflow: hidden;
@@ -338,17 +422,16 @@ const SHOP_CSS = `
   .ys-shop-stat strong { display: block; font-family: ${DISPLAY}; font-size: 24px; font-weight: 800; color: ${V.ink}; letter-spacing: -0.02em; }
   .ys-shop-stat span { font-size: 12px; color: ${V.inkSoft}; font-weight: 600; }
 
-  /* Section headers */
   .ys-shop-featured { padding: 52px 0 12px; background: ${V.paper}; }
   .ys-shop-section-head { margin-bottom: 22px; }
   .ys-shop-section-head h2, .ys-shop-trust h2, .ys-shop-catalog h2 {
     font-family: ${DISPLAY}; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: ${V.ink};
   }
-  .ys-shop-section-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .ys-shop-section-head.row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .ys-shop-section-copy { margin: 8px 0 0; color: ${V.inkMid}; font-size: 14px; line-height: 1.55; max-width: 62ch; font-weight: 500; }
   .ys-shop-featured-rail {
     display: flex; gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory;
-    scroll-padding-inline: 4px; padding-bottom: 10px; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    scroll-padding-inline: 4px; padding-bottom: 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
   .ys-shop-featured-rail::-webkit-scrollbar { display: none; }
   .ys-shop-featured-card {
@@ -358,7 +441,6 @@ const SHOP_CSS = `
     transition: box-shadow .2s ${EASE}, transform .2s ${EASE}, border-color .2s ${EASE};
   }
 
-  /* Product cards */
   .ys-shop-card {
     background: ${V.vellum}; border: 1px solid ${V.cardRule}; border-radius: 18px; overflow: hidden;
     display: flex; flex-direction: column; min-height: 100%;
@@ -369,40 +451,31 @@ const SHOP_CSS = `
     box-shadow: 0 18px 40px -24px rgba(15,23,42,0.14);
   }
   .ys-shop-card-media { display: block; color: inherit; text-decoration: none; }
-  .ys-shop-cover {
-    position: relative; padding: 0; aspect-ratio: 4 / 5; overflow: hidden; background: ${V.paper2};
-  }
+  .ys-shop-cover { position: relative; padding: 0; aspect-ratio: 4 / 5; overflow: hidden; background: ${V.paper2}; }
   .ys-shop-cover.large { aspect-ratio: 16 / 10; }
-  .ys-shop-cover img {
-    width: 100%; height: 100%; object-fit: cover; display: block;
-    transition: transform .45s ${EASE};
-  }
+  .ys-shop-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .45s ${EASE}; }
   .ys-shop-featured-card:hover .ys-shop-cover img, .ys-shop-card:hover .ys-shop-cover img { transform: scale(1.04); }
   .ys-shop-cover::after {
     content: ""; position: absolute; inset: auto 0 0; height: 46%;
-    background: linear-gradient(180deg, transparent 0%, rgba(10,8,6,0.42) 100%);
-    pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, rgba(10,8,6,0.42) 100%); pointer-events: none;
   }
   .ys-shop-cover-cat, .ys-shop-cover-stamp {
-    position: absolute; top: 12px; z-index: 1;
-    font-family: ${UI}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800;
-    padding: 5px 9px; border-radius: 999px;
+    position: absolute; top: 12px; z-index: 1; font-family: ${UI}; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800; padding: 5px 9px; border-radius: 999px;
   }
   .ys-shop-cover-cat { left: 12px; }
   .ys-shop-cover-stamp { right: 12px; background: ${V.teal}; color: #fff; }
   .ys-shop-cover-price {
-    position: absolute; right: 12px; bottom: 12px; z-index: 1;
-    font-family: ${UI}; font-size: 14px; font-weight: 800; letter-spacing: -0.02em;
-    color: ${V.ink}; background: ${V.vellum}; padding: 6px 12px; border-radius: 999px;
-    box-shadow: 0 8px 20px -12px rgba(0,0,0,0.6);
+    position: absolute; right: 12px; bottom: 12px; z-index: 1; font-family: ${UI}; font-size: 14px;
+    font-weight: 800; letter-spacing: -0.02em; color: ${V.ink}; background: ${V.vellum};
+    padding: 6px 12px; border-radius: 999px; box-shadow: 0 8px 20px -12px rgba(0,0,0,0.6);
   }
-  .ys-shop-card-body { padding: 16px 16px 16px; display: flex; flex-direction: column; flex: 1; }
+  .ys-shop-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
   .ys-shop-featured-card .ys-shop-card-body { padding: 18px 20px 20px; }
   .ys-shop-badge {
     align-self: flex-start; font-family: ${UI}; font-size: 10px; letter-spacing: 0.12em;
-    text-transform: uppercase; font-weight: 800; color: ${V.tealDeep};
-    background: ${V.cardRuleSoft}; border: 1px solid ${V.cardRule};
-    padding: 4px 9px; border-radius: 999px; margin-bottom: 8px;
+    text-transform: uppercase; font-weight: 800; color: ${V.tealDeep}; background: ${V.cardRuleSoft};
+    border: 1px solid ${V.cardRule}; padding: 4px 9px; border-radius: 999px; margin-bottom: 8px;
   }
   .ys-shop-card-body h3 {
     font-family: ${UI}; font-size: 16px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; color: ${V.ink};
@@ -423,32 +496,47 @@ const SHOP_CSS = `
   }
   .ys-shop-buy:hover { background: ${V.tealDeep}; transform: translateY(-1px); }
 
-  /* Catalog */
   .ys-shop-catalog { padding: 28px 0 68px; background: ${V.paper}; }
+  .ys-shop-search { width: min(360px, 100%); }
   .ys-shop-search input {
-    width: min(320px, 100%); border: 1px solid ${V.cardRule}; background: ${V.vellum}; border-radius: 999px;
+    width: 100%; border: 1px solid ${V.cardRule}; background: ${V.vellum}; border-radius: 999px;
     padding: 11px 16px; font-size: 14px; font-family: ${UI}; color: ${V.ink}; font-weight: 500;
-    transition: border-color .2s ${EASE}, box-shadow .2s ${EASE};
+    transition: border-color .2s ${EASE}, box-shadow .2s ${EASE}; box-sizing: border-box;
   }
   .ys-shop-search input::placeholder { color: ${V.inkSoft}; }
   .ys-shop-search input:focus { outline: none; border-color: ${V.teal}; box-shadow: 0 0 0 3px rgba(57,72,200,0.18); }
-  .ys-shop-filters {
-    display: flex; flex-wrap: nowrap; gap: 8px; margin: 8px 0 16px;
-    overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; padding-bottom: 2px;
+
+  .ys-shop-category-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0 14px;
   }
-  .ys-shop-filters::-webkit-scrollbar { display: none; }
-  .ys-shop-filters button {
-    flex: 0 0 auto; scroll-snap-align: start;
-    border: 1px solid ${V.rule}; background: ${V.vellum}; color: ${V.ink}; border-radius: 999px;
-    padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: ${UI};
-    transition: background .2s ${EASE}, color .2s ${EASE}, border-color .2s ${EASE}, transform .2s ${EASE};
+  .ys-shop-category-grid button {
+    appearance: none; text-align: left; border: 1px solid ${V.cardRule}; border-radius: 16px;
+    background: ${V.vellum}; color: ${V.ink}; padding: 18px; min-height: 164px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: flex-start; font-family: ${UI};
+    transition: transform .2s ${EASE}, border-color .2s ${EASE}, box-shadow .2s ${EASE}, background .2s ${EASE};
   }
-  .ys-shop-filters button:hover { border-color: ${V.ink}; background: ${V.paper2}; }
-  .ys-shop-filters button.on, .ys-shop-filters button.on:hover {
-    background: ${V.teal}; color: #fff; border-color: ${V.teal};
+  .ys-shop-category-grid button:hover { transform: translateY(-2px); border-color: ${V.ink}; box-shadow: 0 12px 30px -24px rgba(15,23,42,.35); }
+  .ys-shop-category-grid button.on { border-color: ${V.teal}; box-shadow: inset 0 0 0 1px ${V.teal}; background: ${V.paper2}; }
+  .ys-shop-category-count { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: ${V.inkSoft}; font-weight: 800; }
+  .ys-shop-category-grid strong { font-family: ${DISPLAY}; font-size: 20px; line-height: 1.15; margin: 10px 0 7px; letter-spacing: -.02em; }
+  .ys-shop-category-description { font-size: 13px; line-height: 1.45; color: ${V.inkMid}; font-weight: 500; }
+  .ys-shop-category-action { margin-top: auto; padding-top: 12px; font-size: 12px; color: ${V.teal}; font-weight: 800; }
+  .ys-shop-all-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 24px; }
+  .ys-shop-all-files, .ys-shop-reset {
+    border-radius: 999px; padding: 9px 15px; font-family: ${UI}; font-size: 13px; font-weight: 750; cursor: pointer;
   }
-  .ys-shop-count { font-size: 13px; color: ${V.inkSoft}; margin: 0 0 18px; font-weight: 500; }
+  .ys-shop-all-files { border: 1px solid ${V.rule}; background: ${V.vellum}; color: ${V.ink}; }
+  .ys-shop-all-files:hover, .ys-shop-all-files.on { border-color: ${V.teal}; background: ${V.teal}; color: #fff; }
+  .ys-shop-reset { border: 0; background: transparent; color: ${V.inkMid}; text-decoration: underline; text-underline-offset: 3px; }
+  .ys-shop-category-prompt {
+    border: 1px dashed ${V.cardRule}; background: ${V.vellum}; border-radius: 16px; padding: 20px;
+    display: flex; flex-direction: column; gap: 4px; color: ${V.inkMid}; font-size: 14px;
+  }
+  .ys-shop-category-prompt strong { color: ${V.ink}; }
+  .ys-shop-results { margin-top: 8px; }
+  .ys-shop-results-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  .ys-shop-results-head h3 { font-family: ${DISPLAY}; font-size: 26px; margin: 0; letter-spacing: -.025em; }
+  .ys-shop-count { font-size: 13px; color: ${V.inkSoft}; margin: 0; font-weight: 600; white-space: nowrap; }
   .ys-shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .ys-shop-empty { background: ${V.vellum}; border: 1px dashed ${V.cardRule}; border-radius: 18px; padding: 40px; text-align: center; color: ${V.inkSoft}; }
   .ys-shop-empty button {
@@ -456,7 +544,6 @@ const SHOP_CSS = `
     padding: 9px 16px; cursor: pointer; font-family: ${UI}; font-weight: 700;
   }
 
-  /* Trust */
   .ys-shop-trust { padding: 12px 0 60px; background: ${V.paper}; border-top: 1px solid ${V.rule}; }
   .ys-shop-trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 28px; }
   .ys-shop-trust article { background: ${V.vellum}; border: 1px solid ${V.cardRule}; border-radius: 18px; padding: 20px 20px 18px; }
@@ -470,22 +557,25 @@ const SHOP_CSS = `
 
   @media (max-width: 1100px) {
     .ys-shop-grid { grid-template-columns: repeat(2, 1fr); }
+    .ys-shop-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 920px) {
     .ys-shop-hero-grid, .ys-shop-trust-grid { grid-template-columns: 1fr; }
     .ys-shop-featured-card { flex-basis: min(420px, 82vw); }
   }
   @media (max-width: 600px) {
-    .ys-shop-grid { grid-template-columns: 1fr; }
+    .ys-shop-grid, .ys-shop-category-grid { grid-template-columns: 1fr; }
+    .ys-shop-category-grid button { min-height: 138px; }
     .ys-shop-hero { padding: 28px 0 36px; }
     .ys-shop-hero h1 { max-width: none; }
     .ys-shop-wrap { width: min(1180px, calc(100vw - 28px)); }
+    .ys-shop-results-head { align-items: flex-start; flex-direction: column; gap: 4px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .ys-shop-card, .ys-shop-featured-card, .ys-shop-buy, .ys-shop-cover img, .ys-shop-btn {
+    .ys-shop-card, .ys-shop-featured-card, .ys-shop-buy, .ys-shop-cover img, .ys-shop-btn, .ys-shop-category-grid button {
       transition: none;
     }
-    .ys-shop-featured-card:hover, .ys-shop-card:hover { transform: none; }
+    .ys-shop-featured-card:hover, .ys-shop-card:hover, .ys-shop-category-grid button:hover { transform: none; }
     .ys-shop-featured-card:hover .ys-shop-cover img, .ys-shop-card:hover .ys-shop-cover img { transform: none; }
   }
 `
