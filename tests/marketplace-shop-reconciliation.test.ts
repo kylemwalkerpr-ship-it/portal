@@ -69,6 +69,13 @@ describe('recovered Cloudflare shop additions', () => {
     expect(shopUi).toContain('ys-shop-grid')
   })
 
+  test('opens Immigration Packs by default and keeps category cards subtly glassy', () => {
+    expect(shopUi).toContain("useState<FilterId | null>('immigration')")
+    expect(shopUi).toContain('Immigration Packs are open to get you started.')
+    expect(shopUi).toContain('backdrop-filter: blur(14px) saturate(120%)')
+    expect(shopUi).toContain('-webkit-backdrop-filter: blur(14px) saturate(120%)')
+  })
+
   test('keeps Batch 1 immigration detail pages Payhip-only while branding audited checkout URLs', () => {
     expect(productPage).toContain('const payhipUrl = commercial')
     expect(productPage).toContain('https://shop.yousafeconsultancy.com/b/${commercial.payhipId}')

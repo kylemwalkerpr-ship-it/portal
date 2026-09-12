@@ -54,7 +54,7 @@ const CAT_TONE: Record<FileShopCategory, { wash: string; ink: string; label: str
 }
 
 export default function FilesShop() {
-  const [filter, setFilter] = useState<FilterId | null>(null)
+  const [filter, setFilter] = useState<FilterId | null>('immigration')
   const [query, setQuery] = useState('')
 
   const publishedProducts = useMemo(() => FILE_SHOP_PRODUCTS.filter((p) => p.published), [])
@@ -162,7 +162,7 @@ export default function FilesShop() {
               <p className="ys-shop-kicker">Shop by category</p>
               <h2>What are you looking for?</h2>
               <p className="ys-shop-section-copy">
-                Choose a category first. You can still search the entire shop or open all files when you want to browse broadly.
+                Immigration Packs are open to get you started. Choose another category anytime, search the entire shop, or browse all files.
               </p>
             </div>
             <label className="ys-shop-search">
@@ -511,12 +511,41 @@ const SHOP_CSS = `
   }
   .ys-shop-category-grid button {
     appearance: none; text-align: left; border: 1px solid ${V.cardRule}; border-radius: 16px;
-    background: ${V.vellum}; color: ${V.ink}; padding: 18px; min-height: 164px; cursor: pointer;
+    background: ${V.vellum};
+    background: linear-gradient(
+      145deg,
+      color-mix(in srgb, ${V.vellum} 84%, transparent),
+      color-mix(in srgb, ${V.paper2} 64%, transparent)
+    );
+    color: ${V.ink}; padding: 18px; min-height: 164px; cursor: pointer;
     display: flex; flex-direction: column; align-items: flex-start; font-family: ${UI};
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, ${V.vellum} 78%, transparent),
+      0 12px 32px -28px rgba(15,23,42,.28);
     transition: transform .2s ${EASE}, border-color .2s ${EASE}, box-shadow .2s ${EASE}, background .2s ${EASE};
   }
-  .ys-shop-category-grid button:hover { transform: translateY(-2px); border-color: ${V.ink}; box-shadow: 0 12px 30px -24px rgba(15,23,42,.35); }
-  .ys-shop-category-grid button.on { border-color: ${V.teal}; box-shadow: inset 0 0 0 1px ${V.teal}; background: ${V.paper2}; }
+  .ys-shop-category-grid button:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, ${V.ink} 24%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, ${V.vellum} 84%, transparent),
+      0 16px 34px -26px rgba(15,23,42,.34);
+  }
+  .ys-shop-category-grid button.on {
+    border-color: color-mix(in srgb, ${V.teal} 62%, transparent);
+    background: ${V.paper2};
+    background: linear-gradient(
+      145deg,
+      color-mix(in srgb, ${V.vellum} 90%, transparent),
+      color-mix(in srgb, ${V.paper2} 76%, transparent)
+    );
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, ${V.teal} 24%, transparent),
+      inset 0 1px 0 color-mix(in srgb, ${V.vellum} 88%, transparent),
+      0 16px 36px -28px rgba(15,23,42,.36);
+  }
   .ys-shop-category-count { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: ${V.inkSoft}; font-weight: 800; }
   .ys-shop-category-grid strong { font-family: ${DISPLAY}; font-size: 20px; line-height: 1.15; margin: 10px 0 7px; letter-spacing: -.02em; }
   .ys-shop-category-description { font-size: 13px; line-height: 1.45; color: ${V.inkMid}; font-weight: 500; }
