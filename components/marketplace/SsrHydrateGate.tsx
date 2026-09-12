@@ -1,46 +1,32 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 /**
- * Renders the crawlable SSR body in the initial HTML, then removes it as soon
- * as the interactive island is ready. A short hydration fallback protects the
- * human UI even when an enrichment request is slow or its ready event is lost:
- * crawlers/no-JS still receive the full SSR body because effects never run,
- * while browser users never stare at crawler-oriented prose for several
- * seconds and mistake it for a broken page.
+ * Legacy compatibility wrapper for the old crawler-only SSR duplicate.
+ *
+ * GigDetailPage and SellerProfilePage are now server-seeded client components,
+ * so Next renders their real user-facing UI into the initial HTML. Rendering a
+ * second SEO-only article before hydration created a visible two-stage page:
+ * crawler copy first, then the actual Marketplace UI after an effect fired.
+ *
+ * Keep the component temporarily so the route files do not need a risky broad
+ * refactor, but render no duplicate content. The seeded Marketplace islands are
+ * now the single source of truth for both first paint and crawlable HTML.
  */
-export function SsrHydrateGate({
-  children,
-  readyEvent = 'yousafe:ssr-ready',
-  fallbackMs = 350,
-}: {
+export function SsrHydrateGate(_props: {
   children: ReactNode
   readyEvent?: string
   fallbackMs?: number
 }) {
-  const [hide, setHide] = useState(false)
-
-  useEffect(() => {
-    const onReady = () => setHide(true)
-    window.addEventListener(readyEvent, onReady)
-    const t = window.setTimeout(() => setHide(true), fallbackMs)
-    return () => {
-      window.removeEventListener(readyEvent, onReady)
-      window.clearTimeout(t)
-    }
-  }, [readyEvent, fallbackMs])
-
-  if (hide) return null
-
-  return (
-    <div data-ssr-seo="" data-ready-event={readyEvent}>
-      {children}
-    </div>
-  )
+  return null
 }
 
-/** Call from client islands when interactive content is ready. */
+/**
+ * Compatibility signal retained for seeded client islands. Existing callers
+ * can keep dispatching the event while the remaining legacy references are
+ * cleaned up; it no longer controls visible content.
+ */
 export function signalSsrReady(eventName = 'yousafe:ssr-ready') {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(eventName))
