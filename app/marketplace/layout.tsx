@@ -6,6 +6,7 @@ import { MarketplaceRouteFooter } from '@/components/marketplace/MarketplaceRout
 import { MarketplaceSearchClickCapture } from '@/components/marketplace/MarketplaceSearchClickCapture'
 import { buildPaletteBootScript } from '@/components/marketplace/palette-boot'
 import './marketplace-brand.css'
+import './marketplace-first-paint.css'
 import './marketplace-polish.css'
 import './mobile-flow.css'
 import './discovery-grid.css'
