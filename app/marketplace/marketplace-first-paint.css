@@ -1,0 +1,105 @@
+/* Marketplace first-paint structural contract
+   -------------------------------------------
+   CategoryBar is a client component and also carries component-scoped styles.
+   Those styles can arrive after the initial HTML/chunk during cold navigation,
+   which briefly leaves the category wrappers as normal block elements. Keep
+   the load-bearing geometry here, in CSS imported by the server layout, so the
+   very first paint already matches the hydrated horizontal navigation. */
+
+.cw-market .ys-cat-bar {
+  position: sticky;
+  top: 64px;
+  z-index: 180;
+  min-height: 52px;
+  border-bottom: 1px solid var(--ys-rule, #e2e8f0);
+  background: var(--ys-paper2, #f8fafc);
+}
+
+.cw-market .ys-cat-bar-wrap {
+  position: relative;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.cw-market .ys-cat-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cw-market .ys-cat-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.cw-market .ys-cat-strip > div {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cw-market .ys-cat-fade {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 56px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+}
+
+.cw-market .ys-cat-fade.left {
+  left: 0;
+}
+
+.cw-market .ys-cat-fade.right {
+  right: 0;
+}
+
+.cw-market .ys-cat-chev {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.cw-market .ys-cat-chev.left {
+  left: 4px;
+}
+
+.cw-market .ys-cat-chev.right {
+  right: 4px;
+}
+
+.cw-market .ys-cat-chev.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .cw-market .ys-cat-bar {
+    top: 56px;
+  }
+
+  .cw-market .ys-cat-bar-wrap {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 719px) {
+  .cw-market .ys-cat-chev {
+    display: none !important;
+  }
+}
