@@ -7,11 +7,15 @@
  * start). Attorneys get the standalone attorney list + detail. Consultants
  * get a clickable list that deep-links into the consultant dashboard order
  * workspace (that detail needs the consultant SPA's action wiring).
+ *
+ * Selected orders are wrapped by MarketplaceOrderExperience so clients and
+ * providers share the same canonical lifecycle feed and dockable Messenger.
  */
 import React from 'react'
 import dynamic from 'next/dynamic'
 import { T, F } from './tokens'
 import { dashboardOrdersHref } from '@/lib/orderLinks'
+import MarketplaceOrderExperience from '@/components/orders/MarketplaceOrderExperience'
 
 const StudentOrders = dynamic(() => import('@/components/design/student-orders'), { ssr: false })
 const StudentOrderDetail = dynamic(() => import('@/components/design/student-order-detail'), { ssr: false })
@@ -57,7 +61,9 @@ export default function MarketplaceOrdersPanel({
     if (orderId) {
       return (
         <div className="ys-orders-panel">
-          <AttorneyOrderDetail orderId={orderId} onBack={onBack} />
+          <MarketplaceOrderExperience role={role} orderId={orderId}>
+            <AttorneyOrderDetail orderId={orderId} onBack={onBack} />
+          </MarketplaceOrderExperience>
         </div>
       )
     }
@@ -69,9 +75,18 @@ export default function MarketplaceOrdersPanel({
   }
 
   if (role === 'consultant') {
+    if (orderId) {
+      return (
+        <div className="ys-orders-panel">
+          <MarketplaceOrderExperience role={role} orderId={orderId}>
+            <ConsultantOrdersList orderId={orderId} onOpenOrder={onOpenOrder} onBack={onBack} />
+          </MarketplaceOrderExperience>
+        </div>
+      )
+    }
     return (
       <div className="ys-orders-panel">
-        <ConsultantOrdersList orderId={orderId} onOpenOrder={onOpenOrder} onBack={onBack} />
+        <ConsultantOrdersList orderId={null} onOpenOrder={onOpenOrder} onBack={onBack} />
       </div>
     )
   }
@@ -79,7 +94,9 @@ export default function MarketplaceOrdersPanel({
   if (orderId) {
     return (
       <div className="ys-orders-panel">
-        <StudentOrderDetail orderId={orderId} onBack={onBack} currency={displayCurrency()} />
+        <MarketplaceOrderExperience role={role} orderId={orderId}>
+          <StudentOrderDetail orderId={orderId} onBack={onBack} currency={displayCurrency()} />
+        </MarketplaceOrderExperience>
       </div>
     )
   }
@@ -148,7 +165,7 @@ function ConsultantOrdersList({
             {selected.student || selected.clientName ? ` · ${selected.student || selected.clientName}` : ''}
           </div>
           <p style={{ fontSize: 14, color: T.inkMid, lineHeight: 1.6, margin: '0 0 18px' }}>
-            Start work, update progress, and deliver from your consultant workspace.
+            Start work, update progress, and deliver from your consultant workspace. The Marketplace Activity & pipeline view keeps the shared audit trail visible to both sides.
           </p>
           <a
             href={href}
