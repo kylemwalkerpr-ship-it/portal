@@ -8,7 +8,7 @@
  * Unmatched first-party rows that clear the act-on bar become new work-plan
  * cards so Sync GSC can actually queue a brief.
  */
-import { isJunkQuery, sanitizeDemandTerm } from './queryNoise'
+import { isActionableDemandQuery, sanitizeDemandTerm } from './queryNoise'
 
 export type GscSeoAction = 'CREATE' | 'REFRESH' | 'DEFEND' | 'CONSOLIDATE' | 'WATCH'
 
@@ -83,7 +83,10 @@ function asAction(value: string | undefined): GscSeoAction {
 /** Promote first-party rows that the engine should actually act on. */
 export function shouldPromoteGscRow(row: GscScoredRow): boolean {
   const query = String(row.query || '').trim()
-  if (!query || isJunkQuery(query)) return false
+  // Raw analytics may retain genuine off-mission demand for diagnosis; the
+  // work plan is an action surface, so only actionable estate demand belongs
+  // here.
+  if (!query || !isActionableDemandQuery(query)) return false
   const action = asAction(row.action)
   const score = Number(row.score) || 0
   if (action === 'WATCH' && score < 60) return false

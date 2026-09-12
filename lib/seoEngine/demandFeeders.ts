@@ -7,6 +7,7 @@
  * overlay owned-site rank and engagement when they match.
  */
 import type { DemandSourceId, GscSignalInput } from './planner'
+import { filterActionableDemandSignals } from '@/lib/seoFactory/queryNoise'
 
 export interface FeederResult {
   source: DemandSourceId
@@ -68,6 +69,13 @@ export async function pullAllDemand(onProgress?: (phase: string, message: string
   const { mergeDemandSignals } = await import('./keywordDemand')
   // Ubersuggest first — its volume is the opportunity surface. GSC/GA4 then
   // overlay live rank and engagement without erasing market size.
-  const signals = mergeDemandSignals(uber.signals, gsc.signals, ga4.signals, ads.signals)
+  const merged = mergeDemandSignals(uber.signals, gsc.signals, ga4.signals, ads.signals)
+  // Keep raw source counts above for observability, but the planner only gets
+  // demand that is both syntactically valid and inside YouSafe's mission.
+  const signals = filterActionableDemandSignals(merged)
+  const suppressed = merged.length - signals.length
+  if (suppressed > 0) {
+    onProgress?.('signals', `Suppressed ${suppressed} junk/off-mission demand signal(s) before planning`)
+  }
   return { signals, feeders: [uber, gsc, ga4, ads] }
 }

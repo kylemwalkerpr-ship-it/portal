@@ -5,7 +5,7 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { scoreOpportunities, mergeSnapshotIntoQueries, SNAPSHOT_MERGE_MIN_VIABLE, type OpportunityQuery } from '@/lib/seoFactory/opportunityEngine'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 import { scoreCrucible } from '@/lib/seoEngine/crucible'
 import { bestCellForTerm } from '@/lib/seoEngine/planner'
 import { detectRegionFromText } from '@/lib/seoEngine/researchDemand'
@@ -103,7 +103,7 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
         source = 'live'
         for (const r of (data.rows || [])) {
           const term = (r.keys?.[0] || '').trim()
-          if (!term || isJunkQuery(term)) continue
+          if (!term || !isActionableDemandQuery(term)) continue
           queries.push({
             term,
             impressions: r.impressions ?? 0,
@@ -117,8 +117,8 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
   }
 
   // Merge committed snapshot rows when live is thin. Live GSC on this estate
-  // is junk-dominated (0–2 rows survive isJunkQuery on a typical day), so an
-  // `=== 0` gate starved Discover whenever 1–2 junk-adjacent rows survived.
+  // can be noise/off-mission dominated, so an `=== 0` gate can starve Discover
+  // whenever a couple of non-actionable rows survive upstream ingestion.
   if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
     const snap = await loadGscSnapshot()
     const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
@@ -141,13 +141,14 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
     }
   }
 
-  // Deduplicate — single noise filter (queryNoise.isJunkQuery). A weaker local
-  // filter is exactly how quoted PDF queries leaked into the radar before.
+  // Deduplicate after the shared actionable-demand guard. Raw GSC remains
+  // available on reporting surfaces; this path decides which terms can become
+  // recommendations/actions.
   const seen = new Set<string>()
   const deduped: OpportunityQuery[] = []
   for (const q of queries) {
     const t = (q.term || '').trim().toLowerCase()
-    if (!t || t.length < 3 || seen.has(t) || isJunkQuery(t)) continue
+    if (!t || t.length < 3 || seen.has(t) || !isActionableDemandQuery(t)) continue
     seen.add(t)
     deduped.push({ ...q, term: t })
   }

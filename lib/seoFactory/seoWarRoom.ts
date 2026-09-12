@@ -24,7 +24,7 @@ import {
 } from '@/lib/seoFactory/opportunityEngine'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { classifyDestinationType } from '@/lib/seoFactory/ownership'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 import { matchStrikeSeed } from '@/lib/seoFactory/strikeSeeds'
 
 // ── Legacy play labels (backward compat for the war-room UI) ─────────────
@@ -158,11 +158,13 @@ export function isNoiseQuery(term: string): boolean {
   // Off-estate spam / housing meal plans / random university brochure
   if (/meal plan|room and meal|stockton room|housing rates final/.test(t)) return true
   // Pure number codes with no immigration context
-  if (/^\d{3,5}/.test(t) && !/485|subclass|i-?\d|form/.test(t)) return true
+  if (/^\d{3,5}\b/.test(t) && !/485|subclass|i-?\d|form/.test(t)) return true
   // Single stopword-ish
   if (/^(a|the|and|or|to|for|in|on|of)$/.test(t)) return true
   if (/c[:.].*drive|onedrive|dropbox|\.pdf|\.jpg|\.png|http:|https:|@/i.test(t)) return true
-  return isJunkQuery(term)
+  // Raw GSC reporting can retain real off-mission terms for diagnosis; the
+  // War Room is an action surface and must never queue them for auto-run.
+  return !isActionableDemandQuery(term)
 }
 
 export async function buildSeoWarRoom(opts?: {
