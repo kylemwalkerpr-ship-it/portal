@@ -33,6 +33,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // static hub changed, which weakens the signal from real service updates.
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${base}/gigs`, changeFrequency: 'weekly', priority: 0.75 },
     { url: `${base}/shop`, changeFrequency: 'weekly', priority: 0.75 },
     { url: `${base}/providers`, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${base}/categories`, changeFrequency: 'weekly', priority: 0.6 },
