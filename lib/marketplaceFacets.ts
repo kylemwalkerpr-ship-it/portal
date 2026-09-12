@@ -20,9 +20,9 @@
  *  - jurisdiction counts use jurisdictionCountryOrFilter(): exact matches
  *    plus NULL/invalid-jurisdiction gigs, so a country-tab badge always
  *    equals what that tab lists.
- *  - category counts use buildCategoryOrFilter(): taxonomy term match plus
- *    NULL categories, so a category chip always equals that category's
- *    listing size.
+ *  - category counts use buildCategoryOrFilter(): taxonomy membership only.
+ *    Uncategorized legacy gigs remain in the unfiltered total, never in every
+ *    category count.
  */
 
 import { CATEGORIES, buildCategoryOrFilter } from '@/lib/categories'
