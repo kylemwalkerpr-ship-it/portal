@@ -1,6 +1,6 @@
 /**
  * Compact marketplace footer — two thin rows, no tagline, no flag stripe.
- * Action links only: shop, sell, help. Legal lives on one line.
+ * Action links only: services, shop, sell, help. Legal lives on one line.
  */
 
 import { T, F } from './tokens'
@@ -12,6 +12,7 @@ interface FooterLink {
 
 const NAV_LINKS: FooterLink[] = [
   { label: 'Marketplace', href: '/' },
+  { label: 'Services', href: '/gigs' },
   { label: 'File shop', href: '/shop' },
   { label: 'Categories', href: '/categories' },
   { label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
