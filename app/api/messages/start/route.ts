@@ -5,16 +5,42 @@
  *   - { counterpart_profile_id: '...' }     ← direct profile id
  *   - { counterpart_attorney_id: '...' }    ← attorneys row id (legacy)
  *   - { counterpart_consultant_id: '...' }  ← consultants row id
+ *   - { context_kind: 'order', context_id } ← canonical order participant resolution
  *
  * Optional first message in the same call (body: { message }) so the
  * marketplace ChatSidePane can both create the conversation and post the
  * opening message in one round trip.
  *
- * Returns { conversation_id }.
+ * Returns the conversation id plus the safe counterpart profile snapshot so
+ * order workrooms can render Messenger immediately without a second API being
+ * responsible for participant discovery.
  */
 import { requirePortalUser } from '@/lib/portalAuth'
 import { getOrCreateConversation } from '@/lib/conversations'
 import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
+
+async function resolveOrderProviderProfileId(db: any, order: any): Promise<string | null> {
+  const direct = typeof order?.consultant_id === 'string' && order.consultant_id
+    ? order.consultant_id
+    : null
+
+  if (direct) {
+    // Modern orders store the provider profile id directly in consultant_id.
+    const { data: profile } = await db.from('profiles').select('id').eq('id', direct).maybeSingle()
+    if (profile?.id) return profile.id
+
+    // Legacy orders may still hold a consultants table row id here.
+    const { data: consultant } = await db.from('consultants').select('profile_id').eq('id', direct).maybeSingle()
+    if (consultant?.profile_id) return consultant.profile_id
+  }
+
+  if (typeof order?.attorney_id === 'string' && order.attorney_id) {
+    const { data: attorney } = await db.from('attorneys').select('profile_id').eq('id', order.attorney_id).maybeSingle()
+    if (attorney?.profile_id) return attorney.profile_id
+  }
+
+  return null
+}
 
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
@@ -26,7 +52,7 @@ export async function POST(req: Request) {
   const contextKind = ['general', 'order', 'inquiry', 'gig'].includes(body.context_kind) ? body.context_kind : 'general'
   const contextId   = typeof body.context_id === 'string' ? body.context_id : null
 
-  // Resolve counterpart profile id
+  // Resolve counterpart profile id.
   let counterpartId: string | null = null
 
   if (typeof body.counterpart_profile_id === 'string' && body.counterpart_profile_id) {
@@ -38,19 +64,21 @@ export async function POST(req: Request) {
     const { data } = await db.from('consultants').select('profile_id').eq('id', body.counterpart_consultant_id).maybeSingle()
     counterpartId = (data as any)?.profile_id || null
   } else if (contextKind === 'order' && contextId) {
-    // Resolve the counterpart from the order itself, so order-detail views can
-    // open the conversation with just the order id. The counterpart is the
-    // other party relative to the caller: client ↔ provider (consultant_id).
+    // Resolve the counterpart from the order itself. This is the authoritative
+    // path for order workrooms: the client never has to discover the provider
+    // through the Activity endpoint before Messenger can open.
     const { data: order } = await db
       .from('orders')
-      .select('client_id, consultant_id')
+      .select('client_id, consultant_id, attorney_id')
       .eq('id', contextId)
       .maybeSingle()
+
     if (order) {
+      const providerProfileId = await resolveOrderProviderProfileId(db, order)
       counterpartId =
         (order as any).client_id === profileId
-          ? (order as any).consultant_id
-          : (order as any).consultant_id === profileId
+          ? providerProfileId
+          : providerProfileId === profileId
             ? (order as any).client_id
             : null
     }
@@ -80,5 +108,22 @@ export async function POST(req: Request) {
     await scheduleClientAutoReply(db, conversationId, firstMessageId)
   }
 
-  return Response.json({ conversation_id: conversationId, message_id: firstMessageId })
+  let counterpart: any = { id: counterpartId }
+  try {
+    const { data } = await db
+      .from('profiles')
+      .select('id, full_name, avatar_url, role')
+      .eq('id', counterpartId)
+      .maybeSingle()
+    if (data) counterpart = data
+  } catch {
+    // The conversation is already valid; profile decoration is non-fatal.
+  }
+
+  return Response.json({
+    conversation_id: conversationId,
+    message_id: firstMessageId,
+    counterpart_profile_id: counterpartId,
+    counterpart,
+  })
 }
