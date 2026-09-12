@@ -1,5 +1,6 @@
 import { getCurrentConsultant } from '@/lib/consultant'
 import { releaseEarningsForOrder } from '@/lib/earnings'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 // Completion is only legitimate once an order is actually in progress. This is
 // both a workflow guard and a terminal-resurrection guard: a client-cancelled
@@ -53,6 +54,15 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   try {
     earningsReleased = await releaseEarningsForOrder(id)
   } catch (e) { console.error('[consultant/orders/complete] releaseEarningsForOrder failed:', e) }
+
+  await recordOrderActivity(auth.db, {
+    orderId: id,
+    actorId: auth.profile.id,
+    actorRole: 'consultant',
+    fromStatus: order.status,
+    toStatus: 'completed',
+    note: 'Order marked complete by the consultant and provider earnings released.',
+  })
 
   return Response.json({ order: data, earningsReleased })
 }
