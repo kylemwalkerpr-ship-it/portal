@@ -17,6 +17,8 @@ const frameStyle = {
  * leaves the hero blank. The video starts only after mount, requests metadata
  * rather than eagerly preloading the whole file, and is removed after a media
  * or autoplay failure instead of remaining as a repeatedly failing resource.
+ * A genuine network outage can still surface once in browser diagnostics; the
+ * component's job is to contain that failure instead of making the UI depend on it.
  */
 export function HeroBackgroundMedia() {
   const videoRef = useRef<HTMLVideoElement>(null)
