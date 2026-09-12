@@ -31,6 +31,7 @@ import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroC
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
 import { ImmigrationPackRail } from '@/components/marketplace/ImmigrationPackRail'
+import { HeroBackgroundMedia } from '@/components/marketplace/HeroBackgroundMedia'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -983,9 +984,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
           gradient background carries the same look with zero payload. */}
       <section className="hero">
         <div className="hero-media" aria-hidden="true">
-          <video autoPlay muted loop playsInline preload="auto" poster="/hero-poster.jpg">
-            <source src="/hero-bg.mp4" type="video/mp4" />
-          </video>
+          <HeroBackgroundMedia />
           <div className="hero-media-overlay" />
         </div>
         <div className="wrap hero-grid">
