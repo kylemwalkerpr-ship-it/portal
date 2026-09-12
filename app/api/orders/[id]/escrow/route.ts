@@ -9,6 +9,7 @@ import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { releaseEarningsForOrder } from '@/lib/earnings'
 import { mirrorMessage } from '@/lib/conversations'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 const APPROVABLE = ['under_review', 'review', 'delivered']
 
@@ -84,6 +85,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       })
     } catch (e: any) { warnings.push(`escrow_event_failed: ${e?.message || 'unknown'}`) }
 
+    warnings.push(...await recordOrderActivity(db, {
+      orderId,
+      actorId: profileId,
+      actorRole: 'client',
+      fromStatus: ord.status,
+      toStatus: 'completed',
+      note: 'Client approved the delivery and released escrow.',
+    }))
+
     if (counterpartId) {
       try {
         await mirrorMessage(db, {
@@ -113,6 +123,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (updErr) return fail(updErr?.message || 'Could not request a revision.', 500)
     if (!updated) return fail('Order state changed — refresh and try again.', 409)
 
+    warnings.push(...await recordOrderActivity(db, {
+      orderId,
+      actorId: profileId,
+      actorRole: 'client',
+      fromStatus: ord.status,
+      toStatus: 'revision_requested',
+      note: note || 'Client requested revisions to the submitted delivery.',
+    }))
+
     if (counterpartId) {
       try {
         await mirrorMessage(db, {
@@ -122,7 +141,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         })
       } catch { /* non-fatal */ }
     }
-    return ok({ order: updated })
+    return ok({ order: updated }, {}, warnings.length ? { data_warnings: warnings } : {})
   }
 
   // ── Raise a dispute ─────────────────────────────────────────────────────
@@ -148,6 +167,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         actor_id: profileId, actor_role: 'client', reason: note || 'Client raised a dispute.',
       })
     } catch (e: any) { warnings.push(`escrow_event_failed: ${e?.message || 'unknown'}`) }
+
+    warnings.push(...await recordOrderActivity(db, {
+      orderId,
+      actorId: profileId,
+      actorRole: 'client',
+      fromStatus: ord.status,
+      toStatus: 'disputed',
+      note: note || 'Client raised a dispute.',
+    }))
 
     return ok({ order: updated }, {}, warnings.length ? { data_warnings: warnings } : {})
   }
