@@ -19,10 +19,25 @@ describe('marketplace first paint', () => {
     expect(source).toContain('`/api/sellers/${sellerId}/reviews`')
   })
 
-  it('does not leave crawler-only copy visible for four seconds after hydration', () => {
+  it('does not render the legacy crawler-only duplicate before hydration', () => {
     const gate = read('components/marketplace/SsrHydrateGate.tsx')
-    expect(gate).toContain('fallbackMs = 350')
-    expect(gate).not.toContain('fallbackMs = 4000')
+    expect(gate).toContain('return null')
+    expect(gate).not.toContain('data-ssr-seo')
+    expect(gate).not.toContain('useEffect')
+    expect(gate).not.toContain('useState')
+  })
+
+  it('loads category geometry from server-known CSS before the client component hydrates', () => {
+    const layout = read('app/marketplace/layout.tsx')
+    const css = read('app/marketplace/marketplace-first-paint.css')
+    expect(layout).toContain("import './marketplace-first-paint.css'")
+    expect(css).toContain('.cw-market .ys-cat-bar')
+    expect(css).toContain('.cw-market .ys-cat-strip')
+    expect(css).toContain('display: flex;')
+    expect(css).toContain('height: 52px;')
+    expect(css).toContain('.cw-market .ys-cat-chev')
+    expect(css).toContain('position: absolute;')
+    expect(css).toContain('@media (max-width: 719px)')
   })
 
   it('fans out independent gig enrichments and removes the unused reviews query', () => {
