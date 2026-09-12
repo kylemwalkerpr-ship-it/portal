@@ -9,7 +9,7 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 
 export interface GscQuerySignal {
   term: string
@@ -129,7 +129,7 @@ function strategyHintsFor(region: string, opportunities: GscQuerySignal[], nearP
     'Use exact-match and close-variant queries from GSC in H2s and FAQ — do not invent volume.',
   ]
   if (opportunities.some((q) => /housing|apartment|dorm|rent/i.test(q.term))) {
-    hints.push('Housing queries dominate demand — include city/campus neighborhood, rent ranges, and transit facts.')
+    hints.push('Housing queries that remain here carry immigration/document or tenancy/legal intent — keep the section tied to that user task, not generic campus lifestyle coverage.')
   }
   if (opportunities.some((q) => /dependent|spouse|family|visa/i.test(q.term))) {
     hints.push('Family/dependent visa demand is high-impression / deep-rank — publish procedural pillar + checklist spokes.')
@@ -221,24 +221,30 @@ export async function buildGscContentBrief(opts: {
     }
   }
 
-  const ranked = queries
+  // Keep raw GSC available to reporting surfaces, but generation briefs only
+  // receive queries the estate is actually willing to act on. This prevents
+  // high-impression campus-lifestyle pollution from becoming article keywords.
+  const actionableQueries = queries.filter((q) => isActionableDemandQuery(String(q.term || '')))
+  const suppressedCount = queries.length - actionableQueries.length
+  if (suppressedCount > 0) {
+    warnings.push(`Suppressed ${suppressedCount} junk/off-mission GSC quer${suppressedCount === 1 ? 'y' : 'ies'} from the generation brief.`)
+  }
+
+  const ranked = actionableQueries
     .map((q) => ({ q, rel: scoreRelevance(q.term, opts.topic, keywords) }))
     .sort((a, b) => b.rel - a.rel || b.q.impressions - a.q.impressions)
 
   const relevant = ranked.filter((r) => r.rel > 0).map((r) => r.q)
-  // Never promote brand/noise queries (site's own name, file-like terms) to
-  // "primary keywords" — previously the top-6 unrelated rows were used as-is.
-  const cleanPool = queries.filter((q) => !isJunkQuery(String(q.term || '')))
-  const pool = relevant.length > 0 ? relevant : cleanPool
+  const pool = relevant.length > 0 ? relevant : actionableQueries
   const primaryKeywords = pool.slice(0, Math.min(6, limit))
   const relatedKeywords = pool.slice(primaryKeywords.length, primaryKeywords.length + 8)
 
   // A clicks=0 export (or clicks missing) cannot evidence CTR gaps — every
   // query would "qualify" as low-CTR. Only compute opportunity keywords when
-  // the pool carries real click data.
-  const hasClickData = queries.some((q) => Number(q.clicks) > 0)
+  // the actionable pool carries real click data.
+  const hasClickData = actionableQueries.some((q) => Number(q.clicks) > 0)
   const opportunityKeywords = hasClickData
-    ? queries
+    ? actionableQueries
         .filter((q) => q.impressions >= 15 && q.position > 20 && q.ctr < 0.02)
         .filter((q) => scoreRelevance(q.term, opts.topic, keywords) > 0 || relevant.length === 0)
         .sort((a, b) => b.impressions - a.impressions)
