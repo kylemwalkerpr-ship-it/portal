@@ -104,4 +104,26 @@ describe('marketplace first paint', () => {
     expect(auth).toContain('AuthNavSkeleton')
     expect(auth).toContain('if (!isLoaded)')
   })
+
+  it('marks only Browse active for signed-in users on marketplace browse', () => {
+    const shell = read('components/marketplace/MarketplaceShell.tsx')
+    expect(shell).toContain("const homeCurrent = role === null && !shopActive && activeView === 'browse'")
+    expect(shell).toContain("? role === null && !shopActive && activeView === 'browse'")
+  })
+
+  it('fails the hero video closed to a poster fallback instead of eager retrying', () => {
+    const landing = read('app/marketplace/PublicMarketplaceLanding.tsx')
+    const mediaPath = path.join(root, 'components/marketplace/HeroBackgroundMedia.tsx')
+    const exists = fs.existsSync(mediaPath)
+    expect(exists).toBe(true)
+    if (!exists) return
+    const media = fs.readFileSync(mediaPath, 'utf8')
+    expect(landing).toContain("import { HeroBackgroundMedia } from '@/components/marketplace/HeroBackgroundMedia'")
+    expect(landing).toContain('<HeroBackgroundMedia />')
+    expect(landing).not.toContain('preload="auto"')
+    expect(media).toContain('preload="metadata"')
+    expect(media).toContain('onError={() => setFailed(true)}')
+    expect(media).toContain('video.play()')
+    expect(media).toContain('hero-media-poster')
+  })
 })
