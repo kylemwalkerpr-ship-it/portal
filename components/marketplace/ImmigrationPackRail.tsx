@@ -1,12 +1,13 @@
 import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
 import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
 import { applyPayhipBatch1Commercial, getPayhipBatch1Commercial } from '@/lib/payhipBatch1Commercial'
+import { getPayhipBatches24Product } from '@/lib/payhipBatches24'
 import type { FileShopProduct } from '@/lib/files-shop-catalog'
 
 /**
- * Reuses the established Marketplace instant-download rail. Batch 1 products
- * resolve through the audited commercial manifest so price, packaging and
- * real-photo covers match their customer-facing release contract.
+ * Reuses the established Marketplace instant-download rail. Immigration products
+ * resolve through the audited Payhip commercial manifests so real-photo covers
+ * match the customer-facing release contract across Batch 1 and Batches 2–4.
  */
 export function ImmigrationPackRail() {
   const products: FileShopProduct[] = IMMIGRATION_SHOP_PRODUCTS
@@ -15,6 +16,7 @@ export function ImmigrationPackRail() {
     .map((basePack, index) => {
       const pack = applyPayhipBatch1Commercial(basePack)
       const commercial = getPayhipBatch1Commercial(pack.slug)
+      const audited = getPayhipBatches24Product(pack.slug)
       return {
         id: pack.slug,
         file: String(index + 21).padStart(2, '0'),
@@ -31,7 +33,7 @@ export function ImmigrationPackRail() {
             ],
         price: String(pack.price_usd),
         href: `/shop/${pack.slug}`,
-        cover: commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
+        cover: audited?.imageUrl ?? commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
         published: true,
       }
     })
