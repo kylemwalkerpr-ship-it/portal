@@ -261,7 +261,7 @@ function MarketMobileDrawer({
 
   if (!open || !mounted) return null
 
-  const homeCurrent = !shopActive && activeView === 'browse'
+  const homeCurrent = role === null && !shopActive && activeView === 'browse'
   const shopCurrent = Boolean(shopActive)
 
   return createPortal(
@@ -455,7 +455,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           const isActive = btn.label === 'File shop'
             ? shopActive
             : btn.label === 'Home'
-              ? !shopActive && activeView === 'browse'
+              ? role === null && !shopActive && activeView === 'browse'
               : false
           const sharedStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 6,
