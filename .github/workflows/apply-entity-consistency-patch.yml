@@ -1,0 +1,44 @@
+name: Apply SEO entity consistency patch
+
+on:
+  push:
+    branches:
+      - seo/entity-consistency-enrichment
+    paths:
+      - 'scripts/apply-entity-consistency-patch.mjs'
+      - '.github/workflows/apply-entity-consistency-patch.yml'
+      - 'tests/seoFactory.entityConsistency.test.ts'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply narrow source patch
+        run: node scripts/apply-entity-consistency-patch.mjs
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run entity consistency regression test
+        run: npm test -- --runInBand tests/seoFactory.entityConsistency.test.ts
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          if git diff --quiet -- lib/seoFactory/crossDomainEnrich.ts; then
+            echo 'Source already patched.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/seoFactory/crossDomainEnrich.ts
+          git commit -m 'Guard SEO enrichment by university entity'
+          git push origin HEAD:seo/entity-consistency-enrichment
