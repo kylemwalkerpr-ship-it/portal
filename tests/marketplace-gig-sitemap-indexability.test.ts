@@ -6,6 +6,8 @@ const sitemap = fs.readFileSync(path.join(root, 'app/sitemap.ts'), 'utf8')
 const robots = fs.readFileSync(path.join(root, 'app/robots.ts'), 'utf8')
 const middleware = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
 const gigPage = fs.readFileSync(path.join(root, 'app/marketplace/gigs/[slug]/page.tsx'), 'utf8')
+const gigHub = fs.readFileSync(path.join(root, 'app/marketplace/gigs/page.tsx'), 'utf8')
+const marketplaceFooter = fs.readFileSync(path.join(root, 'components/marketplace/MarketplaceFooter.tsx'), 'utf8')
 
 describe('Marketplace gig crawl and index contract', () => {
   test('the Marketplace sitemap cannot collapse to empty because of ambiguous Worker host headers', () => {
@@ -22,6 +24,17 @@ describe('Marketplace gig crawl and index contract', () => {
     expect(sitemap).toContain('clean(`/gigs/${gig.slug}`)')
     expect(sitemap).not.toContain('`/marketplace/gigs/${gig.slug}`')
     expect(sitemap).toContain('priority: 0.7')
+  })
+
+  test('the gig inventory has a crawlable parent hub rather than sitemap-only spokes', () => {
+    expect(sitemap).toContain("{ url: `${base}/gigs`, changeFrequency: 'weekly', priority: 0.75 }")
+    expect(gigHub).toContain("getMarketplaceCanonicalUrl('/gigs')")
+    expect(gigHub).toContain("robots: { index: true, follow: true }")
+    expect(gigHub).toContain(".eq('status', 'active')")
+    expect(gigHub).toContain(".not('provider_id', 'is', null)")
+    expect(gigHub).toContain('href={`/gigs/${gig.slug}`}')
+    expect(gigHub).toContain('Complete service directory')
+    expect(marketplaceFooter).toContain("{ label: 'Services', href: '/gigs' }")
   })
 
   test('portal remains protected while the market host is allowed to expose sitemap.xml', () => {
