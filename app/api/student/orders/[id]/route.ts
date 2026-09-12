@@ -48,7 +48,10 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       : Promise.resolve({ data: null }),
     db.from('order_files').select('id, name, size_bytes, uploader_role, uploader_id, mime_type, created_at, storage_path, is_sensitive, is_deleted').eq('order_id', id).order('created_at', { ascending: false }),
     db.from('order_messages').select('id, sender_id, sender_role, body, created_at, attachment_url, attachment_name').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
-    db.from('order_events').select('id, event_type, from_status, to_status, notes, metadata, actor_id, created_at').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
+    // Canonical schema is actor_role/from_status/to_status/note. The previous
+    // query asked for event_type/notes/metadata, which made PostgREST return an
+    // error and silently collapsed the Activity tab to an empty array.
+    db.from('order_events').select('id, actor_id, actor_role, from_status, to_status, note, created_at').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
     db.from('order_milestones').select('*').eq('order_id', id).order('sequence', { ascending: true }),
     db.from('order_scope_changes').select('*').eq('order_id', id).order('created_at', { ascending: false }),
   ])
@@ -192,7 +195,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     services,
     files,
     messages: messages.reverse(), // oldest → newest for chronological render
-    events,
+    events: events.reverse(), // oldest → newest for chronological render
     milestones,
     scopeChanges,
   })

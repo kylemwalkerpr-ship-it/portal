@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 const PROVIDER_TRANSITIONS: Record<string, string[]> = {
   created: ['in_progress', 'cancelled'],
@@ -59,12 +60,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     return fail(`Order is no longer ${current} — refresh and try again.`, 409)
   }
 
-  await auth.db.from('order_events').insert({
-    order_id: id,
-    actor_id: auth.profileId,
-    actor_role: auth.role,
-    from_status: current,
-    to_status: nextStatus,
+  await recordOrderActivity(auth.db, {
+    orderId: id,
+    actorId: auth.profileId,
+    actorRole: auth.role,
+    fromStatus: current,
+    toStatus: nextStatus,
     note,
   })
 

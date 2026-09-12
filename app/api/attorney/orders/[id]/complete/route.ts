@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 // Only deliver an order that is actually in progress; a not-yet-started or
 // client-cancelled order must never be pushed to 'under_review' by a stale or
@@ -41,6 +42,15 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     sender_id: ctx.profileId,
     sender_role: 'consultant',
     body: note,
+  })
+
+  await recordOrderActivity(ctx.db, {
+    orderId: id,
+    actorId: ctx.profileId,
+    actorRole: 'attorney',
+    fromStatus: before.status,
+    toStatus: 'under_review',
+    note: 'Deliverable submitted for client review.',
   })
 
   // Mirror into the unified messenger so the client is notified there too.

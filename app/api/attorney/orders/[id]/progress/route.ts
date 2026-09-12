@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { recordOrderActivity } from '@/lib/orderActivityAudit'
 
 // Only an order that is actually in progress may be pushed to 'under_review'.
 // A client-cancelled (or never-started) order must never be resurrected into
@@ -29,7 +30,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   // Read the order first so the write below is conditional on the state we saw.
   const { data: order } = await ctx.db
     .from('orders')
-    .select('id, status, consultant_id')
+    .select('id, status, consultant_id, progress')
     .eq('id', id)
     .eq('consultant_id', ctx.profileId)
     .single()
@@ -52,5 +53,21 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     .maybeSingle()
   if (updErr) return Response.json({ error: updErr?.message || 'Could not update.' }, { status: 500 })
   if (!data) return Response.json({ error: 'Order status changed by another request — refresh and try again.' }, { status: 409 })
+
+  const nextStatus = String(data.status || order.status)
+  const nextProgress = data.progress == null ? Number(order.progress || 0) : Number(data.progress)
+  if (nextStatus !== String(order.status) || nextProgress !== Number(order.progress || 0)) {
+    await recordOrderActivity(ctx.db, {
+      orderId: id,
+      actorId: ctx.profileId,
+      actorRole: 'attorney',
+      fromStatus: order.status,
+      toStatus: nextStatus,
+      note: nextStatus !== String(order.status)
+        ? `Progress updated to ${nextProgress}% and delivery moved to client review.`
+        : `Progress updated to ${nextProgress}%.`,
+    })
+  }
+
   return Response.json({ order: data })
 }
