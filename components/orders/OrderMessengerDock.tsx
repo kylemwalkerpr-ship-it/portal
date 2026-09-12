@@ -40,6 +40,8 @@ export default function OrderMessengerDock({
   const [position, setPosition] = React.useState({ x: 80, y: 84 })
   const [resolved, setResolved] = React.useState<Counterpart | null>(null)
   const [resolving, setResolving] = React.useState(false)
+  const [resolveError, setResolveError] = React.useState('')
+  const [resolveAttempt, setResolveAttempt] = React.useState(0)
   const dragRef = React.useRef<{
     pointerId: number
     offsetX: number
@@ -74,26 +76,56 @@ export default function OrderMessengerDock({
   }, [orderId])
 
   React.useEffect(() => {
-    if (!open || counterpartProfileId || resolved?.id || resolving) return
+    setResolved(null)
+    setResolveError('')
+    setResolving(false)
+    setResolveAttempt(0)
+  }, [orderId])
+
+  React.useEffect(() => {
+    if (!open || counterpartProfileId || resolved?.id) return
+
     let cancelled = false
     setResolving(true)
-    fetch(`/api/orders/${encodeURIComponent(orderId)}/activity`, { credentials: 'same-origin', cache: 'no-store' })
+    setResolveError('')
+
+    // Bootstrap Messenger from the canonical order context itself. The server
+    // owns participant resolution and returns the safe counterpart profile in
+    // the same response. This deliberately does NOT depend on the Activity API:
+    // if Activity is slow or partially degraded, order chat still opens.
+    fetch('/api/messages/start', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context_kind: 'order', context_id: orderId }),
+    })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload?.error || 'Could not resolve order conversation.')
+        if (!response.ok || !payload?.conversation_id || !payload?.counterpart_profile_id) {
+          throw new Error(payload?.error || 'Could not connect this order to Messenger.')
+        }
         return payload
       })
       .then((payload) => {
-        if (!cancelled) setResolved(payload?.counterpart || null)
+        if (cancelled) return
+        const counterpart = payload?.counterpart || { id: payload.counterpart_profile_id }
+        setResolved({
+          id: counterpart?.id || payload.counterpart_profile_id,
+          full_name: counterpart?.full_name || null,
+          avatar_url: counterpart?.avatar_url || null,
+          role: counterpart?.role || null,
+        })
       })
-      .catch(() => {
-        if (!cancelled) setResolved(null)
+      .catch((error) => {
+        if (cancelled) return
+        setResolveError(error instanceof Error ? error.message : 'Could not connect this order to Messenger.')
       })
       .finally(() => {
         if (!cancelled) setResolving(false)
       })
+
     return () => { cancelled = true }
-  }, [open, orderId, counterpartProfileId, resolved?.id, resolving])
+  }, [open, orderId, counterpartProfileId, resolved?.id, resolveAttempt])
 
   const clamp = React.useCallback((x: number, y: number) => {
     if (typeof window === 'undefined') return { x, y }
@@ -243,14 +275,27 @@ export default function OrderMessengerDock({
           box-shadow: none !important;
           pointer-events: auto !important;
         }
-        .ys-order-messenger-resolving {
+        .ys-order-messenger-resolving,
+        .ys-order-messenger-connect-error {
           height: 100%;
           display: grid;
           place-items: center;
+          align-content: center;
+          gap: 12px;
           padding: 28px;
           color: #64748b;
           font: 600 13px/1.5 -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
           text-align: center;
+        }
+        .ys-order-messenger-connect-error strong { color: #111827; font-size: 14px; }
+        .ys-order-messenger-connect-error button {
+          border: 1px solid #111827;
+          border-radius: 999px;
+          padding: 8px 14px;
+          background: #111827;
+          color: #fff;
+          font: 700 12px/1.2 -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+          cursor: pointer;
         }
         @media (max-width: 760px) {
           .ys-order-messenger-window {
@@ -303,9 +348,15 @@ export default function OrderMessengerDock({
             presentation="popover"
             serviceTitle={serviceTitle || undefined}
           />
+        ) : resolveError ? (
+          <div className="ys-order-messenger-connect-error" role="alert">
+            <strong>Messenger could not connect to this order.</strong>
+            <span>{resolveError}</span>
+            <button type="button" onClick={() => setResolveAttempt((value) => value + 1)}>Retry connection</button>
+          </div>
         ) : (
-          <div className="ys-order-messenger-resolving">
-            {resolving ? 'Connecting this order to Messenger…' : 'The order conversation could not be resolved. Refresh and try again.'}
+          <div className="ys-order-messenger-resolving" role="status" aria-live="polite">
+            {resolving ? 'Connecting this order to Messenger…' : 'Preparing this order conversation…'}
           </div>
         )}
       </div>
