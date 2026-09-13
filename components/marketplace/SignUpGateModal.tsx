@@ -11,6 +11,8 @@ interface SignUpGateModalProps {
   metadata?: Record<string, unknown>
 }
 
+const MARKET_ORIGIN = 'https://market.yousafeconsultancy.com'
+
 const INTENT_HEADINGS: Record<string, string> = {
   order: 'Sign up to place your order',
   chat: 'Sign up to start a chat',
@@ -38,7 +40,8 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
   if (!open) return null
 
   const meta = encodeMeta(metadata)
-  const returnUrl = encodeURIComponent(returnTo)
+  const absoluteReturnTo = returnTo.startsWith('/') ? `${MARKET_ORIGIN}${returnTo}` : returnTo
+  const returnUrl = encodeURIComponent(absoluteReturnTo)
   const signUpUrl = `https://portal.yousafeconsultancy.com/sign-up/student?return_to=${returnUrl}&action=${intent}${meta ? `&meta=${meta}` : ''}`
 
   return (
