@@ -67,6 +67,8 @@ const AI_SLOP_PHRASES: string[] = [
   'in this article',
   'in this guide we will',
   'this comprehensive guide',
+  'this guide focuses on',
+  'with a specific scope',
   'whether you are looking',
   'look no further',
   'at the end of the day',
@@ -1142,6 +1144,25 @@ export function evaluateContentQuality(opts: {
       message: `Machine-sounding / banned AI phrasing (${unique.length}+ hit/s): ${unique.map((u) => `"${u}"`).join(', ')}`,
       fix: 'Rewrite in plain practitioner English. Cut throat-clearing, clichés, and thesaurus verbs. Sound like a calm specialist talking to a client.',
       evidence: unique.join('; '),
+    })
+  }
+  if (
+    /how this differs from related pages/i.test(body) ||
+    (/this guide focuses on\b/i.test(body) && /step-by-step process/i.test(body))
+  ) {
+    add({
+      code: 'kit_hero_block',
+      severity: 'blocker',
+      message: 'Kit hero block — "How this differs" / "This guide focuses on {keyword} with a specific scope". That is a spliced mill note, not a chapter.',
+      fix: 'Delete the kit block. If neighbouring pages exist, name them in one practitioner sentence with labeled markdown links. Do not restate the primary keyword as the page\'s "scope".',
+    })
+  }
+  if (/\bhow the .{0,48} requirements works\b/i.test(body)) {
+    add({
+      code: 'keyword_stuffing',
+      severity: 'blocker',
+      message: 'Ungrammatical keyword paste ("how the … requirements works"). Cover the topic in a sentence; do not force the phrase.',
+      fix: 'Rewrite as ordinary English (subject + verb). Meaning coverage beats exact-phrase paste.',
     })
   }
   if (wordBoundaryHit(body, 'whilst')) {

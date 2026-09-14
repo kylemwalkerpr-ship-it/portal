@@ -20,6 +20,33 @@ import { sanitizeLeakedMarkup } from './leakedMarkup'
 import { isBlogFamily } from './writingShape'
 import { isApplyTargetPrimary } from './keywordContractBrief'
 
+function estatePathRegion(url: string): string {
+  const m = String(url || '').match(/\/(us|uk|au|ca)(?=\/|$)/i)
+  return (m?.[1] || '').toLowerCase()
+}
+
+function competingOnSameEstate(targetUrl: string | undefined, competing: CompetingPage[]): CompetingPage[] {
+  const region = estatePathRegion(targetUrl || '')
+  return competing.filter((c) => {
+    if (!region) return true
+    const other = estatePathRegion(c.url)
+    return !other || other === region
+  })
+}
+
+function competingLinkLabel(c: CompetingPage): string {
+  const title = String(c.title || '').replace(/\s+/g, ' ').trim()
+  if (title && title.length < 80) return title
+  try {
+    const slug = new URL(c.url).pathname.replace(/\/+$/, '').split('/').filter(Boolean).pop() || ''
+    const label = slug.replace(/[-_]+/g, ' ').trim()
+    if (label) return label
+  } catch {
+    /* fall through */
+  }
+  return 'related guide'
+}
+
 function stripFm(content: string): { fm: string; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!m) return { fm: '', body: content.trim() }
@@ -2892,17 +2919,18 @@ export function applyDeterministicRepairs(opts: {
   }
 
   // ── Cannibalization differentiation ─────────────────────────────────
-  // When the draft's primary keyword overlaps existing estate pages, the
-  // quality gate warns about split ranking signals. Narrow the title/H1
-  // with a qualifier and add a \"How this differs\" hero block so the admin
-  // can ship with the differentiation note in place.
+  // Neighbouring estate pages get one practitioner sentence with labeled
+  // links. Never mill-suffix the H1 or splice "This guide focuses on {kw}".
   {
     const pk = (opts.primaryKeyword || '').trim().toLowerCase()
     const targetNormal = (opts.targetUrl || '').trim().toLowerCase().replace(/\/+$/, '')
-    const competing = (opts.competingUrls || []).filter((c) => {
-      const cu = (c.url || '').trim().toLowerCase().replace(/\/+$/, '')
-      return cu && cu !== targetNormal
-    })
+    const competing = competingOnSameEstate(
+      opts.targetUrl,
+      (opts.competingUrls || []).filter((c) => {
+        const cu = (c.url || '').trim().toLowerCase().replace(/\/+$/, '')
+        return cu && cu !== targetNormal
+      }),
+    )
     if (pk.length >= 4 && competing.length) {
       const exactMatch = competing.filter(
         (c) => (c.primaryKeyword || '').toLowerCase().trim() === pk,
@@ -2919,51 +2947,18 @@ export function applyDeterministicRepairs(opts: {
       const needsDifferentiation = exactMatch.length || highOverlap.length
 
       if (needsDifferentiation) {
-        // Narrow the H1 with a qualifier if it matches a competitor's title
-        const h1Match = b.match(/^#\s+(.+?)\s*$/m)
-        if (h1Match) {
-          const currentH1 = h1Match[1].trim()
-          const competitorTitles = competing
-            .filter((c) => c.title)
-            .map((c) => c.title!.trim())
-          const isNearMatch = competitorTitles.some(
-            (ct) => ct.toLowerCase() === currentH1.toLowerCase(),
-          )
-          if (isNearMatch || exactMatch.length) {
-            // Append a differentiating qualifier to the H1
-            const qualifiers = [
-              ' — Step-by-Step Guide',
-              ' — 2026 Checklist & Timeline',
-              ' — Requirements & Application Process',
-              ' — Complete Overview for Applicants',
-            ]
-            const qualifier = qualifiers.find((q) => {
-              const candidate = `${currentH1}${q}`
-              return candidate.length <= 78
-            }) || qualifiers[0]
-            const newH1 = `${currentH1}${qualifier}`
-            // Only narrow if the qualifier actually fits (don't truncate)
-            if (newH1.length <= 78) {
-              b = b.replace(/^#\s+[^\n]+$/m, `# ${newH1}`)
-              applied.push('cannibal_h1_narrowed')
-            }
-          }
-        }
-
-        // Add a \"How this differs\" hero block after the intro/In 60 seconds
-        if (!/how this differs|differentiation note|cannibal/i.test(b)) {
+        if (!/neighbouring pages on this estate answer adjacent questions/i.test(b) && !/how this differs from related pages/i.test(b)) {
           const competitorList = competing
             .slice(0, 3)
-            .map((c) => `\`${c.url}\``)
+            .filter((c) => c.url)
+            .map((c) => `[${competingLinkLabel(c)}](${c.url})`)
             .join(', ')
-          const diffBlock = [
-            '',
-            '> **How this differs from related pages:** This guide focuses on ' +
-              `**${pk}** with a specific scope — it covers the step-by-step ` +
-              'process, required documents, and practical timelines. For related ' +
-              `topics, see: ${competitorList}.`,
-            '',
-          ].join('\n')
+          if (competitorList) {
+            const diffBlock = [
+              '',
+              `Neighbouring pages on this estate answer adjacent questions — they do not start this file's clock. See ${competitorList}.`,
+              '',
+            ].join('\n')
           // Insert after the first H2 or In 60 seconds block, before the main content
       const sixtyMatch = b.match(/^##\s+In 60 seconds\s*[:：-]?\s*$/im)
           const sixtyIdx = sixtyMatch ? sixtyMatch.index! + sixtyMatch[0].length : -1
@@ -2977,6 +2972,7 @@ export function applyDeterministicRepairs(opts: {
           if (insertAt > 0) {
             b = b.slice(0, insertAt) + diffBlock + b.slice(insertAt)
             applied.push('cannibal_differentiation_note')
+          }
           }
         }
       }
