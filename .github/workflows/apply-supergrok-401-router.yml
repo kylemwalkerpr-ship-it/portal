@@ -1,0 +1,28 @@
+name: Apply SuperGrok 401 router patch
+
+on:
+  push:
+    branches:
+      - fix/supergrok-401-auth-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/supergrok-401-auth-recovery
+          fetch-depth: 0
+      - name: Apply deterministic patch
+        run: python scripts/apply-supergrok-401-router.py
+      - name: Commit patch and remove one-shot machinery
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: replay SuperGrok request after OAuth 401 refresh'
+          git push origin HEAD:fix/supergrok-401-auth-recovery
