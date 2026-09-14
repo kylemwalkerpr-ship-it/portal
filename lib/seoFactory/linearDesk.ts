@@ -12,6 +12,11 @@ import type { QualityGateResult } from './contentQualityGate'
 import type { SeoFactoryAudit } from './audit'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import {
+  markCoherentDeskCompleted,
+  markCoherentDeskFailed,
+  markCoherentDeskRunning,
+} from './contentStudioExecutionContext'
+import {
   briefFromExploreAddendum,
   deskGateCatalogPrompt,
   explorePrompt,
@@ -241,15 +246,20 @@ async function deskCall(
   },
 ): Promise<{ text: string; provider: string; model: string }> {
   const aiOpts = deskPhaseAiOpts(opts.phase)
-  return generate({
-    phase: opts.phase,
-    system: opts.system,
-    prompt: renderDeskConversation(opts.turns, opts.name, opts.instruction),
-    maxTokens: opts.maxTokens,
-    temperature: opts.temperature,
-    reasoningEffort: aiOpts.reasoningEffort,
-    skipQualityContract: aiOpts.skipQualityContract,
-  })
+  try {
+    return await generate({
+      phase: opts.phase,
+      system: opts.system,
+      prompt: renderDeskConversation(opts.turns, opts.name, opts.instruction),
+      maxTokens: opts.maxTokens,
+      temperature: opts.temperature,
+      reasoningEffort: aiOpts.reasoningEffort,
+      skipQualityContract: aiOpts.skipQualityContract,
+    })
+  } catch (error) {
+    markCoherentDeskFailed(error)
+    throw error
+  }
 }
 
 export async function runLinearDesk(opts: {
@@ -264,6 +274,7 @@ export async function runLinearDesk(opts: {
   streamDraft?: LinearDeskGenerate
   onProgress?: (ev: { phase: DeskPhase | 'discover'; message: string }) => void
 }): Promise<LinearDeskResult> {
+  markCoherentDeskRunning()
   const system = linearDeskSystem(opts.system)
   const progress = opts.onProgress
   const turns: DeskTurn[] = [
@@ -347,7 +358,9 @@ export async function runLinearDesk(opts: {
     })
   }
   if (!parsed.ok || !parsed.brief) {
-    throw new BriefInvalidError(parsed.issues.length ? parsed.issues : ['sealed brief missing after repair'])
+    const error = new BriefInvalidError(parsed.issues.length ? parsed.issues : ['sealed brief missing after repair'])
+    markCoherentDeskFailed(error)
+    throw error
   }
 
   const brief = mergeExploreIntoBrief(parsed.brief, explore)
@@ -355,7 +368,11 @@ export async function runLinearDesk(opts: {
     contentType: opts.assembly.contentType,
     primaryKeyword: opts.assembly.primaryKeyword,
   })
-  if (finalBriefIssues.length) throw new BriefInvalidError(finalBriefIssues)
+  if (finalBriefIssues.length) {
+    const error = new BriefInvalidError(finalBriefIssues)
+    markCoherentDeskFailed(error)
+    throw error
+  }
 
   progress?.({ phase: 'draft', message: 'Drafting the article from the validated sealed brief' })
   const draftInstruction = [
@@ -455,6 +472,7 @@ export async function runLinearDesk(opts: {
   }
 
   const held = reflectionScore.pass && !hasBlockers
+  markCoherentDeskCompleted(content)
 
   return {
     content,
