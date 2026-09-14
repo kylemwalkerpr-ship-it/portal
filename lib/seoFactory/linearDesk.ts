@@ -7,8 +7,8 @@
  *   1. explores Discover (visible chain of thought — JSON, never the article)
  *   2. seals a no-guesswork brief from that exploration
  *   3. executes that brief as one article
- *   4. self-reflects against the same gates (JSON)
- *   5. rewrites only when reflection says revise or the evaluator still blocks
+ *   4. self-reflects against the same gates (JSON + automated score)
+ *   5. rewrites when reflection says revise, a blocker is open, or the automated score is below floor
  *
  * Isolated hops (outline splice, Harper, throughline) stay as rescue only.
  */
@@ -24,9 +24,13 @@ import {
   parseReflection,
   reflectPrompt,
   rewriteFromReflectionPrompt,
+  scoreExplore,
+  scoreReflection,
   stripDeskThinking,
   type DeskExplore,
   type DeskReflection,
+  type ExploreScore,
+  type ReflectionScore,
 } from './deskCognition'
 import {
   executeBriefPrompt,
@@ -41,10 +45,10 @@ import { writingFamilyFor } from './writingShape'
 export const LINEAR_CONVERSATION_ADDENDUM = [
   'ONE CONVERSATION. Explore, briefing, drafting, self-reflection, and rewrite are turns in this same thread — not separate jobs, not separate personalities.',
   'The ship gates in this system prompt are the only gates. They are visible now and they do not change later.',
-  'Turn 1 EXPLORES Discover as JSON chain of thought (what we know, what we would invent, the argument spine). Thinking is never the article.',
+  'Turn 1 EXPLORES Discover using named chain-of-thought patterns (READER_QUESTION, EVIDENCE_MAP, OMIT_LIST, ARGUMENT_SPINE, CHAPTER_CONTINUITY, KIT_RISK, GATE_WATCH, TAKEAWAY_CLAIMS, FAQ_GAP). Thinking is never the article.',
   'Turn 2 seals a brief from that exploration with zero guesswork.',
   'Turn 3 executes that brief as one article.',
-  'Turn 4 SELF-REFLECTS against the same gates (JSON). If revise, Turn 5 rewrites the same article.',
+  'Turn 4 SELF-REFLECTS against the same gates (JSON). An automated score — not just your verdict — decides whether Turn 5 rewrites the same article.',
   'Do not restart the argument. Do not stuff keywords. Do not splice kit pieces. Do not leak chain-of-thought into the published markdown.',
 ].join(' ')
 
@@ -186,9 +190,11 @@ export function assemblyFromPipelineInput(input: {
     faqQuestions: input.faqQuestions,
     lede: input.lede,
     sources: input.sources,
-    interlinks: (input.interlinks || [])
-      .map((l) => ({ label: l.label, url: l.url }))
-      .filter((l): l is { label?: string; url: string } => Boolean(l.url)),
+    interlinks: (input.interlinks || []).flatMap((l) => {
+      const url = typeof l.url === 'string' ? l.url.trim() : ''
+      if (!url) return []
+      return [{ label: l.label, url }]
+    }),
     requiredShortKeywords: input.requiredShortKeywords,
     requiredLongTailKeywords: input.requiredLongTailKeywords,
     opportunity: input.opportunityAction,
@@ -210,6 +216,8 @@ export type LinearDeskResult = {
   reflected: boolean
   explore: DeskExplore | null
   reflection: DeskReflection | null
+  exploreScore: ExploreScore | null
+  reflectionScore: ReflectionScore | null
 }
 
 async function deskCall(
@@ -273,6 +281,7 @@ export async function runLinearDesk(opts: {
   model = exploreAi.model
   turns.push({ role: 'assistant', name: 'explore', text: exploreAi.text })
   const explore = parseExplore(exploreAi.text)
+  const exploreScore = scoreExplore(explore, { primaryKeyword: opts.assembly.primaryKeyword })
 
   const briefInstruction = [
     sealedBriefPromptBlock({
@@ -280,7 +289,7 @@ export async function runLinearDesk(opts: {
       minWords: opts.minWords,
       maxWords: opts.maxWords,
     }),
-    explore ? briefFromExploreAddendum(explore) : '',
+    explore ? briefFromExploreAddendum(explore, exploreScore) : '',
   ].filter(Boolean).join('\n\n')
   turns.push({ role: 'user', name: 'brief', text: briefInstruction })
   const briefAi = await deskCall(opts.generate, {
@@ -369,10 +378,19 @@ export async function runLinearDesk(opts: {
 
   const quality = opts.evaluate(content)
   const hasBlockers = Boolean(!quality.ok && quality.blockers.length)
+  const reflectionScore = scoreReflection({
+    content,
+    quality,
+    reflection,
+    explore,
+    unresolved: brief.unresolved,
+    primaryKeyword: opts.assembly.primaryKeyword,
+  })
   let reviewed = false
-  if (needsRewrite(reflection, hasBlockers)) {
+  if (needsRewrite(reflection, hasBlockers, reflectionScore)) {
     const reviewNotes = rewriteFromReflectionPrompt({
       reflection,
+      score: reflectionScore,
       blockerNotes: hasBlockers ? refineNotesForBlockers(quality.blockers).join('\n') : '',
       warningNotes: quality.warnings?.length ? refineNotesForWarnings(quality.warnings).join('\n') : '',
     })
@@ -408,5 +426,7 @@ export async function runLinearDesk(opts: {
     reflected: Boolean(reflection),
     explore,
     reflection,
+    exploreScore,
+    reflectionScore,
   }
 }

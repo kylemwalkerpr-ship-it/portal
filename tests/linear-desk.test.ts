@@ -25,6 +25,9 @@ import {
   mergeExploreIntoBrief,
   explorePrompt,
   reflectPrompt,
+  scoreExplore,
+  scoreReflection,
+  REFLECTION_SHIP_FLOOR,
 } from '@/lib/seoFactory/deskCognition'
 import { deskLayoutPromptBlock } from '@/lib/seoFactory/deskLayout'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
@@ -52,7 +55,7 @@ const EXPLORE_JSON = JSON.stringify({
   argumentSpine: 'You file an H-1B only after the LCA is certified and the packet is complete.',
   chapterPlan: [
     { heading: 'Who this path is actually for', because: 'Constraint first', covers: ['specialty occupation'] },
-    { heading: 'Documents you gather next', because: 'Named artefacts', covers: ['labor condition'] },
+    { heading: 'Documents you gather next', because: 'Named artefacts', covers: ['labor condition'], continues: 'Eligibility named who can file' },
   ],
   kitRisks: ['Eligibility H2 restating the thesis as a mini-guide'],
   gateWatch: ['stuffed_primary_opener', 'guesswork fees'],
@@ -256,7 +259,7 @@ describe('explore + self-reflection cognition', () => {
     }))
     expect(reflection?.verdict).toBe('revise')
     expect(needsRewrite(reflection, false)).toBe(true)
-    expect(needsRewrite({ ...reflection!, verdict: 'ship', stuffing: [] }, false)).toBe(false)
+    expect(needsRewrite({ ...reflection!, verdict: 'ship', stuffing: [], kitSplices: [], guesswork: [], layout: [], gateRisks: [] }, false)).toBe(false)
     expect(needsRewrite({ ...reflection!, verdict: 'ship' }, true)).toBe(true)
   })
 
@@ -274,13 +277,110 @@ describe('explore + self-reflection cognition', () => {
     expect(cleaned).not.toMatch(/paste h-1b visa again/)
   })
 
-  it('asks explore for chain of thought and reflect for a JSON verdict, not a rewrite', () => {
+  it('asks explore for named chain-of-thought patterns and reflect for a JSON verdict, not a rewrite', () => {
     expect(explorePrompt()).toMatch(/EXPLORE/)
+    expect(explorePrompt()).toMatch(/READER_QUESTION/)
+    expect(explorePrompt()).toMatch(/CHAPTER_CONTINUITY/)
     expect(explorePrompt()).toMatch(/wouldHaveToInvent/)
     expect(explorePrompt()).toMatch(/never be published/)
     expect(reflectPrompt()).toMatch(/SELF-REFLECT/)
     expect(reflectPrompt()).toMatch(/Return ONLY a JSON object/)
+    expect(reflectPrompt()).toMatch(/automated score/)
     expect(reflectPrompt()).not.toMatch(/complete corrected markdown article/)
+  })
+})
+
+describe('automated explore patterns and reflection scoring', () => {
+  it('scores a complete explore as ready and flags missing patterns', () => {
+    const complete = scoreExplore(parseExplore(EXPLORE_JSON), { primaryKeyword: 'h-1b visa' })
+    expect(complete.missing).toEqual([])
+    expect(complete.score).toBeGreaterThanOrEqual(70)
+    expect(complete.patterns.every((p) => p.ok)).toBe(true)
+
+    const thin = scoreExplore(parseExplore(JSON.stringify({
+      readerQuestion: 'h-1b visa',
+      evidenceWeHave: [],
+      wouldHaveToInvent: [],
+      argumentSpine: 'h-1b visa',
+      chapterPlan: [],
+      kitRisks: [],
+      gateWatch: [],
+      takeawayClaims: ['h-1b visa'],
+      faqThatDoesNotEchoH2s: [],
+    })), { primaryKeyword: 'h-1b visa' })
+    expect(thin.score).toBeLessThan(70)
+    expect(thin.missing).toEqual(expect.arrayContaining([
+      'READER_QUESTION',
+      'EVIDENCE_MAP',
+      'ARGUMENT_SPINE',
+      'CHAPTER_CONTINUITY',
+      'KIT_RISK',
+      'GATE_WATCH',
+      'TAKEAWAY_CLAIMS',
+      'FAQ_GAP',
+    ]))
+  })
+
+  it('fails an optimistic ship when the draft has a mill opener', () => {
+    const millDraft = DRAFT.replace(
+      'Specialty occupation work still has to match the degree. The LCA you just certified is the first artefact the officer will look for.',
+      'This section covers everything you need to know about the h-1b visa petition in 2026.',
+    )
+    const reflection = parseReflection(JSON.stringify({
+      throughline: 'one argument holds across chapters',
+      guesswork: [],
+      stuffing: [],
+      kitSplices: [],
+      layout: [],
+      gateRisks: [],
+      verdict: 'ship',
+      revisePlan: [],
+    }))
+    const millScore = scoreReflection({
+      content: millDraft,
+      quality: cleanQuality(),
+      reflection,
+      explore: parseExplore(EXPLORE_JSON),
+      unresolved: ['USCIS filing fee for 2026'],
+      primaryKeyword: 'h-1b visa',
+    })
+    expect(millScore.pass).toBe(false)
+    expect(millScore.floor).toBe(REFLECTION_SHIP_FLOOR)
+    expect(millScore.reasons.some((r) => /mill opener/i.test(r))).toBe(true)
+    expect(needsRewrite(reflection, false, millScore)).toBe(true)
+
+    const cleanScore = scoreReflection({
+      content: DRAFT,
+      quality: cleanQuality(),
+      reflection,
+      explore: parseExplore(EXPLORE_JSON),
+      unresolved: ['USCIS filing fee for 2026'],
+      primaryKeyword: 'h-1b visa',
+    })
+    expect(cleanScore.pass).toBe(true)
+    expect(needsRewrite(reflection, false, cleanScore)).toBe(false)
+  })
+
+  it('fails when the model says ship while ship blockers are still open', () => {
+    const reflection = parseReflection(JSON.stringify({
+      throughline: 'one argument holds across chapters',
+      guesswork: [],
+      stuffing: [],
+      kitSplices: [],
+      layout: [],
+      gateRisks: [],
+      verdict: 'ship',
+      revisePlan: [],
+    }))
+    const score = scoreReflection({
+      content: DRAFT,
+      quality: blockedQuality(),
+      reflection,
+      explore: parseExplore(EXPLORE_JSON),
+    })
+    expect(score.pass).toBe(false)
+    expect(score.dimensions.find((d) => d.id === 'honesty')?.score).toBe(0)
+    expect(needsRewrite(reflection, true, score)).toBe(true)
   })
 })
 
@@ -300,7 +400,9 @@ describe('linear desk conversation', () => {
     }))
     expect(system).toMatch(/ONE CONVERSATION/)
     expect(system).toMatch(/EXPLORES Discover/)
+    expect(system).toMatch(/READER_QUESTION/)
     expect(system).toMatch(/SELF-REFLECTS/)
+    expect(system).toMatch(/automated score/)
     expect(system).toMatch(/IN 60 SECONDS is the takeaways slot/)
     expect(system).toMatch(/Q1\. ONE ARTICLE/)
 
@@ -388,6 +490,7 @@ describe('linear desk conversation', () => {
         expect(opts.prompt).toMatch(/SELF-REVIEW/)
         expect(opts.prompt).toMatch(/EXECUTE the sealed brief/)
         expect(opts.prompt).toMatch(/Revise plan/)
+        expect(opts.prompt).toMatch(/AUTOMATED SCORE/)
         return { text: DRAFT, provider: 'test', model: 'test' }
       },
       evaluate: blockedQuality,
@@ -400,6 +503,8 @@ describe('linear desk conversation', () => {
     expect(result.explored).toBe(true)
     expect(result.reflected).toBe(true)
     expect(result.reviewed).toBe(true)
+    expect(result.exploreScore?.missing || []).toEqual([])
+    expect(result.reflectionScore?.pass).toBe(false)
     expect(result.brief.thesis).toMatch(/LCA is certified/)
     expect(result.brief.unresolved).toContain('USCIS filing fee for 2026')
     expect(result.content).toMatch(/# H-1B visa/)
@@ -443,6 +548,8 @@ describe('linear desk conversation', () => {
     expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect'])
     expect(result.reviewed).toBe(false)
     expect(result.reflected).toBe(true)
+    expect(result.exploreScore?.score).toBeGreaterThanOrEqual(70)
+    expect(result.reflectionScore?.pass).toBe(true)
     expect(result.turns.map((t) => t.name)).not.toContain('review')
   })
 
@@ -481,5 +588,50 @@ describe('linear desk conversation', () => {
     })
     expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
     expect(result.reviewed).toBe(true)
+  })
+
+  it('rewrites when the automated score fails even if the model says ship', async () => {
+    const millDraft = DRAFT.replace(
+      'Specialty occupation work still has to match the degree. The LCA you just certified is the first artefact the officer will look for.',
+      'This section covers everything you need to know about the h-1b visa petition in 2026.',
+    )
+    const calls: string[] = []
+    const result = await runLinearDesk({
+      system: 'GATES: no stuffing, one article.',
+      assembly: { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+      minWords: 200,
+      maxWords: 800,
+      generate: async (opts) => {
+        calls.push(opts.phase)
+        if (opts.phase === 'explore') return { text: EXPLORE_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'brief') return { text: BRIEF_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'draft') return { text: millDraft, provider: 'test', model: 'test' }
+        if (opts.phase === 'reflect') {
+          return {
+            text: JSON.stringify({
+              throughline: 'one argument holds across chapters',
+              guesswork: [],
+              stuffing: [],
+              kitSplices: [],
+              layout: [],
+              gateRisks: [],
+              verdict: 'ship',
+              revisePlan: [],
+            }),
+            provider: 'test',
+            model: 'test',
+          }
+        }
+        expect(opts.prompt).toMatch(/AUTOMATED SCORE/)
+        expect(opts.prompt).toMatch(/must revise/)
+        return { text: DRAFT, provider: 'test', model: 'test' }
+      },
+      evaluate: cleanQuality,
+    })
+    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(result.reviewed).toBe(true)
+    expect(result.reflection?.verdict).toBe('ship')
+    expect(result.reflectionScore?.pass).toBe(false)
+    expect(result.content).not.toMatch(/This section covers/)
   })
 })

@@ -566,6 +566,13 @@ export async function* runSeoFactoryPipelineStream(
           }
           audit = runAudit(content)
           yield {
+            type: 'progress',
+            stage: 'review',
+            message: linear.reviewed
+              ? `Self-reflection scored ${linear.reflectionScore?.score ?? '—'}/100 — rewrote leftover issues`
+              : `Self-reflection scored ${linear.reflectionScore?.score ?? '—'}/100 — held the article`,
+          }
+          yield {
             type: 'attempt',
             attempt: attempts,
             score: audit.score,
