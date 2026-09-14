@@ -2,19 +2,15 @@
  * Linear desk — explore, briefing, drafting, self-reflection, and rewrite
  * as ONE conversation.
  *
- * Discover intelligence is the first user turn. The same system prompt
- * (ship gates + layout + voice) is visible from turn 0. The model:
- *   1. explores Discover (visible chain of thought — JSON, never the article)
- *   2. seals a no-guesswork brief from that exploration
- *   3. executes that brief as one article
- *   4. self-reflects against the same gates (JSON + automated score)
- *   5. rewrites when reflection says revise, a blocker is open, or the automated score is below floor
- *
- * Isolated hops (outline splice, Harper, throughline) stay as rescue only.
+ * The coherent desk owns article authorship. If its sealed brief cannot be
+ * validated, drafting stops. Candidate rewrites are never accepted on length
+ * alone; the strongest accepted revision remains current until the shared
+ * revision validator approves a replacement.
  */
 
-import { countBodyWords } from './contentDepth'
 import type { QualityGateResult } from './contentQualityGate'
+import type { SeoFactoryAudit } from './audit'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import {
   briefFromExploreAddendum,
   deskGateCatalogPrompt,
@@ -34,12 +30,14 @@ import {
   type ReflectionScore,
 } from './deskCognition'
 import {
+  BriefInvalidError,
   executeBriefPrompt,
   parseSealedBrief,
-  sealBriefFromAssembly,
   sealedBriefPromptBlock,
+  validateSealedBrief,
   type SealedBrief,
 } from './sealedBrief'
+import { acceptRewriteCandidate } from './rewriteAcceptance'
 import { refineNotesForBlockers, refineNotesForWarnings } from './shipBlockers'
 import { writingFamilyFor } from './writingShape'
 
@@ -47,17 +45,15 @@ export const LINEAR_CONVERSATION_ADDENDUM = [
   'ONE CONVERSATION. Explore, briefing, drafting, self-reflection, and rewrite are turns in this same thread — not separate jobs, not separate personalities.',
   'The ship gates AND the Review warning codes in GATE_WATCH are visible now. They do not change later. Plan them in explore so Review is a confirmation, not a fight.',
   'Spend Turns 1–2 planning the whole article (argument, bridges, formats, omit-list, evaluator codes). Do not rush to prose.',
-  'Turn 1 EXPLORES Discover using named chain-of-thought patterns (READER_QUESTION, EVIDENCE_MAP, OMIT_LIST, ARGUMENT_SPINE, CHAPTER_CONTINUITY, KIT_RISK, GATE_WATCH, TAKEAWAY_CLAIMS, FAQ_GAP). Thinking is never the article.',
+  'Turn 1 EXPLORES Discover into structured editorial planning. Never expose private chain-of-thought; return only the requested planning fields.',
   'Turn 2 seals a brief from that exploration with zero guesswork.',
   'Turn 3 executes that brief as one article.',
-  'Turn 4 SELF-REFLECTS against the same gates (JSON). An automated score — not just your verdict — decides whether Turn 5 rewrites the same article.',
-  'Do not restart the argument. Do not stuff keywords. Do not splice kit pieces. Do not leak chain-of-thought into the published markdown.',
+  'Turn 4 SELF-REFLECTS against the same gates (JSON). An automated score — not just your verdict — decides whether Turn 5 proposes a rewrite of the same article.',
+  'Do not restart the argument. Do not stuff keywords. Do not splice kit pieces. Do not leak planning JSON into the published markdown.',
 ].join(' ')
 
 export type DeskTurn = { role: 'user' | 'assistant'; name: string; text: string }
-
 export type DeskPhase = 'explore' | 'brief' | 'draft' | 'reflect' | 'review'
-
 export type DeskReasoningEffort = 'low' | 'medium' | 'high'
 
 export function deskPhaseAiOpts(phase: DeskPhase): {
@@ -87,6 +83,8 @@ export type LinearDeskAssembly = {
   keywords?: string[]
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   opportunity?: string
   gscBlock?: string
   writeHint?: string
@@ -104,6 +102,7 @@ export type LinearDeskGenerate = (opts: {
 }) => Promise<{ text: string; provider: string; model: string }>
 
 export type LinearDeskEvaluate = (content: string) => QualityGateResult
+export type LinearDeskAudit = (content: string) => SeoFactoryAudit
 
 export function shouldRunLinearDesk(opts: {
   contentType?: string | null
@@ -174,6 +173,8 @@ export function assemblyFromPipelineInput(input: {
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }> | null
   requiredShortKeywords?: string[]
   requiredLongTailKeywords?: string[]
+  shortKeywordTerms?: KeywordTerm[]
+  longTailKeywordTerms?: KeywordTerm[]
   opportunityAction?: string
   writeHint?: string
   masterEngineBlock?: string | null
@@ -199,6 +200,8 @@ export function assemblyFromPipelineInput(input: {
     }),
     requiredShortKeywords: input.requiredShortKeywords,
     requiredLongTailKeywords: input.requiredLongTailKeywords,
+    shortKeywordTerms: input.shortKeywordTerms,
+    longTailKeywordTerms: input.longTailKeywordTerms,
     opportunity: input.opportunityAction,
     gscBlock: input.gscBlock,
     writeHint: input.writeHint,
@@ -220,6 +223,7 @@ export type LinearDeskResult = {
   reflection: DeskReflection | null
   exploreScore: ExploreScore | null
   reflectionScore: ReflectionScore | null
+  rejectedRewrites: Array<{ reason: string; content: string }>
   /** True when the desk article should not be restitched by outline splice / throughline / denoise. */
   held: boolean
 }
@@ -248,12 +252,6 @@ async function deskCall(
   })
 }
 
-function acceptRewrite(prev: string, next: string): boolean {
-  const prevWords = countBodyWords(prev)
-  const nextWords = countBodyWords(next)
-  return nextWords >= Math.min(40, prevWords) && !(prevWords >= 800 && nextWords < prevWords * 0.4)
-}
-
 export async function runLinearDesk(opts: {
   system: string
   assembly: LinearDeskAssembly
@@ -261,6 +259,8 @@ export async function runLinearDesk(opts: {
   maxWords: number
   generate: LinearDeskGenerate
   evaluate: LinearDeskEvaluate
+  /** Required for accepting rewrites. Without it candidates fail closed. */
+  audit?: LinearDeskAudit
   streamDraft?: LinearDeskGenerate
   onProgress?: (ev: { phase: DeskPhase | 'discover'; message: string }) => void
 }): Promise<LinearDeskResult> {
@@ -276,13 +276,8 @@ export async function runLinearDesk(opts: {
   const exploreInstruction = explorePrompt({ contentType: opts.assembly.contentType })
   turns.push({ role: 'user', name: 'explore', text: exploreInstruction })
   const exploreAi = await deskCall(opts.generate, {
-    phase: 'explore',
-    system,
-    turns: turns.slice(0, -1),
-    name: 'explore',
-    instruction: exploreInstruction,
-    maxTokens: 4000,
-    temperature: 0.2,
+    phase: 'explore', system, turns: turns.slice(0, -1), name: 'explore',
+    instruction: exploreInstruction, maxTokens: 4000, temperature: 0.2,
   })
   provider = exploreAi.provider
   model = exploreAi.model
@@ -295,21 +290,14 @@ export async function runLinearDesk(opts: {
   if (!explore || exploreScore.score < 70 || exploreScore.missing.length) {
     const repairInstruction = [
       'EXPLORE REPAIR. Return ONLY complete JSON. Do not write the article.',
-      exploreScore.missing.length
-        ? `Missing or weak patterns: ${exploreScore.missing.join(', ')}.`
-        : 'Explore JSON did not parse or scored below 70.',
+      exploreScore.missing.length ? `Missing or weak patterns: ${exploreScore.missing.join(', ')}.` : 'Explore JSON did not parse or scored below 70.',
       deskGateCatalogPrompt(opts.assembly.contentType),
       'GATE_WATCH must list those evaluator codes. Later chapters must set continues. Takeaways must be complete claims.',
     ].join('\n')
     turns.push({ role: 'user', name: 'explore-repair', text: repairInstruction })
     const repairAi = await deskCall(opts.generate, {
-      phase: 'explore',
-      system,
-      turns: turns.slice(0, -1),
-      name: 'explore-repair',
-      instruction: repairInstruction,
-      maxTokens: 4000,
-      temperature: 0.15,
+      phase: 'explore', system, turns: turns.slice(0, -1), name: 'explore-repair',
+      instruction: repairInstruction, maxTokens: 4000, temperature: 0.15,
     })
     provider = repairAi.provider
     model = repairAi.model
@@ -332,13 +320,8 @@ export async function runLinearDesk(opts: {
   ].filter(Boolean).join('\n\n')
   turns.push({ role: 'user', name: 'brief', text: briefInstruction })
   const briefAi = await deskCall(opts.generate, {
-    phase: 'brief',
-    system,
-    turns: turns.slice(0, -1),
-    name: 'brief',
-    instruction: briefInstruction,
-    maxTokens: 3500,
-    temperature: 0.2,
+    phase: 'brief', system, turns: turns.slice(0, -1), name: 'brief',
+    instruction: briefInstruction, maxTokens: 3500, temperature: 0.2,
   })
   provider = briefAi.provider
   model = briefAi.model
@@ -348,17 +331,12 @@ export async function runLinearDesk(opts: {
     contentType: opts.assembly.contentType,
     primaryKeyword: opts.assembly.primaryKeyword,
   })
-  if (!parsed.ok) {
-    const repairInstruction = `The sealed brief is incomplete:\n${parsed.issues.map((i) => `- ${i}`).join('\n')}\nReturn ONLY corrected JSON. Put anything you would invent in unresolved. Do not write the article.`
+  for (let repairPass = 0; repairPass < 2 && !parsed.ok; repairPass++) {
+    const repairInstruction = `The sealed brief is ${repairPass ? 'still ' : ''}incomplete:\n${parsed.issues.map((i) => `- ${i}`).join('\n')}\nReturn ONLY corrected JSON. Put anything you would invent in unresolved. Do not write the article.`
     turns.push({ role: 'user', name: 'brief-repair', text: repairInstruction })
     const repairAi = await deskCall(opts.generate, {
-      phase: 'brief',
-      system,
-      turns: turns.slice(0, -1),
-      name: 'brief-repair',
-      instruction: repairInstruction,
-      maxTokens: 3500,
-      temperature: 0.15,
+      phase: 'brief', system, turns: turns.slice(0, -1), name: 'brief-repair',
+      instruction: repairInstruction, maxTokens: 3500, temperature: repairPass ? 0.1 : 0.15,
     })
     provider = repairAi.provider
     model = repairAi.model
@@ -368,47 +346,18 @@ export async function runLinearDesk(opts: {
       primaryKeyword: opts.assembly.primaryKeyword,
     })
   }
-  if (!parsed.ok) {
-    const repairInstruction = `The sealed brief is still incomplete:\n${parsed.issues.map((i) => `- ${i}`).join('\n')}\nReturn ONLY corrected JSON. GATE_WATCH codes and chapter continues are mandatory. Do not write the article.`
-    turns.push({ role: 'user', name: 'brief-repair', text: repairInstruction })
-    const repairAi = await deskCall(opts.generate, {
-      phase: 'brief',
-      system,
-      turns: turns.slice(0, -1),
-      name: 'brief-repair',
-      instruction: repairInstruction,
-      maxTokens: 3500,
-      temperature: 0.1,
-    })
-    provider = repairAi.provider
-    model = repairAi.model
-    turns.push({ role: 'assistant', name: 'brief-repair', text: repairAi.text })
-    parsed = parseSealedBrief(repairAi.text, {
-      contentType: opts.assembly.contentType,
-      primaryKeyword: opts.assembly.primaryKeyword,
-    })
+  if (!parsed.ok || !parsed.brief) {
+    throw new BriefInvalidError(parsed.issues.length ? parsed.issues : ['sealed brief missing after repair'])
   }
 
-  const fallback = sealBriefFromAssembly(opts.assembly)
-  const seed = parsed.brief || {
-    thesis: '',
-    takeaways: [] as string[],
-    faqQuestions: [] as string[],
-    unresolved: [] as string[],
-    outline: [] as SealedBrief['outline'],
-    lede: '',
-  }
-  const fromExplore = mergeExploreIntoBrief(seed, explore)
-  const brief = {
-    thesis: fromExplore.thesis || fallback.thesis,
-    takeaways: fromExplore.takeaways.length ? fromExplore.takeaways : fallback.takeaways,
-    faqQuestions: fromExplore.faqQuestions.length ? fromExplore.faqQuestions : fallback.faqQuestions,
-    lede: fromExplore.lede || fallback.lede,
-    outline: fromExplore.outline.length ? fromExplore.outline : fallback.outline,
-    unresolved: fromExplore.unresolved,
-  }
+  const brief = mergeExploreIntoBrief(parsed.brief, explore)
+  const finalBriefIssues = validateSealedBrief(brief, {
+    contentType: opts.assembly.contentType,
+    primaryKeyword: opts.assembly.primaryKeyword,
+  })
+  if (finalBriefIssues.length) throw new BriefInvalidError(finalBriefIssues)
 
-  progress?.({ phase: 'draft', message: 'Drafting the article from the sealed brief' })
+  progress?.({ phase: 'draft', message: 'Drafting the article from the validated sealed brief' })
   const draftInstruction = [
     executeBriefPrompt(brief),
     deskGateCatalogPrompt(opts.assembly.contentType),
@@ -419,13 +368,8 @@ export async function runLinearDesk(opts: {
   turns.push({ role: 'user', name: 'draft', text: draftInstruction })
   const drafter = opts.streamDraft || opts.generate
   const draftAi = await deskCall(drafter, {
-    phase: 'draft',
-    system,
-    turns: turns.slice(0, -1),
-    name: 'draft',
-    instruction: draftInstruction,
-    maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)),
-    temperature: 0.5,
+    phase: 'draft', system, turns: turns.slice(0, -1), name: 'draft',
+    instruction: draftInstruction, maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)), temperature: 0.5,
   })
   provider = draftAi.provider
   model = draftAi.model
@@ -436,13 +380,8 @@ export async function runLinearDesk(opts: {
   const reflectInstruction = reflectPrompt()
   turns.push({ role: 'user', name: 'reflect', text: reflectInstruction })
   const reflectAi = await deskCall(opts.generate, {
-    phase: 'reflect',
-    system,
-    turns: turns.slice(0, -1),
-    name: 'reflect',
-    instruction: reflectInstruction,
-    maxTokens: 1600,
-    temperature: 0.15,
+    phase: 'reflect', system, turns: turns.slice(0, -1), name: 'reflect',
+    instruction: reflectInstruction, maxTokens: 1600, temperature: 0.15,
   })
   provider = reflectAi.provider
   model = reflectAi.model
@@ -452,22 +391,28 @@ export async function runLinearDesk(opts: {
   let quality = opts.evaluate(content)
   let hasBlockers = Boolean(!quality.ok && quality.blockers.length)
   let reflectionScore = scoreReflection({
-    content,
-    quality,
-    reflection,
-    explore,
-    unresolved: brief.unresolved,
+    content, quality, reflection, explore, unresolved: brief.unresolved,
     primaryKeyword: opts.assembly.primaryKeyword,
   })
   let reviewed = false
   let reviewPasses = 0
+  const rejectedRewrites: Array<{ reason: string; content: string }> = []
+  const requiredKeywords = [
+    ...(opts.assembly.requiredShortKeywords || []),
+    ...(opts.assembly.requiredLongTailKeywords || []),
+  ]
+  const keywordTerms = [
+    ...(opts.assembly.shortKeywordTerms || []),
+    ...(opts.assembly.longTailKeywordTerms || []),
+  ]
+
   while (reviewPasses < 2 && needsRewrite(reflection, hasBlockers, reflectionScore, quality)) {
     reviewPasses++
     progress?.({
       phase: 'review',
       message: reviewPasses === 1
-        ? 'Rewriting leftover gates and Review warnings — same article'
-        : 'Second self-correction — still clearing gates in the same conversation',
+        ? 'Rewriting identified reader-facing problems — same article'
+        : 'Second bounded self-correction — same accepted article lineage',
     })
     const reviewNotes = rewriteFromReflectionPrompt({
       reflection,
@@ -477,34 +422,36 @@ export async function runLinearDesk(opts: {
     })
     turns.push({ role: 'user', name: 'review', text: reviewNotes })
     const reviewAi = await deskCall(opts.generate, {
-      phase: 'review',
-      system,
-      turns: turns.slice(0, -1),
-      name: 'review',
-      instruction: reviewNotes,
-      maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)),
-      temperature: 0.3,
+      phase: 'review', system, turns: turns.slice(0, -1), name: 'review',
+      instruction: reviewNotes, maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)), temperature: 0.3,
     })
     provider = reviewAi.provider
     model = reviewAi.model
     const next = stripDeskThinking(reviewAi.text)
-    if (acceptRewrite(content, next)) {
-      content = next
-      reviewed = true
-      turns.push({ role: 'assistant', name: 'review', text: next })
-      quality = opts.evaluate(content)
-      hasBlockers = Boolean(!quality.ok && quality.blockers.length)
-      reflectionScore = scoreReflection({
-        content,
-        quality,
-        reflection,
-        explore,
-        unresolved: brief.unresolved,
-        primaryKeyword: opts.assembly.primaryKeyword,
-      })
-    } else {
+    const acceptance = acceptRewriteCandidate({
+      previous: content,
+      next,
+      previousAudit: opts.audit?.(content),
+      nextAudit: opts.audit?.(next),
+      requiredKeywords,
+      keywordTerms,
+      minWords: opts.minWords,
+      maxWords: opts.maxWords,
+    })
+    if (!acceptance.ok) {
+      rejectedRewrites.push({ reason: acceptance.reason || 'rewrite rejected', content: next })
       break
     }
+
+    content = next
+    reviewed = true
+    turns.push({ role: 'assistant', name: 'review', text: next })
+    quality = opts.evaluate(content)
+    hasBlockers = Boolean(!quality.ok && quality.blockers.length)
+    reflectionScore = scoreReflection({
+      content, quality, reflection, explore, unresolved: brief.unresolved,
+      primaryKeyword: opts.assembly.primaryKeyword,
+    })
   }
 
   const held = reflectionScore.pass && !hasBlockers
@@ -515,7 +462,7 @@ export async function runLinearDesk(opts: {
     turns,
     provider,
     model,
-    briefIssues: parsed.issues,
+    briefIssues: finalBriefIssues,
     reviewed,
     explored: Boolean(explore),
     reflected: Boolean(reflection),
@@ -523,6 +470,7 @@ export async function runLinearDesk(opts: {
     reflection,
     exploreScore,
     reflectionScore,
+    rejectedRewrites,
     held,
   }
 }
