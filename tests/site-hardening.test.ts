@@ -23,4 +23,11 @@ describe('site hardening', () => {
     expect(analytics).toContain('yousafe:cookie-consent')
     expect(analytics).toContain("consent !== 'granted'")
   })
+
+  it('publishes a real business contact address on the public marketplace', () => {
+    const footer = read('components/marketplace/MarketplaceFooter.tsx')
+    expect(footer).toContain('906 Donne Court, Virginia Beach, VA 23462')
+    expect(footer).toContain('admin@yousafeconsultancy.com')
+    expect(footer).toContain('https://usa.yousafeconsultancy.com/contact/')
+  })
 })
