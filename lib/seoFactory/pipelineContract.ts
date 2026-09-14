@@ -115,7 +115,12 @@ export async function hydratePipelineInputFromContract<T extends ContractAwarePi
   const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
   if (!url || !key) {
-    throw new WritingContractMismatchError('cannot load writing contract: service-role Supabase credentials unavailable')
+    // Explicit contract identity is fail-closed. Historical/legacy jobs that
+    // only carry existingJobId remain readable when no server DB is available.
+    if (contractId) {
+      throw new WritingContractMismatchError('cannot load writing contract: service-role Supabase credentials unavailable')
+    }
+    return input
   }
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
 
@@ -130,7 +135,12 @@ export async function hydratePipelineInputFromContract<T extends ContractAwarePi
       : null
 
   if (!contract) {
-    throw new WritingContractMismatchError('writing contract not found for generation request')
+    // An explicit client contract must exist exactly; an older job with no
+    // contract remains on the legacy path rather than being silently upgraded.
+    if (contractId) {
+      throw new WritingContractMismatchError('writing contract not found for generation request')
+    }
+    return input
   }
   if (contractId && !contractHash) {
     throw new WritingContractMismatchError('contractHash is required when contractId is supplied')
