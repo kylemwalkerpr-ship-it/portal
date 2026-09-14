@@ -30,6 +30,10 @@ import {
 
 export const runtime = 'nodejs'
 
+const OCCUPYING_STATUSES = ['pending', 'drafting', 'processing', 'publishing', 'pr_created', 'merged'] as const
+const JOB_PAGE_SIZE = 500
+const JOB_SCAN_CAP = 10_000
+
 function normalizedTopic(value: unknown): string {
   return sanitizeDemandTerm(String(value || '')).toLowerCase()
 }
@@ -50,9 +54,6 @@ function selectVariedOpportunities(
   excluded: Set<string>,
   regenerationFilters: RegenerationFilters = {},
 ): Array<Record<string, any>> {
-  // Filters are strict: never fall back to an excluded/cannibalized item just
-  // to fill the carousel. An empty result is an honest signal to rescan or
-  // relax the operator's criteria.
   const filtered = filterRegenerationCandidates(items, regenerationFilters)
   const eligible = filtered.filter((item) => !excluded.has(normalizedTopic(item.topic)))
   const pool = eligible.slice(0, Math.max(48, limit * 8))
@@ -111,18 +112,34 @@ function playbookRank(items: Array<Record<string, any>>): Array<Record<string, a
     .sort((a, b) => (Number(b.deskScore) || 0) - (Number(a.deskScore) || 0))
 }
 
+async function loadOccupyingJobs(db: any): Promise<NonNullable<OpportunityEngineInput['jobs']>> {
+  const rows: Array<Record<string, unknown>> = []
+  for (let from = 0; from < JOB_SCAN_CAP; from += JOB_PAGE_SIZE) {
+    const result = await db
+      .from('content_jobs')
+      .select('title, topic, primary_keyword, content_path, canonical_url, status')
+      .in('status', [...OCCUPYING_STATUSES])
+      .order('updated_at', { ascending: false })
+      .range(from, from + JOB_PAGE_SIZE - 1)
+    if (result.error) throw new Error(result.error.message)
+    const chunk = (result.data || []) as Array<Record<string, unknown>>
+    rows.push(...chunk)
+    if (chunk.length < JOB_PAGE_SIZE) break
+  }
+  return rows.map((row) => ({
+    title: String(row.title || row.topic || row.primary_keyword || ''),
+    h1: String(row.title || row.topic || ''),
+    slug: String(row.content_path || row.canonical_url || row.primary_keyword || ''),
+    status: String(row.status || ''),
+  }))
+}
+
 /**
  * POST /api/content-studio/gsc/suggestions
  *
  * Opportunity Radar API — the intelligence layer behind Quick Create.
- *
- * 1. Loads real search demand (live GSC analytics or CSV snapshot fallback).
- * 2. Loads existing content inventory (content_jobs) for coverage + cannibalization.
- * 3. Loads the ecosystem internal-link registry.
- * 4. Runs the Opportunity Intelligence Engine → ranked, explainable suggestions
- *    with a full signals trail, play classification, intent, and interlink strategy.
- *
- * Body: { region?, topic?, limit? }
+ * Only measured GSC rows enter the opportunity scorer. Strategy-corpus ideas
+ * are returned separately as hypotheses with null observed metrics.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -170,9 +187,7 @@ export async function POST(request: NextRequest) {
       const prev = live.totalsPrev
       if (prev && prev.clicks > 0) {
         const change = ((live.totals.clicks - prev.clicks) / prev.clicks) * 100
-        warnings.push(
-          `GSC live · 90-day window · clicks ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}% vs previous period`,
-        )
+        warnings.push(`GSC live · 90-day window · clicks ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}% vs previous period`)
       } else {
         warnings.push('GSC live · 90-day window')
       }
@@ -192,10 +207,7 @@ export async function POST(request: NextRequest) {
         ...((snap.opportunities?.highImpressionDeepRank as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
       ]
       if (queries.length === 0) {
-        warnings.push(
-          'GSC snapshot is stale or unavailable (older than 14 days or missing). ' +
-            'Refusing snapshot demand — regenerate the snapshot (re-export from Search Console) or fix live GSC credentials.',
-        )
+        warnings.push('GSC snapshot is stale or unavailable (older than 14 days or missing). Refusing snapshot demand — regenerate the snapshot or fix live GSC credentials.')
         try {
           const raw = await loadGscSnapshot()
           snapshotMeta = { generatedAt: raw.generatedAt }
@@ -207,9 +219,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Live GSC on this estate is junk-dominated (PDF filenames, meal-plan
-    // rates). Scoring only the 1–2 survivors starved Discover of CTR goldmines
-    // already sitting in the committed snapshot.
     const viableLive = queries.filter((q) => q.term && !isJunkQuery(q.term))
     if (viableLive.length < SNAPSHOT_MERGE_MIN_VIABLE) {
       try {
@@ -242,10 +251,6 @@ export async function POST(request: NextRequest) {
       queries = viableLive
     }
 
-    // Same persisted-window fallback performance/score already use. Live GSC
-    // on this estate is junk-dominated and the CSV snapshot is often stale,
-    // so without seo_gsc_rows the radar returns 0 opportunities even while
-    // CTR-harvest rows sit in the latest stored window.
     let usedFallback = false
     let persistedRange: { startDate: string; endDate: string } | null = null
     if (queries.length < SNAPSHOT_MERGE_MIN_VIABLE) {
@@ -268,38 +273,25 @@ export async function POST(request: NextRequest) {
           source = viableLive.length > 0
             ? (source === 'live+snapshot' ? 'live+snapshot+persisted' : 'live+persisted')
             : 'persisted'
-          warnings.push(
-            `Persisted GSC fallback · ${added} stored demand rows · ${persisted.range.startDate}–${persisted.range.endDate}` +
-              (persisted.usedFallback ? ' (latest stored window)' : ''),
-          )
+          warnings.push(`Persisted GSC fallback · ${added} stored demand rows · ${persisted.range.startDate}–${persisted.range.endDate}${persisted.usedFallback ? ' (latest stored window)' : ''}`)
         }
       } catch (err) {
         console.warn('[content-studio/gsc/suggestions] persisted GSC fallback failed', err)
       }
     }
 
-    // Drop GSC rows that belong to a different estate country than the scan.
-    // Generic queries (no country marker) stay — they can be written for CA/UK/AU.
     if (!estateWide) {
       const before = queries.length
       queries = queries.filter((q) => queryBelongsToRegion(q.term, region))
-      if (before !== queries.length) {
-        warnings.push(`Region ${region} · dropped ${before - queries.length} foreign-country GSC rows`)
-      }
+      if (before !== queries.length) warnings.push(`Region ${region} · dropped ${before - queries.length} foreign-country GSC rows`)
     }
 
-    // Radar honesty: when live GSC, a fresh ≤14d snapshot, AND persisted
-    // seo_gsc_rows are all empty, there is NO real demand to score. Strategy
-    // corpus rows must never be injected into the scored pool with fabricated
-    // impressions:1 as if they were Search Console demand.
     const snapshotRefused = queries.length === 0
 
     // ── 2. Existing content inventory (coverage + cannibalization) ─────────
-    // Only MERGED/DEPLOYED pages count. Draft / pr_created jobs are 404s and
-    // treating them as coverage starved Discover of real gaps.
     let coverage: OpportunityEngineInput['coverage'] = []
     try {
-      const shipped = await loadShippedCoverage(300)
+      const shipped = await loadShippedCoverage(JOB_SCAN_CAP)
       coverage = shipped.map((p) => ({
         title: p.title,
         topic: p.title,
@@ -311,22 +303,9 @@ export async function POST(request: NextRequest) {
       console.warn('[content-studio/gsc/suggestions] coverage load failed', err)
     }
 
-    // In-flight Drafting / PR / merged jobs occupy the cluster even without a
-    // live URL — otherwise radar keeps offering GAP cards for the same title.
     let occupyingJobs: NonNullable<OpportunityEngineInput['jobs']> = []
     try {
-      const { data: jobRows } = await auth.db
-        .from('content_jobs')
-        .select('title, topic, primary_keyword, content_path, canonical_url, status')
-        .in('status', ['drafting', 'pending', 'publishing', 'pr_created', 'merged', 'deployed'])
-        .order('updated_at', { ascending: false })
-        .limit(400)
-      occupyingJobs = ((jobRows || []) as Array<Record<string, unknown>>).map((row) => ({
-        title: String(row.title || row.topic || row.primary_keyword || ''),
-        h1: String(row.title || row.topic || ''),
-        slug: String(row.content_path || row.canonical_url || row.primary_keyword || ''),
-        status: String(row.status || ''),
-      }))
+      occupyingJobs = await loadOccupyingJobs(auth.db)
     } catch (err) {
       console.warn('[content-studio/gsc/suggestions] occupying jobs load failed', err)
     }
@@ -347,21 +326,17 @@ export async function POST(request: NextRequest) {
       console.warn('[content-studio/gsc/suggestions] interlink registry load failed', err)
     }
 
-    // ── 4. Brief (portfolio snapshot + strategy hints, backward compat) ────
     const brief = await buildGscContentBrief({
       topic: seedTopic || 'immigration international students visas housing',
       region,
     })
     const portfolio = buildKeywordPortfolio(brief)
 
-    // ── 4.25 Full strategy corpus ──────────────────────────────────────────
-    // GSC is the demand signal, but it is not the whole editorial brain. Add a
-    // bounded, clearly low-demand knowledge signal pool from the strategy corpus
-    // so the radar can surface authority gaps and not repeat the same GSC rows.
+    // ── 4.25 Strategy corpus = hypotheses only ─────────────────────────────
     const topicTokens = new Set(
       `${seedTopic} ${REGION_KNOWLEDGE_TOKENS[region] || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3),
     )
-    const knowledgeSignals = STRATEGIC_KEYWORDS
+    const hypothesisSignals = STRATEGIC_KEYWORDS
       .map((keyword, index) => {
         const haystack = `${keyword.term} ${keyword.cluster} ${keyword.intent}`.toLowerCase()
         const relevance = [...topicTokens].reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0)
@@ -371,34 +346,36 @@ export async function POST(request: NextRequest) {
       .filter(({ keyword }) => strategicKeywordBelongsToRegion(keyword.term, keyword.cluster, region))
       .sort((a, b) => b.relevance - a.relevance || a.tie - b.tie)
       .slice(0, 160)
-      .map(({ keyword, tie }) => ({
-        term: keyword.term,
-        clicks: 0,
-        impressions: 1,
-        ctr: 0,
-        position: 60 + (tie % 20),
-        url: '',
+      .map(({ keyword }) => ({
+        topic: keyword.term,
+        title: keyword.term,
+        primaryKeyword: keyword.term,
+        keywords: [keyword.term],
+        region: inferOpportunityRegion(keyword.term, region),
+        source: 'strategy_corpus',
+        hypothesis: true,
         knowledgeBase: true,
+        synthetic: true,
+        impressions: null,
+        clicks: null,
+        ctr: null,
+        position: null,
+        opportunityScore: null,
+        demandScore: null,
+        upsideScore: null,
+        difficultyScore: null,
+        reason: 'Strategy knowledge hypothesis — not an observed Search Console metric.',
+        signals: ['Strategy knowledge-base hypothesis · observed metrics unavailable'],
       }))
-    const knownTerms = new Set(queries.map((query) => normalizedTopic(query.term)))
-    if (!snapshotRefused) {
-      for (const signal of knowledgeSignals) {
-        if (!knownTerms.has(normalizedTopic(signal.term))) {
-          queries.push(signal)
-          knownTerms.add(normalizedTopic(signal.term))
-        }
-      }
-      warnings.push(`Strategy knowledge corpus active · ${knowledgeSignals.length} supplemental authority signals`)
-    } else {
-      warnings.push(
-        'Strategy knowledge corpus withheld from scoring — no live/snapshot GSC demand to supplement. ' +
-          'Knowledge signals are returned separately (synthetic:true) and never fill the opportunity list as if they were GSC.',
-      )
-    }
 
-    // ── 4.5 Keyword clusters → canonical-page resolution (anti-cannibalization) ──
-    // Cluster every query, resolve each cluster to ONE page, and feed the
-    // engine's relatedByTerm so every suggestion carries its full cluster.
+    warnings.push(
+      hypothesisSignals.length
+        ? `Strategy knowledge corpus · ${hypothesisSignals.length} hypotheses kept separate from measured GSC scoring`
+        : 'Strategy knowledge corpus · no matching hypotheses for this scan',
+    )
+    if (snapshotRefused) warnings.push('No measured GSC demand available; opportunity list remains empty rather than manufacturing demand metrics.')
+
+    // ── 4.5 Keyword clusters use measured demand only ──────────────────────
     let clusterResult = { byTerm: {} as Record<string, ClusterResolution>, relatedByTerm: {} as Record<string, string[]> }
     try {
       const { loadOwnershipRegistry } = await import('@/lib/seoDataLoaders')
@@ -414,7 +391,6 @@ export async function POST(request: NextRequest) {
       console.warn('[content-studio/gsc/suggestions] clustering skipped', err)
     }
 
-    // ── 5. Run the Opportunity Intelligence Engine ─────────────────────────
     const result = scoreOpportunities({
       queries,
       coverage,
@@ -424,47 +400,6 @@ export async function POST(request: NextRequest) {
       relatedByTerm: clusterResult.relatedByTerm,
       limit: 48,
     })
-
-    // ── 5.25 Withheld knowledge corpus (snapshot refused) ─────────────────
-    // When no real GSC demand exists the radar does not lead with fabricated
-    // impressions. The strategy corpus is still surfaced — separately, with
-    // zero demand and synthetic:true — so authority gaps stay undiscoverable
-    // only by explicit opt-in, never dressed up as Search Console rows.
-    const syntheticSignals = snapshotRefused && knowledgeSignals.length
-      ? knowledgeSignals.slice(0, Math.max(limit * 3, 9)).map((signal) => ({
-          topic: signal.term,
-          title: signal.term,
-          primaryKeyword: signal.term,
-          keywords: [signal.term],
-          audience: null,
-          impressions: 0,
-          clicks: 0,
-          ctr: 0,
-          position: 0,
-          knowledgeBase: true,
-          synthetic: true,
-          play: 'content_gap',
-          intent: null,
-          contentType: 'article',
-          region,
-          opportunityScore: null,
-          demandScore: null,
-          upsideScore: null,
-          difficultyScore: null,
-          reason: 'Strategy knowledge corpus — NOT Search Console demand (snapshot refused). No impressions to score.',
-          signals: ['Strategy knowledge-base authority signal · no scored demand'],
-          interlinks: null,
-          coverage: null,
-          ranking: leanRanking(rankingForOpportunity({
-            term: signal.term,
-            impressions: 0,
-            clicks: 0,
-            ctr: 0,
-            position: 100,
-            region,
-          })),
-        }))
-      : []
 
     const localize = (o: Record<string, any>) => {
       const itemRegion = inferOpportunityRegion(String(o.topic || ''), region)
@@ -477,23 +412,9 @@ export async function POST(request: NextRequest) {
     }
 
     const rankedOpportunities = playbookRank(result.opportunities as Array<Record<string, any>>).map(localize)
-
-    const variedOpportunities = selectVariedOpportunities(
-      rankedOpportunities,
-      limit,
-      variationSeed,
-      excludedTopics,
-      regenerationFilters,
-    )
-    const knowledgeTerms = new Set(knowledgeSignals.map((signal) => normalizedTopic(signal.term)))
+    const variedOpportunities = selectVariedOpportunities(rankedOpportunities, limit, variationSeed, excludedTopics, regenerationFilters)
     const suggestions = variedOpportunities.map((o) => {
-      // Synthetic rows originate from the strategy knowledge corpus, not Search
-      // Console. They are scored with zero demand and flagged so the UI never
-      // reads their numbers as real GSC impressions/clicks.
-      const synthetic = knowledgeTerms.has(normalizedTopic(o.topic))
       const itemRegion = String(o.region || region)
-      // Deterministic ranking-model enrichment (lean view) — same brain as the
-      // command-center radar so Quick Create briefs can show score + forecast.
       const ranking = leanRanking(rankingForOpportunity({
         term: o.topic,
         impressions: Number(o.impressions) || 0,
@@ -504,63 +425,57 @@ export async function POST(request: NextRequest) {
         lifecycleStage: o.stage || undefined,
       }))
       return {
-      topic: o.topic,
-      title: o.title,
-      primaryKeyword: o.primaryKeyword,
-      keywords: o.keywords,
-      audience: o.audience,
-      impressions: o.impressions,
-      clicks: o.clicks,
-      ctr: o.ctr,
-      position: o.position,
-      knowledgeBase: synthetic,
-      synthetic,
-      demandScore: o.demandScore,
-      upsideScore: o.upsideScore,
-      difficultyScore: o.difficultyScore,
-      opportunityScore: o.opportunityScore,
-      valueScore: o.valueScore,
-      priorityTier: o.priorityTier,
-      trend: o.trend,
-      play: o.play,
-      intent: o.intent,
-      contentType: o.contentType,
-      intentCategory: o.intent,
-      profitability: o.profitability,
-      reason: o.reason,
-      cluster: clusterResult.byTerm[o.topic] || null,
-      signals: [
-        ...(o.signals || []),
-        ...(synthetic ? ['Strategy knowledge-base authority signal'] : []),
-      ],
-      interlinks: o.interlinks,
-      coverage: o.coverage,
-      sourcePage: o.sourcePage,
-      coverageKind: o.coverageKind,
-      funnel: o.funnel,
-      playbookMove: o.playbookMove,
-      qualityLine: o.qualityLine,
-      conversionLine: o.conversionLine,
-      ranking,
-      region: itemRegion,
+        topic: o.topic,
+        title: o.title,
+        primaryKeyword: o.primaryKeyword,
+        keywords: o.keywords,
+        audience: o.audience,
+        impressions: o.impressions,
+        clicks: o.clicks,
+        ctr: o.ctr,
+        position: o.position,
+        knowledgeBase: false,
+        synthetic: false,
+        demandScore: o.demandScore,
+        upsideScore: o.upsideScore,
+        difficultyScore: o.difficultyScore,
+        opportunityScore: o.opportunityScore,
+        valueScore: o.valueScore,
+        priorityTier: o.priorityTier,
+        trend: o.trend,
+        play: o.play,
+        intent: o.intent,
+        contentType: o.contentType,
+        intentCategory: o.intent,
+        profitability: o.profitability,
+        reason: o.reason,
+        cluster: clusterResult.byTerm[o.topic] || null,
+        signals: o.signals || [],
+        interlinks: o.interlinks,
+        coverage: o.coverage,
+        sourcePage: o.sourcePage,
+        coverageKind: o.coverageKind,
+        funnel: o.funnel,
+        playbookMove: o.playbookMove,
+        qualityLine: o.qualityLine,
+        conversionLine: o.conversionLine,
+        ranking,
+        region: itemRegion,
       }
     })
 
     return NextResponse.json({
       region,
       suggestions,
-      opportunities: selectVariedOpportunities(
-        rankedOpportunities,
-        estateWide ? 36 : 24,
-        `${variationSeed}:insights`,
-        excludedTopics,
-      ),
+      opportunities: selectVariedOpportunities(rankedOpportunities, estateWide ? 36 : 24, `${variationSeed}:insights`, excludedTopics),
       source,
       snapshot: snapshotMeta,
       snapshotRefused,
       usedFallback,
       persistedRange,
-      syntheticSignals,
+      // Backward-compatible key, but these are explicitly hypotheses with null metrics.
+      syntheticSignals: hypothesisSignals.slice(0, Math.max(limit * 3, 9)),
+      hypothesisSignals: hypothesisSignals.slice(0, Math.max(limit * 3, 9)),
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),
       strategyHints: brief.strategyHints ?? [],
