@@ -469,6 +469,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let stalledCount = 0
   const maxStalled = 2  // consecutive non-improving attempts before giving up
   let linearDrafted = false
+  let deskHeld = false
 
   const deskGenerate = async (args: {
     phase: 'explore' | 'brief' | 'draft' | 'reflect' | 'review'
@@ -547,6 +548,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         model = linear.model
         attempts = linear.reviewed ? 2 : 1
         linearDrafted = true
+        deskHeld = Boolean(linear.held)
         if (contentSpec && linear.brief.thesis) {
           contentSpec = { ...contentSpec, thesis: linear.brief.thesis }
         }
@@ -570,7 +572,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         audit.score >= minAudit &&
         meetsShipQuality(audit) &&
         audit.blockers.filter((b) => b.code !== 'ownership').length === 0
-      if (goodEnough) break
+      if (goodEnough || deskHeld) break
       const q = evaluateContentQuality({
         content,
         contentType,
@@ -909,7 +911,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const blogLike = isBlogLikeContentType(contentType)
   const missingNow = briefOutline?.length ? missingOutlineSections(content, briefOutline) : []
   let outlineSpliced = false
-  if (briefOutline?.length && (!blogLike || missingNow.length > 0)) {
+  if (!deskHeld && briefOutline?.length && (!blogLike || missingNow.length > 0)) {
     try {
       const completed = await completeMissingOutlineSections({
         content,
@@ -1070,9 +1072,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     }
   }
 
-  // ── Throughline desk hop (after kit inserts, before withhold) ──────────
-  // Cycle loss = facts/URLs/qualifiers. Do not re-scaffold after this hop.
-  {
+  // ── Throughline desk hop (rescue only after a held linear desk) ─────────
+  if (!deskHeld || outlineSpliced) {
     throwIfAborted(input.signal, 'throughline')
     const desk = await runFactoryThroughline({
       content,
@@ -1113,8 +1114,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     }
   }
 
-  // ── Masked denoise (inpaint mill spans; remainder frozen) ──────────────
-  {
+  // ── Masked denoise (rescue only after a held linear desk) ───────────────
+  if (!deskHeld) {
     throwIfAborted(input.signal, 'denoise')
     const denoise = await runFactoryMaskedDenoise({
       content,

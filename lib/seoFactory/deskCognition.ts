@@ -13,13 +13,14 @@
 import { detectKitSectionOpeners } from './cohesionCritique'
 import { unwrapWholeDocumentFence } from './contentDepth'
 import type { QualityGateResult } from './contentQualityGate'
+import { usesGuideApparatus } from './writingShape'
 
 export type DeskExplore = {
   readerQuestion: string
   evidenceWeHave: string[]
   wouldHaveToInvent: string[]
   argumentSpine: string
-  chapterPlan: Array<{ heading: string; because: string; covers: string[]; continues?: string }>
+  chapterPlan: Array<{ heading: string; because: string; covers: string[]; continues?: string; format?: string }>
   kitRisks: string[]
   gateWatch: string[]
   takeawayClaims: string[]
@@ -87,6 +88,62 @@ export type ReflectionScore = {
 
 export const REFLECTION_SHIP_FLOOR = 70
 
+/** Review codes the writer must plan for. Warnings that are scorecard nits stay off this list. */
+export const DESK_GATE_CODES = [
+  'stuffed_primary_opener',
+  'stuffed_primary_opener_severe',
+  'keyword_stuffing',
+  'keyword_density_high',
+  'keyword_pasted_heading',
+  'faq_forced_keyword',
+  'faq_duplicates_h2',
+  'adjacent_h2_echo',
+  'adjacent_section_overlap',
+  'sentence_start_repetition',
+  'ai_slop',
+  'generic_current_info_heading',
+  'missing_disclaimer',
+  'missing_official_sources',
+] as const
+
+const GUIDE_GATE_CODES = [
+  'missing_tldr',
+  'tldr_format_invalid',
+  'missing_faq',
+  'structure_h2',
+  'schema_faq',
+] as const
+
+/** Yellow Review warnings that still mean the desk must rewrite — not word-count targets or synthesized terms. */
+export const DESK_REWRITE_WARNING_CODES = new Set([
+  'stuffed_primary_opener',
+  'adjacent_section_overlap',
+  'adjacent_h2_echo',
+  'keyword_pasted_heading',
+  'faq_forced_keyword',
+  'faq_duplicates_h2',
+  'keyword_density_high',
+  'sentence_start_repetition',
+  'generic_current_info_heading',
+  'repeated_paragraph_opener',
+  'title_filler',
+])
+
+export function deskGateCodes(contentType?: string | null): string[] {
+  const codes: string[] = [...DESK_GATE_CODES]
+  if (usesGuideApparatus(contentType)) codes.push(...GUIDE_GATE_CODES)
+  return codes
+}
+
+export function deskGateCatalogPrompt(contentType?: string | null): string {
+  const codes = deskGateCodes(contentType)
+  return [
+    'GATE_WATCH — these are the Review codes for this page. Name them in explore. Clear them in the draft. They do not change later.',
+    ...codes.map((c) => `- ${c}`),
+    'Do not pad toward a word-count target. Do not paste synthesized keywords. Do not invent a table only to silence missing_visual_break — use a list or table only when the query is vs / cost / timeline / steps.',
+  ].join('\n')
+}
+
 export const EXPLORE_PATTERN_SPECS: Array<{
   id: ExplorePatternId
   title: string
@@ -99,7 +156,7 @@ export const EXPLORE_PATTERN_SPECS: Array<{
   { id: 'argument_spine', title: 'ARGUMENT_SPINE', jsonKey: 'argumentSpine', instruction: 'one sentence the whole article will argue' },
   { id: 'chapter_continuity', title: 'CHAPTER_CONTINUITY', jsonKey: 'chapterPlan', instruction: 'each later H2 continues the previous; name the bridge in continues' },
   { id: 'kit_risk', title: 'KIT_RISK', jsonKey: 'kitRisks', instruction: 'where a mill writer would splice a kit piece or restate the thesis' },
-  { id: 'gate_watch', title: 'GATE_WATCH', jsonKey: 'gateWatch', instruction: 'ship gates that fail if we are careless' },
+  { id: 'gate_watch', title: 'GATE_WATCH', jsonKey: 'gateWatch', instruction: 'evaluator codes from the GATE_WATCH list — not free-text guesses' },
   { id: 'takeaway_claims', title: 'TAKEAWAY_CLAIMS', jsonKey: 'takeawayClaims', instruction: '3–5 complete claims (subject + verb + consequence)' },
   { id: 'faq_gap', title: 'FAQ_GAP', jsonKey: 'faqThatDoesNotEchoH2s', instruction: 'reader worries the H2s will not already settle' },
 ]
@@ -110,13 +167,14 @@ const MILL_OPENER =
 const COGNITION_KEYS =
   /"(argumentSpine|verdict|readerQuestion|wouldHaveToInvent|gateWatch|revisePlan|takeawayClaims|kitRisks|gateRisks|scores|patterns)"\s*:/
 
-export function explorePrompt(): string {
+export function explorePrompt(opts?: { contentType?: string | null }): string {
   const patternLines = EXPLORE_PATTERN_SPECS.map(
     (p, i) => `${i + 1}. ${p.title} → ${p.jsonKey} — ${p.instruction}`,
   )
   return [
     'EXPLORE — chain of thought before the brief. Return ONLY a JSON object.',
-    'Do not write the article. Do not invent facts. This JSON is thinking and will never be published.',
+    'Spend this turn planning the whole article. Do not write it. Do not invent facts. This JSON is thinking and will never be published.',
+    deskGateCatalogPrompt(opts?.contentType),
     'Use these chain-of-thought PATTERNS, in this order. Every pattern is required:',
     ...patternLines,
     '{',
@@ -124,9 +182,9 @@ export function explorePrompt(): string {
     '  "evidenceWeHave": ["facts, URLs, constraints present in Discover"],',
     '  "wouldHaveToInvent": ["fees, dates, stats, forms not in Discover — these will be omitted"],',
     '  "argumentSpine": "one sentence the whole article will argue",',
-    '  "chapterPlan": [{ "heading": "reader-question or decision-frame H2", "because": "why this chapter exists", "covers": ["topic from Discover"], "continues": "previous claim this chapter continues" }],',
+    '  "chapterPlan": [{ "heading": "reader-question or decision-frame H2", "because": "why this chapter exists", "covers": ["topic from Discover"], "continues": "previous claim this chapter continues", "format": "prose|table|steps|bullets|takeaways|faq|sources" }],',
     '  "kitRisks": ["places a mill writer would splice a kit piece or restate the thesis"],',
-    '  "gateWatch": ["ship gates most likely to fail if we are careless"],',
+    '  "gateWatch": ["evaluator codes from GATE_WATCH"],',
     '  "takeawayClaims": ["complete claim: subject + verb + consequence"],',
     '  "faqThatDoesNotEchoH2s": ["reader worry the H2s will not already settle"]',
     '}',
@@ -136,6 +194,8 @@ export function explorePrompt(): string {
     '- takeawayClaims are complete sentences, never keyword fragments.',
     '- Chapter headings are reader questions or decision frames, never a keyword dump.',
     '- Later chapters MUST set continues so the drafter does not restart the thesis.',
+    '- format is planned: one table or steps only when the query is vs / cost / timeline / process.',
+    '- gateWatch MUST use the evaluator codes listed above, not paraphrases.',
     '- wouldHaveToInvent items become unresolved on the brief and are omitted from the article.',
   ].join('\n')
 }
@@ -157,6 +217,12 @@ export function briefFromExploreAddendum(explore: DeskExplore, score?: ExploreSc
       ? `- faqQuestions ← faqThatDoesNotEchoH2s:\n${explore.faqThatDoesNotEchoH2s.map((q) => `  - ${q}`).join('\n')}`
       : '- faqQuestions are reader worries the H2s do not already settle',
     '- Later content H2s have bridgeFrom naming the previous claim.',
+    explore.kitRisks.length
+      ? `- kit risks the drafter must not splice:\n${explore.kitRisks.map((k) => `  - ${k}`).join('\n')}`
+      : '',
+    explore.gateWatch.length
+      ? `- GATE_WATCH (clear these codes in the draft; Review will still score them):\n${explore.gateWatch.map((g) => `  - ${g}`).join('\n')}`
+      : '',
     missing,
   ].filter(Boolean).join('\n')
 }
@@ -227,6 +293,7 @@ export function parseExplore(raw: string): DeskExplore | null {
             because: str(c.because),
             covers: strs(c.covers),
             continues: str(c.continues) || undefined,
+            format: str(c.format) || undefined,
           }
         }).filter((c) => c.heading)
       : [],
@@ -266,7 +333,7 @@ export function parseReflection(raw: string): DeskReflection | null {
 
 export function scoreExplore(
   explore: DeskExplore | null,
-  opts?: { primaryKeyword?: string },
+  opts?: { primaryKeyword?: string; contentType?: string | null },
 ): ExploreScore {
   const primary = String(opts?.primaryKeyword || '').trim().toLowerCase()
   if (!explore) {
@@ -282,7 +349,7 @@ export function scoreExplore(
       missing: EXPLORE_PATTERN_SPECS.map((p) => p.title),
     }
   }
-  const patterns: PatternScore[] = EXPLORE_PATTERN_SPECS.map((spec) => scoreExplorePattern(spec.id, explore, primary))
+  const patterns: PatternScore[] = EXPLORE_PATTERN_SPECS.map((spec) => scoreExplorePattern(spec.id, explore, primary, opts?.contentType))
   const score = Math.round(patterns.reduce((sum, p) => sum + p.score, 0) / patterns.length)
   return {
     score,
@@ -300,6 +367,8 @@ export function scoreReflection(opts: {
   primaryKeyword?: string
 }): ReflectionScore {
   const blockers = opts.quality.blockers || []
+  const warnings = opts.quality.warnings || []
+  const rewriteWarnings = warnings.filter((w) => DESK_REWRITE_WARNING_CODES.has(w.code))
   const hasBlockers = Boolean(!opts.quality.ok && blockers.length)
   const kit = detectKitSectionOpeners(opts.content || '')
   const mill = MILL_OPENER.test(opts.content || '')
@@ -318,8 +387,16 @@ export function scoreReflection(opts: {
   )
 
   const dimensions: ReflectionDimension[] = [
-    dim('gates', 30, hasBlockers ? Math.max(0, 100 - blockers.length * 20) : 100,
-      hasBlockers ? `${blockers.length} ship blocker(s): ${blockers.map((b) => b.code).join(', ')}` : 'no ship blockers'),
+    dim('gates', 30, hasBlockers
+      ? Math.max(0, 100 - blockers.length * 20)
+      : rewriteWarnings.length
+        ? Math.max(20, 100 - rewriteWarnings.length * 25)
+        : 100,
+      hasBlockers
+        ? `${blockers.length} ship blocker(s): ${blockers.map((b) => b.code).join(', ')}`
+        : rewriteWarnings.length
+          ? `Review warnings the desk must clear: ${rewriteWarnings.map((w) => w.code).join(', ')}`
+          : 'no ship blockers'),
     dim('honesty', 20, honestyScore(hasBlockers, verdict, opts.reflection, blockers),
       honestyNote(hasBlockers, verdict, opts.reflection)),
     dim('throughline', 20, kit.length === 0 ? 100 : kit.length === 1 ? 50 : 0,
@@ -339,7 +416,8 @@ export function scoreReflection(opts: {
     !hasBlockers &&
     kit.length === 0 &&
     !mill &&
-    inventedHeadings.length === 0
+    inventedHeadings.length === 0 &&
+    rewriteWarnings.length === 0
   return {
     score,
     floor: REFLECTION_SHIP_FLOOR,
@@ -349,14 +427,20 @@ export function scoreReflection(opts: {
   }
 }
 
+export function rewriteWarningCodes(quality: Pick<QualityGateResult, 'warnings'> | null | undefined): string[] {
+  return (quality?.warnings || []).filter((w) => DESK_REWRITE_WARNING_CODES.has(w.code)).map((w) => w.code)
+}
+
 export function needsRewrite(
   reflection: DeskReflection | null,
   hasBlockers: boolean,
   score?: ReflectionScore | null,
+  quality?: Pick<QualityGateResult, 'warnings'> | null,
 ): boolean {
   if (hasBlockers) return true
   if (reflection?.verdict === 'revise') return true
   if (score && !score.pass) return true
+  if (rewriteWarningCodes(quality).length) return true
   if (
     reflection &&
     (reflection.stuffing.length ||
@@ -425,7 +509,12 @@ export function looksLikeCognitionJson(raw: string): boolean {
   return COGNITION_KEYS.test(String(raw || ''))
 }
 
-function scoreExplorePattern(id: ExplorePatternId, explore: DeskExplore, primary: string): PatternScore {
+function scoreExplorePattern(
+  id: ExplorePatternId,
+  explore: DeskExplore,
+  primary: string,
+  contentType?: string | null,
+): PatternScore {
   const title = EXPLORE_PATTERN_SPECS.find((p) => p.id === id)!.title
   const mark = (score: number, note: string, ok = score >= 70): PatternScore => ({ id, title, ok, score, note })
   switch (id) {
@@ -458,13 +547,21 @@ function scoreExplorePattern(id: ExplorePatternId, explore: DeskExplore, primary
       if (withBecause === plan.length && later.length && withContinues === later.length) {
         return mark(100, `${plan.length} chapters with bridges`)
       }
-      if (withBecause >= 2) return mark(70, 'chapters named but continues missing')
+      if (withBecause >= 2 && withContinues > 0) return mark(55, 'some continues missing')
+      if (withBecause >= 2) return mark(40, 'chapters named but continues missing')
       return mark(40, 'chapters lack because/continues')
     }
     case 'kit_risk':
       return explore.kitRisks.length ? mark(100, `${explore.kitRisks.length} kit risk(s)`) : mark(0, 'empty')
-    case 'gate_watch':
-      return explore.gateWatch.length ? mark(100, `${explore.gateWatch.length} gate(s)`) : mark(0, 'empty')
+    case 'gate_watch': {
+      const required = deskGateCodes(contentType)
+      const named = explore.gateWatch.map((g) => g.toLowerCase())
+      if (!named.length) return mark(0, 'empty')
+      const hits = required.filter((code) => named.some((n) => n === code || n.includes(code)))
+      if (hits.length >= Math.min(6, required.length)) return mark(100, `${hits.length} evaluator codes`)
+      if (hits.length >= 3) return mark(70, `only ${hits.length} evaluator codes`)
+      return mark(30, 'gateWatch is free text, not evaluator codes')
+    }
     case 'takeaway_claims': {
       const complete = explore.takeawayClaims.filter(isCompleteClaim)
       if (complete.length >= 3) return mark(100, `${complete.length} complete claims`)

@@ -57,6 +57,36 @@ export type PipelineStreamEvent =
   | { type: 'final'; result: PipelineResult }
   | { type: 'error'; error: string }
 
+function createEventPump() {
+  const q: PipelineStreamEvent[] = []
+  let wake: (() => void) | null = null
+  let closed = false
+  return {
+    push(ev: PipelineStreamEvent) {
+      q.push(ev)
+      const w = wake
+      wake = null
+      w?.()
+    },
+    close() {
+      closed = true
+      const w = wake
+      wake = null
+      w?.()
+    },
+    async *flush(): AsyncGenerator<PipelineStreamEvent> {
+      while (true) {
+        while (q.length) yield q.shift()!
+        if (closed) {
+          while (q.length) yield q.shift()!
+          return
+        }
+        await new Promise<void>((resolve) => { wake = resolve })
+      }
+    },
+  }
+}
+
 export async function* runSeoFactoryPipelineStream(
   input: PipelineInput,
 ): AsyncGenerator<PipelineStreamEvent> {
@@ -491,41 +521,53 @@ export async function* runSeoFactoryPipelineStream(
     let rescueTimeMs = 0
     let rescueBudgetMs = 0
     let linearDrafted = false
+    let deskHeld = false
 
     if (shouldRunLinearDesk({
       contentType,
       resumeContent: input.resumeContent,
       indexable: plan.indexable,
     })) {
-      yield { type: 'progress', stage: 'brief', message: 'Exploring Discover, then sealing the brief — one conversation, no guesswork' }
-      try {
-        const linear = await runLinearDesk({
-          system,
-          assembly: assemblyFromPipelineInput({
-            title,
-            primaryKeyword,
-            audience: input.audience,
-            contentType,
-            h2Outline: promptOutline,
-            kwH2Map: input.kwH2Map,
-            sectionPlan: input.sectionPlan,
-            thesis: input.thesis || contentSpec?.thesis,
-            takeaways: input.takeaways,
-            faqQuestions: input.faqQuestions,
-            lede: input.lede,
-            sources: verifiedSources,
-            interlinks: radarInterlinks as Array<{ label?: string; url?: string }>,
-            requiredShortKeywords,
-            requiredLongTailKeywords,
-            opportunityAction: input.opportunityAction,
-            writeHint: input.writeHint,
-            masterEngineBlock: input.masterEngineBlock,
-            gscBlock,
-          }),
-          minWords,
-          maxWords,
-          generate: async (args) => {
-            const ai = await generateContentText({
+      const pump = createEventPump()
+      const deskJob = runLinearDesk({
+        system,
+        assembly: assemblyFromPipelineInput({
+          title,
+          primaryKeyword,
+          audience: input.audience,
+          contentType,
+          h2Outline: promptOutline,
+          kwH2Map: input.kwH2Map,
+          sectionPlan: input.sectionPlan,
+          thesis: input.thesis || contentSpec?.thesis,
+          takeaways: input.takeaways,
+          faqQuestions: input.faqQuestions,
+          lede: input.lede,
+          sources: verifiedSources,
+          interlinks: radarInterlinks as Array<{ label?: string; url?: string }>,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          opportunityAction: input.opportunityAction,
+          writeHint: input.writeHint,
+          masterEngineBlock: input.masterEngineBlock,
+          gscBlock,
+        }),
+        minWords,
+        maxWords,
+        onProgress: (ev) => {
+          const stage =
+            ev.phase === 'draft' || ev.phase === 'review'
+              ? 'generate'
+              : ev.phase === 'reflect'
+                ? 'review'
+                : 'brief'
+          pump.push({ type: 'progress', stage, message: ev.message })
+        },
+        generate: async (args) => {
+          if (args.phase === 'draft' || args.phase === 'review') {
+            lastDraftSent = 0
+            let text = ''
+            for await (const ev of generateContentTextStream({
               system: args.system,
               prompt: args.prompt,
               maxTokens: args.maxTokens,
@@ -535,32 +577,72 @@ export async function* runSeoFactoryPipelineStream(
               exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
               cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
               contentType,
-              skipQualityContract: args.skipQualityContract ?? (args.phase !== 'draft' && args.phase !== 'review'),
+              skipQualityContract: args.skipQualityContract ?? false,
               reasoningEffort: args.reasoningEffort,
-            })
-            provider = ai.provider
-            model = ai.model
-            return { text: ai.text, provider: ai.provider, model: ai.model }
-          },
-          evaluate: (body) => evaluateContentQuality({
-            content: body,
+            })) {
+              if (ev.type === 'provider') {
+                provider = ev.provider
+                model = ev.model
+                pump.push({ type: 'provider', provider, model })
+              } else if (ev.type === 'delta') {
+                text += ev.text
+                const grewEnough = text.length - lastDraftSent >= 2000
+                if (grewEnough) lastDraftSent = text.length
+                pump.push({
+                  type: 'delta',
+                  text: ev.text,
+                  attempt: Math.max(1, attempts),
+                  draft: grewEnough ? text : undefined,
+                })
+              } else if (ev.type === 'done') {
+                text = ev.text || text
+                provider = ev.provider
+                model = ev.model
+              }
+            }
+            return { text, provider, model }
+          }
+          const ai = await generateContentText({
+            system: args.system,
+            prompt: args.prompt,
+            maxTokens: args.maxTokens,
+            temperature: args.temperature,
+            aiProvider: input.aiProvider,
+            signal: input.signal,
+            exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+            cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             contentType,
-            primaryKeyword,
-            indexable: plan.indexable,
-            outline: briefOutline,
-            requiredShortKeywords,
-            requiredLongTailKeywords,
-            shortKeywordTerms,
-            longTailKeywordTerms,
-            region,
-          }),
-        })
+            skipQualityContract: args.skipQualityContract ?? true,
+            reasoningEffort: args.reasoningEffort,
+          })
+          provider = ai.provider
+          model = ai.model
+          return { text: ai.text, provider: ai.provider, model: ai.model }
+        },
+        evaluate: (body) => evaluateContentQuality({
+          content: body,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          outline: briefOutline,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
+          region,
+        }),
+      })
+      deskJob.then(() => pump.close(), () => pump.close())
+      try {
+        for await (const ev of pump.flush()) yield ev
+        const linear = await deskJob
         if (countBodyWords(linear.content) >= 40) {
           content = linear.content
           provider = linear.provider
           model = linear.model
           attempts = linear.reviewed ? 2 : 1
           linearDrafted = true
+          deskHeld = Boolean(linear.held)
           if (contentSpec && linear.brief.thesis) {
             contentSpec = { ...contentSpec, thesis: linear.brief.thesis }
           }
@@ -612,7 +694,7 @@ export async function* runSeoFactoryPipelineStream(
           audit.score >= minAudit &&
           meetsShipQuality(audit) &&
           audit.blockers.filter((b) => b.code !== 'ownership').length === 0
-        if (goodEnough) break
+        if (goodEnough || deskHeld) break
         const q = evaluateContentQuality({
           content,
           contentType,
@@ -1249,7 +1331,7 @@ export async function* runSeoFactoryPipelineStream(
     })
 
     let outlineSpliced = false
-    if (briefOutline?.length) {
+    if (!deskHeld && briefOutline?.length) {
       const blogLike = isBlogLikeContentType(contentType)
       const missingNow = missingOutlineSections(content, briefOutline)
       if (!blogLike || missingNow.length > 0) {
@@ -1486,8 +1568,8 @@ export async function* runSeoFactoryPipelineStream(
       }
     }
 
-    // ── Throughline desk hop (after kit inserts, before withhold) ────────
-    {
+    // ── Throughline desk hop (rescue only after a held linear desk) ──────
+    if (!deskHeld || outlineSpliced) {
       if (shouldRunThroughline({
         contentType,
         indexable: plan.indexable,
@@ -1555,7 +1637,7 @@ export async function* runSeoFactoryPipelineStream(
       }
     }
 
-    {
+    if (!deskHeld) {
       if (shouldRunMaskedDenoise({
         contentType,
         indexable: plan.indexable,
