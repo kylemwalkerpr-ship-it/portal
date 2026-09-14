@@ -28,6 +28,22 @@ export class WritingContractMismatchError extends Error {
   }
 }
 
+export async function nextWritingContractVersion(
+  db: WritingContractDb,
+  jobId: string,
+): Promise<number> {
+  const result = await db
+    .from('content_studio_writing_contracts')
+    .select('contract_version')
+    .eq('job_id', jobId)
+    .order('contract_version', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (result.error) throw new Error(`writing contract version lookup failed: ${result.error.message}`)
+  const latest = Number(result.data?.contract_version || 0)
+  return Number.isInteger(latest) && latest > 0 ? latest + 1 : 1
+}
+
 export async function persistWritingContract(
   db: WritingContractDb,
   contract: WritingContractV2,
