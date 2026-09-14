@@ -22,6 +22,7 @@ import {
   targetWordsForType,
 } from '@/lib/seoFactory/contentDepth'
 import { resolveProviderAuthors, citedProvidersPromptBlock, citedProvidersPublic, isMarketplaceServiceUrl, mergeMarketplaceServiceLinks } from '@/lib/seoFactory/providerAuthors'
+import { sealBriefFromAssembly } from '@/lib/seoFactory/sealedBrief'
 
 /**
  * POST /api/content-studio/suggest-brief
@@ -182,10 +183,10 @@ export async function POST(req: NextRequest) {
           : contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
             ? '6–8'
             : '8–10'
-      } H2s sized so ABSOLUTE SECTION QUOTAS (min–max per H2) sum to ${minWords}–${maxWords} words`,
+      } H2s paced so the PAGE window sums to ${minWords}–${maxWords} words. Per-H2 ranges are pacing, not independent mini-articles.`,
       '  "shortTail": ["kw", ...]                   // echo KEYWORD CONTRACT demand shorts (1–3 words). Do not invent replacements.',
       '  "longTail": ["longer phrase", ...]          // echo KEYWORD CONTRACT demand long-tails (4+ words). These are COVERAGE terms, never literal FAQ questions or H2s. The drafter uses them naturally in prose/FAQ answers.',
-      '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
+      '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // map each demand topic to the H2 that already answers it; never invent a heading to park a phrase',
       '  "sources": ["<verbatim URL from VERIFIED SOURCE ALLOWLIST>"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — cite these verbatim allowlist URLs; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',
@@ -195,7 +196,12 @@ export async function POST(req: NextRequest) {
       `  "minWords": ${minWords},   // minimum ${minWords} (Google depth floor)`,
       `  "maxWords": ${maxWords},   // HARD MAX ${maxWords} — never exceed`,
       '  "readabilityLevel": "8th grade — active voice, short sentences, direct address (‘you’)",',
-      '  "reasoning": "3–5 sentences explaining the editorial strategy: what gap this fills, why these keywords, how H2s map to search intent, which competitors to outrank."',
+      '  "reasoning": "3–5 sentences explaining the editorial strategy: what gap this fills, why these keywords, how H2s map to search intent, which competitors to outrank.",',
+      '  "thesis": "one sentence the whole article argues — not the raw keyword",',
+      '  "takeaways": ["complete claim with a verb", "complete claim", "complete claim"],',
+      '  "lede": "2–3 sentences the opening MUST answer",',
+      '  "faqQuestions": ["reader question the H2s did not already settle", "..."],',
+      '  "unresolved": ["anything not in Discover that you would otherwise invent"]',
       '}',
       '',
       'RULES (NON-NEGOTIABLE):',
@@ -224,6 +230,7 @@ export async function POST(req: NextRequest) {
       '14. SCHEMA FAQ JSON-LD: include exactly one "## FAQ" H2 in h2Outline — never list individual FAQ questions as sibling H2s. The drafting AI writes 4–6 questions as ### H3s under that FAQ section (eligibility, timeline, required documents, costs, DIY-vs-attorney, denial/reapply). The system wraps those H3 Q&A pairs in FAQPage JSON-LD.',
       '15. META DESCRIPTION: write a 140–160 character meta description. Must include the primary keyword, a concrete benefit or timeline, and a call to action ("Learn", "Discover", "Check"). No clickbait. Never exceed 160 characters. This is the Google SERP snippet — make every character earn the click.',
       '16. INTERNAL LINKS (HARD REQUIREMENT): ALWAYS return at least 2 interlinkTargets — never fewer than 2, prefer 3–4. Each URL must come from the allowlist VERBATIM (no invented, guessed, or modified paths). The draft-time audit blocks on fewer than 2 internal estate links, so a thin interlinkTargets list forces rewrites.',
+      '23. NO GUESSWORK: thesis, takeaways, lede, and faqQuestions are mandatory. Takeaways are complete claims (subject + verb + consequence), never keyword fragments. FAQ questions must not restate an H2. If a fee, date, URL, form, or statistic is not in Discover, put it in unresolved — the drafter will omit it rather than invent.',
       ...(contentType === 'blog_post'
         ? [
             '',
@@ -591,6 +598,23 @@ export async function POST(req: NextRequest) {
       maxWords: finalMax,
       readabilityLevel: String(parsed.readabilityLevel || ''),
       reasoning: String(parsed.reasoning || ''),
+      thesis: String(parsed.thesis || ''),
+      takeaways: Array.isArray(parsed.takeaways) ? parsed.takeaways.map(String).filter(Boolean).slice(0, 5) : [],
+      lede: String(parsed.lede || ''),
+      faqQuestions: Array.isArray(parsed.faqQuestions) ? parsed.faqQuestions.map(String).filter(Boolean).slice(0, 6) : [],
+      sealedBrief: sealBriefFromAssembly({
+        title: String(parsed.suggestedH1 || ''),
+        primaryKeyword,
+        audience: String(parsed.recommendedAudience || audience || ''),
+        contentType,
+        h2Outline: finalOutline,
+        kwH2Map: completedKwH2Map,
+        sectionPlan,
+        thesis: String(parsed.thesis || ''),
+        takeaways: Array.isArray(parsed.takeaways) ? parsed.takeaways.map(String) : [],
+        faqQuestions: Array.isArray(parsed.faqQuestions) ? parsed.faqQuestions.map(String) : [],
+        lede: String(parsed.lede || ''),
+      }),
       briefCompleteness: {
         identity: Boolean(parsed.suggestedH1 && parsed.targetSlug),
         outline: finalOutline.length >= 6,

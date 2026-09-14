@@ -11,6 +11,7 @@
  */
 
 import type { QualityFinding } from './contentQualityGate'
+import { coherentBlockerFix, refineNotesForBlockers, isWholeArticleBlocker } from './shipBlockers'
 
 export type InlineAnnotation = {
   id: string
@@ -98,7 +99,7 @@ export function findingToAnnotations(
       severity,
       code: f.code,
       message: f.message,
-      fix: f.fix || 'Review and fix.',
+      fix: coherentBlockerFix(f.code, f) || 'Review and fix.',
       highlightedText: highlighted,
     })
   }
@@ -122,7 +123,7 @@ export function findingToAnnotations(
         results.push({
           id: `${f.code}-${n}`, line, col, endLine: ep.line, endCol: ep.col,
           length: ht.length, severity, code: f.code,
-          message: f.message, fix: f.fix || 'Vary this sentence opening.',
+          message: f.message, fix: coherentBlockerFix(f.code, f) || 'Vary this sentence opening.',
           highlightedText: ht,
         })
         n++
@@ -190,24 +191,31 @@ export function mergeWarnings(
 /** Prompt for a blockers-only sweep when mechanical repair is not enough. */
 export function buildBlockersFixPrompt(
   content: string,
-  blockers: Array<{ code: string; message: string; fix?: string }>,
+  blockers: Array<{ code: string; message: string; fix?: string; evidence?: string }>,
 ): string {
-  const list = blockers.map((b) => `- [${b.code}] ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`).join('\n')
+  const list = refineNotesForBlockers(blockers).join('\n')
+  const whole = blockers.some((b) => isWholeArticleBlocker(b.code))
   return [
     '## BLOCKERS SWEEP — resolve EVERY hard gate listed below',
-    'These findings block shipping. Apply the smallest edit that clears each one.',
-    'Do NOT regenerate the article. Keep headings, facts, citations, and interlinks.',
+    whole
+      ? 'These findings block shipping. Keep ONE human article while you clear them. Each H2 continues the previous H2.'
+      : 'These findings block shipping. Apply the smallest edit that clears each one.',
+    'Keep headings, facts, citations, and interlinks. Return the complete article.',
     '',
     'BLOCKERS TO RESOLVE:',
     list,
     '',
-    '',
     'CRITICAL CONSTRAINTS:',
-    '- Fix ONLY the blockers listed above. Do NOT touch anything that is not flagged.',
-    '- Do NOT rewrite paragraphs, sections, or headings that are not listed.',
-    '- Do NOT add new content unless a blocker explicitly requires it.',
+    '- Fix EVERY blocker listed above. Do not drop, merge, or skip one.',
+    whole
+      ? '- You MAY rewrite openings and connective tissue so the article stays one argument. Do not splice independent mini-essays.'
+      : '- Do NOT rewrite paragraphs, sections, or headings that are not listed.',
+    '- Do NOT add new content unless a blocker explicitly requires it (missing disclaimer, missing outline H2, thin sections).',
+    '- Do NOT paste keywords into the first content H2, In 60 seconds, a heading, or an FAQ question.',
     '- Do NOT modify URLs that are not flagged as problematic.',
-    '- The goal is MINIMAL surgical edits — fix what is broken, leave everything else.',
+    whole
+      ? '- Meaning coverage beats exact-string placement. Expand existing sections in place.'
+      : '- The goal is MINIMAL surgical edits — fix what is broken, leave everything else.',
     '',
     'RULES:',
     '1. Title must be 30–60 characters. Meta description must be 70–160 characters.',

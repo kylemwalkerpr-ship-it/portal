@@ -25,6 +25,7 @@ import { assertContentDepth, countBodyWords, depthSpecForType, targetThresholdFo
 import { buildDepthAppendPrompt, extractH2Titles } from './prompts'
 import { isFillerTitle } from '@/lib/seoEngine/titleLab'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import { surfaceShipBlockers } from './shipBlockers'
 
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
@@ -312,30 +313,24 @@ export function evaluateReauditContract(input: ReauditContractInput): ReauditCon
       fix: 'Use a TitleLab-style reader-facing title: procedure + audience + specific (e.g. "UK Spouse Visa Application Checklist for Families: Cost & Timeline").',
     })
   }
-  // blockersData = quality blockers + audit blockers (deduped by code, quality
-  // preferred) so the editor sees EVERYTHING that withholds ship — a 100/100
-  // draft with a missing FAQPage schema now lists its real blocker here.
-  const mergedBlockers = new Map<string, { code: string; message: string; fix: string }>()
-  for (const b of [...result.blockers, ...audit.blockers]) {
-    if (mergedBlockers.has(b.code)) continue
-    mergedBlockers.set(b.code, {
-      code: b.code,
-      message: b.message,
-      fix: b.fix || 'Apply the mechanical repair or Fix blockers.',
-    })
-  }
-  const blockersData = [...mergedBlockers.values()]
+  // blockersData lists every distinct ship-blocking instance (code + message +
+  // evidence). Two kit-piece H2s both stay visible. Exact twins collapse.
+  const blockersData = surfaceShipBlockers([
+    ...result.blockers,
+    ...audit.blockers,
+  ])
   const depthGate = checkDepthGate(content, contentType, indexable)
 
   return {
     ok: result.ok,
     score: result.humanScore,
     summary: result.summary,
-    // Bound the payload, but NEVER starve a distinct finding code entirely: a
-    // single blocker can fan out 40+ repeat annotations (e.g. outcome_promise
-    // matches every sentence), which used to push audit-only warnings past the
-    // cap and out of the issues panel. Distinct codes keep a button; repeats
-    // are capped per code so the panel stays scannable.
+    // Bound the payload, but NEVER starve a distinct finding: a single
+    // blocker can fan out 40+ repeat annotations (e.g. outcome_promise
+    // matches every sentence), which used to push other findings out of
+    // the issues panel. Distinct blocker instances (two kit-piece H2s)
+    // each keep a button; identical repeats are capped so the panel stays
+    // scannable.
     annotations: capAnnotations(annotations, 60, 3),
     blockers: blockersData.length,
     warnings: warningsData.length,
@@ -375,18 +370,22 @@ export function leftoverAnnotationCodes(
   return out
 }
 
-/** Bound an annotation list while guaranteeing every distinct code keeps at
- *  least one entry. Repeat annotations of the same code are capped at
- *  `repeatsPerCode` (3) so a flooding blocker can't bury the issues panel in
- *  identical buttons. The cap is a SOFT bound: when distinct codes alone
- *  exceed it, all of them survive rather than starving a finding type. */
+/** Bound an annotation list while guaranteeing every distinct finding stays
+ *  visible. Blocker instances with different messages (two kit-piece H2s)
+ *  each keep an entry even when they share a code. Repeat annotations of the
+ *  same code+message are capped at `repeatsPerCode` so a flooding blocker
+ *  cannot bury the issues panel. The cap is a SOFT bound: unique instances
+ *  always survive, even when they alone exceed it. */
 export function capAnnotations(list: InlineAnnotation[], cap: number, repeatsPerCode = 3): InlineAnnotation[] {
-  const seen = new Set<string>()
+  const seenInstance = new Set<string>()
   const first: InlineAnnotation[] = []
   const rest: InlineAnnotation[] = []
+  const instanceKey = (a: InlineAnnotation) =>
+    a.severity === 'blocker' ? `${a.code}\n${a.message}` : a.code
   for (const a of list) {
-    if (!seen.has(a.code)) {
-      seen.add(a.code)
+    const inst = instanceKey(a)
+    if (!seenInstance.has(inst)) {
+      seenInstance.add(inst)
       first.push(a)
     } else {
       rest.push(a)
@@ -394,7 +393,7 @@ export function capAnnotations(list: InlineAnnotation[], cap: number, repeatsPer
   }
   const out = [...first]
   const perCode = new Map<string, number>()
-  for (const a of first) perCode.set(a.code, 1)
+  for (const a of first) perCode.set(a.code, (perCode.get(a.code) ?? 0) + 1)
   for (const a of rest) {
     const n = perCode.get(a.code) ?? 0
     if (n >= repeatsPerCode) continue

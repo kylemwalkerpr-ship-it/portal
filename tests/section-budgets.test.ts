@@ -72,10 +72,12 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
       region: 'US', contentType: 'legal_guide', tone: 'educational', gscBlock: '',
       sectionBudgets: budgets,
     })
-    expect(prompt).toContain('ABSOLUTE SECTION QUOTAS')
-    expect(prompt).toMatch(/MUST be \d+–\d+ body words \(inclusive\)/)
+    expect(prompt).toContain('PAGE PACING GUIDE')
+    expect(prompt).toMatch(/aim \d+–\d+ body words/)
     expect(prompt).toContain('## FAQ:')
     expect(prompt).toMatch(/never echo the brief, never paste a previous draft, never append a second copy/i)
+    expect(prompt).not.toContain('ABSOLUTE SECTION QUOTAS')
+    expect(prompt).toMatch(/with a bridge between them/)
   })
 
   it('omits the block when no budgets are supplied', () => {
@@ -83,6 +85,7 @@ describe('strict per-section budgets (single-run drafter contract)', () => {
       title: 'Green Card Guide', topic: 'green card', primaryKeyword: 'green card',
       region: 'US', contentType: 'legal_guide', tone: 'educational', gscBlock: '',
     })
+    expect(prompt).not.toContain('PAGE PACING GUIDE')
     expect(prompt).not.toContain('ABSOLUTE SECTION QUOTAS')
   })
 })

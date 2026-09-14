@@ -245,6 +245,28 @@ export async function POST(request: Request) {
       targetSlug: body.targetSlug ? String(body.targetSlug) : undefined,
       metaDescription: body.metaDescription ? String(body.metaDescription).trim().slice(0, 160) : undefined,
       kwH2Map: body.kwH2Map && typeof body.kwH2Map === 'object' ? Object.fromEntries(Object.entries(body.kwH2Map).map(([k, v]) => [String(k), String(v)])) : undefined,
+      sectionPlan: Array.isArray(body.sectionPlan)
+        ? (body.sectionPlan as Array<Record<string, unknown>>)
+            .map((s) => ({
+              heading: String(s.heading || '').trim(),
+              intent: s.intent ? String(s.intent) : undefined,
+              format: s.format ? String(s.format) : undefined,
+              keywords: Array.isArray(s.keywords) ? s.keywords.map(String) : undefined,
+            }))
+            .filter((s) => s.heading)
+        : undefined,
+      thesis: body.thesis ? String(body.thesis) : body.sealedBrief?.thesis ? String(body.sealedBrief.thesis) : undefined,
+      takeaways: Array.isArray(body.takeaways)
+        ? body.takeaways.map(String)
+        : Array.isArray(body.sealedBrief?.takeaways)
+          ? body.sealedBrief.takeaways.map(String)
+          : undefined,
+      faqQuestions: Array.isArray(body.faqQuestions)
+        ? body.faqQuestions.map(String)
+        : Array.isArray(body.sealedBrief?.faqQuestions)
+          ? body.sealedBrief.faqQuestions.map(String)
+          : undefined,
+      lede: body.lede ? String(body.lede) : body.sealedBrief?.lede ? String(body.sealedBrief.lede) : undefined,
       sectionBudgets: Array.isArray(body.sectionBudgets)
         ? (body.sectionBudgets as Array<Record<string, unknown>>)
             .map((s) => ({ heading: String(s.heading || '').trim(), minWords: Math.max(0, Number(s.minWords) || 0), maxWords: Math.max(0, Number(s.maxWords) || 0) }))

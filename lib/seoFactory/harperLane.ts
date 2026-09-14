@@ -14,7 +14,7 @@
  * Pure + client-safe: no planner / engineAi / node: imports.
  */
 
-export type HarperDeferredLane = 'structural' | 'brief' | 'human'
+export type HarperDeferredLane = 'structural' | 'brief' | 'human' | 'writer'
 
 export type HarperDeferredFinding = {
   code: string
@@ -52,10 +52,8 @@ export const HARPER_PROSE_CODES: ReadonlySet<string> = new Set([
   'low_sentence_burstiness',
   'low_trigram_variety',
   'register_drift',
-  'missing_short_keyword',
-  'missing_long_tail_keyword',
-  'missing_synthesized_short_keyword',
-  'missing_synthesized_long_tail_keyword',
+  'stuffed_primary_opener',
+  'stuffed_primary_opener_severe',
   'short_keyword_density_violation',
   'long_tail_density_violation',
   'forward_reference_orphan',
@@ -69,6 +67,14 @@ const BRIEF_CODES: ReadonlySet<string> = new Set([
   'insufficient_short_keywords',
   'insufficient_long_tail_keywords',
   'ownership',
+])
+
+/** Coverage gaps belong to the whole-article writer, never a local Harper paste. */
+const WRITER_CODES: ReadonlySet<string> = new Set([
+  'missing_short_keyword',
+  'missing_long_tail_keyword',
+  'missing_synthesized_short_keyword',
+  'missing_synthesized_long_tail_keyword',
 ])
 
 const HUMAN_CODE_RE = /^(cannibalization_|unverified_internal_link$)/
@@ -114,6 +120,7 @@ const STRUCTURAL_SEO_FAIL_RE = [
   /no meta description/i,
   /meta description \d+ chars/i,
   /only \d+ urls?\b/i,
+  /only \d+\/\d+ demand keywords present/i,
 ]
 
 export function isHarperProseFinding(code: string): boolean {
@@ -130,6 +137,7 @@ export function harperDeferredLane(code: string): HarperDeferredLane {
   const key = String(code || '').trim()
   if (key === 'ownership' || HUMAN_CODE_RE.test(key)) return 'human'
   if (BRIEF_CODES.has(key)) return 'brief'
+  if (WRITER_CODES.has(key)) return 'writer'
   return 'structural'
 }
 

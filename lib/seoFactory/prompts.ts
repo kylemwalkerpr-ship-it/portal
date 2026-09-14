@@ -25,10 +25,13 @@ import {
   isBlogFamily,
   regionalShipRequirements,
   writingFamilyFor,
+  essayFirstPromptBlock,
 } from './writingShape'
+import { deskLayoutPromptBlock } from './deskLayout'
 import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
 import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
 import { houseRegisterFor, registerCardPromptBlock } from './registerCard'
+import { refineNotesForBlockers, refineNotesForWarnings } from './shipBlockers'
 
 function authorCitationPromptBlock(opts: {
   contentType: string
@@ -369,6 +372,10 @@ export function buildFactorySystemPrompt(opts: {
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced", ultimate guide (as clickbait), "everything you need to know".',
     'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
+    ...essayFirstPromptBlock(),
+    '',
+    ...deskLayoutPromptBlock(contentType),
+    '',
     ...factoryShipGatesBlock(contentType, minWords, maxWords, target, spec?.author?.experienceBeats),
     '',
     registerCardPromptBlock(houseRegisterFor(contentType)),
@@ -415,10 +422,10 @@ export function buildFactorySystemPrompt(opts: {
       'BRIEF TEMPLATE — H2 OUTLINE (mandatory structure):',
       ...briefOutline.map((h, i) => {
         const placedKw = kwH2Map ? Object.entries(kwH2Map).filter(([, sec]) => sec === h).map(([k]) => k) : []
-        return `${i + 1}. ## ${h}${placedKw.length ? ` [must include keyword(s): ${placedKw.join(', ')}]` : ''}`
+        return `${i + 1}. ## ${h}${placedKw.length ? ` [cover these topics naturally: ${placedKw.join(', ')}]` : ''}`
       }),
       'You MUST follow this exact H2 structure. Do not add, remove, or reorder sections.',
-      'If the brief supplies a keyword→section map, place each keyword naturally in its assigned H2.',
+      'If the brief maps a topic to a section, answer that topic inside the section in a grammatical sentence. Never paste the keyword string as the heading, the first sentence, or an FAQ question.',
       '',
       'CONTRACT THINKING — engage the brief, never paste it:',
       '- Every section exists to satisfy ITS purpose from the outline. Before writing a section, ask: "what does the reader need from THIS section?" — then write from that need.',
@@ -478,11 +485,11 @@ export function buildFactorySystemPrompt(opts: {
       ? '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND short on a blog is a warning, never a reason to stuff. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.'
       : '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND keyword is a hard block. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.',
     blog
-      ? '    - Place each DEMAND short keyword once, naturally, in a body sentence. Cap 4 hits. Meaning coverage beats a forced phrase.'
-      : '    - Place each DEMAND short keyword once, naturally (title/H1, In 60 seconds, a checklist item, or one body sentence). Cap 4 hits.',
+      ? '    - Cover each DEMAND short as a topic in a body sentence. Cap 4 hits. Meaning coverage beats a forced phrase. This is not a checklist.'
+      : '    - Cover each DEMAND short as a topic in a grammatical sentence. Cap 4 hits. Never paste into the first content H2, In 60 seconds, a heading, or an FAQ question.',
     blog
-      ? '    - Place each DEMAND long-tail once as meaning coverage in prose — never as an H2. Cap 2 hits.'
-      : '    - Place each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
+      ? '    - Cover each DEMAND long-tail once as meaning in prose — never as an H2. Cap 2 hits.'
+      : '    - Cover each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',
     '    - Synthesized terms: use only if a grammatical slot already exists. If none, omit them. Harper cannot honestly stuff them later.',
     '    - The PRIMARY keyword is exempt from coverage checkboxes (it appears in title/H1) — but 12+ hits overall, or 4+ hits inside the first content H2 body, is keyword stuffing.',
     renderKeywordContractBrief(keywordContract, opts.primaryKeyword || spec?.primaryKeyword),
@@ -682,10 +689,10 @@ export function buildFactoryUserPrompt(opts: {
       '',
     ] : []),
     ...((opts.sectionBudgets && opts.sectionBudgets.length) ? [
-      'ABSOLUTE SECTION QUOTAS — hard inclusive ranges. A section under its min or over its max is a ship failure, same as missing the page window:',
-      ...opts.sectionBudgets.map((s) => `- ## ${s.heading}: MUST be ${s.minWords}–${s.maxWords} body words (inclusive). Never fewer than ${s.minWords}. Never more than ${s.maxWords}.`),
-      '- Honour every range. Σ(section mins) meets the page floor; Σ(section maxes) stays under the page cap. Do not pad a short section by stealing from another, and do not dump overflow into FAQ/Sources.',
-      '- Write exactly ONE article — the sections above, in this order. Never echo the brief, never paste a previous draft, never append a second copy. If a section approaches its cap, stop that section and continue to the next.',
+      'PAGE PACING GUIDE — the page must land inside the LENGTH window. These per-H2 ranges are pacing, not independent articles and not ship failures of their own:',
+      ...opts.sectionBudgets.map((s) => `- ## ${s.heading}: aim ${s.minWords}–${s.maxWords} body words.`),
+      '- Honour the PAGE window. Sections may run a little short or long if the article as a whole stays inside LENGTH. Do not pad a section to hit its min, and do not dump overflow into FAQ/Sources.',
+      '- Write exactly ONE article — the sections above, in this order, with a bridge between them. Never echo the brief, never paste a previous draft, never append a second copy. If a section approaches its cap, stop that section and continue to the next.',
       '',
     ] : []),
     ...(opts.refineNotes ? [
@@ -697,12 +704,14 @@ export function buildFactoryUserPrompt(opts: {
       'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
       '- Opening that answers the thesis, 3–6 purpose-led H2s, in-body official citations, one closer, and a short educational disclaimer if YMYL-adjacent. All of it, in this one response.',
       '- FAQ, FAQPage JSON-LD, table of contents, and a TL;DR kit are NOT required. Do not invent a protagonist to illustrate a point.',
+      '- Each H2 continues the previous H2. Do not write self-contained mini-essays under every heading.',
       '- There is NO part 2, no continuation run. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
       '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
       '- IMPORTANT: do NOT start a new article. If you have a reference draft below, expand and revise IT — do not write a fresh article from scratch. A fresh article that ignores the reference is a hard failure.',
     ] : [
       'ONE-GO CONTRACT — write the ENTIRE article in this single response:',
       '- Every outline section, then ## FAQ (4-6 Q&A), ## Sources, the Article + FAQPage JSON-LD, and the educational disclaimer. All of it, in this one response.',
+      '- Each H2 continues the previous H2. Do not write self-contained mini-guides under every heading.',
       '- There is NO part 2, no continuation run, no separate back-matter pass. Do not end with "to be continued", placeholders, or a promise that a later section will be written.',
       '- If the response budget tightens, compress proportionally across the middle sections and ALWAYS finish with FAQ + Sources + JSON-LD + disclaimer. A complete back matter beats a long body that stops mid-document.',
       '- Never echo, duplicate, or copy the brief\'s draft block into the response — the article exists exactly once in your output.',
@@ -992,7 +1001,7 @@ export function buildDepthExpandPrompt(opts: {
     '1) EXPAND THE DRAFT INTO A COMPLETE PAGE — keep every existing section, fact, heading, and interlink from the draft below. Add substance to thin sections; never drop or replace what is already there.',
     '2) KEEP accurate facts from the draft; EXPAND every thin section — do not shrink.',
     '3) Do NOT write a fresh article from scratch. The draft below is your base — build on it. A full rewrite that ignores the draft is a hard failure.',
-    '3) Each H2 body (not the heading) should be ~180–350 words with concrete steps, documents, risks, or examples. Stub sections are rejected.',
+    '3) Expand thin sections with concrete procedures, documents, risks, or examples until the PAGE window is met. Do not pad a heading into an independent mini-essay.',
     '4) Required sections if missing or thin:',
     '   - ## In 60 seconds (3–5 direct bullets) — exactly one heading, bullets only',
     '   - Opening answer paragraph',
@@ -1102,8 +1111,8 @@ export function buildDepthAppendPrompt(opts: {
 
 /** Turn audit failures into revision instructions for a refine pass. */
 export function auditToRefineNotes(audit: {
-  blockers: Array<{ message: string; fix?: string }>
-  warnings: Array<{ message: string; fix?: string }>
+  blockers: Array<{ code?: string; message: string; fix?: string; evidence?: string }>
+  warnings: Array<{ code?: string; message: string; fix?: string }>
   wordCount: number
   score: number
   /** When known, force expansion language */
@@ -1126,27 +1135,16 @@ export function auditToRefineNotes(audit: {
   if (audit.wordCount < min) {
     lines.push(
       `- BLOCKER DEPTH: Draft has only ${audit.wordCount} body words — ILLEGAL for ship. Produce a COMPLETE page of at least ${min} words (aim ${target}).`,
-      `- Every H2 needs 180–350 words of real procedures, documents, risks, timelines — not stubs.`,
+      `- Expand thin H2s with real procedures, documents, risks, and timelines — not stubs and not independent mini-essays.`,
       `- FAQ: 6 answers × 50–90 words each.`,
       `- Do NOT return a shorter page. Do NOT pad with repeated sentences. Do NOT count JSON-LD toward the total.`,
     )
   }
-  for (const b of audit.blockers.slice(0, 8)) {
-    if ('code' in b && b.code === 'outcome_promise') {
-      lines.push('- BLOCKER: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article. Use neutral wording such as outcomes and requirements vary.')
-    } else if ('code' in b && b.code === 'sentence_start_repetition') {
-      const ev = ('evidence' in b ? (b as any).evidence : '') || ''
-      lines.push(`- BLOCKER [sentence_start_repetition]: Too many sentences start with "${ev}…". TARGETED SWEEP — rewrite only those sentences with varied openings. Do NOT regenerate the whole article.`)
-    } else {
-      lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
-    }
-  }
-  for (const w of audit.warnings.slice(0, 8)) {
-    lines.push(`- WARNING: ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`)
-  }
+  lines.push(...refineNotesForBlockers(audit.blockers))
+  lines.push(...refineNotesForWarnings(audit.warnings))
   lines.push(
     'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal, body word count ≥ hard minimum.',
-    'VOICE: sound human — second person, varied sentence length, no AI clichés (delve/leverage/robust/seamless/navigate the complexities/in conclusion), no outcome guarantees, no hype.',
+    'VOICE: sound human — second person, varied sentence length, no AI clichés (delve/leverage/robust/seamless/navigate the complexities/in conclusion), no outcome guarantees, no hype. Keep one argument; do not stuff keywords or splice kit pieces.',
   )
   return lines.join('\n')
 }

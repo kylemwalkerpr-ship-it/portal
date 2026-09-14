@@ -15,6 +15,7 @@ import { editorialReportReady } from './editorialGate'
  */
 
 import { shipGateFromResponse, shipGateReady } from './currentGate'
+import { slimBlockersForClient } from './shipBlockers'
 
 /** Normalize `audit_json.blockers` (array of findings, count, or missing) to a count. */
 function blockersCount(blockers: unknown): number {
@@ -89,8 +90,8 @@ export function slimAuditJsonForClient(prior: unknown): Record<string, unknown> 
     out.blockersCount = a.blockersCount
   }
   if (Array.isArray(a.blockers)) {
-    out.blockers = a.blockers.slice(0, 12)
-    if (out.blockersCount === undefined) out.blockersCount = a.blockers.length
+    out.blockers = slimBlockersForClient(a.blockers)
+    if (out.blockersCount === undefined) out.blockersCount = Array.isArray(out.blockers) ? out.blockers.length : a.blockers.length
   } else if (typeof a.blockers === 'number' && Number.isFinite(a.blockers)) {
     out.blockers = a.blockers
     if (out.blockersCount === undefined) out.blockersCount = a.blockers

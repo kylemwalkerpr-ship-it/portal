@@ -5,6 +5,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
 import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
+import { coherentRepairPolicyBlock, coherentBlockerFix } from '@/lib/seoFactory/shipBlockers'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { depthMediationPlan, evaluateReauditContract, leftoverAnnotationCodes, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
@@ -1133,7 +1134,7 @@ export async function PATCH(request: NextRequest) {
         // findings, rendered from the canonical snapshot.
         const roundRules = renderReviewerRules(req.findings, contentSpec)
         const findingList = req.findings
-          .map((f, i) => `${i + 1}. [${f.code}] ${f.message || 'quality finding'}${f.fix ? `\n   FIX PRESCRIPTION: ${f.fix.slice(0, 600)}` : ''}`)
+          .map((f, i) => `${i + 1}. [${f.code}] ${f.message || 'quality finding'}\n   FIX PRESCRIPTION: ${coherentBlockerFix(f.code, f).slice(0, 600)}`)
           .join('\n')
         const sys = `You are a surgical SEO content editor. Respond with ONLY a JSON object matching the EditorPatch v1 contract:
 {"version":1,"operations":[{"kind":"replace","findingCode":"<registered code>","anchor":"<an exact full line from the document>","expectedHash":"<ignored; recomputed server-side>","replacement":"<replacement text>"}]}
@@ -1141,8 +1142,12 @@ Also supported: "insert_after" (uses "insertion") and "remove".
 Rules:
 - Every operation is authorized by exactly ONE listed finding code.
 - The anchor must be an EXACT, UNIQUE line (trimmed) from the document.
-- Replacements must not add headings, frontmatter, code fences, or <script> blocks.
-- Smallest possible targeted edit per finding. Never regenerate the document.
+- Replacements must not add headings, frontmatter, code fences, or <script> blocks unless the finding is missing_outline_section or missing_disclaimer.
+- Smallest possible targeted edit per finding that still keeps ONE article. Never regenerate the document.
+- Do not paste keywords into the first content H2, In 60 seconds, a heading, or an FAQ question.
+- Kit-piece openings become bridges from the previous section.
+
+${coherentRepairPolicyBlock(req.findings)}
 
 ${roundRules}`
         const prompt = `## Document

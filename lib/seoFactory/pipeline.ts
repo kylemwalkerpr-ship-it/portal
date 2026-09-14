@@ -44,6 +44,7 @@ import { keywordContractForDraft } from './keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { runFactoryThroughline } from './throughline'
 import { runFactoryMaskedDenoise } from './maskedDenoise'
+import { runLinearDesk, shouldRunLinearDesk, assemblyFromPipelineInput } from './linearDesk'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -204,6 +205,13 @@ export interface PipelineInput {
   targetSlug?: string
   /** Brief Assembly Panel: keyword → H2 section placement map */
   kwH2Map?: Record<string, string>
+  /** Brief Assembly Panel: per-H2 intent / format / topic coverage. */
+  sectionPlan?: Array<{ heading: string; intent?: string; format?: string; keywords?: string[] }>
+  /** Sealed-brief fields from suggest-brief — no-guesswork plan. */
+  thesis?: string
+  takeaways?: string[]
+  faqQuestions?: string[]
+  lede?: string
   /** Competing estate pages detected by the Discover stage's anti-cannibalization
    *  guard. Stored in content_jobs.competing_urls so the quality gate and
    *  deterministic repair fire on reaudit / ship. */
@@ -460,11 +468,128 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let expandPasses = 0
   let stalledCount = 0
   const maxStalled = 2  // consecutive non-improving attempts before giving up
+  let linearDrafted = false
+
+  const deskGenerate = async (args: {
+    phase: 'explore' | 'brief' | 'draft' | 'reflect' | 'review'
+    system: string
+    prompt: string
+    maxTokens: number
+    temperature: number
+    reasoningEffort?: 'low' | 'medium' | 'high'
+    skipQualityContract?: boolean
+  }) => {
+    const ai = await generateWithRetry(generateContentText, {
+      system: args.system,
+      prompt: args.prompt,
+      maxTokens: args.maxTokens,
+      temperature: args.temperature,
+      aiProvider: input.aiProvider,
+      signal: input.signal,
+      exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+      cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+      contentType,
+      skipQualityContract: args.skipQualityContract ?? (args.phase !== 'draft' && args.phase !== 'review'),
+      reasoningEffort: args.reasoningEffort,
+    })
+    return { text: ai.text, provider: ai.provider, model: ai.model }
+  }
+
+  if (shouldRunLinearDesk({
+    contentType,
+    resumeContent: input.resumeContent,
+    indexable: plan.indexable,
+  })) {
+    throwIfAborted(input.signal, 'linear desk')
+    try {
+      const linear = await runLinearDesk({
+        system,
+        assembly: assemblyFromPipelineInput({
+          title,
+          primaryKeyword,
+          audience: input.audience,
+          contentType,
+          h2Outline: promptOutline,
+          kwH2Map: input.kwH2Map,
+          sectionPlan: input.sectionPlan,
+          thesis: input.thesis || contentSpec?.thesis,
+          takeaways: input.takeaways,
+          faqQuestions: input.faqQuestions,
+          lede: input.lede,
+          sources: verifiedSources,
+          interlinks: providerInterlinks,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          opportunityAction: input.opportunityAction,
+          writeHint: input.writeHint,
+          masterEngineBlock: input.masterEngineBlock,
+          gscBlock: canonPortfolio,
+        }),
+        minWords,
+        maxWords,
+        generate: deskGenerate,
+        evaluate: (body) => evaluateContentQuality({
+          content: body,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          outline: briefOutline,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
+          region,
+        }),
+      })
+      if (countBodyWords(linear.content) >= 40) {
+        content = linear.content
+        provider = linear.provider
+        model = linear.model
+        attempts = linear.reviewed ? 2 : 1
+        linearDrafted = true
+        if (contentSpec && linear.brief.thesis) {
+          contentSpec = { ...contentSpec, thesis: linear.brief.thesis }
+        }
+      }
+    } catch (err) {
+      if (input.signal?.aborted) throw err
+      console.warn(
+        '[seoFactory/pipeline] linear desk failed — falling back to isolated draft',
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
 
   // ── PASS 1: Main refine loop (depth + quality) ─────────────────────────
   for (let i = 0; i <= maxRefine; i++) {
     throwIfAborted(input.signal, `refine pass ${i + 1}`)
-    attempts = i + 1
+    attempts = Math.max(attempts, i + 1)
+    if (i === 0 && linearDrafted && content) {
+      audit = runAudit(content)
+      const goodEnough =
+        audit.score >= minAudit &&
+        meetsShipQuality(audit) &&
+        audit.blockers.filter((b) => b.code !== 'ownership').length === 0
+      if (goodEnough) break
+      const q = evaluateContentQuality({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        outline: briefOutline,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
+        shortKeywordTerms,
+        longTailKeywordTerms,
+        region,
+        linkAllowlist: (input.interlinks ?? []).map((l) => l.url).filter(Boolean) as string[],
+      })
+      refineNotes = [
+        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+      ].filter(Boolean).join('\n\n')
+      continue
+    }
     const underDepth = Boolean(content) && countBodyWords(content) < minWords
 
     // Under depth → dedicated expand prompt (keeps draft, forbids short rewrite)
@@ -783,6 +908,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   // remaining headings are a generate error, not a refine-as-complete warning.
   const blogLike = isBlogLikeContentType(contentType)
   const missingNow = briefOutline?.length ? missingOutlineSections(content, briefOutline) : []
+  let outlineSpliced = false
   if (briefOutline?.length && (!blogLike || missingNow.length > 0)) {
     try {
       const completed = await completeMissingOutlineSections({
@@ -801,7 +927,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
                 system: systemPrompt,
                 prompt,
                 maxTokens: 4096,
-                temperature: 0.2,
+                temperature: 0.35,
                 skipQualityContract: true,
                 contentType,
               })
@@ -810,6 +936,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
       })
       if (completed.inserted.length) {
+        outlineSpliced = true
         content = enforceBodyWordBudgetPreserving(completed.content, contentType, { min: minWords, max: maxWords, preserveHeadings: ['disclaimer', 'sources', 'faq'] }).content
         console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
       } else if (completed.content !== content) {
@@ -957,12 +1084,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       queryNeed: contentSpec?.intent?.queryNeed,
       minWords,
       maxWords,
+      force: outlineSpliced,
       generateText: async (systemPrompt, prompt) => {
         const ai = await generateWithRetry(generateContentText, {
           system: systemPrompt,
           prompt,
           maxTokens: tokensForType(contentType, 'draft'),
-          temperature: 0.25,
+          temperature: 0.42,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',

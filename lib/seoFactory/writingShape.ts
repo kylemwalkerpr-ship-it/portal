@@ -54,6 +54,19 @@ export function usesGuideApparatus(contentType: string | null | undefined): bool
 }
 
 /**
+ * Shared writer contract: one argument, not a stitched kit of keyword boxes.
+ * Injected at the top of the system prompt and the quality block.
+ */
+export function essayFirstPromptBlock(): string[] {
+  return [
+    'WRITE ONE ARTICLE, NOT A KIT.',
+    'A reader should be able to delete the H2s and still follow one argument. Each section opens with a consequence, constraint, or next decision from the previous section — never by restating the thesis or repeating the primary keyword.',
+    'Keywords are topics to cover in grammatical sentences. Never tick a phrase, never paste a demand string as a heading or FAQ question, never stuff the first H2.',
+    'Per-H2 word ranges are pacing for the PAGE window. Padding independent mini-essays to hit a section quota is a failure. Connective tissue is mandatory.',
+  ]
+}
+
+/**
  * Prompt bullets for consultancy blogs — one specialist article, not a kit.
  * Callers join these under a SHIP GATES heading.
  */
@@ -64,7 +77,7 @@ export function blogShipRequirements(): string[] {
     'NOT REQUIRED and MUST NOT be forced: table of contents, "## In 60 seconds", FAQPage JSON-LD, a 4–6 FAQ block, a worked-example H2, a 180-character paragraph cap, ≥2 internal links, or ≥4 H2s.',
     'Do not invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
     'Paragraph rhythm MAY include a 4–6 sentence developed paragraph. Sections must advance the thesis; do not restate the intro under every H2. Close once.',
-    'KEYWORDS: place DEMAND short keywords naturally in prose (meaning coverage). Missing a demand short is a warning on blogs, never a reason to stuff a phrase. Synthesized floor-fill is optional.',
+    'KEYWORDS: cover DEMAND shorts as topics in natural sentences (meaning coverage). Missing a demand short is a warning on blogs, never a reason to stuff a phrase. Synthesized floor-fill is optional and must not be placed as a string.',
     'SCHEMA: Article JSON-LD is welcome when the template emits it; FAQPage is not required. Do not write raw schema blocks by hand.',
     'VOICE: calm specialist, second person, no AI clichés, ZERO outcome promises, no invented fees, dates, or URLs.',
   ]
@@ -80,9 +93,10 @@ export function guideShipRequirements(): string[] {
     'SCHEMA: Article JSON-LD AND FAQPage JSON-LD in <script type="application/ld+json"> blocks.',
     'LINKS: at least 2 internal estate links taken VERBATIM from the INTERNAL LINK ALLOWLIST. ZERO invented, guessed, or modified URLs — a made-up URL is a hard error.',
     'CONCRETE PROCEDURES: use procedural concreteness (forms, documents, sequences, official steps). Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
-    'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). DEMAND long-tails ≥1× and ≤2× as meaning coverage in prose, never a forced exact 6-word string. Synthesized floor-fill is optional — never stuff it. Missing a demand short is a HARD blocker on guides.',
+    'KEYWORDS: cover DEMAND shorts as topics (meaning coverage, ≥1× and ≤4×, floor 3 distinct head terms). DEMAND long-tails: answer the question in prose, never a forced exact 6-word string. Synthesized floor-fill is optional — never stuff it. Missing a demand short is a HARD blocker on guides.',
     'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections, no AI clichés, no outcome promises. Second person.',
     'ANTI-WALL-OF-TEXT: prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed. Do not write a 7+ sentence wall.',
+    'THROUGHLINE: each H2 continues the previous H2. Do not write self-contained mini-guides under every heading.',
   ]
 }
 
@@ -93,8 +107,9 @@ export function regionalShipRequirements(): string[] {
     'SCHEMA: Article JSON-LD; FAQPage JSON-LD when the page has an FAQ section.',
     'LINKS: use INTERNAL LINK ALLOWLIST URLs verbatim when linking internally. ZERO invented URLs.',
     'CONCRETE PROCEDURES: forms, documents, sequences, local agencies. Do NOT invent a personal anecdote, testimonial, or hypothetical protagonist. If EXPERIENCE_BEATS are supplied in the brief, use those anonymised beats only.',
-    'KEYWORDS: DEMAND short keywords appear ≥1× and ≤4× (floor 3 distinct head terms). Missing a demand short is a HARD blocker on regional pages. Long-tails: meaning coverage in prose. Synthesized floor-fill is optional.',
+    'KEYWORDS: cover DEMAND shorts as topics (meaning coverage, ≥1× and ≤4×, floor 3 distinct head terms). Missing a demand short is a HARD blocker on regional pages. Long-tails: meaning coverage in prose. Synthesized floor-fill is optional.',
     'VOICE: YMYL pages must read like a licensed practitioner: concrete nouns, mixed sentence length, no keyword stuffing, no duplicate sections. Informative, practical, second person, no hype, no outcome promises.',
     'ANTI-WALL-OF-TEXT: prefer 1–4 sentence paragraphs. A developed 4–6 sentence paragraph is allowed. Do not write a 7+ sentence wall.',
+    'THROUGHLINE: each H2 continues the previous H2. Do not write self-contained mini-guides under every heading.',
   ]
 }

@@ -513,6 +513,17 @@ describe('capAnnotations (payload bound that never starves a finding code)', () 
     const capped = capAnnotations(list, 2)
     expect(capped.length).toBe(4) // never below the distinct count
   })
+
+  it('keeps every distinct blocker instance even when they share a code', () => {
+    const kit = ['Eligibility', 'Documents', 'Fees', 'Process'].map((h, i) => ({
+      id: `kit-${i}`, line: 1, col: 1, endLine: 1, endCol: 1, length: 0,
+      severity: 'blocker' as const, code: 'stuffed_primary_opener_severe',
+      message: `H2 ${h}`, fix: 'fix', highlightedText: '',
+    }))
+    const capped = capAnnotations([...ann('outcome_promise', 40), ...kit], 8)
+    const kitMessages = capped.filter((a) => a.code === 'stuffed_primary_opener_severe').map((a) => a.message)
+    expect(kitMessages.sort()).toEqual(['H2 Documents', 'H2 Eligibility', 'H2 Fees', 'H2 Process'])
+  })
 })
 
 describe('evaluateReauditContract — outline parity with ship', () => {

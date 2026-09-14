@@ -14,6 +14,7 @@ import type { ShipMode } from './ship'
 import type { OwnerPlan } from './ownership'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy, meetsDepthFloor, meetsShipQuality } from './audit'
+import { formatAllBlockerCodes, formatAllBlockerMessages } from './shipBlockers'
 
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
@@ -151,15 +152,15 @@ export function finalizeShipError(input: ShipErrorFinalizeInput): string | null 
 /** Human-readable reason for War Room / Auto-Pilot when merge is withheld. */
 function formatGateHold(audit: SeoFactoryAudit, minAudit: number, why: string): string {
   const blockers = (audit.blockers || [])
-    .slice(0, 4)
-    .map((b) => b.message)
-    .join('; ')
+  const blockerCodes = formatAllBlockerCodes(blockers)
+  const blockerPreview = formatAllBlockerMessages(blockers)
   const parts = [
     `Ship withheld (${why})`,
     `audit ${audit.score}/100 (min ${minAudit}) grade ${audit.grade}`,
     `words ${audit.wordCount}`,
     audit.humanScore != null ? `human ${audit.humanScore}` : null,
-    blockers ? `blockers: ${blockers}` : null,
+    blockerCodes ? `blocker codes: ${blockerCodes}` : null,
+    blockerPreview ? `blockers: ${blockerPreview}` : null,
   ].filter(Boolean)
   return parts.join(' · ')
 }

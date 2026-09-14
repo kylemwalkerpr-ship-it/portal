@@ -172,5 +172,57 @@ describe('evaluateContentQuality wires geometry into Audit', () => {
     expect(isHarperProseFinding('low_sentence_burstiness')).toBe(true)
     expect(isHarperProseFinding('low_trigram_variety')).toBe(true)
     expect(isHarperProseFinding('faq_duplicates_h2')).toBe(true)
+    expect(isHarperProseFinding('stuffed_primary_opener')).toBe(true)
+    expect(isHarperProseFinding('stuffed_primary_opener_severe')).toBe(true)
+    expect(isHarperProseFinding('missing_short_keyword')).toBe(false)
+  })
+
+  it('holds ship when two or more H2s open as kit pieces restating the primary', () => {
+    const content = `---
+title: H-1B visa
+description: Practical filing steps with official sources for H-1B petitions.
+primaryKeyword: h-1b visa
+---
+
+# H-1B visa
+
+You file after the LCA is certified.
+
+## Eligibility
+
+The h-1b visa is a specialty occupation category that explains who may petition in this calendar year.
+
+## Documents
+
+This section covers the h-1b visa paperwork you gather before the petition window opens.
+
+## Process
+
+USCIS issues a receipt once the certified LCA sits with Form I-129.
+
+## FAQ
+
+### What happens after filing?
+
+USCIS issues a receipt you keep.
+
+## Sources
+
+- [USCIS](https://www.uscis.gov/)
+
+This guide is educational only, not legal advice. Consult an attorney for your situation.
+`
+    const geometry = evaluateProseGeometry(content, { contentType: 'legal_guide', indexable: true })
+    const stuffed = geometry.findings.filter((f) => f.code === 'stuffed_primary_opener_severe')
+    expect(stuffed.length).toBeGreaterThanOrEqual(2)
+    expect(stuffed.every((f) => f.severity === 'blocker')).toBe(true)
+    const r = evaluateContentQuality({
+      content,
+      contentType: 'legal_guide',
+      primaryKeyword: 'h-1b visa',
+      indexable: true,
+    })
+    expect(r.blockers.some((b) => b.code === 'stuffed_primary_opener_severe')).toBe(true)
+    expect(r.ok).toBe(false)
   })
 })
