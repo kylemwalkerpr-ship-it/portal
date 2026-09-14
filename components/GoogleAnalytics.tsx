@@ -2,17 +2,12 @@
 
 /**
  * Google Analytics GA4 for market + portal (shared Next app).
- * Pattern mirrors yousafe-consultancy landing/usa/ca/uk/au/checkout layouts:
- * next/script gtag.js + inline config, afterInteractive.
- *
- * Differences vs static marketing hosts:
- * - measurement ID from NEXT_PUBLIC_GA_MEASUREMENT_ID (fallback G-FTKZCVNW4B)
- * - cross-domain linker for the estate
- * - send_page_view: false + client page_view on App Router navigations
+ * Analytics is opt-in: the Google tag is not requested until the visitor
+ * explicitly grants analytics consent in CookieConsentBanner.
  */
 
 import Script from 'next/script'
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
   buildGaBootScript,
@@ -20,6 +15,20 @@ import {
   getGaMeasurementId,
   trackPageView,
 } from '@/lib/analytics/ga4'
+
+const CONSENT_KEY = 'yousafe:cookie-consent'
+const CONSENT_EVENT = 'yousafe:cookie-consent-change'
+
+type Consent = 'granted' | 'denied' | null
+
+function readConsent(): Consent {
+  try {
+    const value = localStorage.getItem(CONSENT_KEY)
+    return value === 'granted' || value === 'denied' ? value : null
+  } catch {
+    return null
+  }
+}
 
 function GaRoutePageViews({ measurementId }: { measurementId: string }) {
   const pathname = usePathname()
@@ -36,10 +45,24 @@ function GaRoutePageViews({ measurementId }: { measurementId: string }) {
 
 export default function GoogleAnalytics() {
   const measurementId = getGaMeasurementId()
+  const [consent, setConsent] = useState<Consent>(null)
+
+  useEffect(() => {
+    setConsent(readConsent())
+
+    const onConsent = (event: Event) => {
+      const value = (event as CustomEvent<string>).detail
+      setConsent(value === 'granted' ? 'granted' : 'denied')
+    }
+
+    window.addEventListener(CONSENT_EVENT, onConsent)
+    return () => window.removeEventListener(CONSENT_EVENT, onConsent)
+  }, [])
+
+  if (consent !== 'granted') return null
 
   return (
     <>
-      {/* Google tag (gtag.js) — same estate property as consultancy hosts */}
       <Script src={gaTagSrc(measurementId)} strategy="afterInteractive" />
       <Script id="google-analytics" strategy="afterInteractive">
         {buildGaBootScript(measurementId)}
