@@ -69,6 +69,21 @@ function normalizedQuery(query?: string): string {
   return value.startsWith('?') ? value : `?${value}`
 }
 
+function normalizedFetchBody(
+  method: XaiTransportRequest['method'],
+  body: XaiTransportRequest['body'],
+): BodyInit | undefined {
+  if (method === 'GET' || body == null) return undefined
+  if (typeof body === 'string' || body instanceof ArrayBuffer) return body
+
+  // TypeScript's DOM definitions allow Uint8Array to be backed by
+  // SharedArrayBuffer, while fetch BodyInit requires ArrayBuffer-backed data.
+  // Copy into a fresh ArrayBuffer so server callers can pass Uint8Array safely.
+  const copy = new Uint8Array(body.byteLength)
+  copy.set(body)
+  return copy.buffer
+}
+
 function buildUpstreamHeaders(input: XaiTransportRequest, developerKey: boolean): Headers {
   const incoming = new Headers(input.headers)
   const headers = new Headers()
@@ -132,7 +147,7 @@ export async function forwardXaiRequest(
   const upstreamBase = xaiUpstreamBaseForToken(input.token)
   const headers = buildUpstreamHeaders(input, developerKey)
   const query = normalizedQuery(input.query)
-  const body = input.method === 'GET' ? undefined : input.body ?? undefined
+  const body = normalizedFetchBody(input.method, input.body)
 
   const upstream = await fetchImpl(`${upstreamBase}/${input.path}${query}`, {
     method: input.method,
