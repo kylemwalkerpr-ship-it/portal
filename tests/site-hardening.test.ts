@@ -30,4 +30,11 @@ describe('site hardening', () => {
     expect(footer).toContain('admin@yousafeconsultancy.com')
     expect(footer).toContain('https://usa.yousafeconsultancy.com/contact/')
   })
+
+  it('delivers responsive compressed images for marketplace discovery cards', () => {
+    const grid = read('components/marketplace/FeaturedBriefsGrid.tsx')
+    expect(grid).toContain("from '@/lib/responsiveImage'")
+    expect(grid).toContain('responsiveImageProps(g.cover_image_url')
+    expect(grid).toContain('responsiveImageProps(g.providerHeadshot')
+  })
 })
