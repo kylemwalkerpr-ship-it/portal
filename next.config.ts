@@ -12,12 +12,11 @@ const securityHeaders = [
   { key: 'Content-Security-Policy',   value: "frame-ancestors 'self'" },
 ]
 
-const legacyMarketplaceRedirects = ['market.yousafeconsultancy.com', 'portal.yousafeconsultancy.com'].map((host) => ({
+const legacyMarketplaceRedirects = [{
   source: '/marketplace/:path*',
-  has: [{ type: 'host' as const, value: host }],
   destination: 'https://market.yousafeconsultancy.com/:path*',
   permanent: true,
-}))
+}]
 
 // Phase-A-cleared Payhip products 10-36. Rewriting only these exact public
 // shop URLs leaves the already-shipped Batch-1 immigration pages untouched.
