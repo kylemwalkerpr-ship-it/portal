@@ -9,7 +9,10 @@ import type { SealedBrief } from './sealedBrief'
 import { validateSealedBrief } from './sealedBrief'
 import { buildOpportunityIdentity, type OpportunityIdentity } from './opportunityIdentity'
 
-export const WRITING_CONTRACT_VERSION = 2
+/** JSON payload schema/version. Contract versions themselves are per-job and monotonic. */
+export const WRITING_CONTRACT_SCHEMA_VERSION = 2
+/** Backward-compatible alias for callers that used the original constant as the V2 schema marker. */
+export const WRITING_CONTRACT_VERSION = WRITING_CONTRACT_SCHEMA_VERSION
 
 export type ContractEvidenceAuthority =
   | 'authoritative'
@@ -39,7 +42,9 @@ export type ContractSourceHealth = {
 }
 
 export type WritingContractV2 = {
+  schemaVersion: typeof WRITING_CONTRACT_SCHEMA_VERSION
   contractId: string
+  /** Immutable sequence for one job/opportunity. New editorial substance = new row/version. */
   contractVersion: number
   contractHash: string
   opportunity: OpportunityIdentity
@@ -68,6 +73,7 @@ export function hashContractPayload(payload: unknown): string {
 
 export function writingContractHashPayload(contract: Pick<
   WritingContractV2,
+  | 'schemaVersion'
   | 'contractVersion'
   | 'opportunity'
   | 'host'
@@ -82,6 +88,7 @@ export function writingContractHashPayload(contract: Pick<
   | 'requestedModel'
 >): Record<string, unknown> {
   return {
+    schemaVersion: contract.schemaVersion,
     contractVersion: contract.contractVersion,
     opportunity: contract.opportunity,
     host: contract.host,
@@ -99,8 +106,11 @@ export function writingContractHashPayload(contract: Pick<
 
 export function verifyWritingContract(contract: WritingContractV2): WritingContractValidation {
   const issues: string[] = []
-  if (contract.contractVersion !== WRITING_CONTRACT_VERSION) {
-    issues.push(`contractVersion: expected ${WRITING_CONTRACT_VERSION}, got ${contract.contractVersion}`)
+  if (contract.schemaVersion !== WRITING_CONTRACT_SCHEMA_VERSION) {
+    issues.push(`schemaVersion: expected ${WRITING_CONTRACT_SCHEMA_VERSION}, got ${contract.schemaVersion}`)
+  }
+  if (!Number.isInteger(contract.contractVersion) || contract.contractVersion < 1) {
+    issues.push('contractVersion: must be a positive integer')
   }
   if (!/^wc_[a-f0-9]{20}$/i.test(String(contract.contractId || ''))) {
     issues.push('contractId: malformed')
@@ -136,6 +146,7 @@ export function buildWritingContract(input: {
   researchRunId?: string
   requestedModel?: string
   jobId?: string
+  contractVersion?: number
   createdAt?: string
 }): WritingContractValidation {
   const issues = validateSealedBrief(input.brief, {
@@ -143,6 +154,11 @@ export function buildWritingContract(input: {
     contentType: input.contentType,
   })
   if (issues.length) return { ok: false, issues, contract: null }
+
+  const contractVersion = Number(input.contractVersion ?? 1)
+  if (!Number.isInteger(contractVersion) || contractVersion < 1) {
+    return { ok: false, issues: ['contractVersion: must be a positive integer'], contract: null }
+  }
 
   const opportunity = buildOpportunityIdentity({
     topic: input.opportunityTopic || input.primaryKeyword,
@@ -159,7 +175,8 @@ export function buildWritingContract(input: {
     researchGaps,
   })
   const body = {
-    contractVersion: WRITING_CONTRACT_VERSION,
+    schemaVersion: WRITING_CONTRACT_SCHEMA_VERSION,
+    contractVersion,
     opportunity,
     host: input.host,
     contentType: input.contentType,
@@ -173,10 +190,11 @@ export function buildWritingContract(input: {
     requestedModel: input.requestedModel || null,
   }
   const contractHash = hashContractPayload(body)
-  const contractId = `wc_${createHash('sha256').update(`${input.jobId || 'anon'}:${contractHash}`).digest('hex').slice(0, 20)}`
+  const contractId = `wc_${createHash('sha256').update(`${input.jobId || 'anon'}:${contractVersion}:${contractHash}`).digest('hex').slice(0, 20)}`
   const contract: WritingContractV2 = {
+    schemaVersion: WRITING_CONTRACT_SCHEMA_VERSION,
     contractId,
-    contractVersion: WRITING_CONTRACT_VERSION,
+    contractVersion,
     contractHash,
     opportunity,
     host: input.host,
