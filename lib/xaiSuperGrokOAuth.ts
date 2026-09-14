@@ -357,6 +357,35 @@ export function overlayGrokAuth(
   return next
 }
 
+/**
+ * Server-rejection recovery: xAI can invalidate an OAuth access token before
+ * its JWT/local expiry. When the subscription proxy returns HTTP 401, bypass
+ * the local freshness check and exchange the persisted refresh token once.
+ *
+ * Keep this separate from ensureSuperGrokAccessToken(): normal calls should
+ * continue using a locally-fresh access token without needless refreshes.
+ */
+export async function forceRefreshSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {
+  const settings = await getAiSettings(true)
+  const refresh = settings.xai_oauth_refresh_token?.trim() || ''
+  if (!refresh) return null
+  try {
+    const tokens = await refreshSuperGrokToken(refresh)
+    await persistTokens(tokens, 'oauth-401-refresh')
+    return {
+      accessToken: tokens.access_token,
+      expiresAt: tokens.expires_at,
+      authMode: 'supergrok',
+    }
+  } catch (err) {
+    console.warn(
+      '[superGrok] forced refresh after 401 failed',
+      err instanceof Error ? err.message : err,
+    )
+    return null
+  }
+}
+
 export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {
   const settings = await getAiSettings(true)
   const access = settings.xai_oauth_access_token?.trim() || ''
