@@ -192,6 +192,15 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     testFixture: 'tests/contentQualityPlaybook.test.ts#voice fixtures',
   }),
   def({
+    code: 'kit_hero_block', title: 'Spliced mill “how this differs” hero',
+    severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: 'all',
+    requirement: 'No kit hero (“How this differs from related pages” / “This guide focuses on {keyword} with a specific scope”).',
+    promptInstruction: 'Delete the kit block. Name neighbouring pages in one practitioner sentence with labeled markdown links. Do not restate the primary keyword as the page’s “scope”.',
+    evidence: 'contentQualityGate.evaluateContentQuality kit_hero_block scan',
+    shipEffect: 'block', evaluator: 'contentQualityGate.evaluateContentQuality',
+    testFixture: 'tests/content-quality-gate.test.ts#kit hero splice',
+  }),
+  def({
     code: 'ai_self_reference', title: 'Model self-reference in content',
     severity: 'blocker', owner: 'writer', repairClass: 'targeted_ai', appliesTo: 'all',
     requirement: 'No AI / language-model self-reference.',

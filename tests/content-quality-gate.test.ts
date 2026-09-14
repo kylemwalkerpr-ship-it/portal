@@ -84,6 +84,19 @@ describe('evaluateContentQuality', () => {
     ).toThrow(/Ship refused/)
   })
 
+  it('blocks the mill "How this differs / This guide focuses on" hero splice', () => {
+    const mill = guide(
+      '> **How this differs from related pages:** This guide focuses on **student visa documents** with a specific scope — it covers the step-by-step process, required documents, and practical timelines.',
+    )
+    const r = evaluateContentQuality({
+      content: mill,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.ok).toBe(false)
+    expect(r.blockers.some((b) => b.code === 'kit_hero_block')).toBe(true)
+  })
+
   it('allows a clear disclaimer that rejects outcome guarantees', () => {
     const safe = guide(
       'This guide does not guarantee visa approval. No adviser can guarantee an outcome, so you verify the current rules and prepare evidence carefully.',

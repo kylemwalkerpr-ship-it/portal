@@ -66,7 +66,9 @@ function looksLikeCompleteClaim(text: string): boolean {
   const t = String(text || '').replace(/\s+/g, ' ').trim()
   if (t.length > 240) return false
   const words = t.split(/\s+/).filter(Boolean)
-  return words.length >= 8
+  if (words.length < 8) return false
+  if (/^(that|this|it|these|those)\b/i.test(t)) return false
+  return true
 }
 
 function headingTokens(value: string): Set<string> {

@@ -164,6 +164,7 @@ describe('desk layout (Alma-grade, YouSafe voice)', () => {
     expect(lines).toMatch(/IN 60 SECONDS is the takeaways slot/)
     expect(lines).toMatch(/complete claims/)
     expect(lines).toMatch(/This section covers/)
+    expect(lines).toMatch(/This guide focuses on/)
     expect(lines).not.toMatch(/99%/)
   })
 
@@ -193,6 +194,28 @@ describe('sealed brief — no guesswork', () => {
     expect(parsed.issues.some((i) => /bridgeFrom/.test(i))).toBe(true)
     expect(parsed.issues.some((i) => /faqQuestions/.test(i))).toBe(true)
     expect(parsed.issues.some((i) => /unresolved/.test(i))).toBe(false)
+  })
+
+  it('rejects a takeaway that starts with That/This instead of a named actor', () => {
+    const parsed = parseSealedBrief(JSON.stringify({
+      thesis: 'You file an H-1B only after the LCA is certified and the packet is complete.',
+      takeaways: [
+        'That assesses a Student file from a complete ImmiAccount lodgement, not from a forum estimate.',
+        'Premium processing changes the wait, not the evidence bar.',
+        'A missing document at filing usually becomes a request for evidence, not an instant refusal.',
+      ],
+      lede: 'Answer whether the reader can file this season, then name the document that usually blocks the window.',
+      outline: [
+        { heading: 'Who this path is actually for', purpose: 'Constraint', bridgeFrom: '', coverTopics: ['specialty occupation'], format: 'prose' },
+        { heading: 'Documents you gather next', purpose: 'Named artefacts', bridgeFrom: 'Eligibility named who can file', coverTopics: ['labor condition'], format: 'bullets' },
+        { heading: 'Filing sequence', purpose: 'Numbered steps', bridgeFrom: 'The packet is complete', coverTopics: [], format: 'steps' },
+        { heading: 'Costs and timing', purpose: 'Window', bridgeFrom: 'The sequence is filed', coverTopics: [], format: 'table' },
+      ],
+      faqQuestions: ['What happens if a required document is missing at filing?'],
+      unresolved: [],
+    }))
+    expect(parsed.ok).toBe(false)
+    expect(parsed.issues.some((i) => /takeaways\[0\]/.test(i))).toBe(true)
   })
 
   it('accepts complete claims, bridges, and FAQ that does not echo H2s', () => {

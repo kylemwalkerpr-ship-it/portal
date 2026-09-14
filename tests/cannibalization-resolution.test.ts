@@ -3,7 +3,7 @@
  *
  * Locks four guarantees:
  *  1. Quality gate detects cannibalization (exact match, high overlap, low overlap).
- *  2. Deterministic repair narrows H1 + adds differentiation note for exact matches.
+ *  2. Deterministic repair adds a practitioner neighbouring-pages sentence (same-country links).
  *  3. Planner checkCompetingPages guards the Research stage before greenlighting.
  *  4. Low-overlap pages are flagged as warnings, not blockers — safe intent
  *     differentiation is sufficient for the admin to approve.
@@ -160,7 +160,7 @@ describe('Cannibalization quality gate detection', () => {
 // ── 2. Deterministic repair — differentiation ──────────────────────────
 
 describe('Cannibalization deterministic repair', () => {
-  it('narrows H1 with a qualifier for exact keyword match', () => {
+  it('does not mill-suffix the H1; neighbouring pages become labeled links', () => {
     const d = draft({
       title: 'F-1 Visa Application Guide',
       primaryKeyword: 'f-1 visa application',
@@ -179,11 +179,14 @@ describe('Cannibalization deterministic repair', () => {
       ],
       targetUrl: 'https://legal.yousafeconsultancy.com/us/f1-visa-new',
     })
-    expect(r.applied).toContain('cannibal_h1_narrowed')
-    // H1 should now have a qualifier
-    // The H1 should now have a qualifier anywhere in the content (using
-    // the multiline flag because the full output includes front matter).
-    expect(r.content).toMatch(/^#\s+F-1 Visa Application Guide —/m)
+    expect(r.applied).not.toContain('cannibal_h1_narrowed')
+    expect(r.content).toMatch(/^#\s+F-1 Visa Application Guide\s*$/m)
+    expect(r.content).not.toMatch(/Step-by-Step Guide|Complete Overview for Applicants/)
+    expect(r.applied).toContain('cannibal_differentiation_note')
+    expect(r.content).toContain('Neighbouring pages on this estate answer adjacent questions')
+    expect(r.content).toContain('[F-1 Visa Application Guide](https://legal.yousafeconsultancy.com/us/f1-visa-application)')
+    expect(r.content).not.toContain('This guide focuses on')
+    expect(r.content).not.toContain('How this differs from related pages')
   })
 
   it('adds differentiation note for high overlap', () => {
@@ -206,8 +209,37 @@ describe('Cannibalization deterministic repair', () => {
       targetUrl: 'https://legal.yousafeconsultancy.com/us/f1-docs-checklist',
     })
     expect(r.applied).toContain('cannibal_differentiation_note')
-    expect(r.content).toContain('How this differs from related pages')
+    expect(r.content).toContain('Neighbouring pages on this estate answer adjacent questions')
     expect(r.content).toContain('legal.yousafeconsultancy.com/us/f1-visa-documents')
+    expect(r.content).not.toContain('How this differs from related pages')
+  })
+
+  it('does not splice a US page onto an AU lodgement clock', () => {
+    const d = draft({
+      title: 'Australia Student Visa Processing Time',
+      primaryKeyword: 'australia student visa processing time',
+    })
+    const r = applyDeterministicRepairs({
+      content: d,
+      title: 'Australia Student Visa Processing Time',
+      primaryKeyword: 'australia student visa processing time',
+      region: 'AU',
+      competingUrls: [
+        {
+          url: 'https://legal.yousafeconsultancy.com/us/us-student-visa-interview-preparation-checklist',
+          title: 'US student visa interview',
+          primaryKeyword: 'australia student visa processing time',
+        },
+        {
+          url: 'https://legal.yousafeconsultancy.com/au/temporary-graduate-485-checklist',
+          title: 'Temporary Graduate 485 checklist',
+          primaryKeyword: 'australia student visa processing time',
+        },
+      ],
+      targetUrl: 'https://legal.yousafeconsultancy.com/au/australia-student-visa-processing-time',
+    })
+    expect(r.content).toContain('temporary-graduate-485-checklist')
+    expect(r.content).not.toContain('us-student-visa-interview')
   })
 
   it('does NOT modify content when competingUrls is empty', () => {
@@ -368,6 +400,6 @@ describe('Scaffold roundtrip — repair clears gate warning', () => {
     // The exact match still flags (correctly — the primary keyword hasn't changed)
     // but the content is now differentiated
     expect(afterCannibal.length).toBe(1)
-    expect(repaired.content).toContain('How this differs')
+    expect(repaired.content).toContain('Neighbouring pages on this estate answer adjacent questions')
   })
 })

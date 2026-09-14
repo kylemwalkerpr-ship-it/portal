@@ -27,5 +27,6 @@ export function deskLayoutPromptBlock(contentType?: string | null): string[] {
       : '- Close once. A short educational disclaimer if YMYL-adjacent. Do not force FAQ, TOC, or In 60 seconds on blogs.',
     '- FAQ questions are genuine reader worries (missing document, filing while current permission is valid, what an RFE means). Never paste an H2 into the question.',
     '- Do not write mill openers ("In today\'s fast-paced…", "This section covers…", "Everything you need to know").',
+    '- Do not splice a kit hero ("How this differs from related pages", "This guide focuses on {keyword} with a specific scope, it covers the step-by-step process"). Neighbouring pages belong in one labeled sentence, same country path only.',
   ]
 }

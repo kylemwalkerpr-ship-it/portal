@@ -108,6 +108,7 @@ export const DESK_GATE_CODES = [
   'ahrefs_title_too_short',
   'ahrefs_title_too_long',
   'title_filler',
+  'kit_hero_block',
 ] as const
 
 const GUIDE_GATE_CODES = [
@@ -684,7 +685,10 @@ function dim(id: ReflectionDimensionId, weight: number, score: number, note: str
 function isCompleteClaim(text: string): boolean {
   const t = String(text || '').replace(/\s+/g, ' ').trim()
   if (t.length > 240) return false
-  return t.split(/\s+/).filter(Boolean).length >= 8
+  const words = t.split(/\s+/).filter(Boolean)
+  if (words.length < 8) return false
+  if (/^(that|this|it|these|those)\b/i.test(t)) return false
+  return true
 }
 
 function faqEchoes(question: string, heading: string): boolean {
