@@ -27,6 +27,13 @@ import {
   runbiosSlot,
   RUNBIOS_SLOTS,
 } from './runbiosCatalog'
+import {
+  decodeJwtSubject,
+  grokInferenceBaseUrl,
+  isXaiDeveloperApiKey,
+  superGrokProxyHeaders,
+  XAI_CLI_CHAT_PROXY_BASE_URL,
+} from './xaiGrokTransport'
 
 const CF_AI_MODEL =
   process.env.CLOUDFLARE_AI_MODEL?.trim() ||
@@ -629,7 +636,7 @@ function formatProviderFailure(label: string, status: number, body: string): str
     return `${label} ${status}: xAI developer API billing or credit limit reached; check xAI API billing/credits`
   }
   if (grokFailure && status === 522) {
-    return `${label} ${status}: SuperGrok subscription proxy timed out before xAI returned a result; this is a transport timeout, not proof that OAuth is disconnected or that a quota reset is required`
+    return `${label} ${status}: Grok upstream timed out before a result returned; this is a transport timeout, not proof that OAuth is disconnected or that a quota reset is required`
   }
   if (isDailyQuotaError(body)) {
     return `${label} ${status}: daily Workers AI free allocation exhausted; retry after the UTC quota reset or configure paid Workers AI`
@@ -1218,58 +1225,130 @@ function grokAuthHeader(): { apiKey: string; baseURL: string } {
   }
   return {
     apiKey,
-    baseURL: validBaseUrl(env('XAI_BASE_URL'), 'https://api.x.ai/v1'),
+    baseURL: grokInferenceBaseUrl(apiKey, env('XAI_BASE_URL')),
   }
+}
+
+const GROK_STUDIO_CONV_ID = 'yousafe-content-studio'
+
+function grokRequestHeaders(
+  apiKey: string,
+  model: string,
+  opts: { stream?: boolean; cliProxy?: boolean },
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    'x-grok-conv-id': GROK_STUDIO_CONV_ID,
+  }
+  if (opts.stream) headers.Accept = 'text/event-stream'
+  if (opts.cliProxy) {
+    Object.assign(headers, superGrokProxyHeaders(model))
+    const userId = decodeJwtSubject(apiKey)
+    if (userId) {
+      headers['x-userid'] = userId
+      headers['x-grok-user-id'] = userId
+    }
+  }
+  return headers
+}
+
+/** api.x.ai treated a SuperGrok session as a metered team key — try CLI proxy. */
+function shouldFallbackToCliProxy(status: number, body: string, apiKey: string): boolean {
+  if (isXaiDeveloperApiKey(apiKey)) return false
+  if (!isSuperGrokSubscriptionMode()) return false
+  if (isGrokBuildUsageExhausted(body)) return false
+  if (status !== 402 && status !== 403) return false
+  return /personal-team-blocked|spending-limit|used all available credits|monthly spending|purchase more credits/i.test(body)
 }
 
 /**
  * SuperGrok / Grok 4.6 primary transport: xAI Responses API.
  * Chat Completions is a fallback only — OAuth subscription tokens and
  * grok-4.6 reasoning output land on /v1/responses, not /chat/completions.
+ *
+ * SuperGrok calls api.x.ai directly (YQAA parity). The Portal self-shim is
+ * not on the happy path. A 401 force-refreshes the session once; a 402/403
+ * "personal-team-blocked" retries cli-chat-proxy directly from the Worker
+ * (never via the public Portal hostname).
  */
-async function grokResponsesFetch(
+async function grokOpenResponses(
   opts: ContentAiOptions,
   userContent: string,
-): Promise<{ text: string; finishReason?: string | null; model: string }> {
-  const { apiKey, baseURL } = grokAuthHeader()
+  stream: boolean,
+): Promise<{ res: Response; model: string }> {
+  let { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
   const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort, { disableThinking: opts.disableThinking })
   const timeoutMs = opts.strictTimeout && opts.timeoutMs != null
     ? Math.max(2_000, opts.timeoutMs)
     : Math.max(
       opts.timeoutMs ?? 0,
-      deadlineForProvider('grok', opts.timeoutMs),
+      deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true),
       Number.parseInt(process.env.CONTENT_AI_FETCH_TIMEOUT_MS || '180000', 10) || 180_000,
     )
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let res: Response
-  try {
-    res = await fetch(`${baseURL}/responses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        input: [
-          { role: 'system', content: opts.system },
-          { role: 'user', content: userContent },
-        ],
-        store: false,
-        max_output_tokens: limits.maxOutputTokens,
-        reasoning: { effort: limits.reasoningEffort },
-      }),
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timer)
+  const payload: Record<string, unknown> = {
+    model,
+    input: [
+      { role: 'system', content: opts.system },
+      { role: 'user', content: userContent },
+    ],
+    store: false,
+    max_output_tokens: limits.maxOutputTokens,
+    reasoning: { effort: limits.reasoningEffort },
   }
+  if (stream) payload.stream = true
+  const body = JSON.stringify(payload)
+
+  const post = async (urlBase: string, key: string, cliProxy: boolean) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      return await fetch(`${urlBase}/responses`, {
+        method: 'POST',
+        headers: grokRequestHeaders(key, model, { stream, cliProxy }),
+        body,
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  let res = await post(baseURL, apiKey, false)
+
+  if (res.status === 401 && isSuperGrokSubscriptionMode() && !isXaiDeveloperApiKey(apiKey)) {
+    const { forceRefreshSuperGrokAccessToken, overlayGrokAuth } = await import('@/lib/xaiSuperGrokOAuth')
+    const refreshed = await forceRefreshSuperGrokAccessToken()
+    if (refreshed?.accessToken) {
+      try { await res.body?.cancel() } catch { /* best effort */ }
+      apiKey = refreshed.accessToken
+      const overlay = { ...(vaultOverlay || {}) }
+      setVaultOverlay(overlayGrokAuth(overlay, refreshed))
+      res = await post(baseURL, apiKey, false)
+    }
+  }
+
   if (!res.ok) {
     const errBody = await res.text().catch(() => '')
+    if (shouldFallbackToCliProxy(res.status, errBody, apiKey)) {
+      res = await post(XAI_CLI_CHAT_PROXY_BASE_URL, apiKey, true)
+      if (!res.ok) {
+        const proxyBody = await res.text().catch(() => '')
+        throw new Error(formatProviderFailure('grok', res.status, proxyBody))
+      }
+      return { res, model }
+    }
     throw new Error(formatProviderFailure('grok', res.status, errBody))
   }
+  return { res, model }
+}
+
+async function grokResponsesFetch(
+  opts: ContentAiOptions,
+  userContent: string,
+): Promise<{ text: string; finishReason?: string | null; model: string }> {
+  const { res, model } = await grokOpenResponses(opts, userContent, false)
   const json = await res.json() as Record<string, unknown>
   const text = extractResponsesText(json)
   const status = typeof json.status === 'string' ? json.status : null
@@ -1284,42 +1363,10 @@ async function grokResponsesFetch(
 }
 
 async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
-  const { apiKey, baseURL } = grokAuthHeader()
   const model = grokModelId(opts)
   const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort, { disableThinking: opts.disableThinking })
-  const timeoutMs = deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true)
   yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let res: Response
-  try {
-    res = await fetch(`${baseURL}/responses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify({
-        model,
-        input: [
-          { role: 'system', content: opts.system },
-          { role: 'user', content: opts.prompt },
-        ],
-        store: false,
-        stream: true,
-        max_output_tokens: limits.maxOutputTokens,
-        reasoning: { effort: limits.reasoningEffort },
-      }),
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timer)
-  }
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '')
-    throw new Error(formatProviderFailure('grok', res.status, errBody))
-  }
+  const { res } = await grokOpenResponses(opts, opts.prompt, true)
   if (!res.body) throw new Error('grok stream returned no body')
   let full = ''
   const reader = res.body.getReader()
@@ -2723,7 +2770,7 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
   if (isGrokConfigured()) {
     out.push({
       label: 'grok',
-      baseURL: validBaseUrl(env('XAI_BASE_URL'), 'https://api.x.ai/v1'),
+      baseURL: grokInferenceBaseUrl(env('XAI_API_KEY'), env('XAI_BASE_URL')),
       apiKey: env('XAI_API_KEY'),
       model: env('XAI_MODEL') || 'grok-4.6',
     })

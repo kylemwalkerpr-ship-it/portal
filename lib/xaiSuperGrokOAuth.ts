@@ -3,8 +3,9 @@
  *
  * Authenticates Grok using the official xAI device-code flow (auth.x.ai) —
  * the same subscription login used by Grok CLI / Grok Build. OAuth session
- * inference is routed through the Grok subscription transport; developer
- * `xai-...` API keys remain a separate metered fallback.
+ * inference uses the public Responses API at api.x.ai/v1 — the same path
+ * YQAA already succeeds on. Developer `xai-...` API keys remain a separate
+ * metered fallback.
  *
  * Tokens live in ai_settings (admin DB) and are refreshed before generation.
  * Same precedence as Grok CLI (`~/.grok/auth.json`): a live SuperGrok session
@@ -19,7 +20,6 @@ import {
 } from '@/lib/aiKeyVault'
 import {
   XAI_PUBLIC_API_BASE_URL,
-  xaiGrokRouterBaseUrl,
 } from '@/lib/xaiGrokTransport'
 
 /** Public Grok CLI / Grok Build client — same id OpenClaw and Hermes use. */
@@ -338,6 +338,10 @@ export async function refreshSuperGrokToken(refreshToken: string): Promise<Token
 /**
  * Grok CLI parity: interactive SuperGrok session wins over a console API key.
  * `XAI_API_KEY` (Worker secret / vault `xai-…` key) is fallback only.
+ *
+ * Inference uses the same public Responses API YQAA already succeeds on
+ * (`api.x.ai/v1`). Do not route SuperGrok through the Portal self-hosted
+ * CLI shim — that hop 522/401/426'd while YQAA kept working on this URL.
  */
 export function overlayGrokAuth(
   overlay: Record<string, string>,
@@ -347,10 +351,7 @@ export function overlayGrokAuth(
   const next = { ...overlay }
   next.XAI_API_KEY = oauth.accessToken
   next.XAI_AUTH_MODE = 'supergrok'
-  // OAuth is a subscription-session credential. Always route it through the
-  // Portal transport shim so the Grok CLI proxy receives its required client
-  // headers; never inherit a developer-api XAI_BASE_URL from a vault/env row.
-  next.XAI_BASE_URL = xaiGrokRouterBaseUrl()
+  next.XAI_BASE_URL = XAI_PUBLIC_API_BASE_URL
   // A stale provider-row model must not drag a newly connected subscription
   // back to an older model pin.
   next.XAI_MODEL = XAI_DEFAULT_MODEL

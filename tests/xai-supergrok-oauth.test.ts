@@ -144,6 +144,8 @@ describe('SuperGrok OAuth helpers', () => {
     )
     expect(next.XAI_API_KEY).toBe('oauth-session-token')
     expect(next.XAI_AUTH_MODE).toBe('supergrok')
+    expect(next.XAI_BASE_URL).toBe('https://api.x.ai/v1')
+    expect(next.XAI_BASE_URL).not.toMatch(/api\/internal\/xai-grok/)
     expect(overlayGrokAuth({ XAI_API_KEY: 'xai-team-console-key' }, null).XAI_API_KEY).toBe('xai-team-console-key')
   })
 })

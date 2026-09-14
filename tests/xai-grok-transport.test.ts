@@ -1,5 +1,7 @@
 import {
   decodeJwtSubject,
+  grokInferenceBaseUrl,
+  isPortalGrokSelfShimUrl,
   isXaiDeveloperApiKey,
   superGrokProxyHeaders,
   XAI_CLI_CHAT_PROXY_BASE_URL,
@@ -14,9 +16,26 @@ describe('xAI Grok transport routing', () => {
     expect(xaiUpstreamBaseForToken('xai-team-key')).toBe(XAI_PUBLIC_API_BASE_URL)
   })
 
-  it('routes OAuth session tokens through the Grok CLI subscription proxy', () => {
+  it('routes OAuth session tokens through the Grok CLI subscription proxy only as a last-resort upstream', () => {
     expect(isXaiDeveloperApiKey('eyJ.oauth.jwt')).toBe(false)
     expect(xaiUpstreamBaseForToken('eyJ.oauth.jwt')).toBe(XAI_CLI_CHAT_PROXY_BASE_URL)
+  })
+
+  it('sends SuperGrok inference to api.x.ai like YQAA, never the Portal self-shim', () => {
+    expect(grokInferenceBaseUrl('oauth-session-token')).toBe(XAI_PUBLIC_API_BASE_URL)
+    expect(grokInferenceBaseUrl(
+      'oauth-session-token',
+      'https://portal.yousafeconsultancy.com/api/internal/xai-grok',
+    )).toBe(XAI_PUBLIC_API_BASE_URL)
+    expect(isPortalGrokSelfShimUrl('https://portal.yousafeconsultancy.com/api/internal/xai-grok/responses')).toBe(true)
+  })
+
+  it('rewrites a leftover Portal self-shim URL even for developer keys', () => {
+    expect(grokInferenceBaseUrl('xai-team-key', 'https://api.x.ai/v1')).toBe(XAI_PUBLIC_API_BASE_URL)
+    expect(grokInferenceBaseUrl(
+      'xai-team-key',
+      'https://portal.yousafeconsultancy.com/api/internal/xai-grok',
+    )).toBe(XAI_PUBLIC_API_BASE_URL)
   })
 
   it('sends the client metadata required by the subscription proxy', () => {
