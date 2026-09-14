@@ -1,5 +1,13 @@
 import * as core from './renderTargetCore'
-import { currentPublicationMarker, injectRevisionMarkerIntoRenderedFile } from './publicationProof'
+import {
+  buildExpectedRevisionMarker,
+  currentPublicationMarker,
+  injectRevisionMarkerIntoRenderedFile,
+} from './publicationProof'
+import {
+  currentContentStudioExecution,
+  recordPublicationMarker,
+} from './contentStudioExecutionContext'
 
 export type BlogPostEntry = core.BlogPostEntry
 export const buildBlogPostEntry = core.buildBlogPostEntry
@@ -14,8 +22,17 @@ export function renderTargetFile(
   opts: Parameters<typeof core.renderTargetFile>[0],
 ): ReturnType<typeof core.renderTargetFile> {
   const rendered = core.renderTargetFile(opts)
-  const marker = currentPublicationMarker()
+  const execution = currentContentStudioExecution()
+  let marker = currentPublicationMarker()
+  if (!marker && execution?.strict && execution.contractId && execution.contractHash) {
+    marker = buildExpectedRevisionMarker({
+      contractId: execution.contractId,
+      contractHash: execution.contractHash,
+      content: opts.content,
+    })
+  }
   if (!marker) return rendered
+  recordPublicationMarker(marker)
   return {
     ...rendered,
     fileContent: injectRevisionMarkerIntoRenderedFile(rendered.fileContent, marker),
