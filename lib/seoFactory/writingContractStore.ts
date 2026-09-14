@@ -5,6 +5,7 @@ import {
   verifyWritingContract,
   type WritingContractV2,
 } from './writingContract'
+import { verifyContractEvidenceRows } from './researchEvidenceStore'
 import {
   buildOpportunityIdentity,
   type OpportunityAction,
@@ -125,6 +126,13 @@ export async function loadWritingContract(
   if (!verified.ok || !verified.contract) {
     throw new WritingContractMismatchError(`stored writing contract failed verification: ${verified.issues.join('; ')}`)
   }
+  try {
+    await verifyContractEvidenceRows(db, verified.contract.evidence || [])
+  } catch (error) {
+    throw new WritingContractMismatchError(
+      `stored writing contract evidence failed verification: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
   return verified.contract
 }
 
@@ -149,6 +157,7 @@ export async function attachWritingContractToJob(
       execution_stage: 'brief_ready',
     })
     .eq('id', jobId)
+    .eq('opportunity_id', contract.opportunity.id)
   if (result.error) throw new Error(`failed to attach writing contract to job: ${result.error.message}`)
 }
 
@@ -190,6 +199,8 @@ export type OpportunityReservation = {
   jobId: string
   identity: OpportunityIdentity
   reused: boolean
+  /** Only the execution that inserted the row may release the pre-contract reservation. */
+  ownsReservation: boolean
 }
 
 export async function reserveOpportunityJob(
@@ -220,7 +231,7 @@ export async function reserveOpportunityJob(
 
   const inserted = await db.from('content_jobs').insert(row).select('id').single()
   if (!inserted.error && inserted.data?.id) {
-    return { jobId: String(inserted.data.id), identity, reused: false }
+    return { jobId: String(inserted.data.id), identity, reused: false, ownsReservation: true }
   }
 
   if (inserted.error && (inserted.error.code === '23505' || /duplicate|unique/i.test(inserted.error.message || ''))) {
@@ -233,7 +244,9 @@ export async function reserveOpportunityJob(
       .limit(1)
       .maybeSingle()
     if (existing.error) throw new Error(`opportunity reservation lookup failed: ${existing.error.message}`)
-    if (existing.data?.id) return { jobId: String(existing.data.id), identity, reused: true }
+    if (existing.data?.id) {
+      return { jobId: String(existing.data.id), identity, reused: true, ownsReservation: false }
+    }
   }
 
   throw new Error(`opportunity reservation failed: ${inserted.error?.message || 'no job id returned'}`)
@@ -244,10 +257,18 @@ export async function releaseOpportunityReservation(
   input: {
     jobId: string
     reason: string
+    opportunityId: string
+    ownsReservation: boolean
+    contractId?: string | null
+    contractHash?: string | null
+    expectedStage?: string | null
     executionStage?: 'needs_research' | 'brief_invalid' | 'revision_required' | 'verification_failed'
   },
-): Promise<void> {
-  const result = await db
+): Promise<boolean> {
+  // A duplicate contender discovered the active row but never owned it.
+  if (!input.ownsReservation) return false
+
+  let query = db
     .from('content_jobs')
     .update({
       status: 'failed',
@@ -255,6 +276,15 @@ export async function releaseOpportunityReservation(
       error_message: input.reason.slice(0, 1000),
     })
     .eq('id', input.jobId)
+    .eq('opportunity_id', input.opportunityId)
     .in('status', [...ACTIVE_OPPORTUNITY_STATUSES])
+
+  if (input.contractId) query = query.eq('contract_id', input.contractId)
+  else query = query.is('contract_id', null)
+  if (input.contractHash) query = query.eq('contract_hash', input.contractHash)
+  if (input.expectedStage) query = query.eq('execution_stage', input.expectedStage)
+
+  const result = await query.select('id').maybeSingle()
   if (result.error) throw new Error(`failed to release opportunity reservation: ${result.error.message}`)
+  return Boolean(result.data?.id)
 }
