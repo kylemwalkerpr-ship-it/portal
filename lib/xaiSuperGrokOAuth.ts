@@ -60,6 +60,23 @@ export interface SuperGrokStatus {
   interval: number | null
   model: string
   clientConfigured: boolean
+  operationalState?: SuperGrokOperationalState
+}
+
+export type SuperGrokOperationalState =
+  | 'disconnected'
+  | 'connected-unverified'
+  | 'healthy'
+  | 'degraded'
+
+export function superGrokOperationalState(input: {
+  connected: boolean
+  probeOk: boolean | null
+}): SuperGrokOperationalState {
+  if (!input.connected) return 'disconnected'
+  if (input.probeOk === true) return 'healthy'
+  if (input.probeOk === false) return 'degraded'
+  return 'connected-unverified'
 }
 
 export interface SuperGrokAccess {
@@ -203,6 +220,7 @@ export async function getSuperGrokStatus(): Promise<SuperGrokStatus> {
       ? XAI_DEFAULT_MODEL
       : settings.default_model?.trim() || process.env.XAI_MODEL?.trim() || XAI_DEFAULT_MODEL,
     clientConfigured: Boolean(xaiOAuthClientId()),
+    operationalState: superGrokOperationalState({ connected, probeOk: null }),
   }
 }
 

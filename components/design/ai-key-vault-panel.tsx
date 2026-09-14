@@ -68,6 +68,7 @@ interface GrokOAuthStatus {
   expiresAt?: number | null
   interval?: number | null
   error?: string
+  operationalState?: 'disconnected' | 'connected-unverified' | 'healthy' | 'degraded'
 }
 
 interface Draft {
@@ -355,7 +356,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         await load()
         onChanged?.()
       } else if (j.connected) {
-        setNote({ ok: true, text: 'SuperGrok connected. Grok is now the studio fallback.' })
+        setNote({ ok: true, text: 'SuperGrok OAuth connected. Run Test to verify live inference before relying on Grok.' })
         await load()
         onChanged?.()
       } else if (j.error) {
@@ -772,6 +773,15 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                         {grokOAuth.verificationUri || 'accounts.x.ai/device'}
                       </a>
                       {' '}— waiting for approval…
+                    </div>
+                  )}
+                  {grokOAuth?.connected && (
+                    <div style={{ fontSize: 9.5, fontWeight: 700, color: probing?.startsWith('ok') ? C.green : probing?.startsWith('failed') || probing === 'request failed' ? C.red : C.violet, marginBottom: 6 }}>
+                      OAuth connected · {probing?.startsWith('ok')
+                        ? 'inference healthy'
+                        : probing?.startsWith('failed') || probing === 'request failed'
+                          ? 'inference degraded — see test result below'
+                          : 'inference unverified — press Test'}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>

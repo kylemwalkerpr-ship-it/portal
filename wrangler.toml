@@ -1,7 +1,11 @@
 name = "yousafe-portal"
 main = ".open-next/worker.js"
 compatibility_date = "2026-05-12"
-compatibility_flags = ["nodejs_compat"]
+# SuperGrok OAuth inference intentionally enters the Portal-owned HTTP shim on
+# this same Custom Domain so the shim can translate subscription SSE into the
+# existing blocking JSON contract. Cloudflare otherwise returns 522 when a
+# Custom-Domain Worker fetches its own hostname.
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 minify = true
 
 # ── CPU & Subrequest Limits ─────────────────────────────────────────────
