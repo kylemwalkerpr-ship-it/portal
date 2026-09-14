@@ -6,9 +6,11 @@
 import { countBodyWords } from './contentDepth'
 import { validateRevisionQuality, type RevisionValidation } from './revisionQuality'
 import type { SeoFactoryAudit } from './audit'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 const QUALIFICATION = /\b(unless|except|only if|does not|cannot|not eligible|subject to|provided that|except when|except where)\b/i
 const AMOUNT = /\b(?:\$?\d[\d,]*(?:\.\d+)?|\d+\s?(?:usd|cad|gbp|aud|days?|weeks?|months?|years?|hours?))\b/gi
+const DATE = /\b(?:20\d{2}-\d{2}-\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*20\d{2})?|\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+20\d{2})\b/gi
 
 export function acceptRewriteCandidate(input: {
   previous: string
@@ -16,6 +18,7 @@ export function acceptRewriteCandidate(input: {
   previousAudit?: SeoFactoryAudit | null
   nextAudit?: SeoFactoryAudit | null
   requiredKeywords?: string[]
+  keywordTerms?: KeywordTerm[]
   minWords?: number
   maxWords?: number
 }): RevisionValidation {
@@ -25,11 +28,11 @@ export function acceptRewriteCandidate(input: {
   const prevWords = countBodyWords(input.previous)
   const nextWords = countBodyWords(input.next)
   if (nextWords < 40) return { ok: false, reason: 'rewrite shorter than 40 words' }
-  if (input.minWords != null && nextWords < input.minWords * 0.7) {
+  if (input.minWords != null && nextWords < input.minWords) {
     return { ok: false, reason: `rewrite below contract word bound (${nextWords} < ${input.minWords})` }
   }
-  if (input.maxWords != null && nextWords > input.maxWords * 1.15) {
-    return { ok: false, reason: 'rewrite exceeded contract word bound' }
+  if (input.maxWords != null && nextWords > input.maxWords) {
+    return { ok: false, reason: `rewrite exceeded contract word bound (${nextWords} > ${input.maxWords})` }
   }
   if (prevWords >= 800 && nextWords < prevWords * 0.7) {
     return { ok: false, reason: 'rewrite dropped more than 30% of an established article' }
@@ -40,8 +43,11 @@ export function acceptRewriteCandidate(input: {
     return { ok: false, reason: `rewrite removed a qualification or exception: ${lostQualification}` }
   }
 
-  const lostAmount = lostAmounts(input.previous, input.next)
-  if (lostAmount) return { ok: false, reason: `rewrite changed or dropped an amount: ${lostAmount}` }
+  const lostAmount = lostValues(input.previous, input.next, AMOUNT)
+  if (lostAmount) return { ok: false, reason: `rewrite changed or dropped an amount/duration: ${lostAmount}` }
+
+  const lostDate = lostValues(input.previous, input.next, DATE)
+  if (lostDate) return { ok: false, reason: `rewrite changed or dropped a date: ${lostDate}` }
 
   const lostCitation = lostCitations(input.previous, input.next)
   if (lostCitation) return { ok: false, reason: `rewrite dropped a required citation: ${lostCitation}` }
@@ -57,6 +63,7 @@ export function acceptRewriteCandidate(input: {
     original: input.previous,
     revised: input.next,
     requiredKeywords: input.requiredKeywords || [],
+    keywordTerms: input.keywordTerms,
   })
 }
 
@@ -73,12 +80,14 @@ export function lostQualificationClauses(previous: string, next: string): string
   return null
 }
 
-function lostAmounts(previous: string, next: string): string | null {
-  const prev = new Set((previous.match(AMOUNT) || []).map((v) => v.toLowerCase()))
+function lostValues(previous: string, next: string, pattern: RegExp): string | null {
+  pattern.lastIndex = 0
+  const prev = new Set((previous.match(pattern) || []).map((v) => v.toLowerCase()))
+  pattern.lastIndex = 0
   if (!prev.size) return null
-  const nextSet = new Set((next.match(AMOUNT) || []).map((v) => v.toLowerCase()))
-  for (const amount of prev) {
-    if (!nextSet.has(amount)) return amount
+  const nextSet = new Set((next.match(pattern) || []).map((v) => v.toLowerCase()))
+  for (const value of prev) {
+    if (!nextSet.has(value)) return value
   }
   return null
 }
