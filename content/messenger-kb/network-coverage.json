@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-13T08:21:51.145Z",
+  "generatedAt": "2026-09-14T09:00:26.822Z",
   "status": "healthy",
   "requiredMarkets": [
     "United States",
@@ -52,7 +52,7 @@
       "id": "caseworks",
       "repository": "kylemwalkerpr-ship-it/caseworks",
       "base": "https://legal.yousafeconsultancy.com",
-      "records": 453,
+      "records": 424,
       "required": true,
       "problems": []
     },
@@ -86,7 +86,7 @@
     },
     {
       "repository": "kylemwalkerpr-ship-it/caseworks",
-      "records": 453,
+      "records": 424,
       "localCore": false
     },
     {
