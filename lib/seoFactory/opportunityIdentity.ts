@@ -1,6 +1,7 @@
 /**
  * Stable opportunity identity. Exact keyword folding is not enough:
- * US I-485 and AU subclass 485 must remain distinct.
+ * US I-485 and AU subclass 485 must remain distinct, and different reader
+ * decisions on the same form/visa (renewal vs OPT timing) must not collide.
  */
 
 import { createHash } from 'crypto'
@@ -19,9 +20,13 @@ export type OpportunityIdentity = {
   entityKey: string
   jurisdiction: string
   audienceStage: string
+  readerIntent: string
 }
 
-const STOP = new Set(['a', 'an', 'and', 'for', 'from', 'how', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'what', 'with', 'guide'])
+const STOP = new Set([
+  'a', 'an', 'and', 'for', 'from', 'how', 'in', 'is', 'of', 'on', 'or', 'the',
+  'to', 'what', 'with', 'guide', 'visa', 'form', 'application',
+])
 
 export function normalizeIntentText(value: string): string {
   return String(value || '')
@@ -53,19 +58,38 @@ export function extractEntityKey(text: string): string {
   return tokens.slice(0, 6).join('-') || 'unspecified'
 }
 
+const ENTITY_STRIP = /\b(i-?485|form i-?485|adjustment of status|subclass\s*485|temporary graduate|f-?1|h-?1b|uscis|ircc|ukvi|visa)\b/gi
+
+/**
+ * The reader's actual decision, distinct from the legal entity.
+ * "F-1 visa renewal" and "F-1 OPT application timing" must not share an id.
+ */
+export function extractReaderIntent(text: string): string {
+  const cleaned = normalizeIntentText(String(text || '').replace(ENTITY_STRIP, ' '))
+  const tokens = cleaned.split(' ').filter((token) => token.length > 2 && !STOP.has(token))
+  return tokens.slice(0, 8).join('-') || 'unspecified-decision'
+}
+
 export function buildOpportunityIdentity(input: {
   topic: string
   jurisdiction?: string
   audienceStage?: string
+  action?: OpportunityAction
 }): OpportunityIdentity {
   const jurisdiction = extractJurisdiction(input.topic, input.jurisdiction || 'UNSCOPED')
   const entityKey = extractEntityKey(input.topic)
+  const readerIntent = extractReaderIntent(input.topic)
   const audienceStage = normalizeIntentText(input.audienceStage || 'undecided') || 'undecided'
-  const intentKey = [jurisdiction, entityKey, audienceStage].join(':')
+  const intentKey = [jurisdiction, entityKey, readerIntent, audienceStage].join(':')
   const id = `opp_${createHash('sha256').update(intentKey).digest('hex').slice(0, 20)}`
-  return { id, intentKey, entityKey, jurisdiction, audienceStage }
+  return { id, intentKey, entityKey, jurisdiction, audienceStage, readerIntent }
 }
 
 export function opportunitiesCollide(a: OpportunityIdentity, b: OpportunityIdentity): boolean {
   return a.id === b.id
+}
+
+/** Server-side reservation key. Two concurrent requests with this key must not create two jobs. */
+export function opportunityReservationKey(identity: OpportunityIdentity, action: OpportunityAction = 'create'): string {
+  return `reserve:${identity.id}:${action}`
 }
