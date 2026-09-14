@@ -5,6 +5,7 @@
  */
 
 import { createHash } from 'crypto'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import type { SealedBrief } from './sealedBrief'
 import { validateSealedBrief } from './sealedBrief'
 import { buildOpportunityIdentity, type OpportunityIdentity } from './opportunityIdentity'
@@ -49,6 +50,44 @@ export type ContractSourceHealth = {
   reason?: string
 }
 
+export type ContractOwnership = {
+  host: string
+  repo: string
+  filePath: string
+  canonicalUrl: string
+}
+
+export type ContractReader = {
+  audience: string
+  stage?: string
+  primaryQuestion: string
+}
+
+export type ContractQueryCoverage = {
+  requiredShortKeywords: string[]
+  requiredLongTailKeywords: string[]
+  shortKeywordTerms: KeywordTerm[]
+  longTailKeywordTerms: KeywordTerm[]
+}
+
+export type ContractWordBudget = {
+  minWords: number
+  targetWords: number
+  maxWords: number
+}
+
+export type ContractLinks = {
+  sources: string[]
+  interlinks: Array<{ label?: string; url: string; placement?: string }>
+}
+
+export type ContractMetadata = {
+  title: string
+  targetSlug: string
+  metaDescription?: string
+  tone?: string
+}
+
 export type WritingContractV2 = {
   schemaVersion: typeof WRITING_CONTRACT_SCHEMA_VERSION
   contractId: string
@@ -59,6 +98,12 @@ export type WritingContractV2 = {
   host: string
   contentType: string
   primaryKeyword: string
+  ownership: ContractOwnership
+  reader: ContractReader
+  queryCoverage: ContractQueryCoverage
+  wordBudget: ContractWordBudget
+  links: ContractLinks
+  metadata: ContractMetadata
   brief: SealedBrief
   evidenceHash: string
   evidence: ContractEvidenceRef[]
@@ -101,6 +146,12 @@ export function writingContractHashPayload(contract: Pick<
   | 'host'
   | 'contentType'
   | 'primaryKeyword'
+  | 'ownership'
+  | 'reader'
+  | 'queryCoverage'
+  | 'wordBudget'
+  | 'links'
+  | 'metadata'
   | 'brief'
   | 'evidenceHash'
   | 'evidence'
@@ -116,6 +167,12 @@ export function writingContractHashPayload(contract: Pick<
     host: contract.host,
     contentType: contract.contentType,
     primaryKeyword: contract.primaryKeyword,
+    ownership: contract.ownership,
+    reader: contract.reader,
+    queryCoverage: contract.queryCoverage,
+    wordBudget: contract.wordBudget,
+    links: contract.links,
+    metadata: contract.metadata,
     brief: contract.brief,
     evidenceHash: contract.evidenceHash,
     evidence: contract.evidence,
@@ -134,13 +191,23 @@ export function verifyWritingContract(contract: WritingContractV2): WritingContr
   if (!Number.isInteger(contract.contractVersion) || contract.contractVersion < 1) {
     issues.push('contractVersion: must be a positive integer')
   }
-  if (!/^wc_[a-f0-9]{20}$/i.test(String(contract.contractId || ''))) {
-    issues.push('contractId: malformed')
-  }
+  if (!/^wc_[a-f0-9]{20}$/i.test(String(contract.contractId || ''))) issues.push('contractId: malformed')
   if (!String(contract.host || '').trim()) issues.push('host: missing')
   if (!String(contract.contentType || '').trim()) issues.push('contentType: missing')
   if (!String(contract.primaryKeyword || '').trim()) issues.push('primaryKeyword: missing')
   if (!String(contract.evidenceHash || '').trim()) issues.push('evidenceHash: missing')
+
+  if (!contract.ownership || !String(contract.ownership.repo || '').trim()) issues.push('ownership.repo: missing')
+  if (!contract.ownership || !String(contract.ownership.filePath || '').trim()) issues.push('ownership.filePath: missing')
+  if (!contract.ownership || !String(contract.ownership.canonicalUrl || '').trim()) issues.push('ownership.canonicalUrl: missing')
+  if (!contract.reader || !String(contract.reader.primaryQuestion || '').trim()) issues.push('reader.primaryQuestion: missing')
+  if (!contract.queryCoverage) issues.push('queryCoverage: missing')
+  if (!contract.wordBudget || contract.wordBudget.minWords <= 0 || contract.wordBudget.maxWords < contract.wordBudget.minWords) {
+    issues.push('wordBudget: invalid')
+  }
+  if (!contract.links) issues.push('links: missing')
+  if (!contract.metadata || !String(contract.metadata.title || '').trim()) issues.push('metadata.title: missing')
+  if (!contract.metadata || !String(contract.metadata.targetSlug || '').trim()) issues.push('metadata.targetSlug: missing')
 
   for (const [index, item] of (contract.evidence || []).entries()) {
     if (!String(item.contentHash || '').trim()) issues.push(`evidence[${index}]: contentHash missing`)
@@ -175,6 +242,12 @@ export function buildWritingContract(input: {
   host: string
   contentType: string
   primaryKeyword: string
+  ownership: ContractOwnership
+  reader: ContractReader
+  queryCoverage: ContractQueryCoverage
+  wordBudget: ContractWordBudget
+  links: ContractLinks
+  metadata: ContractMetadata
   brief: SealedBrief
   evidenceHash?: string
   evidence?: ContractEvidenceRef[]
@@ -218,6 +291,12 @@ export function buildWritingContract(input: {
     host: input.host,
     contentType: input.contentType,
     primaryKeyword: input.primaryKeyword,
+    ownership: input.ownership,
+    reader: input.reader,
+    queryCoverage: input.queryCoverage,
+    wordBudget: input.wordBudget,
+    links: input.links,
+    metadata: input.metadata,
     brief: input.brief,
     evidenceHash,
     evidence,
@@ -237,6 +316,12 @@ export function buildWritingContract(input: {
     host: input.host,
     contentType: input.contentType,
     primaryKeyword: input.primaryKeyword,
+    ownership: input.ownership,
+    reader: input.reader,
+    queryCoverage: input.queryCoverage,
+    wordBudget: input.wordBudget,
+    links: input.links,
+    metadata: input.metadata,
     brief: input.brief,
     evidenceHash,
     evidence,
@@ -246,7 +331,8 @@ export function buildWritingContract(input: {
     requestedModel: input.requestedModel,
     createdAt: input.createdAt || new Date().toISOString(),
   }
-  return { ok: true, issues: [], contract }
+  const verified = verifyWritingContract(contract)
+  return verified.ok ? verified : { ok: false, issues: verified.issues, contract: null }
 }
 
 export function assertSameContract(
