@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { forceRefreshSuperGrokAccessToken } from '@/lib/xaiSuperGrokOAuth'
 import {
   decodeJwtSubject,
   isXaiDeveloperApiKey,
@@ -297,13 +298,43 @@ async function forward(request: NextRequest, context: RouteContext): Promise<Res
     ? JSON.stringify({ ...jsonBody, stream: true })
     : rawBody || undefined
 
-  const upstream = await fetch(`${upstreamBase}/${path}${request.nextUrl.search}`, {
+  let upstream = await fetch(`${upstreamBase}/${path}${request.nextUrl.search}`, {
     method: request.method,
     headers,
     body: upstreamBody,
     redirect: 'manual',
     cache: 'no-store',
   })
+
+  // Match the official Grok client auth-recovery contract: an OAuth access
+  // token may be invalidated by the subscription service before its local
+  // expiry. A 401 from the subscription proxy gets exactly one forced token
+  // refresh and one replay. Developer API keys and 403 policy/quota failures
+  // must never enter this recovery path.
+  if (!developerKey && upstream.status === 401) {
+    const refreshed = await forceRefreshSuperGrokAccessToken()
+    if (refreshed?.accessToken) {
+      try { await upstream.body?.cancel() } catch { /* best effort */ }
+
+      headers.set('Authorization', `Bearer ${refreshed.accessToken}`)
+      const refreshedUserId = decodeJwtSubject(refreshed.accessToken)
+      if (refreshedUserId) {
+        headers.set('x-userid', refreshedUserId)
+        headers.set('x-grok-user-id', refreshedUserId)
+      } else {
+        headers.delete('x-userid')
+        headers.delete('x-grok-user-id')
+      }
+
+      upstream = await fetch(`${upstreamBase}/${path}${request.nextUrl.search}`, {
+        method: request.method,
+        headers,
+        body: upstreamBody,
+        redirect: 'manual',
+        cache: 'no-store',
+      })
+    }
+  }
 
   const responseHeaders = new Headers()
   for (const name of PASSTHROUGH_RESPONSE_HEADERS) {
