@@ -589,6 +589,16 @@ function isNoRetryProviderError(value: unknown): boolean {
   return /\b524\b|gateway timeout|upstream.*timeout|timed out/i.test(message) || isDailyQuotaError(message)
 }
 
+/** Cloudflare 522 from the SuperGrok self-host transport is transient.
+ * Check it before the generic "timed out" no-retry rule because the
+ * operator-facing 522 diagnostic intentionally contains that phrase. */
+export function isRetryableProviderFailure(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  if (/\b522\b/.test(message)) return true
+  if (isNoRetryProviderError(message)) return false
+  return /\b(429|502|503|504|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(message)
+}
+
 /**
  * Transient infrastructure failures — capacity overloads, upstream timeouts,
  * and request aborts ("The operation was aborted"). The pinned provider may
@@ -599,7 +609,7 @@ function isNoRetryProviderError(value: unknown): boolean {
  */
 function isTransientInfraError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
-  return /\b(429|503|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error|Function id .* not found|Specified function in account .* is not found/i.test(message)
+  return /\b(429|502|503|504|522|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error|Function id .* not found|Specified function in account .* is not found/i.test(message)
 }
 
 /** Exclusive draft pins should cascade when the pinned host produced no
@@ -666,8 +676,8 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
       // 529 = NVIDIA "Service temporarily overloaded" (verified live). It is
       // recoverable — a short pause often drains the worker — so it retries
       // with backoff like 503/429 before the cascade moves to the next host.
-      const retryable = /\b(502|503|504|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(msg)
-      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
+      const retryable = isRetryableProviderFailure(msg)
+      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
       // Exponential backoff: 1.5s → 3s → 6s (with ±20% jitter)
       const baseMs = 1500 * 2 ** (attempt - 1)
       const jitter = baseMs * (0.8 + Math.random() * 0.4)
