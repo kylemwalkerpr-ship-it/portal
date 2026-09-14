@@ -186,10 +186,13 @@ describe('xAI shared server transport', () => {
 
   it('refreshes once and replays once after an OAuth 401', async () => {
     const refreshedToken = jwtWithSubject('new-user')
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValueOnce(new Response('{"error":"Unauthorized"}', { status: 401 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 })) as unknown as typeof fetch
+    let fetchCount = 0
+    const fetchImpl = jest.fn(async () => {
+      fetchCount += 1
+      return fetchCount === 1
+        ? new Response('{"error":"Unauthorized"}', { status: 401 })
+        : new Response('{}', { status: 200 })
+    }) as typeof fetch
     const forceRefresh = jest.fn(async () => ({
       accessToken: refreshedToken,
       expiresAt: Date.now() + 3_600_000,
@@ -290,10 +293,13 @@ describe('xAI shared server transport', () => {
   })
 
   it('removes stale user-id headers when a refreshed token has no JWT subject', async () => {
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValueOnce(new Response('{"error":"Unauthorized"}', { status: 401 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 })) as unknown as typeof fetch
+    let fetchCount = 0
+    const fetchImpl = jest.fn(async () => {
+      fetchCount += 1
+      return fetchCount === 1
+        ? new Response('{"error":"Unauthorized"}', { status: 401 })
+        : new Response('{}', { status: 200 })
+    }) as typeof fetch
     const forceRefresh = jest.fn(async () => ({
       accessToken: 'opaque-refreshed-token',
       expiresAt: Date.now() + 3_600_000,
