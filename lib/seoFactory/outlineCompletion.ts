@@ -73,6 +73,39 @@ export function articleContextForSection(article: string, maxChars = 12000): str
   return `${head}\n\n[…article continues…]\n\n${tail}`
 }
 
+const STRUCTURAL_PREVIOUS_H2 =
+  /^(?:in 60 seconds|tldr|tl;?dr|key takeaways|faq|frequently asked questions|sources|official sources|disclaimer|table of contents|related guides?|references)$/i
+
+/**
+ * Last content H2 before FAQ/Sources — the closer must continue this claim,
+ * not write a fresh explainer.
+ */
+export function previousContentSection(article: string): { heading: string; closer: string } | null {
+  const body = String(article || '')
+  const re = /^##\s+(.+)$/gm
+  const marks: Array<{ index: number; heading: string }> = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body)) !== null) {
+    marks.push({ index: m.index, heading: m[1].trim() })
+  }
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const heading = marks[i].heading.replace(/[*_`#]/g, '').trim()
+    if (STRUCTURAL_PREVIOUS_H2.test(heading.toLowerCase())) continue
+    const start = body.indexOf('\n', marks[i].index)
+    const bodyStart = start >= 0 ? start + 1 : marks[i].index
+    const end = i + 1 < marks.length ? marks[i + 1].index : body.length
+    const section = body.slice(bodyStart, end).trim()
+    const paras = section
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter((p) => p && !/^#{1,6}\s/.test(p))
+    const closer = paras.slice(-2).join('\n\n').slice(-800).trim()
+    if (!closer) continue
+    return { heading: marks[i].heading, closer }
+  }
+  return null
+}
+
 export function buildOutlineSectionPrompt(opts: {
   article: string
   heading: string
@@ -82,11 +115,23 @@ export function buildOutlineSectionPrompt(opts: {
 }): { system: string; prompt: string } {
   const system = `You are completing ONE section of an existing article. Read the article so far. Do not re-explain what it has already established. Advance the argument. The first sentence must depend on the previous section (a consequence, constraint, or next decision). Do not restate the thesis. Do not repeat the primary keyword in the opening sentence. 120-280 words. Mix short and medium sentences. Named forms and agencies. No invented citations, no personal stories, no outcome promises. Do not paste this heading into a FAQ.`
   const context = articleContextForSection(opts.article)
+  const previous = previousContentSection(opts.article)
+  const previousBlock = previous
+    ? `## Previous section to continue from
+
+## ${previous.heading}
+
+${previous.closer}
+
+Your first sentence must depend on that close — a consequence, constraint, or next decision. Do not write a fresh intro and do not repeat the primary keyword in the opening sentence.
+
+`
+    : ''
   const prompt = `## Article so far (opening thesis + latest sections)
 
 ${context}
 
-## Section to write
+${previousBlock}## Section to write
 
 ## ${opts.heading}
 ${opts.purpose ? `\nPurpose (from the brief contract): ${opts.purpose}` : ''}

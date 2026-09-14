@@ -482,7 +482,7 @@ export function buildFactorySystemPrompt(opts: {
       : '13) KEYWORD CONTRACT — echo the sealed brief. Missing a DEMAND keyword is a hard block. Missing synthesized floor-fill is a warning only. Exceeding per-keyword hit caps is a hard block. Never invent replacements.',
     blog
       ? '    - Cover each DEMAND short as a topic in a body sentence. Cap 4 hits. Meaning coverage beats a forced phrase. This is not a checklist.'
-      : '    - Cover each DEMAND short as a topic (title/H1, In 60 seconds, a checklist item, or one body sentence). Cap 4 hits. This is not a checklist.',
+      : '    - Cover each DEMAND short as a topic in a grammatical sentence. Cap 4 hits. Never paste into the first content H2, In 60 seconds, a heading, or an FAQ question.',
     blog
       ? '    - Cover each DEMAND long-tail once as meaning in prose — never as an H2. Cap 2 hits.'
       : '    - Cover each DEMAND long-tail once in prose or an FAQ ANSWER — never as the question text, never as an H2. Cap 2 hits.',

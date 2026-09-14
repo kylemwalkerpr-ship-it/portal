@@ -10,6 +10,7 @@ import {
   buildOutlineSectionPrompt,
   articleContextForSection,
   isBlogLikeContentType,
+  previousContentSection,
 } from '@/lib/seoFactory/outlineCompletion'
 import {
   isStructuralOutlineHeading,
@@ -29,6 +30,30 @@ describe('insertSectionBeforeFaqOrSources', () => {
     const body = '## Eligibility\n\nProse.\n'
     const out = insertSectionBeforeFaqOrSources(body, '## Worked Example\n\nA realistic case.')
     expect(out.trim().endsWith('A realistic case.')).toBe(true)
+  })
+})
+
+describe('previousContentSection', () => {
+  it('returns the last content H2 closer, skipping FAQ/Sources', () => {
+    const article = `## Eligibility
+
+Officers weigh the job offer before they ask for the file.
+
+Keep the certified LCA with the offer letter.
+
+## FAQ
+
+### Q?
+
+A.
+
+## Sources
+
+- https://www.uscis.gov/
+`
+    const prev = previousContentSection(article)
+    expect(prev?.heading).toBe('Eligibility')
+    expect(prev?.closer).toMatch(/certified LCA/)
   })
 })
 

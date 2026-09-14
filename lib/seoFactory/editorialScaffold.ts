@@ -1216,11 +1216,11 @@ export function applyDeterministicRepairs(opts: {
    *  disclaimer is not forced — matching evaluateContentQuality. */
   indexable?: boolean
   contentType?: string
-  /** Required short keywords (≤3 words). Missing ones are woven into the
-   *  In 60 seconds block so the keyword-coverage gate can pass. */
+  /** Required short keywords (≤3 words). Coverage is a writer/refine job —
+   *  this repair must never weave missing terms into In 60 seconds. */
   requiredShortKeywords?: string[]
-  /** Required long-tail keywords (≥4 words). Missing ones are appended as
-   *  FAQ questions so the keyword-coverage gate can pass. */
+  /** Required long-tail keywords (≥4 words). Coverage is a writer/refine job —
+   *  this repair must never append them as FAQ questions. */
   requiredLongTailKeywords?: string[]
   /** Competing estate pages from the coverage map. When present and the
    *  draft's primary keyword overlaps, the repair narrows the title/H1 and

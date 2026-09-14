@@ -1579,8 +1579,8 @@ export function evaluateContentQuality(opts: {
       }
       const missingShort = uncovered(shortArr, opts.shortKeywordTerms)
       const missingLongTail = uncovered(longArr, opts.longTailKeywordTerms)
-      const SHORT_FIX = 'Use each short keyword at least once in context, naturally — title, first H2, In 60 seconds, or as a checklist item.'
-      const LONG_FIX = 'Use each long-tail keyword at least once, naturally — in FAQ, a heading, an answer block, or a step description. Do not force-fit; if no clean slot exists, mark it for review.'
+      const SHORT_FIX = 'Cover each missing demand short as a topic in a grammatical sentence. Meaning coverage beats exact-string placement. Never paste the phrase into the first content H2, In 60 seconds, a heading, or an FAQ question.'
+      const LONG_FIX = 'Answer the reader question this long-tail represents in prose or an FAQ answer. Do not paste the string as an H2 or as the question text. If no clean slot exists, omit it rather than stuff.'
       const preview = (terms: string[]) => terms.slice(0, 6).map((t) => `"${t}"`).join(', ')
 
     if (missingShort.demand.length) {
@@ -2065,7 +2065,7 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
       lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
     } else if (b.code === 'sentence_start_repetition') {
       lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Keep the argument's throughline — do not shuffle openings just to beat the scanner.`)
-    } else if (b.code === 'keyword_stuffing' || b.code === 'adjacent_section_overlap_severe' || b.code === 'adjacent_section_overlap') {
+    } else if (b.code === 'keyword_stuffing' || b.code === 'adjacent_section_overlap_severe' || b.code === 'adjacent_section_overlap' || b.code === 'stuffed_primary_opener') {
       lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''} Rewrite as ONE article: each H2 must continue the previous H2. Cover keywords as topics, not a checklist. Do not splice independent mini-essays.`)
     } else if (b.code === 'missing_disclaimer') {
       lines.push(

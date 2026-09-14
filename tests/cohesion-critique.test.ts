@@ -114,6 +114,29 @@ This restates the H2.
     expect(findings.some((f) => f.code === 'multiple_tldr_blocks')).toBe(true)
     expect(score).toBe(Math.max(0, 100 - 8 * findings.length))
   })
+
+  it('flags kit-piece openings that restate a two-word primary or mill boilerplate', () => {
+    const content = `---
+primaryKeyword: h-1b visa
+---
+
+# H-1B visa
+
+You file after the LCA is certified.
+
+## Eligibility
+
+The h-1b visa is a specialty occupation category that explains who may petition.
+
+## Documents
+
+This section covers the h-1b visa paperwork you need before you file.
+`
+    const { findings } = critiqueCohesion(content)
+    const kit = findings.filter((f) => f.code === 'kit_section_opener')
+    expect(kit.length).toBeGreaterThanOrEqual(2)
+    expect(kit[0].evidence).toMatch(/heading=/)
+  })
 })
 
 describe('factTokens / factsWerePreserved (author-revise reject helper)', () => {

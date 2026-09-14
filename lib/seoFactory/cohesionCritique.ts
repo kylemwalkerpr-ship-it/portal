@@ -101,6 +101,92 @@ function faqQuestions(content: string): string[] {
 
 const ADJACENT_OVERLAP = 0.5
 
+const KIT_BOILERPLATE_OPENER =
+  /^(?:this (?:section|guide|article|page|chapter)\b|in this (?:section|guide|article|page)\b|when it comes to\b|understanding\b|navigating\b)/i
+
+const WEAK_OPENER_VERB =
+  /\b(?:is|are|means|covers|explains|provides|shows|helps|offers|gives|summari[sz]es|outlines|describes)\b/i
+
+const TOPIC_STOP = new Set([
+  'the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'with', 'your', 'you',
+  'how', 'what', 'why', 'who', 'when', 'where', 'works', 'work', 'guide', 'complete', '2026',
+])
+
+function topicWords(text: string): string[] {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.replace(/^-+|-+$/g, ''))
+    .filter((w) => w.length >= 2 && !TOPIC_STOP.has(w))
+}
+
+function primaryTopic(content: string): string {
+  const fm = String(content || '').match(/^primaryKeyword:\s*["']?(.+?)["']?\s*$/mi)
+  if (fm?.[1]) return fm[1].trim()
+  const h1 = stripYamlAndFences(content).match(/^#\s+(.+)$/m)
+  return h1?.[1]?.replace(/[*_`]/g, '').trim() || ''
+}
+
+function firstOpenerSentence(sectionBody: string): string {
+  const para = String(sectionBody || '')
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .find((p) => p && !/^#{1,6}\s/.test(p) && !/^(?:[-*+]\s+|\d+[.)]\s+)/.test(p))
+  if (!para) return ''
+  return (para.split(/(?<=[.!?])\s+/)[0] || '').replace(/\s+/g, ' ').trim()
+}
+
+function longestOrderedRun(needle: string[], haystack: string[]): number {
+  if (!needle.length || !haystack.length) return 0
+  let best = 0
+  for (let i = 0; i < needle.length; i++) {
+    for (let j = 0; j < haystack.length; j++) {
+      let run = 0
+      while (needle[i + run] && haystack[j + run] && needle[i + run] === haystack[j + run]) run++
+      if (run > best) best = run
+    }
+  }
+  return best
+}
+
+/**
+ * Kit-piece openings: a section that re-introduces the primary as if it were
+ * its own article, or opens with mill boilerplate. Throughline consumes these.
+ */
+export function detectKitSectionOpeners(content: string): CohesionFinding[] {
+  const primaryPhrase = primaryTopic(content)
+  const primary = topicWords(primaryPhrase)
+  const sections = h2Sections(content).filter((s) => !STRUCTURAL_H2.test(normHeading(s.heading)))
+  const findings: CohesionFinding[] = []
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+    const opener = firstOpenerSentence(section.body)
+    if (!opener || opener.split(/\s+/).filter(Boolean).length < 6) continue
+    const mill = KIT_BOILERPLATE_OPENER.test(opener)
+    const firstWords = topicWords(opener).slice(0, 14)
+    const overlap = primary.length
+      ? primary.filter((w) => firstWords.includes(w)).length / primary.length
+      : 0
+    const run = longestOrderedRun(primary, firstWords)
+    const weakVerb = WEAK_OPENER_VERB.test(opener)
+    const fullPhrase = primaryPhrase.length >= 6
+      && opener.toLowerCase().includes(primaryPhrase.toLowerCase())
+    const restatesTopic = primary.length >= 2 && weakVerb && (
+      run >= Math.min(4, primary.length) || overlap >= 0.75
+    )
+    const laterPrimaryLead = i > 0 && fullPhrase && weakVerb
+    if (mill || restatesTopic || laterPrimaryLead) {
+      findings.push({
+        code: 'kit_section_opener',
+        message: `H2 “${section.heading}” opens as a standalone kit piece rather than continuing the article.`,
+        evidence: `heading=${encodeURIComponent(section.heading)};opener=${encodeURIComponent(opener.slice(0, 180))}`,
+      })
+    }
+  }
+  return findings
+}
+
 export function critiqueCohesion(content: string): { score: number; findings: CohesionFinding[] } {
   const findings: CohesionFinding[] = []
   const text = String(content || '')
@@ -167,6 +253,8 @@ export function critiqueCohesion(content: string): { score: number; findings: Co
       evidence: String(tldrCount),
     })
   }
+
+  findings.push(...detectKitSectionOpeners(text))
 
   const score = Math.max(0, 100 - 8 * findings.length)
   return { score, findings }

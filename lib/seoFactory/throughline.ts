@@ -89,7 +89,7 @@ export async function runThroughline(opts: {
       message: f.message,
       instruction: f.instruction,
     })),
-    antiKit: 'If a section could stand alone as its own article, rewrite its opening so it depends on the previous section.',
+    antiKit: 'If a section could stand alone as its own article, rewrite its opening so it depends on the previous section. kit_section_opener findings are mill glue — those first sentences must become bridges.',
     antiStuff: 'If the primary keyword appears 4+ times in one H2, replace later hits with short forms and pronouns.',
     eeatDirectives: (opts.eeatDirectives || []).slice(0, 8),
     citationRule: 'Preserve claim-specific/protected URLs. Irrelevant generic intergovernmental homepages may be removed. Do not invent or alter URLs.',

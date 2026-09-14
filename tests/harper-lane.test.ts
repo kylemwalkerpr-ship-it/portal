@@ -22,12 +22,15 @@ describe('harperLane — Harper is prose-only', () => {
     expect(isHarperProseFinding('missing_faq')).toBe(false)
     expect(isHarperProseFinding('structure_h2')).toBe(false)
     expect(isHarperProseFinding('ai_slop')).toBe(true)
-    expect(isHarperProseFinding('missing_short_keyword')).toBe(true)
+    expect(isHarperProseFinding('stuffed_primary_opener')).toBe(true)
+    expect(isHarperProseFinding('missing_short_keyword')).toBe(false)
+    expect(isHarperProseFinding('missing_long_tail_keyword')).toBe(false)
   })
 
   it('routes leftover codes to the honest owner', () => {
     expect(harperDeferredLane('missing_outline_section')).toBe('structural')
     expect(harperDeferredLane('insufficient_short_keywords')).toBe('brief')
+    expect(harperDeferredLane('missing_short_keyword')).toBe('writer')
     expect(harperDeferredLane('ownership')).toBe('human')
     expect(harperDeferredLane('cannibalization_high_overlap')).toBe('human')
   })
@@ -40,7 +43,7 @@ describe('harperLane — Harper is prose-only', () => {
     expect(isHarperProseSeoFail('No meta description yet')).toBe(false)
     expect(isHarperProseSeoFail('Only 1 URLs (need ≥2)')).toBe(false)
     expect(isHarperProseSeoFail('Opening does not answer the primary keyword early')).toBe(true)
-    expect(isHarperProseSeoFail('Only 1/5 demand keywords present')).toBe(true)
+    expect(isHarperProseSeoFail('Only 1/5 demand keywords present')).toBe(false)
   })
 
   it('scores Harper SEO as 100 when the only leftovers are structural', () => {
@@ -55,7 +58,7 @@ describe('harperLane — Harper is prose-only', () => {
     ])).toEqual(['Opening does not answer the primary keyword early'])
     expect(harperSeoScore({
       pass: ['Primary keyword answered in the opening'],
-      fail: ['Only 1/5 demand keywords present', 'Missing FAQ section'],
+      fail: ['Opening does not answer the primary keyword early', 'Missing FAQ section'],
     })).toBeLessThan(100)
   })
 

@@ -4,7 +4,7 @@
  * to quota-checklists, drafts regress to mill glue.
  */
 import { buildFactorySystemPrompt, buildFactoryUserPrompt } from '@/lib/seoFactory/prompts'
-import { qualityPromptBlock } from '@/lib/seoFactory/contentQualityGate'
+import { qualityPromptBlock, qualityToRefineNotes, evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
 import { essayFirstPromptBlock } from '@/lib/seoFactory/writingShape'
 import { renderKeywordContractBrief } from '@/lib/seoFactory/keywordContractBrief'
 import { buildOutlineSectionPrompt } from '@/lib/seoFactory/outlineCompletion'
@@ -76,6 +76,7 @@ describe('essay-first writer contract', () => {
     expect(prompt).toContain('cover these topics naturally: h-1b visa')
     expect(prompt).not.toContain('must include keyword(s)')
     expect(prompt).toContain('Never paste the keyword string')
+    expect(prompt).not.toMatch(/In 60 seconds, a checklist item/)
   })
 
   it('quality block leads with one-article cohesion, not 12-char scanner gaming', () => {
@@ -100,11 +101,13 @@ describe('essay-first writer contract', () => {
 
   it('outline closer requires a bridge from the previous section', () => {
     const { system, prompt } = buildOutlineSectionPrompt({
-      article: '# Guide\n\nThesis about skilled migration.\n',
+      article: '# Guide\n\nThesis about skilled migration.\n\n## Eligibility\n\nOfficers weigh the job offer before they ask for the file.\n',
       heading: 'Documents',
     })
     expect(system).toMatch(/first sentence must depend on the previous section/)
     expect(prompt).toMatch(/Open with a bridge from the last claim/)
+    expect(prompt).toContain('Previous section to continue from')
+    expect(prompt).toContain('## Eligibility')
     expect(prompt).not.toMatch(/Write 180-350 words/)
   })
 
@@ -112,5 +115,23 @@ describe('essay-first writer contract', () => {
     expect(THROUGHLINE_SYSTEM).toMatch(/Each H2 must continue the previous H2/)
     expect(THROUGHLINE_SYSTEM).toMatch(/Do not keyword-stuff/)
     expect(shouldRunThroughline({ contentType: 'blog_post', indexable: true, words: 280, force: true })).toBe(true)
+  })
+
+  it('does not tell the writer to stuff missing shorts into the first H2 or In 60 seconds', () => {
+    const r = evaluateContentQuality({
+      content: `# H-1B visa\n\nYou file after the LCA is certified.\n\n## Eligibility\n\nUSCIS will not accept the petition without a certified LCA from the Department of Labor. Keep the notice with the offer letter.\n\n## Documents\n\nThe certified LCA sits with the passport and the I-129 packet.\n\n## Process\n\nFile only when every named artefact is current.\n\n## FAQ\n\n### What happens after filing?\n\nUSCIS issues a receipt.\n\n## Sources\n\n- [USCIS](https://www.uscis.gov/)\n\n**Disclaimer:** This page is educational only. It is **not legal advice**.`,
+      contentType: 'legal_guide',
+      primaryKeyword: 'h-1b visa',
+      indexable: true,
+      requiredShortKeywords: ['h-1b visa', 'specialty occupation', 'labor condition'],
+      requiredLongTailKeywords: ['how to apply for h-1b visa', 'h-1b visa documents checklist', 'h-1b processing time 2026', 'what is a specialty occupation'],
+    })
+    const notes = qualityToRefineNotes(r)
+    expect(notes).not.toMatch(/title, first H2, In 60 seconds, or as a checklist item/)
+    const missing = r.findings.find((f: { code: string }) => f.code === 'missing_short_keyword')
+    if (missing) {
+      expect(missing.fix).toMatch(/Meaning coverage beats exact-string placement/)
+      expect(missing.fix).not.toMatch(/checklist item/)
+    }
   })
 })
