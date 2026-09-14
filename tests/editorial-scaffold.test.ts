@@ -119,6 +119,21 @@ describe('structural repair invariants', () => {
     expect(restoreCollapsedBodyLists(once)).toBe(once)
   })
 
+  it('restores collapsed markdown-link bullets (IRCC / marketplace CTAs)', () => {
+    const draft = [
+      '## Sources',
+      '- [IRCC — Study permit](https://www.canada.ca/study) - [IRCC — Work after graduation (PGWP)](https://www.canada.ca/pgwp)',
+      '- [EduCanada](https://www.educanada.ca) - [Job Bank](https://www.jobbank.gc.ca) - [Canada Mortgage and Housing Corporation](https://www.cmhc-schl.gc.ca)',
+      '- [Alice Mardelet-Santamaria, Québec lawyer screening family files](https://market.yousafeconsultancy.com/a) - [I will review your Express Entry file](https://market.yousafeconsultancy.com/b)',
+    ].join('\n')
+    const restored = restoreCollapsedBodyLists(draft)
+    const items = restored.split('\n').filter((line) => line.startsWith('- '))
+    expect(items).toHaveLength(7)
+    expect(items[0]).toContain('IRCC — Study permit')
+    expect(items[1]).toContain('Work after graduation')
+    expect(restored).not.toMatch(/^- \[IRCC — Study permit\].*Work after graduation/m)
+  })
+
   it('deduplicates FAQ Q&A atoms and is idempotent', () => {
     const draft = [
       '# Guide', '', '## FAQ', '',
