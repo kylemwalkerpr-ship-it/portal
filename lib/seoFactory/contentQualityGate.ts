@@ -252,7 +252,7 @@ const HYPE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bbest (visa|immigration) (lawyer|service) (ever|in the world)\b/i, label: 'superlative bait' },
 ]
 
-function stripForScan(content: string): string {
+export function stripForScan(content: string): string {
   return String(content || '')
     // KEEP--- must peel before the frontmatter strip or YAML counts as body.
     .replace(/\bKEEP---+/gi, '---')
@@ -2033,7 +2033,7 @@ export function qualityPromptBlock(contentType?: string): string {
     '',
     '━━━ IMPORTANT (warnings — degrade the score) ━━━',
     '',
-    'Q6. NO HYPE. No "act now", "limited time", stacked exclamation marks,',
+    'Q6. NO HYPE. This is a HARD BLOCK, not a warning. No "act now", "limited time", stacked exclamation marks,',
     '    or superlative bait ("best ever", "ultimate guide").',
     '',
     'Q7. KEYWORD DISCIPLINE. Use the primary keyword 2–4 times in the whole article.',

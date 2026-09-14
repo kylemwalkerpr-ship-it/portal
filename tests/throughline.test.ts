@@ -79,3 +79,66 @@ describe('pipeline wiring', () => {
     expect(stream.lastIndexOf('runFactoryThroughline')).toBeGreaterThan(stream.lastIndexOf('applyDeterministicRepairs'))
   })
 })
+
+describe('revision publishing contract', () => {
+  const paragraph = 'Keep your documents together and check the details before sending the application. '
+  const article = (copies: number) => DOC.replace('Keep the I-20 with the passport.', 'Keep the I-20 with the passport. ' + paragraph.repeat(copies))
+
+  it('keeps a compliant draft when the rewrite falls just below the brief minimum', async () => {
+    const original = article(80)
+    const result = await runThroughline({
+      content: original, minWords: 1000, maxWords: 1500,
+      generateText: async () => article(70),
+    })
+    expect(result.rejected).toBe(true)
+    expect(result.content).toBe(original)
+  })
+
+  it('rejects expansion beyond the brief maximum', async () => {
+    const original = article(80)
+    const result = await runThroughline({
+      content: original, minWords: 1000, maxWords: 1500,
+      generateText: async () => article(140),
+    })
+    expect(result.rejected).toBe(true)
+    expect(result.content).toBe(original)
+  })
+
+  it('gives the editor the actual body word window', async () => {
+    let prompt = ''
+    await runThroughline({
+      content: article(80), minWords: 1000, maxWords: 1500,
+      generateText: async (_system, value) => { prompt = value; return article(80) },
+    })
+    expect(JSON.parse(prompt).wordBudget).toEqual({ minWords: 1000, maxWords: 1500 })
+  })
+
+  it('rejects a changed outline even when the factual tokens survive', async () => {
+    const result = await runThroughline({
+      content: DOC,
+      generateText: async () => DOC.replace('## Documents', '## Paperwork'),
+    })
+    expect(result.rejected).toBe(true)
+    expect(result.content).toBe(DOC)
+  })
+
+  it('rejects an invented citation added alongside the original sources', async () => {
+    const result = await runThroughline({
+      content: DOC,
+      generateText: async () => DOC + '\nRead [this guide](https://example.com/invented-guide).',
+    })
+    expect(result.rejected).toBe(true)
+    expect(result.content).toBe(DOC)
+  })
+})
+
+ it('retains the draft when the final publishing audit rejects the rewrite', async () => {
+    const result = await runThroughline({
+      content: DOC,
+      generateText: async () => DOC.replace('Keep the I-20 with the passport.', 'Keep the I-20 beside your passport.'),
+      validateRevision: () => ({ ok: false, reason: 'Lost required keyword coverage' }),
+    })
+    expect(result.applied).toBe(false)
+    expect(result.content).toBe(DOC)
+    expect(result.reason).toBe('Lost required keyword coverage')
+  })

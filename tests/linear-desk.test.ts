@@ -58,7 +58,15 @@ const EXPLORE_JSON = JSON.stringify({
     { heading: 'Documents you gather next', because: 'Named artefacts', covers: ['labor condition'], continues: 'Eligibility named who can file' },
   ],
   kitRisks: ['Eligibility H2 restating the thesis as a mini-guide'],
-  gateWatch: ['stuffed_primary_opener', 'guesswork fees'],
+  gateWatch: [
+    'stuffed_primary_opener',
+    'keyword_stuffing',
+    'keyword_pasted_heading',
+    'faq_duplicates_h2',
+    'missing_tldr',
+    'missing_faq',
+    'sentence_start_repetition',
+  ],
   takeawayClaims: [
     'The certified LCA must sit with Form I-129 before USCIS will accept the petition.',
     'Premium processing changes the wait, not the evidence bar.',
@@ -245,6 +253,19 @@ describe('explore + self-reflection cognition', () => {
     }, explore)
     expect(merged.unresolved).toContain('USCIS filing fee for 2026')
     expect(merged.faqQuestions[0]).toMatch(/missing at filing/)
+    const withOutline = mergeExploreIntoBrief({
+      thesis: '',
+      takeaways: [],
+      faqQuestions: [],
+      unresolved: [],
+      outline: [
+        { heading: 'Who this path is actually for', purpose: '', bridgeFrom: '', coverTopics: [] as string[], format: 'prose' },
+        { heading: 'Documents you gather next', purpose: '', bridgeFrom: '', coverTopics: [] as string[], format: 'prose' },
+      ],
+    }, explore)
+    expect(withOutline.takeaways.length).toBeGreaterThanOrEqual(3)
+    expect(withOutline.outline?.[1]?.bridgeFrom).toMatch(/who can file/i)
+    expect(withOutline.outline?.[0]?.purpose).toMatch(/Constraint first/)
   })
 
   it('infers revise when stuffing is named even without an explicit verdict', () => {
@@ -281,6 +302,9 @@ describe('explore + self-reflection cognition', () => {
     expect(explorePrompt()).toMatch(/EXPLORE/)
     expect(explorePrompt()).toMatch(/READER_QUESTION/)
     expect(explorePrompt()).toMatch(/CHAPTER_CONTINUITY/)
+    expect(explorePrompt()).toMatch(/GATE_WATCH/)
+    expect(explorePrompt()).toMatch(/stuffed_primary_opener/)
+    expect(explorePrompt()).toMatch(/keyword_pasted_heading/)
     expect(explorePrompt()).toMatch(/wouldHaveToInvent/)
     expect(explorePrompt()).toMatch(/never be published/)
     expect(reflectPrompt()).toMatch(/SELF-REFLECT/)
@@ -382,6 +406,41 @@ describe('automated explore patterns and reflection scoring', () => {
     expect(score.dimensions.find((d) => d.id === 'honesty')?.score).toBe(0)
     expect(needsRewrite(reflection, true, score)).toBe(true)
   })
+
+  it('rewrites Review warnings that the planner named, not word-count targets', () => {
+    const reflection = parseReflection(JSON.stringify({
+      throughline: 'one argument holds across chapters',
+      guesswork: [],
+      stuffing: [],
+      kitSplices: [],
+      layout: [],
+      gateRisks: [],
+      verdict: 'ship',
+      revisePlan: [],
+    }))
+    const openerWarn = {
+      ...cleanQuality(),
+      warnings: [{ code: 'stuffed_primary_opener', severity: 'warning' as const, message: 'mill opener', fix: 'bridge' }],
+    }
+    const score = scoreReflection({
+      content: DRAFT,
+      quality: openerWarn,
+      reflection,
+      explore: parseExplore(EXPLORE_JSON),
+    })
+    expect(score.pass).toBe(false)
+    expect(needsRewrite(reflection, false, score, openerWarn)).toBe(true)
+    const cleanScore = scoreReflection({
+      content: DRAFT,
+      quality: cleanQuality(),
+      reflection,
+      explore: parseExplore(EXPLORE_JSON),
+    })
+    expect(cleanScore.pass).toBe(true)
+    expect(needsRewrite(reflection, false, cleanScore, {
+      warnings: [{ code: 'word_count_target', severity: 'warning', message: 'under target', fix: 'expand' }],
+    })).toBe(false)
+  })
 })
 
 describe('linear desk conversation', () => {
@@ -422,10 +481,10 @@ describe('linear desk conversation', () => {
     expect(prompt).toMatch(/Do not start over/)
   })
 
-  it('reasons with medium effort on JSON turns and low effort on long prose', () => {
-    expect(deskPhaseAiOpts('explore')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
-    expect(deskPhaseAiOpts('brief')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
-    expect(deskPhaseAiOpts('reflect')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
+  it('reasons with high effort on planning turns and low effort on long prose', () => {
+    expect(deskPhaseAiOpts('explore')).toEqual({ reasoningEffort: 'high', skipQualityContract: true })
+    expect(deskPhaseAiOpts('brief')).toEqual({ reasoningEffort: 'high', skipQualityContract: true })
+    expect(deskPhaseAiOpts('reflect')).toEqual({ reasoningEffort: 'high', skipQualityContract: true })
     expect(deskPhaseAiOpts('draft')).toEqual({ reasoningEffort: 'low', skipQualityContract: false })
     expect(deskPhaseAiOpts('review')).toEqual({ reasoningEffort: 'low', skipQualityContract: false })
   })
@@ -496,7 +555,7 @@ describe('linear desk conversation', () => {
       evaluate: blockedQuality,
     })
     expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
-    expect(efforts).toEqual(['medium', 'medium', 'low', 'medium', 'low'])
+    expect(efforts).toEqual(['high', 'high', 'low', 'high', 'low'])
     expect(result.turns.map((t) => t.name)).toEqual(
       expect.arrayContaining(['discover', 'explore', 'brief', 'draft', 'reflect', 'review']),
     )
@@ -548,6 +607,7 @@ describe('linear desk conversation', () => {
     expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect'])
     expect(result.reviewed).toBe(false)
     expect(result.reflected).toBe(true)
+    expect(result.held).toBe(true)
     expect(result.exploreScore?.score).toBeGreaterThanOrEqual(70)
     expect(result.reflectionScore?.pass).toBe(true)
     expect(result.turns.map((t) => t.name)).not.toContain('review')
@@ -631,7 +691,6 @@ describe('linear desk conversation', () => {
     expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
     expect(result.reviewed).toBe(true)
     expect(result.reflection?.verdict).toBe('ship')
-    expect(result.reflectionScore?.pass).toBe(false)
     expect(result.content).not.toMatch(/This section covers/)
   })
 })

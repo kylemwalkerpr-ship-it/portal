@@ -4755,7 +4755,11 @@ function JobDetail({
       const result = await consumeSseResponse(response, (event) => {
         if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
         else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
-        else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+        else if (event.type === 'attempt') {
+          record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+          const snap = typeof event.draft === 'string' ? event.draft : ''
+          if (snap) streamedChars = Math.max(streamedChars, snap.length)
+        }
         else if (event.type === 'delta') {
           streamedChars += String(event.text || '').length
           setActionChars(streamedChars)
@@ -7702,7 +7706,14 @@ const controller = new AbortController()
           setQueueStatusFilter('drafting')
           fetchJobs().catch(() => {})
         }
-        else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+        else if (event.type === 'attempt') {
+          record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+          const snap = typeof event.draft === 'string' ? event.draft : ''
+          if (snap && snap.length >= generationBufRef.current.length) {
+            generationBufRef.current = snap
+            streamChars = snap.length
+          }
+        }
         else if (event.type === 'rescue') {
           const s = event.stats
           setRescueStats(s)
