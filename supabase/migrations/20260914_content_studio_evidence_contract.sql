@@ -39,7 +39,7 @@ create index if not exists content_studio_evidence_items_job_idx
 create table if not exists public.content_studio_writing_contracts (
   contract_id text primary key,
   job_id uuid,
-  contract_version integer not null,
+  contract_version integer not null check (contract_version > 0),
   contract_hash text not null,
   opportunity_id text,
   payload jsonb not null,
@@ -59,7 +59,7 @@ create table if not exists public.content_studio_stage_events (
   reason text,
   input_hash text,
   output_hash text,
-  attempt integer not null default 1,
+  attempt integer not null default 1 check (attempt > 0),
   created_at timestamptz not null default now()
 );
 
@@ -81,7 +81,7 @@ grant select, insert on table public.content_studio_stage_events to service_role
 create or replace function public.content_studio_reject_contract_mutation()
 returns trigger language plpgsql as $$
 begin
-  if tg_op = 'UPDATE' and (new.payload is distinct from old.payload or new.contract_hash is distinct from old.contract_hash) then
+  if tg_op = 'UPDATE' and new is distinct from old then
     raise exception 'writing contracts are immutable; insert a new version';
   end if;
   if tg_op = 'DELETE' then
@@ -99,4 +99,30 @@ create trigger content_studio_writing_contracts_immutable
 create unique index if not exists content_jobs_opportunity_reservation_idx
   on public.content_jobs (opportunity_id)
   where opportunity_id is not null
-    and status in ('draft','queued','generating','review','approved','shipping');
+    and status in ('pending','drafting','processing','publishing','pr_created');
+
+-- The stage-event identity sequence must be private and usable by the writer.
+revoke all on sequence public.content_studio_stage_events_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.content_studio_stage_events_id_seq to service_role;
+revoke all on function public.content_studio_reject_contract_mutation() from public, anon, authenticated;
+
+-- Abort the migration if the intended access boundary was not established.
+do $verify$
+declare t text; r text;
+begin
+  foreach t in array array['content_studio_evidence_items','content_studio_writing_contracts','content_studio_stage_events'] loop
+    if not (select relrowsecurity from pg_class where oid = ('public.' || t)::regclass) then
+      raise exception 'RLS missing for %', t;
+    end if;
+    foreach r in array array['anon','authenticated'] loop
+      if has_table_privilege(r, 'public.' || t, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') then
+        raise exception 'Unexpected access for % to %', r, t;
+      end if;
+    end loop;
+    if not has_table_privilege('service_role', 'public.' || t, 'SELECT')
+       or not has_table_privilege('service_role', 'public.' || t, 'INSERT') then
+      raise exception 'Server access missing for %', t;
+    end if;
+  end loop;
+end;
+$verify$;
