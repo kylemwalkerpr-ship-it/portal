@@ -8,6 +8,7 @@
 
 import { countBodyWords, unwrapWholeDocumentFence } from './contentDepth'
 import { critiqueCohesion, factsWerePreserved, type CohesionFinding } from './cohesionCritique'
+import { evaluateEditorialNaturalness } from './editorialNaturalness'
 import { DRAFT_HARD_MAX_CHARS } from './draftIntegrity'
 import {
   extractRegisterCard,
@@ -17,7 +18,7 @@ import {
 } from './registerCard'
 import { isBlogFamily } from './writingShape'
 
-export const THROUGHLINE_SYSTEM = `You are a senior specialist revising ONE article so it is a coherent argument. Full markdown document in, full markdown document out. Preserve facts, numbers, legal qualifiers, disclaimer, sources that support the article, claim-specific/protected URLs, H1, and H2 heading text. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: remove it when it is unrelated to the article. Never invent or modify a URL. Merge overlapping section BODIES; never add, remove, or rename headings. Do not invent experience, fees, dates, or citations. FAQ questions must not paste an H2. Mix short and medium sentences. Named forms and agencies. Second person. Return ONLY the markdown document (no JSON wrapper, no fences).`
+export const THROUGHLINE_SYSTEM = `You are a senior specialist revising ONE article so it is a coherent argument. Full markdown document in, full markdown document out. Preserve facts, numbers, legal qualifiers, disclaimer, sources that support the article, claim-specific/protected URLs, H1, and H2 heading text. A generic UNHCR/IOM/ILO/OECD/WHO homepage is a citation candidate, not a fact: remove it when it is unrelated to the article. Never invent or modify a URL. Merge overlapping section BODIES; never add, remove, or rename headings. Each H2 must continue the previous H2: rewrite openings that restate the thesis or repeat the primary keyword. Add connective tissue so the article still reads if headings were deleted. Do not keyword-stuff — meaning coverage beats exact phrases. Do not invent experience, fees, dates, or citations. FAQ questions must not paste an H2. Mix short and medium sentences. Named forms and agencies. Second person. Return ONLY the markdown document (no JSON wrapper, no fences).`
 
 export type ThroughlineResult = {
   content: string
@@ -30,10 +31,13 @@ export function shouldRunThroughline(opts: {
   contentType?: string | null
   indexable?: boolean
   words: number
+  /** After outline splices, run even on shorter bodies so kit pieces get a throughline. */
+  force?: boolean
 }): boolean {
   if (opts.indexable === false) return false
   const t = String(opts.contentType || '').toLowerCase()
   if (t === 'marketplace_gig' || t === 'gig') return false
+  if (opts.force) return opts.words >= 200
   return opts.words >= 650
 }
 
@@ -75,10 +79,18 @@ export async function runThroughline(opts: {
     queryNeed: opts.queryNeed,
   })
   const findings = (opts.cohesionFindings || []).filter((f) => f.code || f.message)
+  const naturalness = evaluateEditorialNaturalness(original)
   const prompt = JSON.stringify({
     thesis,
     houseRegister: registerCardPromptBlock(house, current),
     cohesionFindings: findings.slice(0, 12),
+    naturalnessFindings: naturalness.findings.slice(0, 8).map((f) => ({
+      code: f.code,
+      message: f.message,
+      instruction: f.instruction,
+    })),
+    antiKit: 'If a section could stand alone as its own article, rewrite its opening so it depends on the previous section.',
+    antiStuff: 'If the primary keyword appears 4+ times in one H2, replace later hits with short forms and pronouns.',
     eeatDirectives: (opts.eeatDirectives || []).slice(0, 8),
     citationRule: 'Preserve claim-specific/protected URLs. Irrelevant generic intergovernmental homepages may be removed. Do not invent or alter URLs.',
     blog: isBlogFamily(opts.contentType),
@@ -138,10 +150,16 @@ export async function runFactoryThroughline(opts: {
   queryNeed?: string | null
   minWords?: number
   maxWords?: number
+  force?: boolean
   generateText: (system: string, prompt: string) => Promise<string>
 }): Promise<ThroughlineResult> {
   const words = countBodyWords(opts.content)
-  if (!shouldRunThroughline({ contentType: opts.contentType, indexable: opts.indexable, words })) {
+  if (!shouldRunThroughline({
+    contentType: opts.contentType,
+    indexable: opts.indexable,
+    words,
+    force: opts.force,
+  })) {
     return { content: opts.content, applied: false, rejected: false, reason: 'throughline not applicable' }
   }
   try {

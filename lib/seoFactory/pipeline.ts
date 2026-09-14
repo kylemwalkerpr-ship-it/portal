@@ -783,6 +783,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   // remaining headings are a generate error, not a refine-as-complete warning.
   const blogLike = isBlogLikeContentType(contentType)
   const missingNow = briefOutline?.length ? missingOutlineSections(content, briefOutline) : []
+  let outlineSpliced = false
   if (briefOutline?.length && (!blogLike || missingNow.length > 0)) {
     try {
       const completed = await completeMissingOutlineSections({
@@ -801,7 +802,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
                 system: systemPrompt,
                 prompt,
                 maxTokens: 4096,
-                temperature: 0.2,
+                temperature: 0.35,
                 skipQualityContract: true,
                 contentType,
               })
@@ -810,6 +811,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
       })
       if (completed.inserted.length) {
+        outlineSpliced = true
         content = enforceBodyWordBudgetPreserving(completed.content, contentType, { min: minWords, max: maxWords, preserveHeadings: ['disclaimer', 'sources', 'faq'] }).content
         console.info(`[seoFactory/pipeline] outline completion inserted: ${completed.inserted.join(', ')}`)
       } else if (completed.content !== content) {
@@ -957,12 +959,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       queryNeed: contentSpec?.intent?.queryNeed,
       minWords,
       maxWords,
+      force: outlineSpliced,
       generateText: async (systemPrompt, prompt) => {
         const ai = await generateWithRetry(generateContentText, {
           system: systemPrompt,
           prompt,
           maxTokens: tokensForType(contentType, 'draft'),
-          temperature: 0.25,
+          temperature: 0.42,
           aiProvider: input.aiProvider,
           exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
           cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',

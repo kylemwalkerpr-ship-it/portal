@@ -290,6 +290,7 @@ export function renderKeywordContractBrief(
     '- DEMAND short keywords (recommended ≤3 natural placements, 1–4 uses each, never as an H2 or FAQ question):',
     bullet(demandShort),
     '- Place demand shorts naturally. Missing a demand short is a HARD blocker for legal_guide/article/regional_*; for blog_post/blog_summary/news_summary it is a WARNING.',
+    '- This list is not a checklist. Cover the reader questions these terms represent. Exact-string placement is optional when the meaning is already answered. Never stuff the first content H2.',
     '- DEMAND long-tail keywords (meaning coverage, not exact 6-word string; 1–2 natural uses in prose or an FAQ ANSWER — never as the question text):',
     bullet(demandLong),
     '- A long-tail is satisfied if the meaning is answered, not only if the 6-word string appears.',

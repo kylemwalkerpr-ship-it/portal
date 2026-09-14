@@ -1116,6 +1116,7 @@ export async function* runSeoFactoryPipelineStream(
       region,
     })
 
+    let outlineSpliced = false
     if (briefOutline?.length) {
       const blogLike = isBlogLikeContentType(contentType)
       const missingNow = missingOutlineSections(content, briefOutline)
@@ -1137,7 +1138,7 @@ export async function* runSeoFactoryPipelineStream(
                     system: systemPrompt,
                     prompt,
                     maxTokens: 4096,
-                    temperature: 0.2,
+                    temperature: 0.35,
                     skipQualityContract: true,
                     signal: input.signal,
                     contentType,
@@ -1147,6 +1148,7 @@ export async function* runSeoFactoryPipelineStream(
               }),
           })
           if (completed.inserted.length) {
+            outlineSpliced = true
             content = enforceBodyWordBudgetPreserving(completed.content, contentType, {
               min: minWords,
               max: maxWords,
@@ -1358,6 +1360,7 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         indexable: plan.indexable,
         words: countBodyWords(content),
+        force: outlineSpliced,
       })) {
         yield {
           type: 'progress',
@@ -1375,12 +1378,13 @@ export async function* runSeoFactoryPipelineStream(
         queryNeed: contentSpec?.intent?.queryNeed,
         minWords,
         maxWords,
+        force: outlineSpliced,
         generateText: async (systemPrompt, prompt) => {
           const ai = await generateContentText({
             system: systemPrompt,
             prompt,
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
-            temperature: 0.25,
+            temperature: 0.42,
             aiProvider: input.aiProvider,
             exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
             cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',

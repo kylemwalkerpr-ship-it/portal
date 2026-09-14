@@ -260,6 +260,7 @@ describe('renderKeywordContractBrief', () => {
     expect(brief).toContain('never a ship blocker')
     expect(brief).toContain('recommended ≤3 natural placements')
     expect(brief).toContain('A long-tail is satisfied if the meaning is answered')
+    expect(brief).toContain('This list is not a checklist')
     expect(brief).toMatch(/discover-only/i)
     expect(brief).not.toMatch(/place only if natural/i)
     expect(brief).not.toMatch(/Echo these exact phrases/i)

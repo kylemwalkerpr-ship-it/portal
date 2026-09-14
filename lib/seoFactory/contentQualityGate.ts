@@ -24,7 +24,7 @@ import { countBodyWords } from './contentDepth'
 import { articleHasOfficialCitation, buildCitationContext } from './citationPolicy'
 import { EDITORIAL_FORMATTING_CONTRACT, formattingContractFor } from './editorialContract'
 import { FORMAT_SKELETON, formatSkeletonFor } from './formatContract'
-import { isBlogFamily, usesGuideApparatus, writingFamilyFor } from './writingShape'
+import { isBlogFamily, usesGuideApparatus, writingFamilyFor, essayFirstPromptBlock } from './writingShape'
 import { evaluateProseGeometry } from './proseGeometry'
 import { extractRegisterCard, houseRegisterFor, registerDrift } from './registerCard'
 
@@ -1941,18 +1941,18 @@ export function qualityPromptBlock(contentType?: string): string {
     ? [
         '━━━ FORMAT (reader legibility — essay, not a kit) ━━━',
         '',
-        'Q8. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for 3–6',
+        'Q9. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for 3–6',
         '    purpose-led sections that each advance the thesis. ### only nested',
         '    under a ##. Never skip levels. Do not force FAQ, TOC, or a TL;DR kit.',
         '',
-        'Q9. PARAGRAPH RHYTHM. Developed 4–6 sentence paragraphs are allowed.',
+        'Q10. PARAGRAPH RHYTHM. Developed 4–6 sentence paragraphs are allowed.',
         '    Do not pad. Do not restate the intro under every H2. Close once.',
         '',
       ]
     : [
         '━━━ FORMAT (reader legibility — required structure) ━━━',
         '',
-        'Q8. TABLE OF CONTENTS. For guides with 4+ H2 sections, open with exactly:',
+        'Q9. TABLE OF CONTENTS. For guides with 4+ H2 sections, open with exactly:',
         '    ## Table of contents',
         '    - [First section](#first-section)',
         '    - [Second section](#second-section)',
@@ -1961,12 +1961,12 @@ export function qualityPromptBlock(contentType?: string): string {
         '    The slug MUST equal the heading you write below it, or the scanner will',
         '    flag a broken reader path.',
         '',
-        'Q9. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for major',
+        'Q10. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for major',
         '    sections, ### only nested under a ##, never skip levels (no H1→H3), and',
         '    never use #### or deeper. Every ## and ### needs a plain text id that',
         '    matches its TOC slug.',
         '',
-        'Q10. COLLAPSIBLE SECTIONS. For long optional reading (full fee tables,',
+        'Q11. COLLAPSIBLE SECTIONS. For long optional reading (full fee tables,',
         '    lengthy checklists, deep FAQ answers) use HTML <details> blocks so the',
         '    page stays scannable:',
         '    <details>',
@@ -1995,24 +1995,28 @@ export function qualityPromptBlock(contentType?: string): string {
     '- Formatting: return one complete draft in the requested source format. Keep headings, metadata, and links consistent. Do not leak instructions into the article.',
     '- Final review: check the word window, factual support, sentence openings and grammar together after every edit. Fix the affected passage while preserving correct sections. A self-review is not a measured audit or proof of human authorship; shipping still requires the actual gate verdict.',
     '',
+    ...essayFirstPromptBlock(),
+    '',
     '━━━ CRITICAL (hard blockers — article WILL be rejected) ━━━',
     '',
-    'Q1. VARIED SENTENCE OPENINGS. This is the #1 rejection reason. The scanner counts',
+    'Q1. ONE ARTICLE. This is the #1 rejection reason. Every H2 must advance the same thesis. A section that could be published on its own as a standalone explainer is a failure — it is a kit piece, not a chapter. Open each H2 with a bridge from the previous claim. Do not restate the intro. Do not re-introduce the primary keyword in the first sentence of a section.',
+    '',
+    'Q2. VARIED SENTENCE OPENINGS. The scanner counts',
     '    how often the first ~12 chars of each sentence repeat. 5+ repeats = warning.',
     '    7+ repeats = HARD BLOCK. Never start >2 consecutive sentences with the same',
     '    prefix like "You need to", "The department", "Applicants must". Mix:',
     '    - Lead with a concrete noun: "USCIS requires...", "Form I-765 lists..."',
     '    - Lead with a time reference: "After filing...", "Before your start date..."',
     '    - Lead with a condition: "If your employer...", "When the SEVIS record..."',
-    '    - Vary short (8-15 word) and medium (15-25 word) sentences.',
+    '    - Vary short (8-15 word) and medium (15-25 word) sentences. Variety serves the argument — do not shuffle openings just to beat the scanner.',
     '',
-    'Q2. ZERO AI PATTERNS. Never use these words or phrases in ANY context:',
+    'Q3. ZERO AI PATTERNS. Never use these words or phrases in ANY context:',
     '    delve, leverage, robust, seamless, holistic, game-changer, revolutionize,',
     '    bespoke, navigate the complexities, "In today\'s fast-paced", tapestry,',
     '    unlock the potential, rest assured, "it\'s worth noting", furthermore,',
     '    moreover (as filler), in conclusion, streamline.',
     '',
-    'Q3. ZERO OUTCOME PROMISES. Never claim visas, approvals, timelines, or results',
+    'Q4. ZERO OUTCOME PROMISES. Never claim visas, approvals, timelines, or results',
     '    are guaranteed, certain, fast-tracked, or easy. Educational tone only.',
     '    Forbidden examples: guaranteed approval, 100% success, no risk of refusal,',
     '    we will get you a visa, fast-track your approval, or you will certainly qualify.',
@@ -2024,22 +2028,22 @@ export function qualityPromptBlock(contentType?: string): string {
     '    \"deposits are guaranteed refundable\") is allowed — the scanner only blocks',
     '    guarantee language coupled to an immigration outcome such as approval or a visa.',
     '',
-    'Q4. PRACTITIONER VOICE. Write like a calm immigration specialist briefing a',
+    'Q5. PRACTITIONER VOICE. Write like a calm immigration specialist briefing a',
     '    client. Second person ("you"). Concrete nouns (agency, form, document).',
     '    Mix short and medium sentences. A developed 4–6 sentence paragraph is allowed.',
     '    Explain procedures, not aspirations. Do not write one idea per sentence as a metronome.',
     '',
     '━━━ IMPORTANT (warnings — degrade the score) ━━━',
     '',
-    'Q5. NO HYPE. No "act now", "limited time", stacked exclamation marks,',
+    'Q6. NO HYPE. No "act now", "limited time", stacked exclamation marks,',
     '    or superlative bait ("best ever", "ultimate guide").',
     '',
-    'Q6. KEYWORD DISCIPLINE. Use the primary keyword 2–4 times in the whole article.',
+    'Q7. KEYWORD DISCIPLINE. Use the primary keyword 2–4 times in the whole article.',
     '    Once in the title/H1, at most once in the first content H2 heading or opening',
     '    sentence. After that, short forms and related entities. Four exact repeats in',
     '    the first content H2 body is keyword stuffing and fails the gate.',
     '',
-    'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
+    'Q8. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
     '',
     ...formatRules,
     VOICE_PLAYBOOK,
@@ -2060,7 +2064,9 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
     if (b.code === 'outcome_promise') {
       lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
     } else if (b.code === 'sentence_start_repetition') {
-      lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Do NOT regenerate the full article — only fix the repetitive openings.`)
+      lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Keep the argument's throughline — do not shuffle openings just to beat the scanner.`)
+    } else if (b.code === 'keyword_stuffing' || b.code === 'adjacent_section_overlap_severe' || b.code === 'adjacent_section_overlap') {
+      lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''} Rewrite as ONE article: each H2 must continue the previous H2. Cover keywords as topics, not a checklist. Do not splice independent mini-essays.`)
     } else if (b.code === 'missing_disclaimer') {
       lines.push(
         '- BLOCKER [missing_disclaimer]: The page has NO disclaimer and YMYL rules forbid shipping without one. Add this exact block near the end (before or inside Sources), as markdown — never wrap the article or this block in a code fence:\n' +

@@ -29,6 +29,12 @@ describe('shouldRunThroughline', () => {
     expect(shouldRunThroughline({ contentType: 'legal_guide', indexable: true, words: 400 })).toBe(false)
     expect(shouldRunThroughline({ contentType: 'legal_guide', indexable: true, words: 900 })).toBe(true)
   })
+
+  it('runs on shorter bodies when outline splices force a throughline', () => {
+    expect(shouldRunThroughline({ contentType: 'legal_guide', indexable: true, words: 400, force: true })).toBe(true)
+    expect(shouldRunThroughline({ contentType: 'legal_guide', indexable: true, words: 120, force: true })).toBe(false)
+    expect(shouldRunThroughline({ contentType: 'marketplace_gig', indexable: true, words: 900, force: true })).toBe(false)
+  })
 })
 
 describe('runThroughline', () => {

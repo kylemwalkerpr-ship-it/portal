@@ -182,10 +182,10 @@ export async function POST(req: NextRequest) {
           : contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
             ? '6–8'
             : '8–10'
-      } H2s sized so ABSOLUTE SECTION QUOTAS (min–max per H2) sum to ${minWords}–${maxWords} words`,
+      } H2s paced so the PAGE window sums to ${minWords}–${maxWords} words. Per-H2 ranges are pacing, not independent mini-articles.`,
       '  "shortTail": ["kw", ...]                   // echo KEYWORD CONTRACT demand shorts (1–3 words). Do not invent replacements.',
       '  "longTail": ["longer phrase", ...]          // echo KEYWORD CONTRACT demand long-tails (4+ words). These are COVERAGE terms, never literal FAQ questions or H2s. The drafter uses them naturally in prose/FAQ answers.',
-      '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // place every keyword in exactly one H2 section',
+      '  "kwH2Map": { "keyword": "H2 section heading (exact match)" }  // map each demand topic to the H2 that already answers it; never invent a heading to park a phrase',
       '  "sources": ["<verbatim URL from VERIFIED SOURCE ALLOWLIST>"]  // 3–5 URLs copied VERBATIM from the VERIFIED OFFICIAL SOURCE ALLOWLIST below — cite these verbatim allowlist URLs; never add news/blogs/Wikipedia; every URL must be on-topic for THIS article',
       '  "interlinkTargets": [{ "label": "anchor text", "url": "/verified-path/", "placement": "which H2 section this link belongs in" }]  // pick from the allowlist — never invent URLs',
       '  "targetSlug": "kebab-case-slug-for-this-page",',

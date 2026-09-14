@@ -99,9 +99,11 @@ describe('brief contract · SHIP GATES are prescriptive before drafting', () => 
     expect(sys).toMatch(/140–160 chars/)
     expect(sys).toMatch(/at least 2 internal estate links taken VERBATIM/)
     expect(sys).toMatch(/ZERO invented, guessed, or modified URLs/)
-    expect(sys).toMatch(/DEMAND short keywords appear ≥1× and ≤4×/)
+    expect(sys).toMatch(/cover DEMAND shorts as topics \(meaning coverage, ≥1× and ≤4×/)
     expect(sys).toMatch(/KEYWORD CONTRACT/)
     expect(sys).toMatch(/no AI clichés, no outcome promises/)
+    expect(sys).toMatch(/WRITE ONE ARTICLE, NOT A KIT/)
+    expect(sys).toMatch(/THROUGHLINE: each H2 continues the previous H2/)
   })
 })
 
