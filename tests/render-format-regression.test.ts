@@ -10,6 +10,7 @@
  * drafted document always lands with its numbering, lists, and callouts intact.
  */
 import { renderTargetFile } from '@/lib/seoFactory/renderTarget'
+import { validateCaseworksRenderedStructure } from '@/lib/seoFactory/contentStructureIntegrity'
 import { EDITORIAL_FORMATTING_CONTRACT } from '@/lib/seoFactory/editorialContract'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
 
@@ -163,6 +164,63 @@ describe('renderTarget — numbering, tables, and callouts survive to the live p
     // Blog tables render with the bordered utility classes.
     expect(fileContent).toContain('<table className="mt-4 w-full border-collapse text-sm">')
     expect(fileContent).toContain('<blockquote className="my-8 border-l-2')
+  })
+
+  it('renders indented and collapsed source/CTA link lists as <li>, not leaked <p>', () => {
+    const body = [
+      '# Canada study permit',
+      '',
+      '## Official sources',
+      '  - [IRCC — Study permit](https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada.html)',
+      '  - [IRCC — Work after graduation (PGWP)](https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation.html)',
+      '',
+      '## Related',
+      '- [IRCC — Family sponsorship](https://www.canada.ca/family) - [IRCC — Comprehensive Ranking System (CRS)](https://www.canada.ca/crs)',
+      '',
+      '## Next step',
+      '- [Alice Mardelet-Santamaria, Québec lawyer screening family files](https://market.yousafeconsultancy.com/a) - [I will review your Express Entry file](https://market.yousafeconsultancy.com/b)',
+    ].join('\n')
+    const { fileContent } = renderTargetFile({
+      plan: caseworksPlan,
+      content: body,
+      title: 'Canada study permit',
+      region: 'CA',
+      contentType: 'legal_guide',
+      primaryKeyword: 'canada study permit',
+      indexable: true,
+      canonicalUrl: caseworksPlan.canonicalUrl,
+    })
+    expect(fileContent).toContain('<ul>')
+    expect(fileContent).toContain('<li>')
+    expect(fileContent).toContain('IRCC — Study permit')
+    expect(fileContent).toContain('Work after graduation')
+    expect(fileContent).toContain('Alice Mardelet-Santamaria')
+    expect(fileContent).not.toMatch(/<p>[^<]*-\s*\[IRCC/)
+    expect(validateCaseworksRenderedStructure(fileContent).errors.filter((e) => /list marker leaked/i.test(e))).toEqual([])
+  })
+
+  it('still wraps a true orphan "label](url)" without eating a well-formed source list', () => {
+    const body = [
+      '# Guide',
+      '',
+      'See CaseWorks Guides](https://legal.yousafeconsultancy.com/ca/) for neighbouring pages.',
+      '',
+      '- [IRCC — Study permit](https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada.html)',
+    ].join('\n')
+    const { fileContent } = renderTargetFile({
+      plan: caseworksPlan,
+      content: body,
+      title: 'Guide',
+      region: 'CA',
+      contentType: 'legal_guide',
+      primaryKeyword: 'canada study permit',
+      indexable: true,
+      canonicalUrl: caseworksPlan.canonicalUrl,
+    })
+    expect(fileContent).toContain('CaseWorks Guides</a>')
+    expect(fileContent).toContain('<li>')
+    expect(fileContent).toContain('>IRCC — Study permit</a>')
+    expect(fileContent).not.toContain('>- [IRCC')
   })
 })
 

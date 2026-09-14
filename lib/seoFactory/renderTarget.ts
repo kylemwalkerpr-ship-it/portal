@@ -5,7 +5,7 @@
  */
 
 import type { OwnerPlan } from './ownership'
-import { slugifyHeading } from './editorialScaffold'
+import { restoreCollapsedBodyLists, slugifyHeading } from './editorialScaffold'
 import { sanitizeEstateUrl } from './ahrefsIssues'
 import { countBodyWords } from './contentDepth'
 import {
@@ -38,8 +38,14 @@ function stripScriptsAndFences(md: string): string {
  */
 function repairOrphanMarkdownLinks(md: string): string {
   return String(md || '').replace(
-    /(^|[\s(\[{])(?<!\[)([^\s\[\]][^\]\n]{0,80}?)\]\((https?:\/\/[^)\s]+)\)/gm,
-    '$1[$2]($3)',
+    /(^|[\s(\[{])(?<!\[)([^\s\[\]][^\[\]\n]{0,80}?)\]\((https?:\/\/[^)\s]+)\)/gm,
+    (full, prefix: string, label: string, url: string, offset: number, source: string) => {
+      const before = source.slice(0, offset + prefix.length)
+      const lastOpen = before.lastIndexOf('[')
+      const lastClose = before.lastIndexOf(']')
+      if (lastOpen > lastClose) return full
+      return `${prefix}[${label}](${url})`
+    },
   )
 }
 
@@ -158,13 +164,20 @@ function renderMarkdownTable(
   return out
 }
 
-/** Convert markdown body to simple JSX fragment strings for ArticleLayout children. */
+function matchListItem(line: string): { type: 'ul' | 'ol'; content: string } | null {
+  const trimmed = line.trim()
+  const ul = trimmed.match(/^[-*+]\s+(.*)$/)
+  if (ul) return { type: 'ul', content: ul[1] }
+  const ol = trimmed.match(/^\d+[.)]\s+(.*)$/)
+  if (ol) return { type: 'ol', content: ol[1] }
+  return null
+}
 function markdownToJsx(body: string): string {
   // Drop JSON-LD / raw HTML scripts — ArticleLayout already emits schema.
   // Leaving them as text or broken JSX breaks prerender (and confuses crawlers).
   // All AI providers (DeepSeek / CF / Groq / …) produce markdown; this converter
   // must emit build-safe JSX regardless of which model wrote the draft.
-  let cleaned = repairOrphanMarkdownLinks(stripScriptsAndFences(body))
+  let cleaned = restoreCollapsedBodyLists(repairOrphanMarkdownLinks(stripScriptsAndFences(body)))
 
   const lines = cleaned.split('\n')
   const out: string[] = []
@@ -325,20 +338,12 @@ function markdownToJsx(body: string): string {
       out.push(`      <${Tag} id="${slugifyHeading(h4[2]) || 'section'}">${renderInline(h4[2])}</${Tag}>`)
       continue
     }
-    if (line.startsWith('- ') || line.startsWith('* ')) {
+    const list = matchListItem(line)
+    if (list) {
       flushPara()
       closeBlockquote()
-      openList('ul')
-      out.push(`        <li>${renderInline(line.slice(2))}</li>`)
-      continue
-    }
-    // Ordered (numbered) lists → <ol> so step numbers survive to the live page.
-    // Previously these were emitted as <ul> and silently lost their numbering.
-    if (/^\d+\.\s+/.test(line)) {
-      flushPara()
-      closeBlockquote()
-      openList('ol')
-      out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
+      openList(list.type)
+      out.push(`        <li>${renderInline(list.content)}</li>`)
       continue
     }
     para.push(trimmed)
@@ -365,7 +370,7 @@ function escapeJsxText(s: string): string {
  * style, and paragraph/list text uses the muted foreground utility classes.
  */
 function markdownToBlogJsx(body: string): string {
-  let cleaned = repairOrphanMarkdownLinks(stripScriptsAndFences(body))
+  let cleaned = restoreCollapsedBodyLists(repairOrphanMarkdownLinks(stripScriptsAndFences(body)))
 
   const lines = cleaned.split('\n')
   const out: string[] = []
@@ -492,19 +497,12 @@ function markdownToBlogJsx(body: string): string {
       out.push(`      <h4 className="font-sans text-lg font-semibold tracking-[-0.02em] text-foreground">${renderInline(h4[2])}</h4>`)
       continue
     }
-    if (line.startsWith('- ') || line.startsWith('* ')) {
+    const list = matchListItem(line)
+    if (list) {
       flushPara()
       closeBlockquote()
-      openList('ul')
-      out.push(`        <li>${renderInline(line.slice(2))}</li>`)
-      continue
-    }
-    // Ordered (numbered) lists → <ol> so step numbers survive to the live page.
-    if (/^\d+\.\s+/.test(line)) {
-      flushPara()
-      closeBlockquote()
-      openList('ol')
-      out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
+      openList(list.type)
+      out.push(`        <li>${renderInline(list.content)}</li>`)
       continue
     }
     para.push(trimmed)

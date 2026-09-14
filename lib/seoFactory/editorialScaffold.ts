@@ -139,7 +139,7 @@ export function restoreCollapsedBodyLists(body: string): string {
     const match = line.match(/^(\s*)([-*+] |\d+[.)] )(\S[\s\S]*)$/)
     if (!match) return [line]
     const [, indent, marker, text] = match
-    const parts = text.split(/\s+[-*+]\s+(?=(?:\*\*)?[A-Z0-9])/).map((part) => part.trim()).filter(Boolean)
+    const parts = text.split(/\s+[-*+]\s+(?=(?:\*\*)?(?:[A-Z0-9]|\[))/).map((part) => part.trim()).filter(Boolean)
     if (parts.length < 2) return [line]
     const bullet = /^\d/.test(marker) ? '- ' : marker
     return parts.map((part) => `${indent}${bullet}${part}`)
