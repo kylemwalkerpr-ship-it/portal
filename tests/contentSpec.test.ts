@@ -106,6 +106,16 @@ describe('createContentSpec', () => {
     const spec = createContentSpec(BASE)
     expect(spec.ymyl.disclaimerRequired).toBe(true)
     expect(spec.aeoGeo.answerFirst).toBe(true)
+    expect(spec.aeoGeo.faqRequired).toBe(true)
+  })
+
+  it('does not force FAQ on an indexable blog', () => {
+    const spec = createContentSpec(specWith({
+      contentType: 'blog_post',
+      aeoGeo: undefined,
+    }))
+    expect(spec.aeoGeo.faqRequired).toBe(false)
+    expect(spec.aeoGeo.answerFirst).toBe(true)
   })
 
   it('CONTENT_SPEC_VERSION equals the playbook version', () => {

@@ -719,6 +719,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
   // ── PASS 2: Depth rescue (expand/append until floor met) ───────────────
   const maxExpand = contentType === 'marketplace_gig' ? 1 : 5
+  if (deskHeld && countBodyWords(content) < minWords) {
+    // Held desk: do not wholesale-rewrite the article to chase the floor.
+    expandPasses = 1
+  }
   while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
     throwIfAborted(input.signal, `depth expand pass ${expandPasses + 1}`)
     expandPasses++
@@ -797,9 +801,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
 
   // ── PASS 3: Quality refine after depth rescue ──────────────────────────
-  // Depth rescue can introduce new quality issues (AI slop from appended sections).
-  // Continue refining on quality/blocker issues even if word count is now OK.
-  if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
+  // Isolated factory rewrites restitch a held desk article. Skip them.
+  if (!deskHeld && !meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
     stalledCount = 0
     for (let j = 0; j <= Math.min(1, maxRefine); j++) {
       throwIfAborted(input.signal, `post-depth refine pass ${j + 1}`)

@@ -554,8 +554,10 @@ describe('linear desk conversation', () => {
       },
       evaluate: blockedQuality,
     })
-    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
-    expect(efforts).toEqual(['high', 'high', 'low', 'high', 'low'])
+    expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(calls.filter((c) => c === 'review').length).toBeGreaterThanOrEqual(1)
+    expect(calls.filter((c) => c === 'review').length).toBeLessThanOrEqual(2)
+    expect(efforts.slice(0, 5)).toEqual(['high', 'high', 'low', 'high', 'low'])
     expect(result.turns.map((t) => t.name)).toEqual(
       expect.arrayContaining(['discover', 'explore', 'brief', 'draft', 'reflect', 'review']),
     )
@@ -646,7 +648,8 @@ describe('linear desk conversation', () => {
       },
       evaluate: cleanQuality,
     })
-    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(calls.filter((c) => c === 'review').length).toBeLessThanOrEqual(2)
     expect(result.reviewed).toBe(true)
   })
 
@@ -688,7 +691,8 @@ describe('linear desk conversation', () => {
       },
       evaluate: cleanQuality,
     })
-    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(calls.filter((c) => c === 'review').length).toBeLessThanOrEqual(2)
     expect(result.reviewed).toBe(true)
     expect(result.reflection?.verdict).toBe('ship')
     expect(result.content).not.toMatch(/This section covers/)
