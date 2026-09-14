@@ -31,10 +31,13 @@ describe('site hardening', () => {
     expect(footer).toContain('https://usa.yousafeconsultancy.com/contact/')
   })
 
-  it('delivers responsive compressed images for marketplace discovery cards', () => {
-    const grid = read('components/marketplace/FeaturedBriefsGrid.tsx')
-    expect(grid).toContain("from '@/lib/responsiveImage'")
-    expect(grid).toContain('responsiveImageProps(g.cover_image_url')
-    expect(grid).toContain('responsiveImageProps(g.providerHeadshot')
+  it('keeps responsive WebP delivery wired into marketplace discovery cards', () => {
+    const card = read('components/marketplace/MarketplaceHero.tsx')
+    const responsive = read('lib/responsiveImage.ts')
+    expect(card).toContain("import { responsiveImageProps } from '@/lib/responsiveImage'")
+    expect(card).toContain('responsiveImageProps(imageUrl, gig.title)')
+    expect(responsive).toContain("format?: 'webp' | 'origin'")
+    expect(responsive).toContain("responsiveUrl(url, w, 'webp')")
+    expect(responsive).toContain("loading: priority ? ('eager' as const) : ('lazy' as const)")
   })
 })
