@@ -56,7 +56,7 @@ describe('Content Studio evidence contract takeover regressions', () => {
       ],
       uberTerms: [],
       shipped: [],
-      competing: [],
+      competing: { competing: [], suggestions: [] },
       blockedStems: new Set<string>(),
     }
     const picked = pickResearchKeywords(base, 'student visa immigration application')
@@ -100,9 +100,6 @@ describe('Content Studio evidence contract takeover regressions', () => {
   })
 
   it('does not infer current conversion instrumentation from historical conversion events', async () => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test'
-
     const db = {
       from(table: string) {
         if (table === 'marketplace_search_intelligence') {
@@ -118,11 +115,7 @@ describe('Content Studio evidence contract takeover regressions', () => {
           }
         }
         if (table === 'marketplace_search_events') {
-          return {
-            select: () => ({
-              eq: async () => ({ count: 7, error: null }),
-            }),
-          }
+          throw new Error('historical conversion events must not be used as coverage proof')
         }
         throw new Error(`unexpected table ${table}`)
       },
