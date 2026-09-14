@@ -21,6 +21,15 @@ jobs:
           ref: chore/reconcile-pending-production-safeguards
           fetch-depth: 0
 
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
       - name: Apply deterministic patch
         run: node scripts/apply-pending-production-safeguards.mjs
 
