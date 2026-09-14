@@ -1,77 +1,114 @@
 /**
  * First-party Marketplace demand feeder.
- * Search counts are submitted-query demand, not GSC impressions.
+ * Search counts are submitted-query demand, not monthly keyword-research volume.
  * A zero-row conversion stream is coverage-unknown, not measured-zero revenue.
  */
 
-import type { DemandSourceId, GscSignalInput } from './planner'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { GscSignalInput } from './planner'
 import type { FeederResult } from './demandFeeders'
 
-export function marketplaceRowToSignal(row: {
+export type MarketplaceDemandRow = {
   normalized_query: string
   search_count?: number | null
   unique_sessions?: number | null
   click_count?: number | null
   conversion_count?: number | null
   measured_search_count?: number | null
-}): GscSignalInput {
+  conversion_instrumented?: boolean | null
+}
+
+export function marketplaceRowToSignal(row: MarketplaceDemandRow): GscSignalInput {
+  const conversionsInstrumented = row.conversion_instrumented === true
   return {
     term: String(row.normalized_query || '').trim(),
     clicks: Number(row.click_count || 0),
     impressions: 0,
-    volume: Number(row.search_count || 0),
-    source: 'marketplace' as DemandSourceId,
+    volume: undefined,
+    source: 'marketplace',
+    marketplaceSearchCount: Number(row.search_count || 0),
+    marketplaceUniqueSessions: row.unique_sessions == null ? null : Number(row.unique_sessions),
+    marketplaceConversionCount: conversionsInstrumented
+      ? Number(row.conversion_count || 0)
+      : null,
+    conversionCoverage: conversionsInstrumented ? 'instrumented' : 'unknown',
   }
 }
 
-export function conversionCoverage(row: { conversion_count?: number | null; measured_search_count?: number | null }): {
-  conversions: number
-  coverage: 'observed' | 'unknown'
+export function conversionCoverage(row: MarketplaceDemandRow): {
+  conversions: number | null
+  coverage: 'instrumented' | 'unknown'
 } {
-  const conversions = Number(row.conversion_count || 0)
-  const measured = row.measured_search_count
-  if (measured == null) return { conversions, coverage: 'unknown' }
-  return { conversions, coverage: 'observed' }
+  if (row.conversion_instrumented !== true) {
+    return { conversions: null, coverage: 'unknown' }
+  }
+  return { conversions: Number(row.conversion_count || 0), coverage: 'instrumented' }
+}
+
+export async function defaultLoadMarketplaceIntelligence(db?: SupabaseClient): Promise<{
+  rows: MarketplaceDemandRow[]
+  conversionInstrumented: boolean
+}> {
+  const client = db || createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  )
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('marketplace feeder missing service-role supabase credentials')
+  }
+  const { data, error } = await client
+    .from('marketplace_search_intelligence')
+    .select('normalized_query,search_count,unique_sessions,click_count,conversion_count')
+    .order('search_count', { ascending: false })
+    .limit(500)
+  if (error) throw new Error(error.message)
+  const { count, error: convError } = await client
+    .from('marketplace_search_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_type', 'conversion')
+  if (convError) throw new Error(convError.message)
+  return {
+    rows: Array.isArray(data) ? (data as MarketplaceDemandRow[]) : [],
+    conversionInstrumented: Number(count || 0) > 0,
+  }
 }
 
 export async function pullMarketplaceDemandSignals(opts?: {
-  load?: () => Promise<Array<Record<string, unknown>>>
+  load?: () => Promise<MarketplaceDemandRow[]>
+  loadBundle?: () => Promise<{ rows: MarketplaceDemandRow[]; conversionInstrumented: boolean }>
 }): Promise<GscSignalInput[]> {
-  const rows = opts?.load ? await opts.load() : []
-  return rows
+  const bundle = opts?.loadBundle
+    ? await opts.loadBundle()
+    : opts?.load
+      ? { rows: await opts.load(), conversionInstrumented: false }
+      : await defaultLoadMarketplaceIntelligence()
+  return bundle.rows
     .map((row) => marketplaceRowToSignal({
-      normalized_query: String(row.normalized_query || ''),
-      search_count: Number(row.search_count || 0),
-      click_count: Number(row.click_count || 0),
-      conversion_count: row.conversion_count == null ? null : Number(row.conversion_count),
-      measured_search_count: row.measured_search_count == null ? null : Number(row.measured_search_count),
+      ...row,
+      conversion_instrumented: bundle.conversionInstrumented,
     }))
     .filter((signal) => signal.term.length >= 2)
 }
 
 export async function pullMarketplaceFeeder(opts?: {
-  load?: () => Promise<Array<Record<string, unknown>>>
+  load?: () => Promise<MarketplaceDemandRow[]>
+  loadBundle?: () => Promise<{ rows: MarketplaceDemandRow[]; conversionInstrumented: boolean }>
 }): Promise<FeederResult> {
   try {
     const signals = await pullMarketplaceDemandSignals(opts)
-    if (!opts?.load && signals.length === 0) {
-      return {
-        source: 'marketplace' as DemandSourceId,
-        signals: [],
-        ok: true,
-        skipped: true,
-        reason: 'marketplace_search_intelligence not queried in this process — zero rows is unknown coverage, not zero demand',
-      }
-    }
     return {
-      source: 'marketplace' as DemandSourceId,
+      source: 'marketplace',
       signals,
       ok: true,
       skipped: false,
+      reason: signals.length
+        ? undefined
+        : 'marketplace_search_intelligence returned zero rows — coverage unknown, not zero demand',
     }
   } catch (err) {
     return {
-      source: 'marketplace' as DemandSourceId,
+      source: 'marketplace',
       signals: [],
       ok: false,
       skipped: true,
