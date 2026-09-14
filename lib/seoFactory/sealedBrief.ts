@@ -43,16 +43,22 @@ export type SealedBriefParse = {
   issues: string[]
 }
 
-const STRUCTURAL = /^(in 60 seconds|key takeaways|table of contents|faq|sources|disclaimer)$/i
+export class BriefInvalidError extends Error {
+  readonly issues: string[]
+  readonly executionStage: 'brief_invalid' | 'needs_research'
 
-const DEFAULT_FAQ = [
-  'What happens if a required document is missing at filing?',
-  'Can I start this process while my current permission is still valid?',
-  'Which official page should I re-check the week I file?',
-  'What usually triggers a delay after the receipt notice?',
-  'When is professional advice worth it versus filing yourself?',
-  'What should I do if the decision is a refusal or a request for evidence?',
-]
+  constructor(
+    issues: string[],
+    executionStage: 'brief_invalid' | 'needs_research' = 'brief_invalid',
+  ) {
+    super(`${executionStage}: ${issues.join('; ')}`)
+    this.name = 'BriefInvalidError'
+    this.issues = issues
+    this.executionStage = executionStage
+  }
+}
+
+const STRUCTURAL = /^(in 60 seconds|key takeaways|table of contents|faq|sources|disclaimer)$/i
 
 export function normalizeHeading(value: string): string {
   return String(value || '')
@@ -153,6 +159,15 @@ export function validateSealedBrief(
   return issues
 }
 
+export function assertValidSealedBrief(
+  brief: SealedBrief,
+  opts?: { primaryKeyword?: string; contentType?: string },
+): SealedBrief {
+  const issues = validateSealedBrief(brief, opts)
+  if (issues.length) throw new BriefInvalidError(issues)
+  return brief
+}
+
 export function parseSealedBrief(
   raw: string,
   opts?: { contentType?: string; primaryKeyword?: string },
@@ -207,9 +222,8 @@ export function sealBriefFromAssembly(input: {
   takeaways?: string[]
   faqQuestions?: string[]
   lede?: string
+  unresolved?: string[]
 }): SealedBrief {
-  const primary = String(input.primaryKeyword || '').trim()
-  const audience = String(input.audience || 'the reader').trim()
   const headings = (input.h2Outline || []).map(normalizeHeading).filter(Boolean)
   const planByHeading = new Map(
     (input.sectionPlan || []).map((s) => [normalizeHeading(s.heading).toLowerCase(), s]),
@@ -224,50 +238,26 @@ export function sealBriefFromAssembly(input: {
     const structural = STRUCTURAL.test(heading)
     return {
       heading,
-      purpose: String(plan?.intent || '').trim() || defaultPurpose(heading, primary),
-      bridgeFrom: structural || i === 0 ? '' : `Continue from “${prev}” — next constraint or decision, not a restated intro.`,
+      // A heading alone is not evidence for what the section should claim.
+      // Leave purpose empty unless the brief assembly actually supplied one;
+      // validation will stop drafting instead of manufacturing substance.
+      purpose: String(plan?.intent || '').trim(),
+      // This bridge is structural only: it names the prior approved heading and
+      // does not invent a factual claim, fee, date, outcome, or reader advice.
+      bridgeFrom: structural || i === 0 ? '' : `Continue from “${prev}” without restarting the argument.`,
       coverTopics: (plan?.keywords || coverTopics).filter(Boolean),
       format: chapterFormatFor(heading, plan?.format),
     }
   })
-  const takeaways = (input.takeaways || []).map((t) => String(t).trim()).filter(Boolean)
-  while (takeaways.length < 3) {
-    const extra = outline[takeaways.length]
-    if (!extra) break
-    takeaways.push(`${audience.replace(/^./, (c) => c.toUpperCase())} must treat “${extra.heading}” as a decision, not a definition dump.`)
-  }
-  const faq = (input.faqQuestions || []).map((q) => String(q).trim()).filter(Boolean)
-  for (const q of DEFAULT_FAQ) {
-    if (faq.length >= 6) break
-    if (outline.some((c) => faqDuplicatesHeading(q, c.heading))) continue
-    if (faq.some((existing) => existing.toLowerCase() === q.toLowerCase())) continue
-    faq.push(q)
-  }
-  const thesis = String(input.thesis || '').trim()
-    || `${primary} is a procedure with documents, constraints, and a next decision — not a definition to restate under every heading.`
-  const lede = String(input.lede || '').trim()
-    || `Open by answering what ${audience} must do first for ${primary}, then name the constraint that usually surprises them. Do not restate the H1.`
-  return {
-    thesis,
-    takeaways: takeaways.slice(0, 5),
-    lede,
-    outline,
-    faqQuestions: faq.slice(0, 6),
-    unresolved: [],
-  }
-}
 
-function defaultPurpose(heading: string, primary: string): string {
-  const h = heading.toLowerCase()
-  if (/in 60 seconds|key takeaway/.test(h)) return 'Three to five complete claims the busy reader can act on.'
-  if (/table of contents/.test(h)) return 'Scan path matching the H2 slugs exactly.'
-  if (/^faq$/.test(h)) return 'Reader questions the content H2s did not already settle.'
-  if (/source/.test(h)) return 'Official URLs already on the allowlist, verbatim.'
-  if (/eligib|who/.test(h)) return `Who this ${primary} path is actually for, with the constraint that disqualifies guesswork.`
-  if (/document|evidence|checklist/.test(h)) return 'Named artefacts to gather, in the order a case officer will look for them.'
-  if (/process|step/.test(h)) return 'The filing sequence as numbered steps, each depending on the previous.'
-  if (/cost|fee|tim/.test(h)) return 'What it costs and how long each stage takes, with the issuing body named.'
-  return `Advance the argument under “${heading}” — a new claim or next step, not a restatement.`
+  return {
+    thesis: String(input.thesis || '').trim(),
+    takeaways: (input.takeaways || []).map((t) => String(t || '').trim()).filter(Boolean).slice(0, 5),
+    lede: String(input.lede || '').trim(),
+    outline,
+    faqQuestions: (input.faqQuestions || []).map((q) => String(q || '').trim()).filter(Boolean).slice(0, 6),
+    unresolved: (input.unresolved || []).map((u) => String(u || '').trim()).filter(Boolean),
+  }
 }
 
 export function sealedBriefPromptBlock(opts: {
