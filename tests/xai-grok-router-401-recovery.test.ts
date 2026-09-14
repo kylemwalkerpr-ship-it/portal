@@ -19,6 +19,21 @@ describe('xAI Grok router 401 recovery', () => {
     jest.clearAllMocks()
   })
 
+  function requestForResponses() {
+    return new NextRequest('https://portal.yousafeconsultancy.com/api/internal/xai-grok/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer server-rejected-access-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        input: [{ role: 'user', content: 'ok' }],
+        max_output_tokens: 8,
+      }),
+    })
+  }
+
   it('refreshes a rejected SuperGrok bearer once and replays the request with the replacement token', async () => {
     let proxyCalls = 0
     global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -65,20 +80,7 @@ describe('xAI Grok router 401 recovery', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    const request = new NextRequest('https://portal.yousafeconsultancy.com/api/internal/xai-grok/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer server-rejected-access-token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'grok-4.6',
-        input: [{ role: 'user', content: 'ok' }],
-        max_output_tokens: 8,
-      }),
-    })
-
-    const response = await POST(request, {
+    const response = await POST(requestForResponses(), {
       params: Promise.resolve({ path: ['responses'] }),
     })
 
@@ -86,5 +88,31 @@ describe('xAI Grok router 401 recovery', () => {
     await expect(response.json()).resolves.toMatchObject({ output_text: 'ok', status: 'completed' })
     expect(proxyCalls).toBe(2)
     expect(global.fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not refresh or replay a 403 permission response', async () => {
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+      expect(url).toBe('https://cli-chat-proxy.grok.com/v1/responses')
+      return new Response(JSON.stringify({
+        code: 'permission_denied',
+        error: 'usage or permission denied',
+      }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    const response = await POST(requestForResponses(), {
+      params: Promise.resolve({ path: ['responses'] }),
+    })
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({ code: 'permission_denied' })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
   })
 })
