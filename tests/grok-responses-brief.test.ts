@@ -149,7 +149,7 @@ describe('Grok 4.6 Responses transport', () => {
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
     }
-    expect(message).toMatch(/SuperGrok subscription proxy timed out/i)
+    expect(message).toMatch(/Grok upstream timed out/i)
     expect(message).not.toMatch(/affected quota resets/i)
   })
 

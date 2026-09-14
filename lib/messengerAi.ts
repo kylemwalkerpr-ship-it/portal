@@ -172,7 +172,9 @@ export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
   try {
     const oauth = await ensureSuperGrokAccessToken()
     if (oauth?.accessToken) {
-      return { apiKey: oauth.accessToken, baseURL, model, authMode: 'supergrok' }
+      // Same public API YQAA already uses. Never inherit a vault/env
+      // XAI_BASE_URL that still points at the Portal CLI self-shim.
+      return { apiKey: oauth.accessToken, baseURL: XAI_API_BASE_DEFAULT, model, authMode: 'supergrok' }
     }
   } catch (err) {
     console.warn('[messengerAi] SuperGrok OAuth unavailable', err instanceof Error ? err.message : err)

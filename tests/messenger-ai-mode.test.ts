@@ -60,6 +60,7 @@ describe('resolveMessengerGrokAuth preference', () => {
     const auth = await resolveMessengerGrokAuth()
     expect(auth.authMode).toBe('supergrok')
     expect(auth.apiKey).toBe('oauth-token-mock')
+    expect(auth.baseURL).toBe('https://api.x.ai/v1')
   })
 
   it('falls back to vault key when OAuth is absent', async () => {

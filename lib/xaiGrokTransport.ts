@@ -1,10 +1,16 @@
 /**
  * xAI transport routing for the two different Grok credential products.
  *
- * SuperGrok / Grok subscription OAuth tokens are session credentials and must
- * be sent through the Grok CLI chat proxy. Developer `xai-...` API keys remain
- * on the metered public API. Keeping this distinction in one module prevents a
- * valid SuperGrok session from being charged/evaluated as API-team spend.
+ * SuperGrok / Grok subscription OAuth tokens are session credentials. YQAA
+ * already proves they work as Bearer tokens against the public Responses API
+ * at api.x.ai/v1. Content Studio used to force those same tokens through a
+ * Portal self-hosted CLI shim (`/api/internal/xai-grok` → cli-chat-proxy),
+ * which 522/401/426'd while YQAA kept working.
+ *
+ * Default inference for both products is therefore api.x.ai. The CLI chat
+ * proxy is a last-resort fallback only when the public API rejects a
+ * subscription token as a metered team key (402 personal-team-blocked).
+ * Developer `xai-...` API keys stay on the metered public API.
  */
 
 export const XAI_PUBLIC_API_BASE_URL = 'https://api.x.ai/v1'
@@ -22,11 +28,8 @@ export const XAI_GROK_CLIENT_IDENTIFIER = 'grok-shell'
 export const XAI_GROK_CLIENT_MODE = 'headless'
 
 /**
- * Portal-owned transport shim. Server-side callers keep using the normal
- * OpenAI-compatible `/responses` and `/chat/completions` paths; this shim
- * decides whether to forward to the SuperGrok subscription proxy or the
- * developer API based on the credential type and injects the required CLI
- * metadata only for subscription OAuth traffic.
+ * Portal-owned transport shim. Kept for compatibility with older Workers and
+ * tests; SuperGrok inference must not self-fetch this URL from the Worker.
  */
 export const XAI_GROK_ROUTER_BASE_URL_DEFAULT =
   'https://portal.yousafeconsultancy.com/api/internal/xai-grok'
@@ -40,6 +43,23 @@ export function xaiGrokRouterBaseUrl(): string {
 
 export function isXaiDeveloperApiKey(token: string): boolean {
   return /^xai-/i.test(String(token || '').trim())
+}
+
+export function isPortalGrokSelfShimUrl(url: string): boolean {
+  return /\/api\/internal\/xai-grok/i.test(String(url || ''))
+}
+
+/**
+ * Where a Grok credential should actually call. SuperGrok OAuth (and any
+ * leftover self-shim URL) goes to api.x.ai — the YQAA path. Developer keys
+ * keep a non-shim configured base.
+ */
+export function grokInferenceBaseUrl(token: string, configuredBase?: string | null): string {
+  const configured = String(configuredBase || '').trim().replace(/\/+$/, '')
+  if (isXaiDeveloperApiKey(token) && configured && !isPortalGrokSelfShimUrl(configured)) {
+    return configured
+  }
+  return XAI_PUBLIC_API_BASE_URL
 }
 
 export function xaiUpstreamBaseForToken(token: string): string {
