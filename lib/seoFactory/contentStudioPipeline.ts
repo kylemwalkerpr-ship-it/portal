@@ -32,6 +32,14 @@ function failureStage(error: unknown, state: ContentStudioExecutionState): strin
   return 'brief_invalid'
 }
 
+function createStrictState(contract: WritingContractV2): ContentStudioExecutionState {
+  return createContentStudioExecutionState(true, {
+    contractId: contract.contractId,
+    contractHash: contract.contractHash,
+    opportunityId: contract.opportunity.id,
+  })
+}
+
 async function persistExecutionFailure(input: {
   request: ContentStudioPipelineInput
   contract: WritingContractV2
@@ -52,8 +60,6 @@ async function persistExecutionFailure(input: {
       patch.content = input.state.acceptedContent
       patch.word_count = input.state.acceptedContent.trim().split(/\s+/).filter(Boolean).length
     }
-    // Ownership-safe release: a stale/parallel execution cannot fail a job
-    // after its contract identity has advanced.
     const result = await db
       .from('content_jobs')
       .update(patch)
@@ -73,26 +79,40 @@ async function persistExecutionFailure(input: {
 async function persistExecutionStage(input: {
   request: ContentStudioPipelineInput
   contract: WritingContractV2
+  state: ContentStudioExecutionState
   result: PipelineResult
 }): Promise<void> {
   const jobId = String(input.request.existingJobId || input.result.jobId || '').trim()
   if (!jobId) return
   try {
-    const stage = input.result.ship?.status === 'pr_created'
+    const shipStatus = input.result.ship?.status
+    const stage = shipStatus === 'pr_created'
       ? 'pr_open'
-      : input.result.ship?.status === 'merged' || input.result.ship?.status === 'deployed'
+      : shipStatus === 'merged' || shipStatus === 'deployed'
         ? 'merged'
         : input.result.audit?.blockers?.length
           ? 'revision_required'
           : 'ready_for_approval'
+    const publicationPhase = shipStatus === 'pr_created'
+      ? 'pr_open'
+      : shipStatus === 'merged'
+        ? 'merged'
+        : shipStatus === 'deployed'
+          ? 'deployed'
+          : null
+    const patch: Record<string, unknown> = {
+      execution_stage: stage,
+      actual_model: input.result.model || null,
+    }
+    if (publicationPhase) patch.publication_phase = publicationPhase
+    if (input.state.lastPublicationMarker) patch.expected_revision_marker = input.state.lastPublicationMarker
+
     const db = createSupabaseAdminClient()
     await db
       .from('content_jobs')
-      .update({
-        execution_stage: stage,
-        actual_model: input.result.model || null,
-      })
+      .update(patch)
       .eq('id', jobId)
+      .eq('opportunity_id', input.contract.opportunity.id)
       .eq('contract_id', input.contract.contractId)
       .eq('contract_hash', input.contract.contractHash)
   } catch (error) {
@@ -100,21 +120,16 @@ async function persistExecutionStage(input: {
   }
 }
 
-/**
- * Contract-bound JSON production entry. Contract resolution and evidence hash
- * verification occur before AsyncLocalStorage is opened and before any model
- * call. The raw SEO Factory pipeline remains the single implementation.
- */
 export async function runContentStudioPipeline(
   request: ContentStudioPipelineInput,
 ): Promise<PipelineResult> {
   const resolved = await resolvePipelineWritingContract({ ...request, writingContractRequired: true })
   if (!resolved.contract) throw new Error('writing contract required')
   const hydrated = resolved.input as ContentStudioPipelineInput
-  const state = createContentStudioExecutionState(true)
+  const state = createStrictState(resolved.contract)
   try {
     const result = await runInContentStudioExecution(state, () => runSeoFactoryPipeline(hydrated))
-    await persistExecutionStage({ request: hydrated, contract: resolved.contract, result })
+    await persistExecutionStage({ request: hydrated, contract: resolved.contract, state, result })
     return result
   } catch (error) {
     await persistExecutionFailure({ request: hydrated, contract: resolved.contract, state, error })
@@ -122,18 +137,13 @@ export async function runContentStudioPipeline(
   }
 }
 
-/**
- * Contract-bound SSE production entry. Every iterator step executes inside the
- * SAME AsyncLocalStorage state; a transport return/throw runs the finally block
- * and preserves the accepted draft while releasing only this contract identity.
- */
 export async function* runContentStudioPipelineStream(
   request: ContentStudioPipelineInput,
 ): AsyncGenerator<PipelineStreamEvent> {
   const resolved = await resolvePipelineWritingContract({ ...request, writingContractRequired: true })
   if (!resolved.contract) throw new Error('writing contract required')
   const hydrated = resolved.input as ContentStudioPipelineInput
-  const state = createContentStudioExecutionState(true)
+  const state = createStrictState(resolved.contract)
   const iterator = runSeoFactoryPipelineStream(hydrated)[Symbol.asyncIterator]()
   let finished = false
   let terminalError: unknown = null
@@ -144,7 +154,13 @@ export async function* runContentStudioPipelineStream(
         finished = true
         break
       }
-      if (next.value.type === 'final') finished = true
+      if (next.value.type === 'final') {
+        finished = true
+        const finalResult = (next.value as PipelineStreamEvent & { result?: PipelineResult }).result
+        if (finalResult) {
+          await persistExecutionStage({ request: hydrated, contract: resolved.contract, state, result: finalResult })
+        }
+      }
       yield next.value
     }
   } catch (error) {
