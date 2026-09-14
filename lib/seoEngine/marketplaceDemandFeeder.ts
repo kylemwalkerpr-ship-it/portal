@@ -53,14 +53,14 @@ export async function defaultLoadMarketplaceIntelligence(db?: SupabaseClient): P
   rows: MarketplaceDemandRow[]
   conversionInstrumented: boolean
 }> {
-  const client = db || createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  )
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  if (!db && (!url || !key)) {
     throw new Error('marketplace feeder missing service-role supabase credentials')
   }
+  const client = db || createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
   const { data, error } = await client
     .from('marketplace_search_intelligence')
     .select('normalized_query,search_count,unique_sessions,click_count,conversion_count')
