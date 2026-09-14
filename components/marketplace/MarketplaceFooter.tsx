@@ -1,6 +1,7 @@
 /**
  * Compact marketplace footer — two thin rows, no tagline, no flag stripe.
- * Action links only: services, shop, sell, help. Legal lives on one line.
+ * Action links only: services, shop, sell, help. Legal and canonical contact
+ * details live in the compact lower row.
  */
 
 import { T, F } from './tokens'
@@ -16,6 +17,7 @@ const NAV_LINKS: FooterLink[] = [
   { label: 'File shop', href: '/shop' },
   { label: 'Categories', href: '/categories' },
   { label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
+  { label: 'Contact', href: 'https://usa.yousafeconsultancy.com/contact/' },
   { label: 'Help', href: '/#faq' },
   { label: 'Sitemap', href: '/sitemap.xml' },
 ]
@@ -25,6 +27,9 @@ const LEGAL_LINKS: FooterLink[] = [
   { label: 'Terms', href: 'https://usa.yousafeconsultancy.com/terms-of-service/' },
   { label: 'Refunds', href: 'https://usa.yousafeconsultancy.com/refund-policy/' },
 ]
+
+const BUSINESS_ADDRESS = '906 Donne Court, Virginia Beach, VA 23462'
+const BUSINESS_EMAIL = 'admin@yousafeconsultancy.com'
 
 export function MarketplaceFooter() {
   const year = new Date().getFullYear()
@@ -94,6 +99,14 @@ export function MarketplaceFooter() {
           text-decoration: none;
         }
         .cw-mkt-footer-legal-inner a:hover { color: ${T.ink}; }
+        .cw-mkt-footer-contact {
+          display: inline-flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 4px 10px;
+          margin: 0;
+          font-style: normal;
+        }
         .cw-mkt-footer-legal-inner .dot {
           width: 3px; height: 3px; border-radius: 50%;
           background: rgba(15,23,42,0.22);
@@ -101,6 +114,7 @@ export function MarketplaceFooter() {
         @media (max-width: 720px) {
           .cw-mkt-footer-inner { padding: 14px 0 12px; }
           .cw-mkt-footer-nav { justify-content: flex-start; }
+          .cw-mkt-footer-contact { flex-basis: 100%; }
         }
       `}</style>
       <div className="cw-mkt-footer-inner">
@@ -123,6 +137,11 @@ export function MarketplaceFooter() {
               <a href={l.href}>{l.label}</a>
             </span>
           ))}
+          <span className="dot" aria-hidden="true" />
+          <address className="cw-mkt-footer-contact">
+            <span>{BUSINESS_ADDRESS}</span>
+            <a href={`mailto:${BUSINESS_EMAIL}`}>{BUSINESS_EMAIL}</a>
+          </address>
           <span className="dot" aria-hidden="true" />
           <span>Not a law firm · escrowed briefs only</span>
         </div>
