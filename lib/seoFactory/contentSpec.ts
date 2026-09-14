@@ -23,6 +23,7 @@ import type { AuthorPack, ResearchClaim } from './authorPack'
 import { sanitizeBriefOutline, rejectFragmentKeyword, isUnplaceableCoverageTerm } from './keywordContractBrief'
 import { stripOutlineHeadingDecorations } from './contentQualityGate'
 import { resolveSectionPurpose, synthesizeThesis } from './registerCard'
+import { usesGuideApparatus } from './writingShape'
 
 export type ContentSpecKeyword = {
   phrase: string
@@ -562,7 +563,7 @@ export function createContentSpec(input: CreateContentSpecInput): ContentSpec {
     },
     aeoGeo: {
       answerFirst: input.aeoGeo?.answerFirst ?? input.indexable,
-      faqRequired: input.aeoGeo?.faqRequired ?? input.indexable,
+      faqRequired: input.aeoGeo?.faqRequired ?? (Boolean(input.indexable) && usesGuideApparatus(input.contentType)),
       quotableEvidenceRequired: input.aeoGeo?.quotableEvidenceRequired ?? false,
     },
     provenance: {
@@ -820,7 +821,7 @@ export function resolveContentSpecForJob(args: ResolveContentSpecArgs): ContentS
       verifiedEstateLinks: [],
       approvedSources,
       ymyl: { disclaimerRequired: args.indexable, statutoryAnchors: [], freshnessRequired: false },
-      aeoGeo: { answerFirst: args.indexable, faqRequired: args.indexable, quotableEvidenceRequired: false },
+      aeoGeo: { answerFirst: args.indexable, faqRequired: Boolean(args.indexable) && usesGuideApparatus(args.contentType), quotableEvidenceRequired: false },
       plannerRunId: args.plannerRunId,
       generatedAt: now,
       ...(args.author ? { author: args.author } : {}),

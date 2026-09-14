@@ -1078,12 +1078,9 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
-    // Extracted to lib/seoFactory/depthRescue.ts so the expand → append →
-    // focus-rotation → stall behavior is regression-tested with mocked
-    // providers. The generator emits the same progress/delta/attempt events
-    // and a final `done` event carries the updated state back to the pipeline.
-    // Critically-thin drafts (<200 words) are handled inside runDepthRescue
-    // with an immediate skip + progress message — no pipeline guard needed.
+    // A held desk article already met the floor inside the conversation.
+    // Running expand/append here restitches kit H2s onto a finished essay.
+    if (!(deskHeld && countBodyWords(content) >= minWords)) {
     for await (const ev of runDepthRescue({
       content,
       audit,
@@ -1139,15 +1136,17 @@ export async function* runSeoFactoryPipelineStream(
       }
       yield ev
     }
+    }
 
     // ── PASS 3: Quality refine after depth rescue ────────────────────────
+    // Isolated factory rewrites restitch a held desk article. Skip them.
     // Depth rescue can introduce new quality issues (AI slop from appended
     // sections), and a thin draft still carries voice/schema/disclaimer
     // blockers. Run the quality pass whenever content is substantial, EVEN IF
     // depth is still short — otherwise the non-depth blockers that dragged a
     // score to 33 are never fixed (the old gate skipped the whole pass below
     // the word floor).
-    if (!meetsShipQuality(audit) && countBodyWords(content) >= Math.max(400, Math.floor(minWords * 0.4))) {
+    if (!deskHeld && !meetsShipQuality(audit) && countBodyWords(content) >= Math.max(400, Math.floor(minWords * 0.4))) {
       stalledCount = 0
       for (let j = 0; j <= Math.min(1, maxRefine); j++) {
         attempts++

@@ -368,6 +368,26 @@ export async function runLinearDesk(opts: {
       primaryKeyword: opts.assembly.primaryKeyword,
     })
   }
+  if (!parsed.ok) {
+    const repairInstruction = `The sealed brief is still incomplete:\n${parsed.issues.map((i) => `- ${i}`).join('\n')}\nReturn ONLY corrected JSON. GATE_WATCH codes and chapter continues are mandatory. Do not write the article.`
+    turns.push({ role: 'user', name: 'brief-repair', text: repairInstruction })
+    const repairAi = await deskCall(opts.generate, {
+      phase: 'brief',
+      system,
+      turns: turns.slice(0, -1),
+      name: 'brief-repair',
+      instruction: repairInstruction,
+      maxTokens: 3500,
+      temperature: 0.1,
+    })
+    provider = repairAi.provider
+    model = repairAi.model
+    turns.push({ role: 'assistant', name: 'brief-repair', text: repairAi.text })
+    parsed = parseSealedBrief(repairAi.text, {
+      contentType: opts.assembly.contentType,
+      primaryKeyword: opts.assembly.primaryKeyword,
+    })
+  }
 
   const fallback = sealBriefFromAssembly(opts.assembly)
   const seed = parsed.brief || {
@@ -440,8 +460,15 @@ export async function runLinearDesk(opts: {
     primaryKeyword: opts.assembly.primaryKeyword,
   })
   let reviewed = false
-  if (needsRewrite(reflection, hasBlockers, reflectionScore, quality)) {
-    progress?.({ phase: 'review', message: 'Rewriting leftover gates and Review warnings — same article' })
+  let reviewPasses = 0
+  while (reviewPasses < 2 && needsRewrite(reflection, hasBlockers, reflectionScore, quality)) {
+    reviewPasses++
+    progress?.({
+      phase: 'review',
+      message: reviewPasses === 1
+        ? 'Rewriting leftover gates and Review warnings — same article'
+        : 'Second self-correction — still clearing gates in the same conversation',
+    })
     const reviewNotes = rewriteFromReflectionPrompt({
       reflection,
       score: reflectionScore,
@@ -475,6 +502,8 @@ export async function runLinearDesk(opts: {
         unresolved: brief.unresolved,
         primaryKeyword: opts.assembly.primaryKeyword,
       })
+    } else {
+      break
     }
   }
 

@@ -105,6 +105,9 @@ export const DESK_GATE_CODES = [
   'generic_current_info_heading',
   'missing_disclaimer',
   'missing_official_sources',
+  'ahrefs_title_too_short',
+  'ahrefs_title_too_long',
+  'title_filler',
 ] as const
 
 const GUIDE_GATE_CODES = [
