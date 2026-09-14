@@ -2,6 +2,7 @@
  * Shared SEO Factory pipeline: plan → GSC brief → AI (with refine) → audit → ship.
  */
 
+import { validateRevisionQuality } from './revisionQuality'
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
 import { auditContent, type SeoFactoryAudit } from './audit'
@@ -1085,6 +1086,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       minWords,
       maxWords,
       force: outlineSpliced,
+      validateRevision: (original, revised) => validateRevisionQuality(runAudit(original), runAudit(revised), {
+          original, revised,
+          requiredKeywords: [...requiredShortKeywords, ...requiredLongTailKeywords],
+          keywordTerms: [...(shortKeywordTerms || []), ...(longTailKeywordTerms || [])],
+        }),
       generateText: async (systemPrompt, prompt) => {
         const ai = await generateWithRetry(generateContentText, {
           system: systemPrompt,
@@ -1119,11 +1125,18 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     const denoise = await runFactoryMaskedDenoise({
       content,
       contentType,
+      minWords,
+      maxWords,
       indexable: plan.indexable,
       thesis: contentSpec?.thesis,
       primaryKeyword,
       reader: contentSpec?.intent?.reader,
       queryNeed: contentSpec?.intent?.queryNeed,
+      validateRevision: (original, revised) => validateRevisionQuality(runAudit(original), runAudit(revised), {
+          original, revised,
+          requiredKeywords: [...requiredShortKeywords, ...requiredLongTailKeywords],
+          keywordTerms: [...(shortKeywordTerms || []), ...(longTailKeywordTerms || [])],
+        }),
       generateText: async (systemPrompt, prompt) => {
         const ai = await generateContentText({
           system: systemPrompt,

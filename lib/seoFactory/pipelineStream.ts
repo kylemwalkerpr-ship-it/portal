@@ -3,6 +3,7 @@
  * Same logic as runSeoFactoryPipeline but progressive.
  */
 
+import { validateRevisionQuality } from './revisionQuality'
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
@@ -1511,6 +1512,11 @@ export async function* runSeoFactoryPipelineStream(
         minWords,
         maxWords,
         force: outlineSpliced,
+        validateRevision: (original, revised) => validateRevisionQuality(runAudit(original), runAudit(revised), {
+          original, revised,
+          requiredKeywords: [...requiredShortKeywords, ...requiredLongTailKeywords],
+          keywordTerms: [...(shortKeywordTerms || []), ...(longTailKeywordTerms || [])],
+        }),
         generateText: async (systemPrompt, prompt) => {
           const ai = await generateContentText({
             system: systemPrompt,
@@ -1570,11 +1576,18 @@ export async function* runSeoFactoryPipelineStream(
       const denoise = await runFactoryMaskedDenoise({
         content,
         contentType,
+        minWords,
+        maxWords,
         indexable: plan.indexable,
         thesis: contentSpec?.thesis,
         primaryKeyword,
         reader: contentSpec?.intent?.reader,
         queryNeed: contentSpec?.intent?.queryNeed,
+        validateRevision: (original, revised) => validateRevisionQuality(runAudit(original), runAudit(revised), {
+          original, revised,
+          requiredKeywords: [...requiredShortKeywords, ...requiredLongTailKeywords],
+          keywordTerms: [...(shortKeywordTerms || []), ...(longTailKeywordTerms || [])],
+        }),
         generateText: async (systemPrompt, prompt) => {
           const ai = await generateContentText({
             system: systemPrompt,
