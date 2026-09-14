@@ -23,6 +23,7 @@ import StudentOrderMessengerBridge from '@/components/student/StudentOrderMessen
 import MobileVisualViewport from '@/components/mobile/MobileVisualViewport'
 import MessengerHeaderEnhancer from '@/components/messaging/MessengerHeaderEnhancer'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
+import CookieConsentBanner from '@/components/CookieConsentBanner'
 // HreflangTags removed — portal is noindex sitewide and has no per-locale
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
 // Canonical" flags. Re-introduce once we have real `/es/...` routes.
@@ -106,8 +107,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             itself is async, but preconnect shaves ~100ms off the eventual
             fetch on cold visits. */}
         <link rel="preconnect" href="https://clerk.portal.yousafeconsultancy.com" crossOrigin="anonymous" />
-        {/* GA4 gtag — same G-FTKZCVNW4B property as consultancy hosts.
-            Shared root layout covers both market.* and portal.* custom domains. */}
+        {/* GA4 is mounted globally but Google scripts are loaded only after
+            explicit analytics consent. */}
         <GoogleAnalytics />
         {/* hreflang removed pending per-locale URL routes */}
         {/* Stale-chunk handler. After a deploy, the build's hashed JS
@@ -158,6 +159,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <StudentOrderMessengerBridge />
             <StudentMobileNavigation />
             <ChatWidget />
+            <CookieConsentBanner />
           </TranslationProvider>
         </ClerkProvider>
       </body>
