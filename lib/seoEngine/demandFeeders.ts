@@ -66,16 +66,23 @@ export async function pullAllDemand(onProgress?: (phase: string, message: string
   })
   onProgress?.('signals', `Ads ${ads.skipped ? 'skipped' : `${ads.signals.length} signals`}`, ads.reason)
 
+  const marketMod = await import('./marketplaceDemandFeeder')
+  const marketplace = await marketMod.pullMarketplaceFeeder()
+  onProgress?.(
+    'signals',
+    `Marketplace ${marketplace.skipped ? 'skipped' : `${marketplace.signals.length} signals`}`,
+    marketplace.reason,
+  )
+
   const { mergeDemandSignals } = await import('./keywordDemand')
   // Ubersuggest first — its volume is the opportunity surface. GSC/GA4 then
   // overlay live rank and engagement without erasing market size.
-  const merged = mergeDemandSignals(uber.signals, gsc.signals, ga4.signals, ads.signals)
-  // Keep raw source counts above for observability, but the planner only gets
-  // demand that is both syntactically valid and inside YouSafe's mission.
+  // Marketplace submitted-search counts are first-party demand, not GSC impressions.
+  const merged = mergeDemandSignals(uber.signals, gsc.signals, ga4.signals, ads.signals, marketplace.signals)
   const signals = filterActionableDemandSignals(merged)
   const suppressed = merged.length - signals.length
   if (suppressed > 0) {
     onProgress?.('signals', `Suppressed ${suppressed} junk/off-mission demand signal(s) before planning`)
   }
-  return { signals, feeders: [uber, gsc, ga4, ads] }
+  return { signals, feeders: [uber, gsc, ga4, ads, marketplace] }
 }
