@@ -313,7 +313,7 @@ function Cover({ product, large }: { product: FileShopProduct; large?: boolean }
   const tone = CAT_TONE[product.cat]
   return (
     <div className={`ys-shop-cover${large ? ' large' : ''}`}>
-      <img src={product.cover} alt="" width={1200} height={1600} />
+      <img src={product.cover} alt={`${product.title} file cover`} width={1200} height={1600} />
       <span className="ys-shop-cover-cat" style={{ background: tone.wash, color: tone.ink }}>{tone.label}</span>
       {product.stamp ? (
         <span className="ys-shop-cover-stamp">{product.stamp.replace(/\n/g, ' ')}</span>

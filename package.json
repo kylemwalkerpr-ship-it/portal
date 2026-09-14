@@ -13,7 +13,7 @@
     "prebuild": "node scripts/sync-seo-strategies.mjs",
     "build": "NODE_OPTIONS='--max-old-space-size=4096' next build --webpack && NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build",
-    "deploy": "opennextjs-cloudflare deploy"
+    "deploy": "node scripts/deploy-production.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.8",
