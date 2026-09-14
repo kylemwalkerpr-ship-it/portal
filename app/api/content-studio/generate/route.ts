@@ -12,6 +12,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import {
   runSeoFactoryPipeline,
   type RequestedShipMode,
+  type PipelineInput,
 } from '@/lib/seoFactory/pipeline'
 import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
 
@@ -67,6 +68,11 @@ export async function POST(request: NextRequest) {
         body.kwH2Map && typeof body.kwH2Map === 'object'
           ? Object.fromEntries(Object.entries(body.kwH2Map as Record<string, unknown>).map(([k, v]) => [String(k), String(v)]))
           : undefined,
+      sectionPlan: Array.isArray(body.sectionPlan) ? body.sectionPlan as PipelineInput['sectionPlan'] : undefined,
+      thesis: body.thesis ? String(body.thesis) : undefined,
+      takeaways: Array.isArray(body.takeaways) ? body.takeaways.map(String) : undefined,
+      faqQuestions: Array.isArray(body.faqQuestions) ? body.faqQuestions.map(String) : undefined,
+      lede: body.lede ? String(body.lede) : undefined,
       shipMode,
       dryRun: Boolean(body.dryRun || body.dry_run),
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,

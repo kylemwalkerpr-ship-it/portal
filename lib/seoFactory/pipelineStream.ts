@@ -44,6 +44,7 @@ import { persistPipelineJob } from './persistContentJob'
 import { keywordContractForDraft } from './keywordContract'
 import { runFactoryThroughline, shouldRunThroughline } from './throughline'
 import { runFactoryMaskedDenoise, shouldRunMaskedDenoise } from './maskedDenoise'
+import { runLinearDesk, shouldRunLinearDesk, assemblyFromPipelineInput } from './linearDesk'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -489,15 +490,138 @@ export async function* runSeoFactoryPipelineStream(
     let rescueStallCount = 0
     let rescueTimeMs = 0
     let rescueBudgetMs = 0
+    let linearDrafted = false
+
+    if (shouldRunLinearDesk({
+      contentType,
+      resumeContent: input.resumeContent,
+      indexable: plan.indexable,
+    })) {
+      yield { type: 'progress', stage: 'brief', message: 'Sealing the brief from Discover — no guesswork' }
+      try {
+        const linear = await runLinearDesk({
+          system,
+          assembly: assemblyFromPipelineInput({
+            title,
+            primaryKeyword,
+            audience: input.audience,
+            contentType,
+            h2Outline: promptOutline,
+            kwH2Map: input.kwH2Map,
+            sectionPlan: input.sectionPlan,
+            thesis: input.thesis || contentSpec?.thesis,
+            takeaways: input.takeaways,
+            faqQuestions: input.faqQuestions,
+            lede: input.lede,
+            sources: verifiedSources,
+            interlinks: radarInterlinks as Array<{ label?: string; url?: string }>,
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+            opportunityAction: input.opportunityAction,
+            writeHint: input.writeHint,
+            masterEngineBlock: input.masterEngineBlock,
+            gscBlock,
+          }),
+          minWords,
+          maxWords,
+          generate: async (args) => {
+            const ai = await generateContentText({
+              system: args.system,
+              prompt: args.prompt,
+              maxTokens: args.maxTokens,
+              temperature: args.temperature,
+              aiProvider: input.aiProvider,
+              signal: input.signal,
+              exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+              cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
+              contentType,
+              skipQualityContract: args.phase === 'brief',
+            })
+            provider = ai.provider
+            model = ai.model
+            return { text: ai.text, provider: ai.provider, model: ai.model }
+          },
+          evaluate: (body) => evaluateContentQuality({
+            content: body,
+            contentType,
+            primaryKeyword,
+            indexable: plan.indexable,
+            outline: briefOutline,
+            requiredShortKeywords,
+            requiredLongTailKeywords,
+            shortKeywordTerms,
+            longTailKeywordTerms,
+            region,
+          }),
+        })
+        if (countBodyWords(linear.content) >= 40) {
+          content = linear.content
+          provider = linear.provider
+          model = linear.model
+          attempts = linear.reviewed ? 2 : 1
+          linearDrafted = true
+          if (contentSpec && linear.brief.thesis) {
+            contentSpec = { ...contentSpec, thesis: linear.brief.thesis }
+          }
+          audit = runAudit(content)
+          yield {
+            type: 'attempt',
+            attempt: attempts,
+            score: audit.score,
+            wordCount: audit.wordCount,
+            goodEnough:
+              audit.score >= minAudit &&
+              meetsShipQuality(audit) &&
+              audit.blockers.filter((b) => b.code !== 'ownership').length === 0,
+            draft: content,
+          }
+        }
+      } catch (err) {
+        if (input.signal?.aborted) {
+          yield { type: 'error', error: 'Generation cancelled (client disconnected)' }
+          return
+        }
+        yield {
+          type: 'progress',
+          stage: 'generate',
+          message: `Linear desk paused (${err instanceof Error ? err.message.slice(0, 120) : 'error'}) — isolated draft fallback`,
+        }
+      }
+    }
 
     // ── PASS 1: Main refine loop (depth + quality) ───────────────────────
     for (let i = 0; i <= maxRefine; i++) {
-      attempts = i + 1
+      attempts = Math.max(attempts, i + 1)
       // Client went away — stop refining instead of starting a new generation
       // that nobody will read (the single biggest stream-memory leak).
       if (input.signal?.aborted) {
         yield { type: 'error', error: 'Generation cancelled (client disconnected)' }
         return
+      }
+      if (i === 0 && linearDrafted && content) {
+        audit = runAudit(content)
+        const goodEnough =
+          audit.score >= minAudit &&
+          meetsShipQuality(audit) &&
+          audit.blockers.filter((b) => b.code !== 'ownership').length === 0
+        if (goodEnough) break
+        const q = evaluateContentQuality({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          outline: briefOutline,
+          requiredShortKeywords,
+          requiredLongTailKeywords,
+          shortKeywordTerms,
+          longTailKeywordTerms,
+          region,
+        })
+        refineNotes = [
+          auditToRefineNotes({ ...audit, minWords, targetWords, maxWords }),
+          !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+        ].filter(Boolean).join('\n\n')
+        continue
       }
       const underDepth = Boolean(content) && countBodyWords(content) < minWords
 

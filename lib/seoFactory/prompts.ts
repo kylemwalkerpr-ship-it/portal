@@ -27,6 +27,7 @@ import {
   writingFamilyFor,
   essayFirstPromptBlock,
 } from './writingShape'
+import { deskLayoutPromptBlock } from './deskLayout'
 import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
 import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
 import { houseRegisterFor, registerCardPromptBlock } from './registerCard'
@@ -372,6 +373,8 @@ export function buildFactorySystemPrompt(opts: {
     'Cite official sources with full https URLs: immigration departments, government departments, official school pages, named intergovernmental bodies, AND the issuing body for the article’s claim (exam boards, licensing councils — e.g. NCSBN for NCLEX, IELTS.org for IELTS, NMC/GMC for UK professional registration). A host is valid because it issues that rule or exam, not because it is on a generic .gov list.',
     '',
     ...essayFirstPromptBlock(),
+    '',
+    ...deskLayoutPromptBlock(contentType),
     '',
     ...factoryShipGatesBlock(contentType, minWords, maxWords, target, spec?.author?.experienceBeats),
     '',
