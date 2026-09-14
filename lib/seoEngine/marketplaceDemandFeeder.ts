@@ -15,6 +15,10 @@ export type MarketplaceDemandRow = {
   click_count?: number | null
   conversion_count?: number | null
   measured_search_count?: number | null
+  /**
+   * Explicit coverage supplied by a trusted server-side instrumentation probe
+   * for the same observation window. Historical conversion rows do NOT set it.
+   */
   conversion_instrumented?: boolean | null
 }
 
@@ -63,14 +67,15 @@ export async function defaultLoadMarketplaceIntelligence(db?: SupabaseClient): P
     .order('search_count', { ascending: false })
     .limit(500)
   if (error) throw new Error(error.message)
-  const { count, error: convError } = await client
-    .from('marketplace_search_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('event_type', 'conversion')
-  if (convError) throw new Error(convError.message)
+
+  // The aggregate view contains search/click/conversion observations, but it
+  // does not prove that the trusted conversion emitter covered the same
+  // window for every query. In particular, "some conversion happened at some
+  // time" is not instrumentation coverage. Default to unknown until a trusted
+  // server-side coverage probe explicitly supplies the fact.
   return {
     rows: Array.isArray(data) ? (data as MarketplaceDemandRow[]) : [],
-    conversionInstrumented: Number(count || 0) > 0,
+    conversionInstrumented: false,
   }
 }
 
