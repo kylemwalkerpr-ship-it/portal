@@ -147,10 +147,7 @@ export function validateSealedBrief(
     }
   }
 
-  const unresolved = (brief.unresolved || []).map((u) => String(u || '').trim()).filter(Boolean)
-  if (unresolved.length) {
-    issues.push(`unresolved: ${unresolved.join(' · ')} — omit these rather than invent`)
-  }
+  // unresolved is a success of no-guesswork — omit those items, do not fail the brief.
   return issues
 }
 

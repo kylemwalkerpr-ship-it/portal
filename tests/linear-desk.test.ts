@@ -1,10 +1,11 @@
 /**
- * Linear desk: one conversation, sealed brief, Alma-grade layout, no guesswork.
+ * Linear desk: one conversation, explore CoT, sealed brief, self-reflection.
  */
 import { buildFactorySystemPrompt } from '@/lib/seoFactory/prompts'
 import {
   LINEAR_CONVERSATION_ADDENDUM,
   buildDiscoverBlock,
+  deskPhaseAiOpts,
   linearDeskSystem,
   renderDeskConversation,
   runLinearDesk,
@@ -16,8 +17,18 @@ import {
   validateSealedBrief,
   executeBriefPrompt,
 } from '@/lib/seoFactory/sealedBrief'
+import {
+  parseExplore,
+  parseReflection,
+  needsRewrite,
+  stripDeskThinking,
+  mergeExploreIntoBrief,
+  explorePrompt,
+  reflectPrompt,
+} from '@/lib/seoFactory/deskCognition'
 import { deskLayoutPromptBlock } from '@/lib/seoFactory/deskLayout'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
+import type { QualityGateResult } from '@/lib/seoFactory/contentQualityGate'
 
 const plan = {
   host: 'legal.yousafeconsultancy.com',
@@ -30,6 +41,111 @@ const plan = {
   indexable: true,
   blockers: [],
 } as unknown as OwnerPlan
+
+const EXPLORE_JSON = JSON.stringify({
+  readerQuestion: 'What must be in the packet before an H-1B can be filed this season?',
+  evidenceWeHave: [
+    'USCIS H-1B specialty occupation page',
+    'specialty occupation as a demand topic',
+  ],
+  wouldHaveToInvent: ['USCIS filing fee for 2026'],
+  argumentSpine: 'You file an H-1B only after the LCA is certified and the packet is complete.',
+  chapterPlan: [
+    { heading: 'Who this path is actually for', because: 'Constraint first', covers: ['specialty occupation'] },
+    { heading: 'Documents you gather next', because: 'Named artefacts', covers: ['labor condition'] },
+  ],
+  kitRisks: ['Eligibility H2 restating the thesis as a mini-guide'],
+  gateWatch: ['stuffed_primary_opener', 'guesswork fees'],
+  takeawayClaims: [
+    'The certified LCA must sit with Form I-129 before USCIS will accept the petition.',
+    'Premium processing changes the wait, not the evidence bar.',
+    'A missing document at filing usually becomes a request for evidence, not an instant refusal.',
+  ],
+  faqThatDoesNotEchoH2s: [
+    'What happens if a required document is missing at filing?',
+    'Can I start this process while my current permission is still valid?',
+  ],
+})
+
+const BRIEF_JSON = JSON.stringify({
+  thesis: 'You file an H-1B only after the LCA is certified and the packet is complete.',
+  takeaways: [
+    'The certified LCA must sit with Form I-129 before USCIS will accept the petition.',
+    'Premium processing changes the wait, not the evidence bar.',
+    'A missing document at filing usually becomes a request for evidence, not an instant refusal.',
+  ],
+  lede: 'Answer whether the reader can file this season, then name the document that usually blocks the window.',
+  outline: [
+    { heading: 'In 60 seconds', purpose: 'Complete claims', bridgeFrom: '', coverTopics: [], format: 'takeaways' },
+    { heading: 'Who this path is actually for', purpose: 'Constraint', bridgeFrom: '', coverTopics: ['specialty occupation'], format: 'prose' },
+    { heading: 'Documents you gather next', purpose: 'Artefacts', bridgeFrom: 'Eligibility named who can file', coverTopics: [], format: 'bullets' },
+    { heading: 'Filing sequence', purpose: 'Numbered steps', bridgeFrom: 'The packet is complete', coverTopics: [], format: 'steps' },
+    { heading: 'Costs and timing', purpose: 'Fees and waits', bridgeFrom: 'Sequence filed', coverTopics: [], format: 'table' },
+    { heading: 'FAQ', purpose: 'Unsettled questions', bridgeFrom: '', coverTopics: [], format: 'faq' },
+    { heading: 'Sources', purpose: 'Allowlist URLs', bridgeFrom: '', coverTopics: [], format: 'sources' },
+  ],
+  faqQuestions: [
+    'What happens if a required document is missing at filing?',
+    'Can I start this process while my current permission is still valid?',
+    'Which official page should I re-check the week I file?',
+    'What should I do if the decision is a refusal or a request for evidence?',
+  ],
+  unresolved: [],
+})
+
+const DRAFT = `---
+title: H-1B visa
+description: Practical filing steps with official sources for H-1B petitions in 2026.
+primaryKeyword: h-1b visa
+---
+
+# H-1B visa
+
+You file after the LCA is certified. That is the constraint that surprises most first-time petitioners.
+
+## In 60 seconds
+- The certified LCA must sit with Form I-129 before USCIS will accept the petition.
+- Premium processing changes the wait, not the evidence bar.
+- A missing document at filing usually becomes a request for evidence.
+
+## Who this path is actually for
+
+Specialty occupation work still has to match the degree. The LCA you just certified is the first artefact the officer will look for.
+
+## Documents you gather next
+
+Keep the certified LCA with the passport and the I-129 packet. USCIS issues a receipt once that packet is in.
+
+## FAQ
+
+### What happens if a required document is missing at filing?
+
+USCIS usually issues a request for evidence rather than a silent refusal.
+
+## Sources
+
+- [USCIS](https://www.uscis.gov/)
+
+**Disclaimer:** This page is educational and editorial only. It is **not legal advice**.
+`
+
+const blockedQuality = (): QualityGateResult => ({
+  ok: false,
+  findings: [{ code: 'thin_content', severity: 'blocker', message: 'thin', fix: 'expand' }],
+  blockers: [{ code: 'thin_content', severity: 'blocker', message: 'thin', fix: 'expand' }],
+  warnings: [],
+  humanScore: 70,
+  summary: 'blocked',
+})
+
+const cleanQuality = (): QualityGateResult => ({
+  ok: true,
+  findings: [],
+  blockers: [],
+  warnings: [],
+  humanScore: 90,
+  summary: 'ok',
+})
 
 describe('desk layout (Alma-grade, YouSafe voice)', () => {
   it('puts complete-claim takeaways first and forbids mill openers', () => {
@@ -65,7 +181,7 @@ describe('sealed brief — no guesswork', () => {
     expect(parsed.issues.some((i) => /takeaways/.test(i))).toBe(true)
     expect(parsed.issues.some((i) => /bridgeFrom/.test(i))).toBe(true)
     expect(parsed.issues.some((i) => /faqQuestions/.test(i))).toBe(true)
-    expect(parsed.issues.some((i) => /unresolved/.test(i))).toBe(true)
+    expect(parsed.issues.some((i) => /unresolved/.test(i))).toBe(false)
   })
 
   it('accepts complete claims, bridges, and FAQ that does not echo H2s', () => {
@@ -94,6 +210,7 @@ describe('sealed brief — no guesswork', () => {
       unresolved: [],
     }
     expect(validateSealedBrief(brief, { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' })).toEqual([])
+    expect(validateSealedBrief({ ...brief, unresolved: ['USCIS filing fee for 2026'] }, { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' })).toEqual([])
   })
 
   it('fills missing plan fields from the operator outline instead of leaving the writer to guess', () => {
@@ -112,6 +229,61 @@ describe('sealed brief — no guesswork', () => {
   })
 })
 
+describe('explore + self-reflection cognition', () => {
+  it('parses explore JSON and folds wouldHaveToInvent into unresolved', () => {
+    const explore = parseExplore(EXPLORE_JSON)
+    expect(explore?.argumentSpine).toMatch(/LCA is certified/)
+    expect(explore?.wouldHaveToInvent).toContain('USCIS filing fee for 2026')
+    const merged = mergeExploreIntoBrief({
+      thesis: 'You file an H-1B only after the LCA is certified and the packet is complete.',
+      takeaways: ['The certified LCA must sit with Form I-129 before USCIS will accept the petition.'],
+      faqQuestions: [],
+      unresolved: [],
+    }, explore)
+    expect(merged.unresolved).toContain('USCIS filing fee for 2026')
+    expect(merged.faqQuestions[0]).toMatch(/missing at filing/)
+  })
+
+  it('infers revise when stuffing is named even without an explicit verdict', () => {
+    const reflection = parseReflection(JSON.stringify({
+      throughline: 'holds',
+      stuffing: ['primary keyword as the H1 opener'],
+      kitSplices: [],
+      guesswork: [],
+      layout: [],
+      gateRisks: [],
+      revisePlan: ['Open on the constraint, not the keyword.'],
+    }))
+    expect(reflection?.verdict).toBe('revise')
+    expect(needsRewrite(reflection, false)).toBe(true)
+    expect(needsRewrite({ ...reflection!, verdict: 'ship', stuffing: [] }, false)).toBe(false)
+    expect(needsRewrite({ ...reflection!, verdict: 'ship' }, true)).toBe(true)
+  })
+
+  it('strips think tags and leaked explore JSON from the published body', () => {
+    const leaked = [
+      '<think>The keyword density looks low. I should paste h-1b visa again.</think>',
+      EXPLORE_JSON,
+      '',
+      DRAFT,
+    ].join('\n')
+    const cleaned = stripDeskThinking(leaked)
+    expect(cleaned).toMatch(/# H-1B visa/)
+    expect(cleaned).not.toMatch(/<think>/)
+    expect(cleaned).not.toMatch(/wouldHaveToInvent/)
+    expect(cleaned).not.toMatch(/paste h-1b visa again/)
+  })
+
+  it('asks explore for chain of thought and reflect for a JSON verdict, not a rewrite', () => {
+    expect(explorePrompt()).toMatch(/EXPLORE/)
+    expect(explorePrompt()).toMatch(/wouldHaveToInvent/)
+    expect(explorePrompt()).toMatch(/never be published/)
+    expect(reflectPrompt()).toMatch(/SELF-REFLECT/)
+    expect(reflectPrompt()).toMatch(/Return ONLY a JSON object/)
+    expect(reflectPrompt()).not.toMatch(/complete corrected markdown article/)
+  })
+})
+
 describe('linear desk conversation', () => {
   it('does not run on a resumed draft or a gig', () => {
     expect(shouldRunLinearDesk({ contentType: 'legal_guide', resumeContent: '# saved' })).toBe(false)
@@ -119,7 +291,7 @@ describe('linear desk conversation', () => {
     expect(shouldRunLinearDesk({ contentType: 'legal_guide', indexable: true })).toBe(true)
   })
 
-  it('keeps discover, brief, and draft in one thread and shows gates from turn 0', () => {
+  it('keeps discover, explore, brief, and draft in one thread and shows gates from turn 0', () => {
     const system = linearDeskSystem(buildFactorySystemPrompt({
       plan,
       contentType: 'legal_guide',
@@ -127,6 +299,8 @@ describe('linear desk conversation', () => {
       maxWords: 2800,
     }))
     expect(system).toMatch(/ONE CONVERSATION/)
+    expect(system).toMatch(/EXPLORES Discover/)
+    expect(system).toMatch(/SELF-REFLECTS/)
     expect(system).toMatch(/IN 60 SECONDS is the takeaways slot/)
     expect(system).toMatch(/Q1\. ONE ARTICLE/)
 
@@ -138,76 +312,25 @@ describe('linear desk conversation', () => {
     })
     const prompt = renderDeskConversation(
       [{ role: 'user', name: 'discover', text: discover }],
-      'brief',
-      'SEALED BRIEF — return ONLY a JSON object.',
+      'explore',
+      'EXPLORE — chain of thought before the brief.',
     )
     expect(prompt).toMatch(/DISCOVER INTELLIGENCE/)
-    expect(prompt).toMatch(/USER · brief/)
+    expect(prompt).toMatch(/USER · explore/)
     expect(prompt).toMatch(/Do not start over/)
   })
 
-  it('plans, then writes from that plan, then self-reviews leftover blockers in the same conversation', async () => {
+  it('reasons with medium effort on JSON turns and low effort on long prose', () => {
+    expect(deskPhaseAiOpts('explore')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
+    expect(deskPhaseAiOpts('brief')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
+    expect(deskPhaseAiOpts('reflect')).toEqual({ reasoningEffort: 'medium', skipQualityContract: true })
+    expect(deskPhaseAiOpts('draft')).toEqual({ reasoningEffort: 'low', skipQualityContract: false })
+    expect(deskPhaseAiOpts('review')).toEqual({ reasoningEffort: 'low', skipQualityContract: false })
+  })
+
+  it('explores, seals, writes, self-reflects, then rewrites leftover blockers in the same conversation', async () => {
     const calls: string[] = []
-    const briefJson = JSON.stringify({
-      thesis: 'You file an H-1B only after the LCA is certified and the packet is complete.',
-      takeaways: [
-        'The certified LCA must sit with Form I-129 before USCIS will accept the petition.',
-        'Premium processing changes the wait, not the evidence bar.',
-        'A missing document at filing usually becomes a request for evidence, not an instant refusal.',
-      ],
-      lede: 'Answer whether the reader can file this season, then name the document that usually blocks the window.',
-      outline: [
-        { heading: 'In 60 seconds', purpose: 'Complete claims', bridgeFrom: '', coverTopics: [], format: 'takeaways' },
-        { heading: 'Who this path is actually for', purpose: 'Constraint', bridgeFrom: '', coverTopics: ['specialty occupation'], format: 'prose' },
-        { heading: 'Documents you gather next', purpose: 'Artefacts', bridgeFrom: 'Eligibility named who can file', coverTopics: [], format: 'bullets' },
-        { heading: 'Filing sequence', purpose: 'Numbered steps', bridgeFrom: 'The packet is complete', coverTopics: [], format: 'steps' },
-        { heading: 'Costs and timing', purpose: 'Fees and waits', bridgeFrom: 'Sequence filed', coverTopics: [], format: 'table' },
-        { heading: 'FAQ', purpose: 'Unsettled questions', bridgeFrom: '', coverTopics: [], format: 'faq' },
-        { heading: 'Sources', purpose: 'Allowlist URLs', bridgeFrom: '', coverTopics: [], format: 'sources' },
-      ],
-      faqQuestions: [
-        'What happens if a required document is missing at filing?',
-        'Can I start this process while my current permission is still valid?',
-        'Which official page should I re-check the week I file?',
-        'What should I do if the decision is a refusal or a request for evidence?',
-      ],
-      unresolved: [],
-    })
-    const draft = `---
-title: H-1B visa
-description: Practical filing steps with official sources for H-1B petitions in 2026.
-primaryKeyword: h-1b visa
----
-
-# H-1B visa
-
-You file after the LCA is certified. That is the constraint that surprises most first-time petitioners.
-
-## In 60 seconds
-- The certified LCA must sit with Form I-129 before USCIS will accept the petition.
-- Premium processing changes the wait, not the evidence bar.
-- A missing document at filing usually becomes a request for evidence.
-
-## Who this path is actually for
-
-Specialty occupation work still has to match the degree. The LCA you just certified is the first artefact the officer will look for.
-
-## Documents you gather next
-
-Keep the certified LCA with the passport and the I-129 packet. USCIS issues a receipt once that packet is in.
-
-## FAQ
-
-### What happens if a required document is missing at filing?
-
-USCIS usually issues a request for evidence rather than a silent refusal.
-
-## Sources
-
-- [USCIS](https://www.uscis.gov/)
-
-**Disclaimer:** This page is educational and editorial only. It is **not legal advice**.
-`
+    const efforts: Array<string | undefined> = []
     const result = await runLinearDesk({
       system: 'GATES: no stuffing, one article.',
       assembly: {
@@ -220,32 +343,143 @@ USCIS usually issues a request for evidence rather than a silent refusal.
       maxWords: 800,
       generate: async (opts) => {
         calls.push(opts.phase)
+        efforts.push(opts.reasoningEffort)
         expect(opts.system).toContain(LINEAR_CONVERSATION_ADDENDUM)
         expect(opts.prompt).toMatch(/one conversation/i)
-        if (opts.phase === 'brief') return { text: briefJson, provider: 'test', model: 'test' }
+        if (opts.phase === 'explore') {
+          expect(opts.skipQualityContract).toBe(true)
+          expect(opts.prompt).toMatch(/EXPLORE/)
+          expect(opts.prompt).toMatch(/DISCOVER INTELLIGENCE/)
+          return { text: EXPLORE_JSON, provider: 'test', model: 'test' }
+        }
+        if (opts.phase === 'brief') {
+          expect(opts.prompt).toMatch(/argumentSpine/)
+          expect(opts.prompt).toMatch(/wouldHaveToInvent/)
+          expect(opts.prompt).toMatch(/Seal the brief FROM that exploration/)
+          return { text: BRIEF_JSON, provider: 'test', model: 'test' }
+        }
         if (opts.phase === 'draft') {
+          expect(opts.skipQualityContract).toBe(false)
           expect(opts.prompt).toMatch(/EXECUTE the sealed brief/)
           expect(opts.prompt).toMatch(/Who this path is actually for/)
-          return { text: draft, provider: 'test', model: 'test' }
+          expect(opts.prompt).toMatch(/USCIS filing fee for 2026/)
+          return { text: `<think>plan the lede</think>\n${DRAFT}`, provider: 'test', model: 'test' }
         }
+        if (opts.phase === 'reflect') {
+          expect(opts.prompt).toMatch(/SELF-REFLECT/)
+          expect(opts.prompt).toMatch(/EXECUTE the sealed brief/)
+          expect(opts.prompt).not.toMatch(/Return the complete corrected markdown article/)
+          return {
+            text: JSON.stringify({
+              throughline: 'holds',
+              guesswork: [],
+              stuffing: [],
+              kitSplices: [],
+              layout: ['thin FAQ'],
+              gateRisks: ['thin_content'],
+              verdict: 'revise',
+              revisePlan: ['Keep the argument; deepen Documents with the named artefacts already in Discover.'],
+            }),
+            provider: 'test',
+            model: 'test',
+          }
+        }
+        expect(opts.phase).toBe('review')
         expect(opts.prompt).toMatch(/SELF-REVIEW/)
         expect(opts.prompt).toMatch(/EXECUTE the sealed brief/)
-        return { text: draft, provider: 'test', model: 'test' }
+        expect(opts.prompt).toMatch(/Revise plan/)
+        return { text: DRAFT, provider: 'test', model: 'test' }
       },
-      evaluate: () => ({
-        ok: false,
-        findings: [{ code: 'thin_content', severity: 'blocker' as const, message: 'thin', fix: 'expand' }],
-        blockers: [{ code: 'thin_content', severity: 'blocker' as const, message: 'thin', fix: 'expand' }],
-        warnings: [],
-        humanScore: 70,
-        summary: 'blocked',
-      }),
+      evaluate: blockedQuality,
     })
-    expect(calls[0]).toBe('brief')
-    expect(calls).toContain('draft')
-    expect(calls).toContain('review')
-    expect(result.turns.map((t) => t.name)).toEqual(expect.arrayContaining(['discover', 'brief', 'draft', 'review']))
+    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(efforts).toEqual(['medium', 'medium', 'low', 'medium', 'low'])
+    expect(result.turns.map((t) => t.name)).toEqual(
+      expect.arrayContaining(['discover', 'explore', 'brief', 'draft', 'reflect', 'review']),
+    )
+    expect(result.explored).toBe(true)
+    expect(result.reflected).toBe(true)
+    expect(result.reviewed).toBe(true)
     expect(result.brief.thesis).toMatch(/LCA is certified/)
+    expect(result.brief.unresolved).toContain('USCIS filing fee for 2026')
+    expect(result.content).toMatch(/# H-1B visa/)
+    expect(result.content).not.toMatch(/<think>/)
+    expect(result.content).not.toMatch(/wouldHaveToInvent/)
     expect(executeBriefPrompt(result.brief)).toMatch(/EXECUTE the sealed brief/)
+  })
+
+  it('skips the rewrite when self-reflection ships and the evaluator is clean', async () => {
+    const calls: string[] = []
+    const result = await runLinearDesk({
+      system: 'GATES: no stuffing, one article.',
+      assembly: { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+      minWords: 200,
+      maxWords: 800,
+      generate: async (opts) => {
+        calls.push(opts.phase)
+        if (opts.phase === 'explore') return { text: EXPLORE_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'brief') return { text: BRIEF_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'draft') return { text: DRAFT, provider: 'test', model: 'test' }
+        if (opts.phase === 'reflect') {
+          return {
+            text: JSON.stringify({
+              throughline: 'one argument',
+              guesswork: [],
+              stuffing: [],
+              kitSplices: [],
+              layout: [],
+              gateRisks: [],
+              verdict: 'ship',
+              revisePlan: [],
+            }),
+            provider: 'test',
+            model: 'test',
+          }
+        }
+        throw new Error(`unexpected phase ${opts.phase}`)
+      },
+      evaluate: cleanQuality,
+    })
+    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect'])
+    expect(result.reviewed).toBe(false)
+    expect(result.reflected).toBe(true)
+    expect(result.turns.map((t) => t.name)).not.toContain('review')
+  })
+
+  it('rewrites from self-reflection even when the evaluator has not yet blocked', async () => {
+    const calls: string[] = []
+    const result = await runLinearDesk({
+      system: 'GATES: no stuffing, one article.',
+      assembly: { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+      minWords: 200,
+      maxWords: 800,
+      generate: async (opts) => {
+        calls.push(opts.phase)
+        if (opts.phase === 'explore') return { text: EXPLORE_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'brief') return { text: BRIEF_JSON, provider: 'test', model: 'test' }
+        if (opts.phase === 'draft') return { text: DRAFT, provider: 'test', model: 'test' }
+        if (opts.phase === 'reflect') {
+          return {
+            text: JSON.stringify({
+              throughline: 'Documents restarts the thesis',
+              guesswork: [],
+              stuffing: ['h-1b visa as the H2'],
+              kitSplices: [],
+              layout: [],
+              gateRisks: [],
+              verdict: 'revise',
+              revisePlan: ['Open Documents on the LCA already certified, not a new definition.'],
+            }),
+            provider: 'test',
+            model: 'test',
+          }
+        }
+        expect(opts.prompt).toMatch(/Open Documents on the LCA/)
+        return { text: DRAFT, provider: 'test', model: 'test' }
+      },
+      evaluate: cleanQuality,
+    })
+    expect(calls).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
+    expect(result.reviewed).toBe(true)
   })
 })

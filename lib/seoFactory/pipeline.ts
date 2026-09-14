@@ -471,11 +471,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let linearDrafted = false
 
   const deskGenerate = async (args: {
-    phase: 'brief' | 'draft' | 'review'
+    phase: 'explore' | 'brief' | 'draft' | 'reflect' | 'review'
     system: string
     prompt: string
     maxTokens: number
     temperature: number
+    reasoningEffort?: 'low' | 'medium' | 'high'
+    skipQualityContract?: boolean
   }) => {
     const ai = await generateWithRetry(generateContentText, {
       system: args.system,
@@ -487,7 +489,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
       cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
       contentType,
-      skipQualityContract: args.phase === 'brief',
+      skipQualityContract: args.skipQualityContract ?? (args.phase !== 'draft' && args.phase !== 'review'),
+      reasoningEffort: args.reasoningEffort,
     })
     return { text: ai.text, provider: ai.provider, model: ai.model }
   }

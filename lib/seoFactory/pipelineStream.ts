@@ -497,7 +497,7 @@ export async function* runSeoFactoryPipelineStream(
       resumeContent: input.resumeContent,
       indexable: plan.indexable,
     })) {
-      yield { type: 'progress', stage: 'brief', message: 'Sealing the brief from Discover — no guesswork' }
+      yield { type: 'progress', stage: 'brief', message: 'Exploring Discover, then sealing the brief — one conversation, no guesswork' }
       try {
         const linear = await runLinearDesk({
           system,
@@ -535,7 +535,8 @@ export async function* runSeoFactoryPipelineStream(
               exclusive: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
               cascadeOnCapacity: Boolean(input.aiProvider) && input.aiProvider !== 'auto',
               contentType,
-              skipQualityContract: args.phase === 'brief',
+              skipQualityContract: args.skipQualityContract ?? (args.phase !== 'draft' && args.phase !== 'review'),
+              reasoningEffort: args.reasoningEffort,
             })
             provider = ai.provider
             model = ai.model

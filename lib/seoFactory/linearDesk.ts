@@ -1,17 +1,33 @@
 /**
- * Linear desk — briefing, drafting, and self-review as ONE conversation.
+ * Linear desk — explore, briefing, drafting, self-reflection, and rewrite
+ * as ONE conversation.
  *
  * Discover intelligence is the first user turn. The same system prompt
  * (ship gates + layout + voice) is visible from turn 0. The model:
- *   1. seals a no-guesswork brief
- *   2. executes that brief as one article
- *   3. self-corrects against the same gates
+ *   1. explores Discover (visible chain of thought — JSON, never the article)
+ *   2. seals a no-guesswork brief from that exploration
+ *   3. executes that brief as one article
+ *   4. self-reflects against the same gates (JSON)
+ *   5. rewrites only when reflection says revise or the evaluator still blocks
  *
  * Isolated hops (outline splice, Harper, throughline) stay as rescue only.
  */
 
-import { countBodyWords, unwrapWholeDocumentFence } from './contentDepth'
+import { countBodyWords } from './contentDepth'
 import type { QualityGateResult } from './contentQualityGate'
+import {
+  briefFromExploreAddendum,
+  explorePrompt,
+  mergeExploreIntoBrief,
+  needsRewrite,
+  parseExplore,
+  parseReflection,
+  reflectPrompt,
+  rewriteFromReflectionPrompt,
+  stripDeskThinking,
+  type DeskExplore,
+  type DeskReflection,
+} from './deskCognition'
 import {
   executeBriefPrompt,
   parseSealedBrief,
@@ -23,15 +39,30 @@ import { refineNotesForBlockers, refineNotesForWarnings } from './shipBlockers'
 import { writingFamilyFor } from './writingShape'
 
 export const LINEAR_CONVERSATION_ADDENDUM = [
-  'ONE CONVERSATION. Briefing, drafting, and review are turns in this same thread — not separate jobs, not separate personalities.',
+  'ONE CONVERSATION. Explore, briefing, drafting, self-reflection, and rewrite are turns in this same thread — not separate jobs, not separate personalities.',
   'The ship gates in this system prompt are the only gates. They are visible now and they do not change later.',
-  'Turn 1 seals a brief with zero guesswork. Turn 2 executes that brief. Turn 3 fixes leftover blockers as the same article.',
-  'Do not restart the argument at review. Do not stuff keywords. Do not splice kit pieces.',
+  'Turn 1 EXPLORES Discover as JSON chain of thought (what we know, what we would invent, the argument spine). Thinking is never the article.',
+  'Turn 2 seals a brief from that exploration with zero guesswork.',
+  'Turn 3 executes that brief as one article.',
+  'Turn 4 SELF-REFLECTS against the same gates (JSON). If revise, Turn 5 rewrites the same article.',
+  'Do not restart the argument. Do not stuff keywords. Do not splice kit pieces. Do not leak chain-of-thought into the published markdown.',
 ].join(' ')
 
 export type DeskTurn = { role: 'user' | 'assistant'; name: string; text: string }
 
-export type DeskPhase = 'brief' | 'draft' | 'review'
+export type DeskPhase = 'explore' | 'brief' | 'draft' | 'reflect' | 'review'
+
+export type DeskReasoningEffort = 'low' | 'medium' | 'high'
+
+export function deskPhaseAiOpts(phase: DeskPhase): {
+  reasoningEffort: DeskReasoningEffort
+  skipQualityContract: boolean
+} {
+  if (phase === 'draft' || phase === 'review') {
+    return { reasoningEffort: 'low', skipQualityContract: false }
+  }
+  return { reasoningEffort: 'medium', skipQualityContract: true }
+}
 
 export type LinearDeskAssembly = {
   title?: string
@@ -62,6 +93,8 @@ export type LinearDeskGenerate = (opts: {
   prompt: string
   maxTokens: number
   temperature: number
+  reasoningEffort?: DeskReasoningEffort
+  skipQualityContract?: boolean
 }) => Promise<{ text: string; provider: string; model: string }>
 
 export type LinearDeskEvaluate = (content: string) => QualityGateResult
@@ -173,6 +206,40 @@ export type LinearDeskResult = {
   model: string
   briefIssues: string[]
   reviewed: boolean
+  explored: boolean
+  reflected: boolean
+  explore: DeskExplore | null
+  reflection: DeskReflection | null
+}
+
+async function deskCall(
+  generate: LinearDeskGenerate,
+  opts: {
+    phase: DeskPhase
+    system: string
+    turns: DeskTurn[]
+    name: string
+    instruction: string
+    maxTokens: number
+    temperature: number
+  },
+): Promise<{ text: string; provider: string; model: string }> {
+  const aiOpts = deskPhaseAiOpts(opts.phase)
+  return generate({
+    phase: opts.phase,
+    system: opts.system,
+    prompt: renderDeskConversation(opts.turns, opts.name, opts.instruction),
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    reasoningEffort: aiOpts.reasoningEffort,
+    skipQualityContract: aiOpts.skipQualityContract,
+  })
+}
+
+function acceptRewrite(prev: string, next: string): boolean {
+  const prevWords = countBodyWords(prev)
+  const nextWords = countBodyWords(next)
+  return nextWords >= Math.min(40, prevWords) && !(prevWords >= 800 && nextWords < prevWords * 0.4)
 }
 
 export async function runLinearDesk(opts: {
@@ -191,16 +258,37 @@ export async function runLinearDesk(opts: {
   let provider = 'unknown'
   let model = 'unknown'
 
-  const briefInstruction = sealedBriefPromptBlock({
-    contentType: opts.assembly.contentType,
-    minWords: opts.minWords,
-    maxWords: opts.maxWords,
+  const exploreInstruction = explorePrompt()
+  turns.push({ role: 'user', name: 'explore', text: exploreInstruction })
+  const exploreAi = await deskCall(opts.generate, {
+    phase: 'explore',
+    system,
+    turns: turns.slice(0, -1),
+    name: 'explore',
+    instruction: exploreInstruction,
+    maxTokens: 2000,
+    temperature: 0.2,
   })
+  provider = exploreAi.provider
+  model = exploreAi.model
+  turns.push({ role: 'assistant', name: 'explore', text: exploreAi.text })
+  const explore = parseExplore(exploreAi.text)
+
+  const briefInstruction = [
+    sealedBriefPromptBlock({
+      contentType: opts.assembly.contentType,
+      minWords: opts.minWords,
+      maxWords: opts.maxWords,
+    }),
+    explore ? briefFromExploreAddendum(explore) : '',
+  ].filter(Boolean).join('\n\n')
   turns.push({ role: 'user', name: 'brief', text: briefInstruction })
-  const briefAi = await opts.generate({
+  const briefAi = await deskCall(opts.generate, {
     phase: 'brief',
     system,
-    prompt: renderDeskConversation(turns.slice(0, -1), 'brief', briefInstruction),
+    turns: turns.slice(0, -1),
+    name: 'brief',
+    instruction: briefInstruction,
     maxTokens: 2500,
     temperature: 0.2,
   })
@@ -215,10 +303,12 @@ export async function runLinearDesk(opts: {
   if (!parsed.ok) {
     const repairInstruction = `The sealed brief is incomplete:\n${parsed.issues.map((i) => `- ${i}`).join('\n')}\nReturn ONLY corrected JSON. Put anything you would invent in unresolved. Do not write the article.`
     turns.push({ role: 'user', name: 'brief-repair', text: repairInstruction })
-    const repairAi = await opts.generate({
+    const repairAi = await deskCall(opts.generate, {
       phase: 'brief',
       system,
-      prompt: renderDeskConversation(turns.slice(0, -1), 'brief-repair', repairInstruction),
+      turns: turns.slice(0, -1),
+      name: 'brief-repair',
+      instruction: repairInstruction,
       maxTokens: 2500,
       temperature: 0.15,
     })
@@ -232,7 +322,7 @@ export async function runLinearDesk(opts: {
   }
 
   const fallback = sealBriefFromAssembly(opts.assembly)
-  const brief = parsed.brief
+  const merged = parsed.brief
     ? {
         ...parsed.brief,
         outline: parsed.brief.outline.length ? parsed.brief.outline : fallback.outline,
@@ -242,45 +332,64 @@ export async function runLinearDesk(opts: {
         lede: parsed.brief.lede || fallback.lede,
       }
     : fallback
+  const brief = mergeExploreIntoBrief(merged, explore)
 
   const draftInstruction = executeBriefPrompt(brief)
   turns.push({ role: 'user', name: 'draft', text: draftInstruction })
   const drafter = opts.streamDraft || opts.generate
-  const draftAi = await drafter({
+  const draftAi = await deskCall(drafter, {
     phase: 'draft',
     system,
-    prompt: renderDeskConversation(turns.slice(0, -1), 'draft', draftInstruction),
+    turns: turns.slice(0, -1),
+    name: 'draft',
+    instruction: draftInstruction,
     maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)),
     temperature: 0.5,
   })
   provider = draftAi.provider
   model = draftAi.model
-  let content = unwrapWholeDocumentFence(draftAi.text).trim()
+  let content = stripDeskThinking(draftAi.text)
   turns.push({ role: 'assistant', name: 'draft', text: content })
 
+  const reflectInstruction = reflectPrompt()
+  turns.push({ role: 'user', name: 'reflect', text: reflectInstruction })
+  const reflectAi = await deskCall(opts.generate, {
+    phase: 'reflect',
+    system,
+    turns: turns.slice(0, -1),
+    name: 'reflect',
+    instruction: reflectInstruction,
+    maxTokens: 1600,
+    temperature: 0.15,
+  })
+  provider = reflectAi.provider
+  model = reflectAi.model
+  turns.push({ role: 'assistant', name: 'reflect', text: reflectAi.text })
+  const reflection = parseReflection(reflectAi.text)
+
   const quality = opts.evaluate(content)
+  const hasBlockers = Boolean(!quality.ok && quality.blockers.length)
   let reviewed = false
-  if (!quality.ok && quality.blockers.length) {
-    const reviewNotes = [
-      'SELF-REVIEW. You wrote the article in the previous turn from the brief you sealed. The ship gates have not changed.',
-      refineNotesForBlockers(quality.blockers).join('\n'),
-      refineNotesForWarnings(quality.warnings).join('\n'),
-      'Return the complete corrected article. Keep one argument. Do not stuff keywords. Do not splice kit pieces.',
-    ].filter(Boolean).join('\n')
+  if (needsRewrite(reflection, hasBlockers)) {
+    const reviewNotes = rewriteFromReflectionPrompt({
+      reflection,
+      blockerNotes: hasBlockers ? refineNotesForBlockers(quality.blockers).join('\n') : '',
+      warningNotes: quality.warnings?.length ? refineNotesForWarnings(quality.warnings).join('\n') : '',
+    })
     turns.push({ role: 'user', name: 'review', text: reviewNotes })
-    const reviewAi = await opts.generate({
+    const reviewAi = await deskCall(opts.generate, {
       phase: 'review',
       system,
-      prompt: renderDeskConversation(turns.slice(0, -1), 'review', reviewNotes),
+      turns: turns.slice(0, -1),
+      name: 'review',
+      instruction: reviewNotes,
       maxTokens: Math.min(8000, Math.round(opts.maxWords * 1.5 + 1200)),
       temperature: 0.3,
     })
     provider = reviewAi.provider
     model = reviewAi.model
-    const next = unwrapWholeDocumentFence(reviewAi.text).trim()
-    const prevWords = countBodyWords(content)
-    const nextWords = countBodyWords(next)
-    if (nextWords >= Math.min(40, prevWords) && !(prevWords >= 800 && nextWords < prevWords * 0.4)) {
+    const next = stripDeskThinking(reviewAi.text)
+    if (acceptRewrite(content, next)) {
       content = next
       reviewed = true
       turns.push({ role: 'assistant', name: 'review', text: next })
@@ -295,5 +404,9 @@ export async function runLinearDesk(opts: {
     model,
     briefIssues: parsed.issues,
     reviewed,
+    explored: Boolean(explore),
+    reflected: Boolean(reflection),
+    explore,
+    reflection,
   }
 }
