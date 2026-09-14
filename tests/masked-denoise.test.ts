@@ -148,6 +148,35 @@ describe('runMaskedDenoise', () => {
     expect(r.content).toContain(PAD.slice(0, 80))
   })
 
+  it('keeps the draft when the publishing audit rejects a fluent replacement', async () => {
+    const doc = millDoc()
+    const r = await runMaskedDenoise({
+      content: doc,
+      validateRevision: () => ({ ok: false, reason: 'Required coverage was lost' }),
+      contentType: 'legal_guide',
+      thesis: 'The live list is the file.',
+      primaryKeyword: 'student visa documents',
+      generateText: async (system, prompt) => {
+        expect(system).toBe(DENOISE_SYSTEM)
+        expect(prompt).toMatch(/CFG/)
+        const blocks = [...prompt.matchAll(/<<<(SPAN_\d+)>>>\n([\s\S]*?)\n<<<END_\1>>>/g)]
+        expect(blocks.length).toBeGreaterThan(0)
+        return blocks
+          .map(([, id, body]) => {
+            if (/^###\s+/m.test(body.trim())) {
+              return `===${id}===\n### What belongs in the file that the heading did not cover?`
+            }
+            return `===${id}===\nKeep Form I-20 with the passport. Officers must see matching names on the bank letter.\n\nDo not restate eligibility. File only after the live list confirms the set.`
+          })
+          .join('\n')
+      },
+    })
+    expect(r.applied).toBe(false)
+    expect(r.rejected).toBe(true)
+    expect(r.content).toBe(doc)
+    expect(r.reason).toBe('Required coverage was lost')
+  })
+
   it('keeps the original when the model invents a citation', async () => {
     const doc = millDoc()
     const r = await runMaskedDenoise({

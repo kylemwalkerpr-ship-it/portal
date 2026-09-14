@@ -252,7 +252,7 @@ const HYPE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bbest (visa|immigration) (lawyer|service) (ever|in the world)\b/i, label: 'superlative bait' },
 ]
 
-function stripForScan(content: string): string {
+export function stripForScan(content: string): string {
   return String(content || '')
     // KEEP--- must peel before the frontmatter strip or YAML counts as body.
     .replace(/\bKEEP---+/gi, '---')
