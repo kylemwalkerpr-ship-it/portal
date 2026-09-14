@@ -11,6 +11,10 @@ export type ContentStudioExecutionState = {
   acceptedContent: string | null
   acceptedHash: string | null
   failedReason: string | null
+  contractId: string | null
+  contractHash: string | null
+  opportunityId: string | null
+  lastPublicationMarker: string | null
 }
 
 const storage = new AsyncLocalStorage<ContentStudioExecutionState>()
@@ -19,7 +23,10 @@ export function contentHash(content: string): string {
   return createHash('sha256').update(String(content || '').replace(/\r\n/g, '\n')).digest('hex')
 }
 
-export function createContentStudioExecutionState(strict = true): ContentStudioExecutionState {
+export function createContentStudioExecutionState(
+  strict = true,
+  identity?: { contractId?: string | null; contractHash?: string | null; opportunityId?: string | null },
+): ContentStudioExecutionState {
   return {
     strict,
     deskState: 'not_started',
@@ -27,6 +34,10 @@ export function createContentStudioExecutionState(strict = true): ContentStudioE
     acceptedContent: null,
     acceptedHash: null,
     failedReason: null,
+    contractId: identity?.contractId || null,
+    contractHash: identity?.contractHash || null,
+    opportunityId: identity?.opportunityId || null,
+    lastPublicationMarker: null,
   }
 }
 
@@ -48,6 +59,12 @@ export async function runWithContentStudioExecution<T>(
   const state = createContentStudioExecutionState(strict)
   const result = await runInContentStudioExecution(state, fn)
   return { result, state }
+}
+
+export function recordPublicationMarker(marker: string): void {
+  const state = storage.getStore()
+  if (!state?.strict) return
+  state.lastPublicationMarker = String(marker || '').trim() || null
 }
 
 export function markCoherentDeskRunning(): void {
@@ -115,6 +132,11 @@ export function assertIsolatedAuthoringAllowed(): void {
   throw new Error('strict Content Studio execution forbids AI authoring before the validated writing stage starts')
 }
 
+/**
+ * Exact-hash ship guard for callers that intentionally promise no deterministic
+ * post-processing. The SEO Factory ship path performs a fresh final gate over
+ * deterministic repairs, so it records the actual rendered marker instead.
+ */
 export function assertStrictShipContent(content: string): void {
   const state = storage.getStore()
   if (!state?.strict) return
