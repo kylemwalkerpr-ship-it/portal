@@ -21,6 +21,8 @@ export type ContractEvidenceAuthority =
   | 'competitor_observation'
   | 'hypothesis'
 
+export type ContractClaimSupport = 'verified' | 'observed' | 'unknown'
+
 export type ContractEvidenceRef = {
   id?: string
   runId?: string
@@ -30,6 +32,12 @@ export type ContractEvidenceRef = {
   observedAt: string
   jurisdiction?: string
   authority: ContractEvidenceAuthority
+  /** Hash of the persisted substantive observation/excerpt payload, not the URL. */
+  contentHash: string
+  /** URL/authority identity does not imply factual support. */
+  claimSupport: ContractClaimSupport
+  verification?: 'verified' | 'pending' | 'unverified' | 'failed'
+  confidence?: string
 }
 
 export type ContractSourceHealth = {
@@ -69,6 +77,20 @@ export type WritingContractValidation = {
 
 export function hashContractPayload(payload: unknown): string {
   return createHash('sha256').update(stableStringify(payload)).digest('hex')
+}
+
+export function evidenceHashPayload(input: {
+  evidence: ContractEvidenceRef[]
+  sourceHealth: ContractSourceHealth[]
+  researchGaps: string[]
+  researchRunId?: string
+}): Record<string, unknown> {
+  return {
+    researchRunId: input.researchRunId || null,
+    evidence: input.evidence,
+    sourceHealth: input.sourceHealth,
+    researchGaps: input.researchGaps,
+  }
 }
 
 export function writingContractHashPayload(contract: Pick<
@@ -120,10 +142,25 @@ export function verifyWritingContract(contract: WritingContractV2): WritingContr
   if (!String(contract.primaryKeyword || '').trim()) issues.push('primaryKeyword: missing')
   if (!String(contract.evidenceHash || '').trim()) issues.push('evidenceHash: missing')
 
+  for (const [index, item] of (contract.evidence || []).entries()) {
+    if (!String(item.contentHash || '').trim()) issues.push(`evidence[${index}]: contentHash missing`)
+    if (!['verified', 'observed', 'unknown'].includes(String(item.claimSupport || ''))) {
+      issues.push(`evidence[${index}]: claimSupport invalid`)
+    }
+  }
+
   issues.push(...validateSealedBrief(contract.brief, {
     primaryKeyword: contract.primaryKeyword,
     contentType: contract.contentType,
   }))
+
+  const recomputedEvidenceHash = hashContractPayload(evidenceHashPayload({
+    evidence: contract.evidence || [],
+    sourceHealth: contract.sourceHealth || [],
+    researchGaps: contract.researchGaps || [],
+    researchRunId: contract.researchRunId,
+  }))
+  if (recomputedEvidenceHash !== contract.evidenceHash) issues.push('evidenceHash: evidence payload mismatch')
 
   const recomputed = hashContractPayload(writingContractHashPayload(contract))
   if (recomputed !== contract.contractHash) issues.push('contractHash: payload mismatch')
@@ -168,12 +205,12 @@ export function buildWritingContract(input: {
   const evidence = (input.evidence || []).map((item) => ({ ...item }))
   const sourceHealth = (input.sourceHealth || []).map((item) => ({ ...item }))
   const researchGaps = (input.researchGaps || []).map(String).map((v) => v.trim()).filter(Boolean)
-  const evidenceHash = input.evidenceHash || hashContractPayload({
-    researchRunId: input.researchRunId || null,
+  const evidenceHash = input.evidenceHash || hashContractPayload(evidenceHashPayload({
+    researchRunId: input.researchRunId,
     evidence,
     sourceHealth,
     researchGaps,
-  })
+  }))
   const body = {
     schemaVersion: WRITING_CONTRACT_SCHEMA_VERSION,
     contractVersion,
