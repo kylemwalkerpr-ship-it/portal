@@ -23,6 +23,7 @@ export interface AuditFinding {
   severity: 'blocker' | 'warning' | 'pass'
   message: string
   fix?: string
+  evidence?: string
 }
 
 export interface SeoFactoryAudit {
@@ -413,6 +414,7 @@ export function auditContent(opts: {
       severity: 'blocker',
       message: b.message,
       fix: b.fix,
+      evidence: b.evidence,
     })
   }
   for (const w of quality.warnings) {

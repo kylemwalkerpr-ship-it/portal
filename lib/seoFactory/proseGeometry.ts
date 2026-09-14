@@ -21,6 +21,7 @@ export type ProseGeometryFinding = {
     | 'low_sentence_burstiness'
     | 'low_trigram_variety'
     | 'stuffed_primary_opener'
+    | 'stuffed_primary_opener_severe'
   severity: ProseGeometrySeverity
   message: string
   fix?: string
@@ -199,9 +200,10 @@ export function evaluateProseGeometry(
   }
 
   const kitSeverity: ProseGeometrySeverity = kitOpeners.length >= 2 ? 'blocker' : 'warning'
+  const kitCode = kitOpeners.length >= 2 ? 'stuffed_primary_opener_severe' : 'stuffed_primary_opener'
   for (const finding of kitOpeners) {
     findings.push({
-      code: 'stuffed_primary_opener',
+      code: kitCode,
       severity: kitSeverity,
       message: finding.message.replace('opens as a standalone kit piece rather than continuing the article', 'mechanically restates the primary topic instead of answering the section'),
       fix: 'Open with a consequence, constraint, or next decision from the previous section. Do not re-introduce the primary keyword in the first sentence.',

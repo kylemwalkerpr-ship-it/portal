@@ -23,6 +23,7 @@ describe('harperLane — Harper is prose-only', () => {
     expect(isHarperProseFinding('structure_h2')).toBe(false)
     expect(isHarperProseFinding('ai_slop')).toBe(true)
     expect(isHarperProseFinding('stuffed_primary_opener')).toBe(true)
+    expect(isHarperProseFinding('stuffed_primary_opener_severe')).toBe(true)
     expect(isHarperProseFinding('missing_short_keyword')).toBe(false)
     expect(isHarperProseFinding('missing_long_tail_keyword')).toBe(false)
   })

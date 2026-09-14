@@ -79,12 +79,16 @@ export async function runThroughline(opts: {
     queryNeed: opts.queryNeed,
   })
   const findings = (opts.cohesionFindings || []).filter((f) => f.code || f.message)
+  const kitFirst = [
+    ...findings.filter((f) => /kit_section_opener|adjacent_section_overlap|stuffed_primary/.test(f.code)),
+    ...findings.filter((f) => !/kit_section_opener|adjacent_section_overlap|stuffed_primary/.test(f.code)),
+  ]
   const naturalness = evaluateEditorialNaturalness(original)
   const prompt = JSON.stringify({
     thesis,
     houseRegister: registerCardPromptBlock(house, current),
-    cohesionFindings: findings.slice(0, 12),
-    naturalnessFindings: naturalness.findings.slice(0, 8).map((f) => ({
+    cohesionFindings: kitFirst,
+    naturalnessFindings: naturalness.findings.slice(0, 12).map((f) => ({
       code: f.code,
       message: f.message,
       instruction: f.instruction,

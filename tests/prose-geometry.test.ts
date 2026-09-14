@@ -173,6 +173,7 @@ describe('evaluateContentQuality wires geometry into Audit', () => {
     expect(isHarperProseFinding('low_trigram_variety')).toBe(true)
     expect(isHarperProseFinding('faq_duplicates_h2')).toBe(true)
     expect(isHarperProseFinding('stuffed_primary_opener')).toBe(true)
+    expect(isHarperProseFinding('stuffed_primary_opener_severe')).toBe(true)
     expect(isHarperProseFinding('missing_short_keyword')).toBe(false)
   })
 
@@ -212,7 +213,7 @@ USCIS issues a receipt you keep.
 This guide is educational only, not legal advice. Consult an attorney for your situation.
 `
     const geometry = evaluateProseGeometry(content, { contentType: 'legal_guide', indexable: true })
-    const stuffed = geometry.findings.filter((f) => f.code === 'stuffed_primary_opener')
+    const stuffed = geometry.findings.filter((f) => f.code === 'stuffed_primary_opener_severe')
     expect(stuffed.length).toBeGreaterThanOrEqual(2)
     expect(stuffed.every((f) => f.severity === 'blocker')).toBe(true)
     const r = evaluateContentQuality({
@@ -221,7 +222,7 @@ This guide is educational only, not legal advice. Consult an attorney for your s
       primaryKeyword: 'h-1b visa',
       indexable: true,
     })
-    expect(r.blockers.some((b) => b.code === 'stuffed_primary_opener')).toBe(true)
+    expect(r.blockers.some((b) => b.code === 'stuffed_primary_opener_severe')).toBe(true)
     expect(r.ok).toBe(false)
   })
 })

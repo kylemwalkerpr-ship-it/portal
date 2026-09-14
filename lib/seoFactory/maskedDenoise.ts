@@ -306,7 +306,7 @@ export function collectDenoiseSpans(
         push({ code: f.code, t: 'mid', start: p.start, end: p.end, instruction: 'Rewrite this paragraph with a new opening actor, constraint, or next step. Keep the facts.' })
       }
     }
-    if (f.code === 'stuffed_primary_opener') {
+    if (f.code === 'stuffed_primary_opener' || f.code === 'stuffed_primary_opener_severe') {
       const loc = findFirstProseParagraphInH2(content, evidenceValue(f.evidence, 'heading'))
       if (loc) push({ code: f.code, t: 'mid', ...loc, instruction: 'Rewrite this opening paragraph so the first sentence answers the section with a reader decision, constraint, or concrete fact. Do not mechanically restate the full primary keyword. Keep factual tokens and claim-specific citations.' })
     }

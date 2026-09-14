@@ -30,6 +30,7 @@ import {
 import { experienceBeatsPromptBlock, ymylAuthorRequired, type AuthorPack, type ExperienceBeat } from './authorPack'
 import { citedProvidersPromptBlock, type CitedProvider } from './providerAuthors'
 import { houseRegisterFor, registerCardPromptBlock } from './registerCard'
+import { refineNotesForBlockers, refineNotesForWarnings } from './shipBlockers'
 
 function authorCitationPromptBlock(opts: {
   contentType: string
@@ -1107,8 +1108,8 @@ export function buildDepthAppendPrompt(opts: {
 
 /** Turn audit failures into revision instructions for a refine pass. */
 export function auditToRefineNotes(audit: {
-  blockers: Array<{ message: string; fix?: string }>
-  warnings: Array<{ message: string; fix?: string }>
+  blockers: Array<{ code?: string; message: string; fix?: string; evidence?: string }>
+  warnings: Array<{ code?: string; message: string; fix?: string }>
   wordCount: number
   score: number
   /** When known, force expansion language */
@@ -1136,24 +1137,11 @@ export function auditToRefineNotes(audit: {
       `- Do NOT return a shorter page. Do NOT pad with repeated sentences. Do NOT count JSON-LD toward the total.`,
     )
   }
-  for (const b of audit.blockers.slice(0, 8)) {
-    if ('code' in b && b.code === 'outcome_promise') {
-      lines.push('- BLOCKER: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article. Use neutral wording such as outcomes and requirements vary.')
-    } else if ('code' in b && b.code === 'sentence_start_repetition') {
-      const ev = ('evidence' in b ? (b as any).evidence : '') || ''
-      lines.push(`- BLOCKER [sentence_start_repetition]: Too many sentences start with "${ev}…". Rewrite those openings so they serve the argument. Keep the throughline — do not shuffle prefixes just to beat the scanner.`)
-    } else if ('code' in b && (b.code === 'keyword_stuffing' || b.code === 'adjacent_section_overlap_severe')) {
-      lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''} Rewrite as ONE article with connective tissue. Do not stuff keywords or splice independent sections.`)
-    } else {
-      lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
-    }
-  }
-  for (const w of audit.warnings.slice(0, 8)) {
-    lines.push(`- WARNING: ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`)
-  }
+  lines.push(...refineNotesForBlockers(audit.blockers))
+  lines.push(...refineNotesForWarnings(audit.warnings))
   lines.push(
     'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal, body word count ≥ hard minimum.',
-    'VOICE: sound human — second person, varied sentence length, no AI clichés (delve/leverage/robust/seamless/navigate the complexities/in conclusion), no outcome guarantees, no hype.',
+    'VOICE: sound human — second person, varied sentence length, no AI clichés (delve/leverage/robust/seamless/navigate the complexities/in conclusion), no outcome guarantees, no hype. Keep one argument; do not stuff keywords or splice kit pieces.',
   )
   return lines.join('\n')
 }

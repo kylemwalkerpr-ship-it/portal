@@ -53,6 +53,7 @@ export const HARPER_PROSE_CODES: ReadonlySet<string> = new Set([
   'low_trigram_variety',
   'register_drift',
   'stuffed_primary_opener',
+  'stuffed_primary_opener_severe',
   'short_keyword_density_violation',
   'long_tail_density_violation',
   'forward_reference_orphan',

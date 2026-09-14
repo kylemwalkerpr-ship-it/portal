@@ -27,6 +27,7 @@ import { FORMAT_SKELETON, formatSkeletonFor } from './formatContract'
 import { isBlogFamily, usesGuideApparatus, writingFamilyFor, essayFirstPromptBlock } from './writingShape'
 import { evaluateProseGeometry } from './proseGeometry'
 import { extractRegisterCard, houseRegisterFor, registerDrift } from './registerCard'
+import { refineNotesForBlockers, refineNotesForWarnings, coherentBlockerFix, isWholeArticleBlocker, coherentRepairPolicyBlock } from './shipBlockers'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -1581,7 +1582,7 @@ export function evaluateContentQuality(opts: {
       const missingLongTail = uncovered(longArr, opts.longTailKeywordTerms)
       const SHORT_FIX = 'Cover each missing demand short as a topic in a grammatical sentence. Meaning coverage beats exact-string placement. Never paste the phrase into the first content H2, In 60 seconds, a heading, or an FAQ question.'
       const LONG_FIX = 'Answer the reader question this long-tail represents in prose or an FAQ answer. Do not paste the string as an H2 or as the question text. If no clean slot exists, omit it rather than stuff.'
-      const preview = (terms: string[]) => terms.slice(0, 6).map((t) => `"${t}"`).join(', ')
+      const preview = (terms: string[]) => terms.map((t) => `"${t}"`).join(', ')
 
     if (missingShort.demand.length) {
       add({
@@ -1589,7 +1590,7 @@ export function evaluateContentQuality(opts: {
         severity: blogFamily ? 'warning' : 'blocker',
         message: `Required short keyword(s) absent: ${preview(missingShort.demand)}`,
         fix: SHORT_FIX,
-        evidence: missingShort.demand.slice(0, 8).join(' | '),
+        evidence: missingShort.demand.join(' | '),
       })
     }
     if (missingShort.synthesized.length) {
@@ -1598,7 +1599,7 @@ export function evaluateContentQuality(opts: {
         severity: 'warning',
         message: `Synthesized short keyword(s) absent (no search-demand evidence, not a ship blocker): ${preview(missingShort.synthesized)}`,
         fix: SHORT_FIX,
-        evidence: missingShort.synthesized.slice(0, 8).join(' | '),
+        evidence: missingShort.synthesized.join(' | '),
       })
     }
     if (missingLongTail.demand.length) {
@@ -1607,7 +1608,7 @@ export function evaluateContentQuality(opts: {
         severity: 'blocker',
         message: `Required long-tail keyword(s) absent: ${preview(missingLongTail.demand)}`,
         fix: LONG_FIX,
-        evidence: missingLongTail.demand.slice(0, 8).join(' | '),
+        evidence: missingLongTail.demand.join(' | '),
       })
     }
     if (missingLongTail.synthesized.length) {
@@ -1616,7 +1617,7 @@ export function evaluateContentQuality(opts: {
         severity: 'warning',
         message: `Synthesized long-tail keyword(s) absent (no search-demand evidence, not a ship blocker): ${preview(missingLongTail.synthesized)}`,
         fix: LONG_FIX,
-        evidence: missingLongTail.synthesized.slice(0, 8).join(' | '),
+        evidence: missingLongTail.synthesized.join(' | '),
       })
     }
 
@@ -1652,18 +1653,18 @@ export function evaluateContentQuality(opts: {
       add({
         code: 'short_keyword_density_violation',
         severity: 'blocker',
-        message: `Short keyword(s) over the 4-hit cap: ${overShort.slice(0, 6).map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
+        message: `Short keyword(s) over the 4-hit cap: ${overShort.map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
         fix: 'Reduce exact repeats; prefer the natural term once or twice and use semantic variants where possible.',
-        evidence: overShort.slice(0, 8).map((o) => `${o.term}=${o.hits}`).join(', '),
+        evidence: overShort.map((o) => `${o.term}=${o.hits}`).join(', '),
       })
     }
     if (overLong.length) {
       add({
         code: 'long_tail_density_violation',
         severity: 'blocker',
-        message: `Long-tail keyword(s) over the 2-hit cap: ${overLong.slice(0, 6).map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
+        message: `Long-tail keyword(s) over the 2-hit cap: ${overLong.map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
         fix: 'Long-tail phrases read like spam when repeated. Use the full phrase at most twice, in different contexts.',
-        evidence: overLong.slice(0, 8).map((o) => `${o.term}=${o.hits}`).join(', '),
+        evidence: overLong.map((o) => `${o.term}=${o.hits}`).join(', '),
       })
     }
     }
@@ -1855,10 +1856,7 @@ export function evaluateContentQuality(opts: {
 
   const summary = ok
     ? `Quality OK · human ${humanScore}/100 · ${warnings.length} warning(s)`
-    : `Quality BLOCKED · ${blockers.length} blocker(s) · human ${humanScore}/100 — ${blockers
-        .slice(0, 3)
-        .map((b) => b.code)
-        .join(', ')}`
+    : `Quality BLOCKED · ${blockers.length} blocker(s) · human ${humanScore}/100 — ${[...new Set(blockers.map((b) => b.code))].join(', ')}`
 
   return { ok, findings, blockers, warnings, humanScore, summary }
 }
@@ -2052,36 +2050,14 @@ export function qualityPromptBlock(contentType?: string): string {
   ].join('\n')
 }
 
-/** For refine notes when quality fails. */
-/** For refine notes when quality fails. */
+/** For refine notes when quality fails. Every blocker and warning instance is listed. */
 export function qualityToRefineNotes(result: QualityGateResult): string {
-  const lines = [
+  return [
     `Quality gate: ${result.summary}`,
     `Human-voice score: ${result.humanScore}/100.`,
-  ]
-  // Targeted sweep mode: give specific fix instructions per blocker
-  for (const b of result.blockers.slice(0, 12)) {
-    if (b.code === 'outcome_promise') {
-      lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
-    } else if (b.code === 'sentence_start_repetition') {
-      lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Keep the argument's throughline — do not shuffle openings just to beat the scanner.`)
-    } else if (b.code === 'keyword_stuffing' || b.code === 'adjacent_section_overlap_severe' || b.code === 'adjacent_section_overlap' || b.code === 'stuffed_primary_opener') {
-      lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''} Rewrite as ONE article: each H2 must continue the previous H2. Cover keywords as topics, not a checklist. Do not splice independent mini-essays.`)
-    } else if (b.code === 'missing_disclaimer') {
-      lines.push(
-        '- BLOCKER [missing_disclaimer]: The page has NO disclaimer and YMYL rules forbid shipping without one. Add this exact block near the end (before or inside Sources), as markdown — never wrap the article or this block in a code fence:\n' +
-          '  **Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
-          'Immigration rules change; verify every requirement against official government sources and consult a ' +
-          'licensed attorney, solicitor, or registered migration agent for your situation.',
-      )
-    } else {
-      lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)
-    }
-  }
-  for (const w of result.warnings.slice(0, 6)) {
-    lines.push(`- WARNING [${w.code}]: ${w.message}${w.fix ? ` → ${w.fix}` : ''}`)
-  }
-  return lines.join('\n')
+    ...refineNotesForBlockers(result.blockers),
+    ...refineNotesForWarnings(result.warnings),
+  ].join('\n')
 }
 
 /**
@@ -2173,10 +2149,17 @@ export function buildTargetedSweepPrompt(
   // Generic blocker fixes
   const otherBlockers = result.blockers.filter((b) => b.code !== 'sentence_start_repetition')
   if (otherBlockers.length) {
-    issues.push('Also fix these issues (only the affected text, not the whole article):')
+    const whole = otherBlockers.some((b) => isWholeArticleBlocker(b.code))
+    issues.push(
+      whole
+        ? 'Fix these as ONE article (connective tissue, not kit splices):'
+        : 'Also fix these issues (only the affected text, not the whole article):',
+    )
     for (const b of otherBlockers) {
-      issues.push(`- ${b.code}: ${b.message} → ${b.fix || 'remove or rewrite the flagged text'}`)
+      issues.push(`- ${b.code}: ${b.message} → ${coherentBlockerFix(b.code, b)}`)
     }
+    const policy = coherentRepairPolicyBlock(otherBlockers)
+    if (policy) issues.push(policy)
   }
   if (!issues.length) return ''
   return [
