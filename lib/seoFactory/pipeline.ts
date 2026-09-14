@@ -884,7 +884,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     )
     if (enrich.crossLinkInstructions) {
       enrichedSystem = `${system}\n\n---\n\n${enrich.crossLinkInstructions}\n\n---`
-      if (enrich.recommendedLinks.length > 0) {
+      if (!deskHeld && enrich.recommendedLinks.length > 0) {
         const linkBlock = enrich.recommendedLinks
           .slice(0, 4)
           .map((l) => `- [${l.anchorText}](${l.url})`)

@@ -13,6 +13,7 @@
 import { detectKitSectionOpeners } from './cohesionCritique'
 import { unwrapWholeDocumentFence } from './contentDepth'
 import type { QualityGateResult } from './contentQualityGate'
+import { chapterFormatFor, normalizeHeading } from './sealedBrief'
 import { usesGuideApparatus } from './writingShape'
 
 export type DeskExplore = {
@@ -162,7 +163,7 @@ export const EXPLORE_PATTERN_SPECS: Array<{
 ]
 
 const MILL_OPENER =
-  /(?:this section covers|in this (?:section|guide|article)|in today's fast-paced|everything you need to know|when it comes to)/i
+  /(?:this section covers|in this (?:section|guide|article|page)|in today's fast-paced|everything you need to know|when it comes to|understanding\b|navigating\b)/i
 
 const COGNITION_KEYS =
   /"(argumentSpine|verdict|readerQuestion|wouldHaveToInvent|gateWatch|revisePlan|takeawayClaims|kitRisks|gateRisks|scores|patterns)"\s*:/
@@ -459,16 +460,52 @@ export function mergeExploreIntoBrief<T extends {
   takeaways: string[]
   faqQuestions: string[]
   unresolved: string[]
+  outline?: Array<{ heading: string; purpose: string; bridgeFrom: string; coverTopics: string[]; format: string }>
 }>(brief: T, explore: DeskExplore | null): T {
   if (!explore) return brief
   const unresolved = uniqueStrings([...brief.unresolved, ...explore.wouldHaveToInvent])
-  return {
+  const next = {
     ...brief,
     thesis: brief.thesis || explore.argumentSpine,
     takeaways: brief.takeaways.length ? brief.takeaways : explore.takeawayClaims.slice(0, 5),
     faqQuestions: brief.faqQuestions.length ? brief.faqQuestions : explore.faqThatDoesNotEchoH2s.slice(0, 6),
     unresolved,
   }
+  if (!Array.isArray(brief.outline)) return next
+  return { ...next, outline: overlayExploreOutline(brief.outline, explore) }
+}
+
+const STRUCTURAL_HEADING = /^(in 60 seconds|key takeaways|table of contents|faq|sources|disclaimer)$/i
+
+function overlayExploreOutline<T extends {
+  heading: string
+  purpose: string
+  bridgeFrom: string
+  coverTopics: string[]
+  format: string
+}>(outline: T[], explore: DeskExplore): T[] {
+  if (!outline.length && explore.chapterPlan.length) {
+    return explore.chapterPlan.map((c, i) => ({
+      heading: c.heading,
+      purpose: c.because,
+      bridgeFrom: i === 0 ? '' : (c.continues || ''),
+      coverTopics: c.covers || [],
+      format: chapterFormatFor(c.heading, c.format),
+    })) as T[]
+  }
+  const firstContent = outline.findIndex((c) => !STRUCTURAL_HEADING.test(normalizeHeading(c.heading)))
+  return outline.map((ch, i) => {
+    const key = normalizeHeading(ch.heading).toLowerCase()
+    const match = explore.chapterPlan.find((p) => normalizeHeading(p.heading).toLowerCase() === key)
+    if (!match) return ch
+    return {
+      ...ch,
+      purpose: ch.purpose || match.because || ch.purpose,
+      bridgeFrom: i === firstContent ? ch.bridgeFrom : (ch.bridgeFrom || match.continues || ''),
+      coverTopics: ch.coverTopics.length ? ch.coverTopics : (match.covers || []),
+      format: ch.format || chapterFormatFor(ch.heading, match.format),
+    }
+  })
 }
 
 /**

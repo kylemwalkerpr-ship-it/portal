@@ -253,6 +253,19 @@ describe('explore + self-reflection cognition', () => {
     }, explore)
     expect(merged.unresolved).toContain('USCIS filing fee for 2026')
     expect(merged.faqQuestions[0]).toMatch(/missing at filing/)
+    const withOutline = mergeExploreIntoBrief({
+      thesis: '',
+      takeaways: [],
+      faqQuestions: [],
+      unresolved: [],
+      outline: [
+        { heading: 'Who this path is actually for', purpose: '', bridgeFrom: '', coverTopics: [] as string[], format: 'prose' },
+        { heading: 'Documents you gather next', purpose: '', bridgeFrom: '', coverTopics: [] as string[], format: 'prose' },
+      ],
+    }, explore)
+    expect(withOutline.takeaways.length).toBeGreaterThanOrEqual(3)
+    expect(withOutline.outline?.[1]?.bridgeFrom).toMatch(/who can file/i)
+    expect(withOutline.outline?.[0]?.purpose).toMatch(/Constraint first/)
   })
 
   it('infers revise when stuffing is named even without an explicit verdict', () => {

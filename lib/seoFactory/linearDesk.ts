@@ -370,17 +370,23 @@ export async function runLinearDesk(opts: {
   }
 
   const fallback = sealBriefFromAssembly(opts.assembly)
-  const merged = parsed.brief
-    ? {
-        ...parsed.brief,
-        outline: parsed.brief.outline.length ? parsed.brief.outline : fallback.outline,
-        takeaways: parsed.brief.takeaways.length ? parsed.brief.takeaways : fallback.takeaways,
-        faqQuestions: parsed.brief.faqQuestions.length ? parsed.brief.faqQuestions : fallback.faqQuestions,
-        thesis: parsed.brief.thesis || fallback.thesis,
-        lede: parsed.brief.lede || fallback.lede,
-      }
-    : fallback
-  const brief = mergeExploreIntoBrief(merged, explore)
+  const seed = parsed.brief || {
+    thesis: '',
+    takeaways: [] as string[],
+    faqQuestions: [] as string[],
+    unresolved: [] as string[],
+    outline: [] as SealedBrief['outline'],
+    lede: '',
+  }
+  const fromExplore = mergeExploreIntoBrief(seed, explore)
+  const brief = {
+    thesis: fromExplore.thesis || fallback.thesis,
+    takeaways: fromExplore.takeaways.length ? fromExplore.takeaways : fallback.takeaways,
+    faqQuestions: fromExplore.faqQuestions.length ? fromExplore.faqQuestions : fallback.faqQuestions,
+    lede: fromExplore.lede || fallback.lede,
+    outline: fromExplore.outline.length ? fromExplore.outline : fallback.outline,
+    unresolved: fromExplore.unresolved,
+  }
 
   progress?.({ phase: 'draft', message: 'Drafting the article from the sealed brief' })
   const draftInstruction = [
