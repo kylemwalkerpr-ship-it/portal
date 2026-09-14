@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
-import { countBodyWords } from '@/lib/seoFactory/contentDepth'
+import { auditContent } from '@/lib/seoFactory/audit'
+import { validateRevisionQuality } from '@/lib/seoFactory/revisionQuality'
+import { clampBriefWordBudget, countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { DRAFT_HARD_MAX_CHARS } from '@/lib/seoFactory/draftIntegrity'
 import { type CohesionFinding } from '@/lib/seoFactory/cohesionCritique'
 import { runThroughline } from '@/lib/seoFactory/throughline'
@@ -45,7 +47,28 @@ export async function POST(request: NextRequest) {
     const hintType = typeof hint.contentType === 'string' ? hint.contentType : undefined
     const hintKeyword = typeof hint.primaryKeyword === 'string' ? hint.primaryKeyword : undefined
 
+    const contentType = hintType || 'legal_guide'
+    const { minWords, maxWords } = clampBriefWordBudget(contentType)
+    const runAudit = (draft: string) => auditContent({
+      content: draft,
+      contentType,
+      primaryKeyword: hintKeyword,
+      requiredShortKeywords: hint.requiredShortKeywords,
+      requiredLongTailKeywords: hint.requiredLongTailKeywords,
+      shortKeywordTerms: hint.shortKeywordTerms,
+      longTailKeywordTerms: hint.longTailKeywordTerms,
+    })
+    const validateRevision = (original: string, revised: string) =>
+      validateRevisionQuality(runAudit(original), runAudit(revised), {
+        original, revised,
+        requiredKeywords: [...(hint.requiredShortKeywords || []), ...(hint.requiredLongTailKeywords || [])],
+        keywordTerms: [...(hint.shortKeywordTerms || []), ...(hint.longTailKeywordTerms || [])],
+      })
+
     const result = await runThroughline({
+      minWords,
+      maxWords,
+      validateRevision,
       content,
       thesis,
       contentType: hintType,
@@ -79,6 +102,9 @@ export async function POST(request: NextRequest) {
     }
 
     const denoise = await runFactoryMaskedDenoise({
+      minWords,
+      maxWords,
+      validateRevision,
       content: result.content,
       contentType: hintType || 'legal_guide',
       indexable: true,

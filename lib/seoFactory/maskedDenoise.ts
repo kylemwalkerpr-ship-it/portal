@@ -8,6 +8,7 @@
  * Not a generic "humanizer".
  */
 
+import type { RevisionValidator } from './revisionQuality'
 import { factsWerePreserved } from './cohesionCritique'
 import { countBodyWords, unwrapWholeDocumentFence } from './contentDepth'
 import { evaluateProseGeometry, type ProseGeometryFinding } from './proseGeometry'
@@ -498,6 +499,9 @@ export async function runMaskedDenoise(opts: {
   reader?: string | null
   queryNeed?: string | null
   generateText: (system: string, prompt: string) => Promise<string>
+  minWords?: number
+  maxWords?: number
+  validateRevision?: RevisionValidator
   maxPasses?: number
   enableCorpus?: boolean
   enableBlindEditor?: boolean
@@ -549,6 +553,15 @@ export async function runMaskedDenoise(opts: {
     if (!spliced.applied) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: 'Denoise candidates failed preservation/reranking' }
     const check = acceptPass(current, spliced.content, corpusProfile)
     if (!check.ok) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: check.reason }
+    const previousWords = countBodyWords(current)
+    const nextWords = countBodyWords(spliced.content)
+    const outsideWindow =
+      (opts.minWords != null && nextWords < Math.min(opts.minWords, previousWords)) ||
+      (opts.maxWords != null && nextWords > Math.max(opts.maxWords, previousWords))
+    const validation = outsideWindow
+      ? { ok: false, reason: 'Denoise violated the article word budget' }
+      : opts.validateRevision?.(current, spliced.content)
+    if (validation && !validation.ok) return { content: current, applied: appliedAny, rejected: !appliedAny, passes, spans: spanCount, reason: validation.reason }
     current = spliced.content
     appliedAny = true
     passes++
@@ -565,6 +578,9 @@ export async function runFactoryMaskedDenoise(opts: {
   reader?: string | null
   queryNeed?: string | null
   generateText: (system: string, prompt: string) => Promise<string>
+  minWords?: number
+  maxWords?: number
+  validateRevision?: RevisionValidator
 }): Promise<MaskedDenoiseResult> {
   const words = countBodyWords(opts.content)
   if (!shouldRunMaskedDenoise({ contentType: opts.contentType, indexable: opts.indexable, words })) return { content: opts.content, applied: false, rejected: false, passes: 0, spans: 0, reason: 'denoise not applicable' }
