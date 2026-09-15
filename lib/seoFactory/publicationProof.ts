@@ -38,6 +38,7 @@ type PublicationContext = {
   identity: PublicationMarkerIdentity | null
   fixedMarker: string | null
   lastMarker: string | null
+  lastContentHash: string | null
   active: boolean
 }
 const publicationStorage = new AsyncLocalStorage<PublicationContext>()
@@ -68,6 +69,7 @@ export function buildPublicationApprovalManifest(input: {
   canonical: string
   expectedMarker?: string | null
   content: string
+  approvedContentHash?: string | null
   approvalActor?: string | null
   prNumber?: number | null
   approvedHeadSha?: string | null
@@ -83,7 +85,7 @@ export function buildPublicationApprovalManifest(input: {
     path: String(input.path || '').trim(),
     canonical: String(input.canonical || '').trim(),
     expectedMarker: String(input.expectedMarker || '').trim() || null,
-    approvedContentHash: artifactContentHash(input.content),
+    approvedContentHash: String(input.approvedContentHash || '').trim() || artifactContentHash(input.content),
     approvedAt: new Date().toISOString(),
     approvalActor: String(input.approvalActor || '').trim() || null,
     prNumber: input.prNumber ? Number(input.prNumber) : null,
@@ -114,25 +116,23 @@ export function withPublicationManifest(auditJson: unknown, manifest: PersistedP
   return { ...base, publicationManifest: manifest }
 }
 
-/** Publication-only context for human approve/reship. It grants no AI authoring permission. */
 export async function runWithPublicationIdentity<T>(
   identity: PublicationMarkerIdentity,
   fn: () => Promise<T>,
-): Promise<{ result: T; marker: string | null }> {
-  const ctx: PublicationContext = { identity, fixedMarker: null, lastMarker: null, active: true }
+): Promise<{ result: T; marker: string | null; contentHash: string | null }> {
+  const ctx: PublicationContext = { identity, fixedMarker: null, lastMarker: null, lastContentHash: null, active: true }
   try {
     const result = await publicationStorage.run(ctx, fn)
-    return { result, marker: ctx.lastMarker }
+    return { result, marker: ctx.lastMarker, contentHash: ctx.lastContentHash }
   } finally {
     ctx.active = false
   }
 }
 
-/** Compatibility helper when an exact marker is already known. */
 export async function runWithPublicationMarker<T>(marker: string | null | undefined, fn: () => Promise<T>): Promise<T> {
   const value = String(marker || '').trim()
   if (!value) return fn()
-  const ctx: PublicationContext = { identity: null, fixedMarker: value, lastMarker: null, active: true }
+  const ctx: PublicationContext = { identity: null, fixedMarker: value, lastMarker: null, lastContentHash: null, active: true }
   try {
     return await publicationStorage.run(ctx, fn)
   } finally {
@@ -140,12 +140,14 @@ export async function runWithPublicationMarker<T>(marker: string | null | undefi
   }
 }
 
-/** Returns the marker for the ACTUAL body entering the renderer and records it for the caller. */
 export function publicationMarkerForContent(content: string): string | null {
   const ctx = publicationStorage.getStore()
   if (!ctx?.active) return null
   const marker = ctx.fixedMarker || (ctx.identity ? buildExpectedRevisionMarker({ ...ctx.identity, content }) : null)
-  if (marker) ctx.lastMarker = marker
+  if (marker) {
+    ctx.lastMarker = marker
+    ctx.lastContentHash = artifactContentHash(content)
+  }
   return marker
 }
 
