@@ -16,6 +16,7 @@ export type ContentStudioExecutionState = {
   opportunityId: string | null
   lastPublicationMarker: string | null
   lastPublicationContentHash: string | null
+  lastPublicationContent: string | null
 }
 
 type ExecutionLease = { active: boolean }
@@ -42,6 +43,7 @@ export function createContentStudioExecutionState(
     opportunityId: identity?.opportunityId || null,
     lastPublicationMarker: null,
     lastPublicationContentHash: null,
+    lastPublicationContent: null,
   }
 }
 
@@ -81,7 +83,10 @@ export function recordPublicationMarker(marker: string, content?: string): void 
   const state = activeState()
   if (!state?.strict) return
   state.lastPublicationMarker = String(marker || '').trim() || null
-  if (content != null) state.lastPublicationContentHash = contentHash(content)
+  if (content != null) {
+    state.lastPublicationContent = String(content)
+    state.lastPublicationContentHash = contentHash(content)
+  }
 }
 
 export function markCoherentDeskRunning(): void {
