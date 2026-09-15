@@ -5,10 +5,22 @@ import {
   runInContentStudioExecution,
 } from '@/lib/seoFactory/contentStudioExecutionContext'
 
+function strictState(name: string) {
+  return createContentStudioExecutionState(true, {
+    contractId:`wc_${name}`,
+    contractHash:`h_${name}`,
+    opportunityId:`o_${name}`,
+    executionJobId:`00000000-0000-0000-0000-${name.padEnd(12, '0').slice(0,12)}`,
+    executionOwner:`owner_${name}`,
+    executionAttempt:1,
+    executionLeaseExpiresAt:new Date(Date.now() + 60_000).toISOString(),
+  })
+}
+
 describe('Content Studio strict execution isolation', () => {
   it('does not let one concurrent job authorize another job', async () => {
-    const a = createContentStudioExecutionState(true, { contractId:'wc_a', contractHash:'ha', opportunityId:'oa' })
-    const b = createContentStudioExecutionState(true, { contractId:'wc_b', contractHash:'hb', opportunityId:'ob' })
+    const a = strictState('a')
+    const b = strictState('b')
     let releaseA!: () => void
     const holdA = new Promise<void>((resolve) => { releaseA = resolve })
     let aReady!: () => void
@@ -30,7 +42,7 @@ describe('Content Studio strict execution isolation', () => {
   })
 
   it('closes inherited timer permission after the execution window returns', async () => {
-    const state = createContentStudioExecutionState(true, { contractId:'wc_timer', contractHash:'h', opportunityId:'o' })
+    const state = strictState('timer')
     let delayed!: Promise<string>
     await runInContentStudioExecution(state, async () => {
       markCoherentDeskRunning()
@@ -50,8 +62,8 @@ describe('Content Studio strict execution isolation', () => {
   })
 
   it('does not let a delayed callback from job A borrow an active job B lease', async () => {
-    const a = createContentStudioExecutionState(true, { contractId:'wc_a2', contractHash:'ha2', opportunityId:'oa2' })
-    const b = createContentStudioExecutionState(true, { contractId:'wc_b2', contractHash:'hb2', opportunityId:'ob2' })
+    const a = strictState('a2')
+    const b = strictState('b2')
     let delayed!: Promise<string>
     await runInContentStudioExecution(a, async () => {
       markCoherentDeskRunning()
