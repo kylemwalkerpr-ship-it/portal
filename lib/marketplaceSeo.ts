@@ -26,3 +26,16 @@ export function getMarketplaceCanonicalPath(path: string): string {
 export function getMarketplaceCanonicalUrl(path: string): string {
   return `${getMarketplaceBaseUrl()}${getMarketplaceCanonicalPath(path)}`
 }
+
+/**
+ * Canonical public URL for a Marketplace category. Single source of truth for
+ * SEO engines (interlink planner, sitemaps, metadata): category pages always
+ * live at `/categories/<id>` on the market host — never under the retired
+ * `/marketplace` prefix and never on the Portal/auth host.
+ */
+export function marketplaceCategoryHref(categoryId: string): string {
+  // Blank input must never emit a bare /categories/ URL — fall back to the
+  // default immigration category, matching the engine helper's fallback.
+  const id = String(categoryId || '').trim() || 'immigration'
+  return getMarketplaceCanonicalUrl(`/categories/${id}`)
+}

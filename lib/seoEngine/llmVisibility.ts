@@ -63,6 +63,9 @@ export const ESTATE_DOMAINS: string[] = [
   'uk.yousafeconsultancy.com',
   'ca.yousafeconsultancy.com',
   'au.yousafeconsultancy.com',
+  // Public Marketplace host — legitimate citation surface.
+  'market.yousafeconsultancy.com',
+  // Portal remains a legitimate Portal/auth surface (never a Marketplace canonical).
   'portal.yousafeconsultancy.com',
 ]
 
