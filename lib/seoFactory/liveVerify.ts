@@ -24,6 +24,8 @@ export interface LiveVerifyInput {
 export interface LiveVerifyResult {
   ok: boolean
   liveUrl: string
+  responseUrl?: string | null
+  responseUrlMatches?: boolean | null
   httpStatus: number | null
   verifiedAt: string
   wordCount: number | null
@@ -118,15 +120,20 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   let httpStatus: number | null = null
   let bodyText: string | null = null
   let fetchError: string | null = null
+  let responseUrl: string | null = null
+  let xRobotsTag: string | null = null
   for (let a=0; a<3; a++) {
     if (a>0) await new Promise(r=>setTimeout(r,2500*a))
     try {
       const res = await fetch(url, { headers: { 'User-Agent': 'YouSafeLiveVerify/2.0' }, signal: AbortSignal.timeout(12000) })
       httpStatus = res.status
+      responseUrl = String((res as any).url || url)
+      xRobotsTag = res.headers?.get?.('x-robots-tag') || null
       bodyText = await res.text().catch(()=>null)
       if (res.ok || res.status < 500) break
     } catch (ex: any){ fetchError = String(ex?.message||ex).slice(0,400) }
   }
+  const responseUrlMatches = responseUrl ? canonicalHrefMatches(url, responseUrl) : null
   if (!bodyText) {
     const error = fetchError || `fetch failed: ${httpStatus}`
     if (input.jobId) {
@@ -136,13 +143,21 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
       }).eq('id', input.jobId)
       await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${error}` })
     }
-    return { ok:false, liveUrl:url, httpStatus, verifiedAt, wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, canonicalHref:null, hasCanonical:null, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, publicationPhase: deployment?.phase || null, error }
+    return {
+      ok:false, liveUrl:url, responseUrl, responseUrlMatches, httpStatus, verifiedAt,
+      wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, canonicalHref:null, hasCanonical:null,
+      purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, publicationPhase: deployment?.phase || null, error,
+    }
   }
 
   const missing = httpStatus === 404 || httpStatus === 410
-  const hasNoIndex = missing ? false : /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
+  const metaNoIndex = /<meta[^>]*robots[^>]*content=["'][^"']*\bnoindex\b/i.test(bodyText)
+    || /<meta[^>]*content=["'][^"']*\bnoindex\b[^"']*["'][^>]*robots/i.test(bodyText)
+  const headerNoIndex = /\bnoindex\b/i.test(String(xRobotsTag || ''))
+  const hasNoIndex = missing ? false : metaNoIndex || headerNoIndex
   const canonicalHref = extractCanonicalHref(bodyText)
-  const hasCanonical = canonicalHrefMatches(url, canonicalHref)
+  const canonicalTagMatches = canonicalHrefMatches(url, canonicalHref)
+  const hasCanonical = canonicalTagMatches && responseUrlMatches !== false
   const liveMarker = extractRevisionMarkerFromHtml(bodyText)
   let auditScore: number | null = null
   let humanScore: number | null = null
@@ -164,7 +179,7 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     publicationPhase = deployment?.phase || 'verification_failed'
     if (deployment?.ok && proof) {
       const evaluated = evaluateLiveArtifact({
-        httpStatus, html: bodyText, canonicalMatches: hasCanonical, hasNoIndex,
+        httpStatus, html: bodyText, canonicalMatches: canonicalTagMatches, hasNoIndex, responseUrlMatches,
         expectedMarker: proof.expectedMarker || undefined, liveMarker, title: input.title,
         approvedHeadSha: proof.approvedHeadSha, mergeSha: proof.mergeSha,
         deploymentCommitSha: proof.deploymentCommitSha, lineageVerified: proof.lineageVerified,
@@ -176,14 +191,12 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
       proofReason = deployment?.reason || 'durable publication proof unavailable'
     }
   } else {
-    // Legacy/site-health checks remain useful diagnostics, but are not evidence-
-    // contract publication proof.
-    ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && (wc??0)>=200
+    ok = httpStatus===200 && !hasNoIndex && canonicalTagMatches===true && responseUrlMatches!==false && (auditScore??0)>=30 && (wc??0)>=200
     proofReason = auditError || (ok ? 'legacy live health checks passed' : 'legacy live health checks failed')
   }
 
   if (input.jobId) {
-    const liveStatus = ok ? 'verified' : missing ? 'fetch_failed' : hasNoIndex ? 'noindex' : httpStatus !== 200 ? 'fetch_failed' : 'needs_review'
+    const liveStatus = ok ? 'verified' : missing ? 'fetch_failed' : hasNoIndex ? 'noindex' : responseUrlMatches === false ? 'needs_review' : httpStatus !== 200 ? 'fetch_failed' : 'needs_review'
     const patch: Record<string, unknown> = {
       live_verified_at: verifiedAt,
       live_status: liveStatus,
@@ -210,11 +223,11 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     await appendLog(input.jobId, {
       level: ok?'success':'warn', source:'liveVerify',
       message: ok ? `Article verified live: marker, canonical, indexability and deployment lineage match` : `Live proof held: ${proofReason}`,
-      detail: JSON.stringify({ httpStatus, wordCount:wc, auditScore, hasNoIndex, canonicalHref, liveMarker, publicationPhase }, null, 2),
+      detail: JSON.stringify({ httpStatus, responseUrl, responseUrlMatches, wordCount:wc, auditScore, hasNoIndex, canonicalHref, liveMarker, publicationPhase }, null, 2),
     })
   }
   return {
-    ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore,
+    ok, liveUrl:url, responseUrl, responseUrlMatches, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore,
     hasNoIndex, canonicalHref, hasCanonical, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes,
     expectedMarker: proof?.expectedMarker || null, liveMarker,
     publicationPhase, lineageVerified: proof?.lineageVerified ?? null,
@@ -222,7 +235,6 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   }
 }
 
-/** Best-effort convenience only. Contracted jobs still fail closed on durable proof. */
 export function verifyLiveInBackground(input: LiveVerifyInput) {
   verifyLiveUrl(input).catch(e=>console.warn('[liveVerify] background failed',e))
 }
