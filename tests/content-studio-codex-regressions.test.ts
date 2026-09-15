@@ -11,12 +11,16 @@ describe('Content Studio Codex second-review production seams', () => {
     expect(src).not.toMatch(/if \(!isContractBound\(body\)\)\s*\{?\s*return legacyUncontractedPOST/)
   })
 
-  test('strict SSE owns one execution lease for the whole producer lifetime', () => {
-    const src = read('lib/seoFactory/contentStudioPipeline.ts')
-    expect(src).not.toMatch(/runInContentStudioExecution\(state,\s*\(\)\s*=>\s*iterator\.next\(\)\)/)
-    expect(src).toMatch(/runInContentStudioExecution[\s\S]{0,1000}runSeoFactoryPipelineStream/)
-    expect(src).toMatch(/startExecutionLeaseHeartbeat/)
-    expect(src).toMatch(/renewContentStudioExecution/)
+  test('strict SSE keeps the verified producer inside one execution lease for its whole lifetime', () => {
+    const facade = read('lib/seoFactory/contentStudioPipeline.ts')
+    const core = read('lib/seoFactory/contentStudioPipelineCore.ts')
+    expect(facade).toMatch(/core\.runContentStudioPipelineStream\(request\)/)
+    expect(facade).not.toMatch(/const result\s*=\s*await[\s\S]{0,250}core\.runContentStudioPipeline\(request\)/)
+    expect(core).not.toMatch(/runInContentStudioExecution\(state,\s*\(\)\s*=>\s*iterator\.next\(\)\)/)
+    expect(core).toMatch(/const producer\s*=\s*runInContentStudioExecution\(prepared\.state/)
+    expect(core).toMatch(/runSeoFactoryPipelineStream\(hydrated\)/)
+    expect(core).toMatch(/startExecutionLeaseHeartbeat/)
+    expect(core).toMatch(/renewContentStudioExecution/)
   })
 
   test('contracted Linear Desk executes the immutable saved brief instead of rebriefing', () => {
@@ -47,7 +51,7 @@ describe('Content Studio Codex second-review production seams', () => {
 
   test('contract hydration pins reader question and model while strict runner enforces saved ownership', () => {
     const contract = read('lib/seoFactory/pipelineContract.ts')
-    const runner = read('lib/seoFactory/contentStudioPipeline.ts')
+    const runner = read('lib/seoFactory/contentStudioPipelineCore.ts')
     const provider = read('lib/contentAiProvider.ts')
     expect(contract).toMatch(/reader\.primaryQuestion/)
     expect(contract).not.toMatch(/topic:\s*input\.topic\s*\|\|\s*contract\.reader\.primaryQuestion/)
@@ -67,23 +71,38 @@ describe('Content Studio Codex second-review production seams', () => {
   })
 
   test('SSE error and premature EOF cannot be treated as successful completion', () => {
-    const wrapper = read('lib/seoFactory/contentStudioPipeline.ts')
+    const core = read('lib/seoFactory/contentStudioPipelineCore.ts')
     const route = read('app/api/seo-factory/generate-stream/route.ts')
-    expect(wrapper).toMatch(/event\.type\s*===\s*['"]error['"][\s\S]{0,700}persistExecutionFailure/)
-    expect(wrapper).toMatch(/stream.*ended.*without.*final|without final event/i)
+    expect(core).toMatch(/event\.type\s*===\s*['"]error['"][\s\S]{0,700}persistExecutionFailure/)
+    expect(core).toMatch(/stream.*ended.*without.*final|without final event/i)
     expect(route).toMatch(/finally[\s\S]{0,700}iterator\?\.return|finally[\s\S]{0,700}iterator\.return/)
   })
 
   test('same-job execution has atomic claim/renew/check fencing and expiry-conditioned terminal writes', () => {
-    const runner = read('lib/seoFactory/contentStudioPipeline.ts')
-    const store = read('lib/seoFactory/writingContractStore.ts')
-    expect(store).toMatch(/claimContentStudioExecution/)
-    expect(store).toMatch(/renewContentStudioExecution/)
-    expect(store).toMatch(/assertContentStudioExecution/)
+    const runner = read('lib/seoFactory/contentStudioPipelineCore.ts')
+    const storeFacade = read('lib/seoFactory/writingContractStore.ts')
+    const storeCore = read('lib/seoFactory/writingContractStoreCore.ts')
+    expect(storeFacade).toMatch(/claimContentStudioExecution/)
+    expect(storeFacade).toMatch(/p_allow_failed_retry/)
+    expect(storeCore).toMatch(/renewContentStudioExecution/)
+    expect(storeCore).toMatch(/assertContentStudioExecution/)
     expect(runner).toMatch(/execution_owner/)
     expect(runner).toMatch(/execution_attempt/)
     expect(runner).toMatch(/execution_lease_expires_at/)
     expect(runner).toMatch(/\.gt\(['"]execution_lease_expires_at['"]/)
+  })
+
+  test('strict stream early writes and compatibility retries pass through the exact owner fence', () => {
+    const stream = read('lib/seoFactory/pipelineStream.ts')
+    const fence = read('lib/seoFactory/streamContentJobFence.ts')
+    const persist = read('lib/seoFactory/persistContentJob.ts')
+    expect(stream).toMatch(/fenceStreamContentJobsClient\(createClient/)
+    expect(fence).toMatch(/\.eq\(['"]execution_owner['"],\s*identity\.owner\)/)
+    expect(fence).toMatch(/\.eq\(['"]execution_attempt['"],\s*identity\.attempt\)/)
+    expect(fence).toMatch(/\.gt\(['"]execution_lease_expires_at['"]/)
+    expect(fence).toMatch(/COMPAT_COLUMNS/)
+    expect(fence).toMatch(/insert['"]\s*\|\|\s*tableProperty\s*===\s*['"]upsert/)
+    expect(persist).toMatch(/strict Content Studio deliberately does not run the legacy broad sibling-closing/)
   })
 
   test('publication proof binds both repository artifact and live substantive body digests', () => {
