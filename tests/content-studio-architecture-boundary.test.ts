@@ -36,6 +36,13 @@ describe('Content Studio Approach B architecture boundary', () => {
     expect(sse).toMatch(/contractBound[\s\S]*runContractedStream/)
   })
 
+  it('requires the Content Studio compatibility generate route itself to be contract-bound', () => {
+    const route = read('app/api/content-studio/generate/route.ts')
+    expect(route).not.toContain('runSeoFactoryPipeline')
+    expect(route).toContain('runContentStudioPipeline')
+    expect(route).toMatch(/writing contract.*required|contract.*required/i)
+  })
+
   it('routes cron and manual retries through the stored-job contract decision', () => {
     const cron = read('app/api/cron/content-studio-retry/route.ts')
     const jobs = read('app/api/content-studio/jobs/route.ts')
@@ -44,6 +51,31 @@ describe('Content Studio Approach B architecture boundary', () => {
     expect(jobs).toContain('runStoredContentJob')
     expect(stored).toContain('runContentStudioPipeline')
     expect(stored).toContain('contract_id')
+  })
+
+  it('reconciliation only schedules recovery and cannot execute a raw or contract pipeline', () => {
+    const reconcile = read('app/api/cron/reconcile-content-jobs/route.ts')
+    expect(reconcile).not.toMatch(/runSeoFactoryPipeline\s*\(/)
+    expect(reconcile).not.toMatch(/runContentStudioPipeline\s*\(/)
+    expect(reconcile).not.toMatch(/generateContentText\s*\(/)
+    expect(reconcile).toMatch(/retry cron|staged for retry/i)
+  })
+
+  it('has no independently registered Content Studio route that directly calls the raw pipeline', () => {
+    const apiRoot = path.join(root, 'app/api/content-studio')
+    const routeFiles: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes:true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.name === 'route.ts') routeFiles.push(full)
+      }
+    }
+    walk(apiRoot)
+    const offenders = routeFiles
+      .filter((file) => /runSeoFactoryPipeline\s*\(/.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(root, file))
+    expect(offenders).toEqual([])
   })
 
   it('keeps the only registered jobs HTTP route in route.ts; legacy.ts is internal compatibility, not a route', () => {
