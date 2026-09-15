@@ -20,20 +20,29 @@ describe('Content Studio Codex second-review production seams', () => {
   })
 
   test('contracted Linear Desk executes the immutable saved brief instead of rebriefing', () => {
-    const src = read('lib/seoFactory/linearDesk.ts')
-    expect(src).toMatch(/if \(contractBrief\)/)
-    expect(src).toMatch(/brief\s*=\s*contractBrief/)
-    expect(src).toMatch(/executeBriefPrompt\(brief\)/)
-    expect(src).toMatch(/rebriefing disabled/i)
+    const facade = read('lib/seoFactory/linearDesk.ts')
+    const core = read('lib/seoFactory/linearDeskCore.ts')
+    expect(facade).toContain("from './linearDeskCore'")
+    expect(facade).toMatch(/contractQueryCoverage/)
+    expect(core).toMatch(/if \(contractBrief\)/)
+    expect(core).toMatch(/brief\s*=\s*contractBrief/)
+    expect(core).toMatch(/executeBriefPrompt\(brief\)/)
+    expect(core).toMatch(/rebriefing disabled/i)
   })
 
-  test('shared production desk supplies canonical before/after audits when callers omit an override', () => {
-    const desk = read('lib/seoFactory/linearDesk.ts')
-    expect(desk).toMatch(/auditContent/)
-    expect(desk).toMatch(/const auditRewrite[\s\S]{0,1200}auditContent/)
-    expect(desk).toMatch(/previousAudit:\s*auditRewrite\(content\)/)
-    expect(desk).toMatch(/nextAudit:\s*auditRewrite\(next\)/)
-    expect(desk).toMatch(/keywordTerms/)
+  test('shared production desk supplies canonical before/after audits with immutable provenance', () => {
+    const facade = read('lib/seoFactory/linearDesk.ts')
+    const core = read('lib/seoFactory/linearDeskCore.ts')
+    expect(facade).toMatch(/contractQueryCoverage/)
+    expect(facade).toMatch(/requiredShortKeywords:\s*\[\.\.\.coverage\.requiredShortKeywords\]/)
+    expect(facade).toMatch(/requiredLongTailKeywords:\s*\[\.\.\.coverage\.requiredLongTailKeywords\]/)
+    expect(facade).toMatch(/shortKeywordTerms:\s*coverage\.shortKeywordTerms/)
+    expect(facade).toMatch(/longTailKeywordTerms:\s*coverage\.longTailKeywordTerms/)
+    expect(core).toMatch(/auditContent/)
+    expect(core).toMatch(/const auditRewrite[\s\S]{0,1200}auditContent/)
+    expect(core).toMatch(/previousAudit:\s*auditRewrite\(content\)/)
+    expect(core).toMatch(/nextAudit:\s*auditRewrite\(next\)/)
+    expect(core).toMatch(/keywordTerms/)
   })
 
   test('contract hydration pins reader question and model while strict runner enforces saved ownership', () => {
