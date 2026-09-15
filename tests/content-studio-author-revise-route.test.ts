@@ -15,6 +15,7 @@ jest.mock('@/lib/seoFactory/maskedDenoise', () => ({ runFactoryMaskedDenoise: (.
 jest.mock('@/lib/contentAiProvider', () => ({ generateContentText: jest.fn() }))
 jest.mock('@/lib/seoFactory/writingContractStore', () => ({
   WritingContractMismatchError: class WritingContractMismatchError extends Error {},
+  runWithContentStudioRecoveryClaim: (fn: () => unknown) => fn(),
   loadWritingContract: (...args: unknown[]) => loadWritingContract(...args),
   claimContentStudioExecution: (...args: unknown[]) => claimContentStudioExecution(...args),
   assertContentStudioExecution: (...args: unknown[]) => assertContentStudioExecution(...args),
