@@ -1,14 +1,13 @@
-/**
- * portal-patch/lib/seoFactory/liveVerify.ts — P0-1 Ship → Live Verification (portal/Supabase)
- * Copy of lib/seoFactory/liveVerify.ts with identical semantics — purge CDN → sitemap ping → IndexNow → fetch live → re-audit.
- * Every step is best-effort; never throws to ship caller.
- * This file lives in portal-patch so it ships to kylemwalkerpr-ship-it/portal on next Cloudflare build
- * via `cp -r portal-patch/* ./` before next build.
- */
 import { createClient } from '@supabase/supabase-js'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { auditLiveHtml } from './liveAudit'
 import { countBodyWords } from './contentDepth'
+import { reconcilePublicationDeployment } from './publicationMonitor'
+import {
+  extractRevisionMarkerFromHtml,
+  withPublicationManifest,
+} from './publicationProof'
+import { evaluateLiveArtifact } from './publicationStates'
 
 export interface LiveVerifyInput {
   canonicalUrl: string
@@ -19,9 +18,7 @@ export interface LiveVerifyInput {
   commitSha?: string | null
   host?: string | null
   repo?: string | null
-  /** Brief-supplied short keywords (≤3 words). Optional — quality gate will skip coverage check when absent. */
   requiredShortKeywords?: string[]
-  /** Brief-supplied long-tail keywords (≥4 words). */
   requiredLongTailKeywords?: string[]
 }
 export interface LiveVerifyResult {
@@ -38,29 +35,21 @@ export interface LiveVerifyResult {
   purgeStatus: string | null
   sitemapStatus: string | null
   indexNowStatus: string | null
+  expectedMarker?: string | null
+  liveMarker?: string | null
+  publicationPhase?: string | null
+  lineageVerified?: boolean | null
   error?: string | null
 }
 
-/**
- * Extract the canonical <link rel="canonical" href="..."> from raw HTML.
- * Returns the href exactly as declared (no normalization) so the caller can
- * decide whether it matches the requested canonicalUrl.
- */
 export function extractCanonicalHref(html: string): string | null {
   if (!html) return null
-  // Both attribute orders are valid HTML; capture href in either order.
   const m = html.match(/<link\b[^>]*rel=["']canonical["'][^>]*?>/i)
   if (!m) return null
-  const tag = m[0]
-  const href = tag.match(/href=["']([^"']+)["']/i)
-  return href && href[1] ? href[1] : null
+  const href = m[0].match(/href=["']([^"']+)["']/i)
+  return href?.[1] || null
 }
 
-/**
- * Compare a target canonical URL to a candidate canonical href, ignoring
- * trivial differences (case, trailing slash, protocol casing) so we don't
- * trip on Cloudflare's normalizations.
- */
 export function canonicalHrefMatches(target: string, candidate: string | null): boolean {
   if (!candidate) return false
   const norm = (u: string) => {
@@ -94,29 +83,36 @@ async function purgeCdn(urls: string[]): Promise<string> {
   if (!urls.length) return 'skipped: no urls'
   try {
     const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zid}/purge_cache`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: urls.slice(0, 30) }),
-      signal: AbortSignal.timeout(12000),
+      method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: urls.slice(0, 30) }), signal: AbortSignal.timeout(12000),
     })
     const body: any = await res.json().catch(() => ({}))
-    return res.ok && body.success !== false ? `purged ${urls.length} url(s)` : `purge failed: ${res.status} ${JSON.stringify(body).slice(0, 300)}`
+    return res.ok && body.success !== false ? `purged ${urls.length} url(s)` : `purge failed: ${res.status}`
   } catch (ex: any) { return `purge error: ${String(ex?.message || ex).slice(0, 300)}` }
 }
 async function pingSitemap(canonicalUrl: string): Promise<string> {
   try {
-    const host = new URL(canonicalUrl).host
-    const sm = `https://${host}/sitemap.xml`
+    const sm = `https://${new URL(canonicalUrl).host}/sitemap.xml`
     const res = await fetch(sm, { method: 'HEAD', signal: AbortSignal.timeout(8000) })
     return `sitemap ${sm}: ${res.status}`
   } catch (ex: any) { return `sitemap error: ${String(ex?.message||ex).slice(0, 250)}` }
 }
+
 export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyResult> {
   const url = input.canonicalUrl
   const verifiedAt = new Date().toISOString()
+  const db = dbc()
+  let contracted = false
+  if (input.jobId) {
+    const { data } = await db.from('content_jobs').select('contract_id').eq('id', input.jobId).maybeSingle()
+    contracted = Boolean((data as any)?.contract_id)
+  }
+  const deployment = contracted && input.jobId
+    ? await reconcilePublicationDeployment(input.jobId)
+    : null
+
   const [purgeStatus, sitemapStatus, indexNowRes] = await Promise.all([
-    purgeCdn([url]),
-    pingSitemap(url),
+    purgeCdn([url]), pingSitemap(url),
     (async () => { try { const r: any = await submitUrlsToIndexNow([url]); return `${r.host||'indexnow'}: ${r.status}` } catch (ex: any){ return `indexnow error: ${String(ex?.message||ex).slice(0,200)}` }})(),
   ])
   let httpStatus: number | null = null
@@ -125,80 +121,108 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   for (let a=0; a<3; a++) {
     if (a>0) await new Promise(r=>setTimeout(r,2500*a))
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'YouSafeLiveVerify/1.0' }, signal: AbortSignal.timeout(12000) })
+      const res = await fetch(url, { headers: { 'User-Agent': 'YouSafeLiveVerify/2.0' }, signal: AbortSignal.timeout(12000) })
       httpStatus = res.status
-      if (res.ok) { bodyText = await res.text(); break }
-      if (res.status>=500) continue
       bodyText = await res.text().catch(()=>null)
-      break
-    } catch (ex: any){ fetchError = String(ex?.message||ex).slice(0,400); if (a===2) break }
+      if (res.ok || res.status < 500) break
+    } catch (ex: any){ fetchError = String(ex?.message||ex).slice(0,400) }
   }
   if (!bodyText) {
-    const result: LiveVerifyResult = { ok:false, liveUrl:url, httpStatus, verifiedAt, wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, canonicalHref:null, hasCanonical:null, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error: fetchError || `fetch failed: ${httpStatus}` }
-    if (input.jobId) await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${result.error} on ${url} (HTTP ${httpStatus})`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes }, null,2) })
-    return result
+    const error = fetchError || `fetch failed: ${httpStatus}`
+    if (input.jobId) {
+      await db.from('content_jobs').update({
+        live_verified_at: verifiedAt, live_status: 'fetch_failed', live_http_status: httpStatus,
+        live_error: error, ...(contracted ? { publication_phase: deployment?.phase || 'verification_failed' } : {}),
+      }).eq('id', input.jobId)
+      await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${error}` })
+    }
+    return { ok:false, liveUrl:url, httpStatus, verifiedAt, wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, canonicalHref:null, hasCanonical:null, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, publicationPhase: deployment?.phase || null, error }
   }
-  // A 404/410 document (Next.js not-found) always carries noindex. That is
-  // the missing-page template, not a published article marked noindex.
+
   const missing = httpStatus === 404 || httpStatus === 410
   const hasNoIndex = missing ? false : /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
-  // Canonical tag check — assert the <link rel="canonical" href="…"> matches
-  // the canonicalUrl we asked about. CDNs occasionally rewrite to the
-  // www/non-www form or strip trailing slashes, so normalize both sides.
   const canonicalHref = extractCanonicalHref(bodyText)
   const hasCanonical = canonicalHrefMatches(url, canonicalHref)
+  const liveMarker = extractRevisionMarkerFromHtml(bodyText)
   let auditScore: number | null = null
   let humanScore: number | null = null
   let auditError: string | null = null
   let wc: number | null = null
   try {
-    const live = auditLiveHtml({
-      html: bodyText,
-      contentType: input.contentType || 'legal_guide',
-      primaryKeyword: input.primaryKeyword || input.title || url,
-    })
-    auditScore = live.score
-    humanScore = live.humanScore
-    wc = live.wordCount
+    const live = auditLiveHtml({ html: bodyText, contentType: input.contentType || 'legal_guide', primaryKeyword: input.primaryKeyword || input.title || url })
+    auditScore = live.score; humanScore = live.humanScore; wc = live.wordCount
   } catch (ex: any) {
     auditError = String(ex?.message || ex).slice(0, 400)
     wc = countBodyWords(bodyText)
   }
-  const ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && (wc??0)>=200
-  if (input.jobId) {
-    try {
-      // live_status is CHECK-constrained to ('verified','noindex','fetch_failed',
-      // 'needs_review','unverified') — there is no 'canonical_mismatch' enum value,
-      // so a canonical mismatch persists as needs_review + the raw href in
-      // live_canonical_url; verify-published recomputes the precise stamp from
-      // hasCanonical/canonicalHref in-memory.
-      const liveStatus = ok
-        ? 'verified'
-        : missing
-          ? 'fetch_failed'
-          : hasNoIndex
-            ? 'noindex'
-            : (httpStatus !== 200)
-              ? 'fetch_failed'
-              : 'needs_review'
-      const db = dbc()
-      await (db as any).from('content_jobs').update({
-        live_verified_at: verifiedAt,
-        live_status: liveStatus,
-        live_http_status: httpStatus,
-        live_word_count: wc,
-        live_audit_score: auditScore,
-        live_human_score: humanScore,
-        live_has_noindex: hasNoIndex,
-        live_canonical_url: canonicalHref,
-        live_purge_status: purgeStatus,
-        live_sitemap_status: sitemapStatus,
-        live_indexnow_status: indexNowRes,
-        live_error: auditError,
-      }).eq('id', input.jobId)
-    } catch {}
-    await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus} · canonical=${hasCanonical}`: missing?`Live needs deploy: ${url} — HTTP ${httpStatus} (page is not on the live host yet; Approve → main to publish, then it is added to the sitemap and submitted to IndexNow)`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · canonical=${hasCanonical} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical, missing }, null,2) })
+
+  let ok = false
+  let proofReason = auditError || ''
+  let publicationPhase: string | null = null
+  const proof = deployment?.proof || null
+  if (contracted) {
+    publicationPhase = deployment?.phase || 'verification_failed'
+    if (deployment?.ok && proof) {
+      const evaluated = evaluateLiveArtifact({
+        httpStatus, html: bodyText, canonicalMatches: hasCanonical, hasNoIndex,
+        expectedMarker: proof.expectedMarker || undefined, liveMarker, title: input.title,
+        approvedHeadSha: proof.approvedHeadSha, mergeSha: proof.mergeSha,
+        deploymentCommitSha: proof.deploymentCommitSha, lineageVerified: proof.lineageVerified,
+      })
+      ok = evaluated.ok
+      publicationPhase = evaluated.phase
+      proofReason = evaluated.reason
+    } else {
+      proofReason = deployment?.reason || 'durable publication proof unavailable'
+    }
+  } else {
+    // Legacy/site-health checks remain useful diagnostics, but are not evidence-
+    // contract publication proof.
+    ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && (wc??0)>=200
+    proofReason = auditError || (ok ? 'legacy live health checks passed' : 'legacy live health checks failed')
   }
-  return { ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error:auditError }
+
+  if (input.jobId) {
+    const liveStatus = ok ? 'verified' : missing ? 'fetch_failed' : hasNoIndex ? 'noindex' : httpStatus !== 200 ? 'fetch_failed' : 'needs_review'
+    const patch: Record<string, unknown> = {
+      live_verified_at: verifiedAt,
+      live_status: liveStatus,
+      live_http_status: httpStatus,
+      live_word_count: wc,
+      live_audit_score: auditScore,
+      live_human_score: humanScore,
+      live_has_noindex: hasNoIndex,
+      live_canonical_url: canonicalHref,
+      live_purge_status: purgeStatus,
+      live_sitemap_status: sitemapStatus,
+      live_indexnow_status: indexNowRes,
+      live_error: ok ? null : proofReason,
+    }
+    if (contracted) {
+      patch.publication_phase = ok ? 'live_verified' : publicationPhase
+      patch.execution_stage = ok ? 'live_verified' : publicationPhase === 'deployment_pending' ? 'deploying' : 'verification_failed'
+      if (ok && proof) {
+        const latest = await db.from('content_jobs').select('audit_json').eq('id', input.jobId).maybeSingle()
+        patch.audit_json = withPublicationManifest(latest.data?.audit_json, { ...proof, liveVerifiedAt: verifiedAt })
+      }
+    }
+    await db.from('content_jobs').update(patch).eq('id', input.jobId)
+    await appendLog(input.jobId, {
+      level: ok?'success':'warn', source:'liveVerify',
+      message: ok ? `Article verified live: marker, canonical, indexability and deployment lineage match` : `Live proof held: ${proofReason}`,
+      detail: JSON.stringify({ httpStatus, wordCount:wc, auditScore, hasNoIndex, canonicalHref, liveMarker, publicationPhase }, null, 2),
+    })
+  }
+  return {
+    ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore,
+    hasNoIndex, canonicalHref, hasCanonical, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes,
+    expectedMarker: proof?.expectedMarker || null, liveMarker,
+    publicationPhase, lineageVerified: proof?.lineageVerified ?? null,
+    error: ok ? null : proofReason,
+  }
 }
-export function verifyLiveInBackground(input: LiveVerifyInput) { verifyLiveUrl(input).catch(e=>console.warn('[liveVerify] background failed',e)) }
+
+/** Best-effort convenience only. Contracted jobs still fail closed on durable proof. */
+export function verifyLiveInBackground(input: LiveVerifyInput) {
+  verifyLiveUrl(input).catch(e=>console.warn('[liveVerify] background failed',e))
+}
