@@ -34,7 +34,13 @@ export type PersistedPublicationManifest = {
   liveVerifiedAt: string | null
 }
 
-const markerStorage = new AsyncLocalStorage<string>()
+type PublicationContext = {
+  identity: PublicationMarkerIdentity | null
+  fixedMarker: string | null
+  lastMarker: string | null
+  active: boolean
+}
+const publicationStorage = new AsyncLocalStorage<PublicationContext>()
 
 function normalizedBody(content: string): string {
   return String(content || '').replace(/\r\n/g, '\n').trim()
@@ -108,14 +114,44 @@ export function withPublicationManifest(auditJson: unknown, manifest: PersistedP
   return { ...base, publicationManifest: manifest }
 }
 
+/** Publication-only context for human approve/reship. It grants no AI authoring permission. */
+export async function runWithPublicationIdentity<T>(
+  identity: PublicationMarkerIdentity,
+  fn: () => Promise<T>,
+): Promise<{ result: T; marker: string | null }> {
+  const ctx: PublicationContext = { identity, fixedMarker: null, lastMarker: null, active: true }
+  try {
+    const result = await publicationStorage.run(ctx, fn)
+    return { result, marker: ctx.lastMarker }
+  } finally {
+    ctx.active = false
+  }
+}
+
+/** Compatibility helper when an exact marker is already known. */
 export async function runWithPublicationMarker<T>(marker: string | null | undefined, fn: () => Promise<T>): Promise<T> {
   const value = String(marker || '').trim()
   if (!value) return fn()
-  return markerStorage.run(value, fn)
+  const ctx: PublicationContext = { identity: null, fixedMarker: value, lastMarker: null, active: true }
+  try {
+    return await publicationStorage.run(ctx, fn)
+  } finally {
+    ctx.active = false
+  }
+}
+
+/** Returns the marker for the ACTUAL body entering the renderer and records it for the caller. */
+export function publicationMarkerForContent(content: string): string | null {
+  const ctx = publicationStorage.getStore()
+  if (!ctx?.active) return null
+  const marker = ctx.fixedMarker || (ctx.identity ? buildExpectedRevisionMarker({ ...ctx.identity, content }) : null)
+  if (marker) ctx.lastMarker = marker
+  return marker
 }
 
 export function currentPublicationMarker(): string | null {
-  return markerStorage.getStore() || null
+  const ctx = publicationStorage.getStore()
+  return ctx?.active ? ctx.fixedMarker || ctx.lastMarker : null
 }
 
 export function injectRevisionMarkerIntoRenderedFile(fileContent: string, marker: string | null | undefined): string {
@@ -129,7 +165,13 @@ export function injectRevisionMarkerIntoRenderedFile(fileContent: string, marker
     }
   }
   if (fileContent.startsWith('---\n')) {
-    return fileContent.replace(/^---\n/, `---\ncontentStudioRevision: ${JSON.stringify(value)}\n`)
+    const withFrontmatter = fileContent.replace(/^---\n/, `---\ncontentStudioRevision: ${JSON.stringify(value)}\n`)
+    const closing = withFrontmatter.indexOf('\n---\n', 4)
+    if (closing >= 0) {
+      return withFrontmatter.slice(0, closing + 5)
+        + `<span hidden data-content-studio-revision=${JSON.stringify(value)}></span>\n`
+        + withFrontmatter.slice(closing + 5)
+    }
   }
   throw new Error('Refusing ship: could not inject content-studio revision marker into rendered artifact')
 }
