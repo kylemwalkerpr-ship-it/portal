@@ -478,10 +478,12 @@ describe('hop locks — empty-content wipe and jobs save thin guard stay wired',
     const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const { join } = require('node:path') as typeof import('node:path')
     const route = readFileSync(join(__dirname, '../app/api/content-studio/jobs/route.ts'), 'utf8')
-    const legacy = readFileSync(join(__dirname, '../app/api/content-studio/jobs/legacy.ts'), 'utf8')
+    const legacyFacade = readFileSync(join(__dirname, '../app/api/content-studio/jobs/legacy.ts'), 'utf8')
+    const legacyCore = readFileSync(join(__dirname, '../app/api/content-studio/jobs/legacyCore.ts'), 'utf8')
     expect(route).toContain('return legacyPATCH(request)')
-    expect(legacy).toContain('shouldRefuseThinOverwrite')
-    expect(legacy).toContain('thin_overwrite_refused')
+    expect(legacyFacade).toContain('return core.PATCH(request)')
+    expect(legacyCore).toContain('shouldRefuseThinOverwrite')
+    expect(legacyCore).toContain('thin_overwrite_refused')
   })
 
   it('drafter promptOutline is sanitized headings, never the raw h2Outline array', () => {
