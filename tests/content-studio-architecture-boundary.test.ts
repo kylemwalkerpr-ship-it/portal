@@ -33,7 +33,8 @@ describe('Content Studio Approach B architecture boundary', () => {
     expect(json).toContain('runContentStudioPipeline')
     expect(json).toMatch(/contractBound[\s\S]*runContentStudioPipeline/)
     expect(sse).toContain('runContentStudioPipelineStream')
-    expect(sse).toMatch(/if \(!isContractBound\(body\)\)[\s\S]*return legacyUncontractedPOST\(request\)[\s\S]*runContentStudioPipelineStream\(input\)/)
+    expect(sse).toContain('generationRequiresWritingContract')
+    expect(sse).toMatch(/existingJobId[\s\S]*generationRequiresWritingContract\(\{ existingJobId \}\)[\s\S]*if \(!contractBound\) return legacyUncontractedPOST\(request\)[\s\S]*runContentStudioPipelineStream\(input\)/)
   })
 
   it('requires the Content Studio compatibility generate route itself to be contract-bound', () => {
