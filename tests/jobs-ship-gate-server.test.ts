@@ -4,9 +4,9 @@
  * ship-gate pass (shipReady === true && blockers === 0). Unknown audit state is
  * a FAIL — mergePullRequest must never run for an ungated row.
  *
- * Contracted success paths use a persisted contract identity and a valid
- * publication manifest. Requests use the real NextRequest implementation so
- * clone()/body semantics match the production route.
+ * Contracted success paths use a persisted contract identity, execution lease,
+ * and a valid publication manifest. Requests use the real NextRequest
+ * implementation so clone()/body semantics match the production route.
  */
 import { NextRequest } from 'next/server'
 import { PATCH, POST } from '@/app/api/content-studio/jobs/route'
@@ -14,7 +14,9 @@ import {
   artifactContentHash,
   buildExpectedRevisionMarker,
   buildPublicationApprovalManifest,
+  publicationBodyHash,
   publicationMarkerForContent,
+  recordPublicationRenderedArtifact,
 } from '@/lib/seoFactory/publicationProof'
 
 const mockRequireAdminUser = jest.fn(async () => ({
@@ -23,9 +25,7 @@ const mockRequireAdminUser = jest.fn(async () => ({
   profileId: 'p_admin',
   role: 'admin',
 }))
-jest.mock('@/lib/portalAuth', () => ({
-  requireAdminUser: () => mockRequireAdminUser(),
-}))
+jest.mock('@/lib/portalAuth', () => ({ requireAdminUser: () => mockRequireAdminUser() }))
 
 const mockMergePullRequest = jest.fn()
 const mockShipContent = jest.fn()
@@ -43,21 +43,31 @@ jest.mock('@/lib/seoFactory/deployMonitor', () => ({
 }))
 
 const mockLoadWritingContract = jest.fn()
+const mockClaimExecution = jest.fn(async () => ({
+  owner: 'test-execution-owner',
+  attempt: 5,
+  leaseExpiresAt: new Date(Date.now() + 900_000).toISOString(),
+}))
+const mockAssertExecution = jest.fn(async () => undefined)
+const mockReleaseExecution = jest.fn(async () => true)
 jest.mock('@/lib/seoFactory/writingContractStore', () => ({
   loadWritingContract: (...args: unknown[]) => mockLoadWritingContract(...args),
+  claimContentStudioExecution: (...args: unknown[]) => mockClaimExecution(...args),
+  assertContentStudioExecution: (...args: unknown[]) => mockAssertExecution(...args),
+  releaseContentStudioExecution: (...args: unknown[]) => mockReleaseExecution(...args),
 }))
 
 const mockGithubFetch = jest.fn()
+const mockGetRepoFileContent = jest.fn()
 jest.mock('@/lib/githubContents', () => {
   const actual = jest.requireActual('@/lib/githubContents')
   return {
     ...actual,
     githubFetch: (...args: unknown[]) => mockGithubFetch(...args),
+    getRepoFileContent: (...args: unknown[]) => mockGetRepoFileContent(...args),
   }
 })
 
-// Stateful Supabase chain. Each .from() call starts a fresh logical query so
-// update state cannot leak from one bulk-approval child request into the next.
 const makeSupabaseClient = () => {
   const builder: Record<string, any> = {
     _updated: false,
@@ -69,14 +79,19 @@ const makeSupabaseClient = () => {
       if (k === 'id') builder._key = String(v)
       return builder
     },
+    gt: () => builder,
     in: () => builder,
     order: () => builder,
     limit: () => builder,
     range: () => builder,
-    maybeSingle: () =>
-      Promise.resolve({ data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null), error: null }),
-    single: () =>
-      Promise.resolve({ data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null), error: null }),
+    maybeSingle: () => Promise.resolve({
+      data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null),
+      error: null,
+    }),
+    single: () => Promise.resolve({
+      data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null),
+      error: null,
+    }),
     update: (patch: Record<string, unknown>) => {
       builder._updated = true
       builder._patch = patch
@@ -99,29 +114,24 @@ const makeSupabaseClient = () => {
 }
 
 let supabaseClient: any
-
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => supabaseClient),
-}))
+jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn(() => supabaseClient) }))
 
 const APPROVED_HEAD_SHA = 'approved-head-sha-123'
-
-function contractIdFor(id: string) {
-  return `contract-${id}`
-}
-function contractHashFor(id: string) {
-  return `contract-hash-${id}`
-}
+function contractIdFor(id: string) { return `contract-${id}` }
+function contractHashFor(id: string) { return `contract-hash-${id}` }
 
 function mkContent(): string {
   const sections = ['Overview', 'Eligibility', 'Required Documents', 'Application Steps', 'Processing Times', 'Fees and Costs', 'Common Mistakes', 'FAQ']
-  const para = (n: number) =>
-    Array.from(
-      { length: n },
-      (_, i) => `Canada study permit applicants must understand the eligibility rules and document requirements before submission ${i + 1}. Processing times vary by visa office and season, so start early.`,
-    ).join(' ')
+  const para = (n: number) => Array.from(
+    { length: n },
+    (_, i) => `Canada study permit applicants must understand the eligibility rules and document requirements before submission ${i + 1}. Processing times vary by visa office and season, so start early.`,
+  ).join(' ')
   const body = sections.map((s) => `## ${s}\n\n${para(30)}`).join('\n\n')
   return `---\ntitle: Canada Study Permit Guide 2026\ndescription: Step-by-step Canada study permit application guide\n---\n\n# Canada Study Permit Guide\n\nIn 60 seconds, here is the quick answer for study permit applicants.\n\n${body}\n`
+}
+
+function artifactFor(content: string, marker: string): string {
+  return `export const metadata = { other: { "content-studio-revision": ${JSON.stringify(marker)} } }\n${content}`
 }
 
 function manifestFor(id: string, content: string, prNumber: number | null = 12) {
@@ -129,6 +139,7 @@ function manifestFor(id: string, content: string, prNumber: number | null = 12) 
   const contractHash = contractHashFor(id)
   const opportunityId = `opportunity-${id}`
   const expectedMarker = buildExpectedRevisionMarker({ contractId, contractHash, opportunityId, content })
+  const artifact = artifactFor(content, expectedMarker)
   return buildPublicationApprovalManifest({
     jobId: id,
     contractId,
@@ -141,6 +152,8 @@ function manifestFor(id: string, content: string, prNumber: number | null = 12) 
     expectedMarker,
     content,
     approvedContentHash: artifactContentHash(content),
+    approvedArtifactHash: artifactContentHash(artifact),
+    approvedBodyHash: publicationBodyHash(content),
     approvalActor: 'p_admin',
     prNumber,
     approvedHeadSha: prNumber ? APPROVED_HEAD_SHA : null,
@@ -177,10 +190,7 @@ function contractedJob(overrides: Record<string, unknown> = {}): Record<string, 
     contract_hash: contractHashFor(id),
     contract_version: 1,
     opportunity_id: `opportunity-${id}`,
-    audit_json: {
-      ...existingAudit,
-      publicationManifest: manifestFor(id, content, seed.pr_number ? Number(seed.pr_number) : null),
-    },
+    audit_json: { ...existingAudit, publicationManifest: manifestFor(id, content, seed.pr_number ? Number(seed.pr_number) : null) },
   }
 }
 
@@ -191,12 +201,8 @@ function request(method: 'PATCH' | 'POST', body: Record<string, unknown>) {
     body: JSON.stringify(body),
   })
 }
-function patch(body: Record<string, unknown>) {
-  return PATCH(request('PATCH', body))
-}
-function post(body: Record<string, unknown>) {
-  return POST(request('POST', body))
-}
+function patch(body: Record<string, unknown>) { return PATCH(request('PATCH', body)) }
+function post(body: Record<string, unknown>) { return POST(request('POST', body)) }
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -207,10 +213,26 @@ beforeEach(() => {
     contractVersion: 1,
     contractId: input.contractId,
     contractHash: input.contractHash,
+    opportunity: { id: `opportunity-${String(input.jobId || 'j1')}`, jurisdiction: 'CA' },
+    ownership: null,
+    requestedModel: null,
+    brief: null,
   }))
   mockGithubFetch.mockResolvedValue({ head: { sha: APPROVED_HEAD_SHA } })
+  mockGetRepoFileContent.mockImplementation(async (_owner: string, _repo: string, _path: string, _ref: string) => {
+    const content = mkContent()
+    const marker = buildExpectedRevisionMarker({
+      contractId: contractIdFor('j1'),
+      contractHash: contractHashFor('j1'),
+      opportunityId: 'opportunity-j1',
+      content,
+    })
+    return artifactFor(content, marker)
+  })
   mockShipContent.mockImplementation(async (opts: any) => {
-    publicationMarkerForContent(String(opts.content || ''))
+    const content = String(opts.content || '')
+    const marker = publicationMarkerForContent(content)
+    recordPublicationRenderedArtifact(artifactFor(content, String(marker || '')), content)
     return {
       status: 'pr_created',
       path: 'app/ca/study-permit/page.tsx',
@@ -250,26 +272,20 @@ describe('PATCH merge_pr — refuses an ungated PR', () => {
   })
 
   it('merges a contracted PR only when gate and persisted publication manifest both pass', async () => {
-    supabaseClient.__builder._rows.set(
-      'j1',
-      contractedJob({ audit_json: { score: 88, shipReady: true, blockers: 0 } }),
-    )
+    supabaseClient.__builder._rows.set('j1', contractedJob({ audit_json: { score: 88, shipReady: true, blockers: 0 } }))
     supabaseClient.__builder._updatedRow = { id: 'j1', status: 'merged' }
     const res = await patch({ id: 'j1', action: 'merge_pr' })
     expect(res.status).toBe(200)
     expect(mockLoadWritingContract).toHaveBeenCalled()
     expect(mockGithubFetch).toHaveBeenCalled()
-    expect(mockMergePullRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: 'caseworks', repo: 'caseworks', prNumber: 12 }),
-    )
+    expect(mockMergePullRequest).toHaveBeenCalledWith(expect.objectContaining({ owner: 'caseworks', repo: 'caseworks', prNumber: 12 }))
+    expect(mockClaimExecution).toHaveBeenCalled()
+    expect(mockReleaseExecution).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ owner: 'test-execution-owner', attempt: 5 }))
     expect((await res.json()).ok).toBe(true)
   })
 
   it('merges a contracted PR when blockers is an empty array and its manifest matches the PR head', async () => {
-    supabaseClient.__builder._rows.set(
-      'j1',
-      contractedJob({ audit_json: { score: 88, shipReady: true, blockers: [] } }),
-    )
+    supabaseClient.__builder._rows.set('j1', contractedJob({ audit_json: { score: 88, shipReady: true, blockers: [] } }))
     supabaseClient.__builder._updatedRow = { id: 'j1', status: 'merged' }
     const res = await patch({ id: 'j1', action: 'merge_pr' })
     expect(res.status).toBe(200)
@@ -297,10 +313,7 @@ describe('PATCH approve — PR-merge shortcut (no editor content) refuses an ung
   })
 
   it('ships contracted content and persists exact-renderer publication proof when gate is true', async () => {
-    supabaseClient.__builder._rows.set(
-      'j1',
-      contractedJob({ status: 'drafting', pr_number: null, audit_json: { score: 96, shipReady: true, blockers: [] } }),
-    )
+    supabaseClient.__builder._rows.set('j1', contractedJob({ status: 'drafting', pr_number: null, audit_json: { score: 96, shipReady: true, blockers: [] } }))
     supabaseClient.__builder._updatedRow = { id: 'j1' }
     const res = await patch({ id: 'j1', action: 'approve', humanApproved: true, content: mkContent() })
     expect(res.status).toBe(200)
@@ -308,9 +321,12 @@ describe('PATCH approve — PR-merge shortcut (no editor content) refuses an ung
     expect(mockShipContent).toHaveBeenCalled()
     expect(mockMergePullRequest).not.toHaveBeenCalled()
     expect((await res.json()).ok).toBe(true)
-    expect(supabaseClient.__builder._patch.audit_json.publicationManifest).toEqual(
-      expect.objectContaining({ contractId: contractIdFor('j1'), approvedContentHash: expect.any(String) }),
-    )
+    expect(supabaseClient.__builder._patch.audit_json.publicationManifest).toEqual(expect.objectContaining({
+      contractId: contractIdFor('j1'),
+      approvedContentHash: expect.any(String),
+      approvedArtifactHash: expect.any(String),
+      approvedBodyHash: expect.any(String),
+    }))
   })
 })
 
@@ -328,10 +344,7 @@ describe('POST bulk_approve — never ships an ungated row', () => {
 
   it('skips only the failing id and ships the contracted gated one, returning skipped in JSON', async () => {
     supabaseClient.__builder._rows.set('bad', baseJob({ id: 'bad', audit_json: { score: 100, blockers: [] } }))
-    supabaseClient.__builder._rows.set(
-      'good',
-      contractedJob({ id: 'good', status: 'drafting', pr_number: null, audit_json: { score: 88, shipReady: true, blockers: 0 } }),
-    )
+    supabaseClient.__builder._rows.set('good', contractedJob({ id: 'good', status: 'drafting', pr_number: null, audit_json: { score: 88, shipReady: true, blockers: 0 } }))
     supabaseClient.__builder._updatedRow = { id: 'good' }
     const res = await post({ action: 'bulk_approve', ids: ['bad', 'good'] })
     expect(res.status).toBe(200)
@@ -356,10 +369,7 @@ describe('PATCH save — protects gate state and accepted content', () => {
       contentLoop: { action: 'fix_until_gates', status: 'cleared' },
       model: 'grok',
     }
-    supabaseClient.__builder._rows.set(
-      'j1',
-      baseJob({ status: 'drafting', pr_number: null, audit_json: priorAudit }),
-    )
+    supabaseClient.__builder._rows.set('j1', baseJob({ status: 'drafting', pr_number: null, audit_json: priorAudit }))
     supabaseClient.__builder._updatedRow = baseJob({ status: 'drafting', audit_json: priorAudit })
     const res = await patch({ id: 'j1', action: 'save', content: mkContent() })
     expect(res.status).toBe(200)
@@ -372,10 +382,7 @@ describe('PATCH save — protects gate state and accepted content', () => {
 
   it('refuses a thin public PATCH overwrite of a substantial accepted draft', async () => {
     const substantial = 'Applicants must confirm current eligibility and documentary requirements before filing. '.repeat(180)
-    supabaseClient.__builder._rows.set(
-      'j1',
-      baseJob({ status: 'drafting', pr_number: null, content: substantial, word_count: 1248 }),
-    )
+    supabaseClient.__builder._rows.set('j1', baseJob({ status: 'drafting', pr_number: null, content: substantial, word_count: 1248 }))
     const res = await patch({ id: 'j1', action: 'save', content: 'This is a failed replacement stub. '.repeat(25) })
     expect(res.status).toBe(409)
     const body = await res.json()
