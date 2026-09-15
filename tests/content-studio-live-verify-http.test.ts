@@ -17,18 +17,22 @@ jest.mock('@/lib/seoFactory/liveAudit', () => ({
   auditLiveHtml: jest.fn(() => ({ score:90, humanScore:90, wordCount:320 })),
 }))
 
+type LookupResult = { data: { contract_id: string | null } | null; error: { message: string } | null }
+let contractLookup: LookupResult
+const updatePatches: Array<Record<string, unknown>> = []
+
 const db: any = {
   from: jest.fn((_table: string) => {
     let selected = ''
     const q: any = {
       select: jest.fn((value: string) => { selected = value; return q }),
       eq: jest.fn(() => q),
-      update: jest.fn(() => q),
+      update: jest.fn((patch: Record<string, unknown>) => { updatePatches.push({ ...patch }); return q }),
       single: jest.fn(async () => selected.includes('event_log')
         ? { data:{ event_log:[] }, error:null }
         : { data:{ audit_json:{} }, error:null }),
       maybeSingle: jest.fn(async () => selected.includes('contract_id')
-        ? { data:{ contract_id:'wc_1' }, error:null }
+        ? contractLookup
         : { data:{ audit_json:{} }, error:null }),
       then(resolve: (value: any) => void) { resolve({ data:null, error:null }) },
     }
@@ -99,6 +103,8 @@ async function verify() {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  updatePatches.length = 0
+  contractLookup = { data:{ contract_id:'wc_1' }, error:null }
   delete process.env.CLOUDFLARE_ZONE_ID
   delete process.env.CF_ZONE_ID
   delete process.env.CLOUDFLARE_API_TOKEN
@@ -161,6 +167,33 @@ describe('HTTP live publication proof', () => {
     const out = await verify()
     expect(out.json.result.ok).toBe(false)
     expect(String(out.json.result.error)).toMatch(/body.*digest|body.*differs/i)
+  })
+
+  it('fails closed when the supplied job lookup errors instead of downgrading to legacy verification', async () => {
+    contractLookup = { data:null, error:{ message:'transient contract lookup failure' } }
+    const out = await verify()
+    expect(out.json.result.ok).toBe(false)
+    expect(String(out.json.result.error)).toMatch(/job|lookup|transient contract lookup failure/i)
+    expect(reconcilePublicationDeployment).not.toHaveBeenCalled()
+    expect(updatePatches.some((patch) => patch.live_status === 'verified')).toBe(false)
+  })
+
+  it('fails closed when the supplied job does not exist instead of downgrading to legacy verification', async () => {
+    contractLookup = { data:null, error:null }
+    const out = await verify()
+    expect(out.json.result.ok).toBe(false)
+    expect(String(out.json.result.error)).toMatch(/job.*not found|lookup/i)
+    expect(reconcilePublicationDeployment).not.toHaveBeenCalled()
+    expect(updatePatches.some((patch) => patch.live_status === 'verified')).toBe(false)
+  })
+
+  it('keeps legacy verification only after a successful positive job read establishes an uncontracted job', async () => {
+    contractLookup = { data:{ contract_id:null }, error:null }
+    const out = await verify()
+    expect(out.json.result.ok).toBe(true)
+    expect(out.json.result.publicationPhase).toBeNull()
+    expect(reconcilePublicationDeployment).not.toHaveBeenCalled()
+    expect(updatePatches.some((patch) => patch.live_status === 'verified')).toBe(true)
   })
 
   it('accepts only the matching marker/canonical/indexability/body plus durable deployment proof', async () => {
