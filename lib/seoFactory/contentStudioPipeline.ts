@@ -19,6 +19,10 @@ import {
 } from './contentStudioExecutionContext'
 import type { WritingContractV2 } from './writingContract'
 import { BriefInvalidError } from './sealedBrief'
+import {
+  buildPublicationApprovalManifest,
+  withPublicationManifest,
+} from './publicationProof'
 
 export type ContentStudioPipelineInput = PipelineInput & ContractAwarePipelineInput & {
   writingContractRequired: true
@@ -85,7 +89,8 @@ async function persistExecutionStage(input: {
   const jobId = String(input.request.existingJobId || input.result.jobId || '').trim()
   if (!jobId) return
   try {
-    const shipStatus = input.result.ship?.status
+    const ship = input.result.ship
+    const shipStatus = ship?.status
     const stage = shipStatus === 'pr_created'
       ? 'pr_open'
       : shipStatus === 'merged' || shipStatus === 'deployed'
@@ -93,13 +98,13 @@ async function persistExecutionStage(input: {
         : input.result.audit?.blockers?.length
           ? 'revision_required'
           : 'ready_for_approval'
+    // A Git commit/merge is never itself deployment proof. The durable monitor
+    // advances deployment_pending → deployed only after the authorized workflow.
     const publicationPhase = shipStatus === 'pr_created'
       ? 'pr_open'
-      : shipStatus === 'merged'
-        ? 'merged'
-        : shipStatus === 'deployed'
-          ? 'deployed'
-          : null
+      : shipStatus === 'merged' || shipStatus === 'deployed'
+        ? 'deployment_pending'
+        : null
     const patch: Record<string, unknown> = {
       execution_stage: stage,
       actual_model: input.result.model || null,
@@ -108,6 +113,27 @@ async function persistExecutionStage(input: {
     if (input.state.lastPublicationMarker) patch.expected_revision_marker = input.state.lastPublicationMarker
 
     const db = createSupabaseAdminClient()
+    if (ship && input.result.content && input.state.lastPublicationMarker) {
+      const current = await db.from('content_jobs').select('audit_json').eq('id', jobId).maybeSingle()
+      const manifest = buildPublicationApprovalManifest({
+        jobId,
+        contractId: input.contract.contractId,
+        contractHash: input.contract.contractHash,
+        opportunityId: input.contract.opportunity.id,
+        repoOwner: ship.owner,
+        repoName: ship.repo,
+        path: ship.path,
+        canonical: ship.canonicalUrl,
+        expectedMarker: input.state.lastPublicationMarker,
+        content: input.result.content,
+        approvalActor: input.request.userId || null,
+        prNumber: ship.prNumber || null,
+        approvedHeadSha: ship.commitSha || null,
+      })
+      manifest.mergeSha = ship.mergeCommitSha || (ship.status === 'deployed' ? ship.commitSha || null : null)
+      patch.audit_json = withPublicationManifest(current.data?.audit_json, manifest)
+    }
+
     await db
       .from('content_jobs')
       .update(patch)
@@ -168,7 +194,7 @@ export async function* runContentStudioPipelineStream(
     throw error
   } finally {
     if (!finished) {
-      try { await iterator.return?.(undefined as never) } catch { /* preserve original failure */ }
+      try { await iterator.return?.(undefined) } catch { /* preserve original failure */ }
       await persistExecutionFailure({
         request: hydrated,
         contract: resolved.contract,
