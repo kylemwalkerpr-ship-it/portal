@@ -2,12 +2,12 @@ import { NextRequest } from 'next/server'
 import type { PersistedPublicationManifest } from '@/lib/seoFactory/publicationProof'
 
 const reconcilePublicationDeployment = jest.fn()
-const submitUrlsToIndexNow = jest.fn(async () => ({ host:'indexnow', status:'ok' }))
+const submitUrlsToIndexNow = jest.fn(async (_urls: string[]) => ({ host:'indexnow', status:'ok' }))
 
 jest.mock('@/lib/portalAuth', () => ({ requireAdminUser: jest.fn(async () => ({ profileId:'admin-1' })) }))
-jest.mock('@/lib/indexNow', () => ({ submitUrlsToIndexNow: (...args: unknown[]) => submitUrlsToIndexNow(...args) }))
+jest.mock('@/lib/indexNow', () => ({ submitUrlsToIndexNow: (urls: string[]) => submitUrlsToIndexNow(urls) }))
 jest.mock('@/lib/seoFactory/publicationMonitor', () => ({
-  reconcilePublicationDeployment: (...args: unknown[]) => reconcilePublicationDeployment(...args),
+  reconcilePublicationDeployment: (jobId: string) => reconcilePublicationDeployment(jobId),
 }))
 jest.mock('@/lib/seoFactory/liveAudit', () => ({
   auditLiveHtml: jest.fn(() => ({ score:90, humanScore:90, wordCount:320 })),
