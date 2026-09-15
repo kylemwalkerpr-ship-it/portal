@@ -35,7 +35,7 @@ async function validateMarkedPr(job: Record<string, any>): Promise<string | null
   const pr = await githubFetch(`/repos/${owner}/${repo}/pulls/${manifest.prNumber}`).catch(() => null) as any
   if (!pr) return 'Approved PR evidence is unavailable'
   if (String(pr?.head?.sha || '').toLowerCase() !== manifest.approvedHeadSha.toLowerCase()) return 'PR head changed after approval; re-audit and approve the new head'
-  const approvedFile = await getRepoFileContent({ owner, repo, path: manifest.path, ref: manifest.approvedHeadSha }).catch(() => null)
+  const approvedFile = await getRepoFileContent(owner, repo, manifest.path, manifest.approvedHeadSha).catch(() => null)
   if (!approvedFile || artifactContentHash(approvedFile) !== manifest.approvedArtifactHash) {
     return 'Approved PR artifact changed after approval; re-audit and approve the exact artifact'
   }
