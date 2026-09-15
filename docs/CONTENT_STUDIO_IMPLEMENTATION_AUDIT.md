@@ -150,3 +150,13 @@ On a `pull_request` event, Cloudflare credential validation, secret synchronizat
 ## Review boundary
 
 PR #200 must remain draft for independent Codex review. This implementation session does not merge it, deploy it, run Wrangler, publish an article, or execute a migration. Passing CI establishes code-review readiness only.
+## Codex completion pass: review 5208322920
+
+The user authorized Codex to fix the final blockers and merge after verification.
+
+- Manifest creation now receives the exact marked renderer artifact through both automated execution state and manual publication context. It verifies the artifact hash and revision marker, then recomputes the substantive digest from the same explicit rendered boundary used by live verification. Source-content hashing remains separate and enforced. Existing source-equivalent manifests remain readable.
+- Contracted existing-PR dry runs validate the gate and ownership without calling Git merge or persisting publication state. New-artifact dry runs render through the shipper's dry-run mode but do not save content, backfilled keywords, success/failure status or a publication manifest. Execution leases are still acquired/released to preserve concurrency safety.
+- Regression tests first failed on the pre-fix implementation in workflow 34954957259: both dry-run actions merged, and H1-bearing content failed manifest validation. Tests now exercise renderer -> manifest -> live proof, reject changed artifact bytes and substantive facts, and exercise both dry-run merge actions through public PATCH. The real manual finalization test now uses non-dry-run publication with explicit renderer evidence.
+- Exact final CI results are recorded in the PR metadata rather than claimed in advance here. Local verification uses the downloaded exact PR tree and isolated dependencies; the unrelated older dirty checkout was preserved.
+
+The execution-lease migration remains unapplied and must not be confused with the already-applied migration 20260914181604. Code merge does not execute SQL. Strict contracted runtime operations require that separate schema prerequisite. No article generation, article publication or live benchmark is claimed by this fix. The 12-pair benchmark remains NOT RUN / NOT MET.

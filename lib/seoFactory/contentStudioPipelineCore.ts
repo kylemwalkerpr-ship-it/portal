@@ -276,6 +276,7 @@ async function persistExecutionStage(input: {
       content: exactContent,
       approvedContentHash: exactContentHash,
       approvedArtifactHash: exactArtifactHash,
+      renderedArtifact: input.state.lastPublicationArtifactContent,
       approvedBodyHash: exactBodyHash,
       approvalActor: input.request.userId || null,
       prNumber: ship.prNumber || null,

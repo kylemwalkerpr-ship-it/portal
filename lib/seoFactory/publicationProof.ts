@@ -42,6 +42,7 @@ type PublicationContext = {
   lastMarker: string | null
   lastContentHash: string | null
   lastContent: string | null
+  lastArtifactContent: string | null
   lastArtifactHash: string | null
   lastBodyHash: string | null
   active: boolean
@@ -154,6 +155,7 @@ export function buildPublicationApprovalManifest(input: {
   approvedContentHash?: string | null
   approvedArtifactHash?: string | null
   approvedBodyHash?: string | null
+  renderedArtifact?: string | null
   approvalActor?: string | null
   prNumber?: number | null
   approvedHeadSha?: string | null
@@ -171,11 +173,21 @@ export function buildPublicationApprovalManifest(input: {
   if (!approvedContentHash) throw new Error('approved content hash is required from the exact renderer body')
   if (approvedContentHash !== artifactContentHash(content)) throw new Error('approved content hash does not match the exact renderer body')
   if (!approvedArtifactHash) throw new Error('publication manifest requires the exact marked repository artifact hash')
-  const calculatedBodyHash = publicationBodyHash(content)
+  // Source identity and rendered identity are separate: an H1 may move into
+  // the page header outside the substantive boundary without changing authorship.
+  const renderedArtifact = input.renderedArtifact
+  if (renderedArtifact != null && artifactContentHash(renderedArtifact) !== approvedArtifactHash) {
+    throw new Error('rendered artifact does not match the approved artifact hash')
+  }
+  const boundary = renderedArtifact == null ? null : extractPublicationBodyBoundaryMarkup(renderedArtifact)
+  const calculatedBodyHash = publicationBodyHash(boundary ?? content)
   if (!approvedBodyHash || !calculatedBodyHash || approvedBodyHash !== calculatedBodyHash) {
     throw new Error('approved body hash does not match the exact renderer body')
   }
   if (!expectedMarker) throw new Error('publication manifest requires the exact revision marker')
+  if (renderedArtifact != null && !renderedArtifact.includes(expectedMarker)) {
+    throw new Error('rendered artifact is missing its approved revision marker')
+  }
   const calculatedMarker = buildExpectedRevisionMarker({ contractId, contractHash, opportunityId: input.opportunityId, content })
   if (expectedMarker !== calculatedMarker) throw new Error('revision marker does not match the exact renderer body')
 
@@ -225,10 +237,10 @@ export function withPublicationManifest(auditJson: unknown, manifest: PersistedP
 export async function runWithPublicationIdentity<T>(
   identity: PublicationMarkerIdentity,
   fn: () => Promise<T>,
-): Promise<{ result: T; marker: string | null; contentHash: string | null; content: string | null; artifactHash: string | null; bodyHash: string | null }> {
+): Promise<{ result: T; marker: string | null; contentHash: string | null; content: string | null; artifactHash: string | null; artifactContent: string | null; bodyHash: string | null }> {
   const ctx: PublicationContext = {
     identity, fixedMarker: null, lastMarker: null, lastContentHash: null, lastContent: null,
-    lastArtifactHash: null, lastBodyHash: null, active: true,
+    lastArtifactContent: null, lastArtifactHash: null, lastBodyHash: null, active: true,
   }
   try {
     const result = await publicationStorage.run(ctx, fn)
@@ -238,6 +250,7 @@ export async function runWithPublicationIdentity<T>(
       contentHash: ctx.lastContentHash,
       content: ctx.lastContent,
       artifactHash: ctx.lastArtifactHash,
+      artifactContent: ctx.lastArtifactContent,
       bodyHash: ctx.lastBodyHash,
     }
   } finally { ctx.active = false }
@@ -248,7 +261,7 @@ export async function runWithPublicationMarker<T>(marker: string | null | undefi
   if (!value) return fn()
   const ctx: PublicationContext = {
     identity: null, fixedMarker: value, lastMarker: null, lastContentHash: null, lastContent: null,
-    lastArtifactHash: null, lastBodyHash: null, active: true,
+    lastArtifactContent: null, lastArtifactHash: null, lastBodyHash: null, active: true,
   }
   try { return await publicationStorage.run(ctx, fn) }
   finally { ctx.active = false }
@@ -267,16 +280,17 @@ export function publicationMarkerForContent(content: string): string | null {
   return marker
 }
 
-export function recordPublicationRenderedArtifact(fileContent: string, sourceBody: string): { artifactHash: string; bodyHash: string } {
+export function recordPublicationRenderedArtifact(fileContent: string, sourceBody: string): { artifactHash: string; artifactContent: string; bodyHash: string } {
   const artifactHash = artifactContentHash(fileContent)
   const renderedBoundary = extractPublicationBodyBoundaryMarkup(fileContent)
   const bodyHash = publicationBodyHash(renderedBoundary || sourceBody)
   const ctx = publicationStorage.getStore()
   if (ctx?.active) {
+    ctx.lastArtifactContent = fileContent
     ctx.lastArtifactHash = artifactHash
     ctx.lastBodyHash = bodyHash
   }
-  return { artifactHash, bodyHash }
+  return { artifactHash, artifactContent: fileContent, bodyHash }
 }
 
 export function currentPublicationMarker(): string | null {

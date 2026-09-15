@@ -177,6 +177,7 @@ export async function PATCH(request: NextRequest) {
     let marker: string | null = null
     let exactContentHash: string | null = null
     let exactContent: string | null = null
+    let exactArtifactContent: string | null = null
     let exactArtifactHash: string | null = null
     let exactBodyHash: string | null = null
 
@@ -190,10 +191,11 @@ export async function PATCH(request: NextRequest) {
       marker = publication.marker
       exactContentHash = publication.contentHash
       exactContent = publication.content
+      exactArtifactContent = publication.artifactContent
       exactArtifactHash = publication.artifactHash
       exactBodyHash = publication.bodyHash
     }
-    if (!response.ok) return response
+    if (!response.ok || body.dryRun) return response
 
     await assertManualExecution(job, claim)
     const payload = await response.clone().json().catch(() => ({})) as Record<string, any>
@@ -251,6 +253,7 @@ export async function PATCH(request: NextRequest) {
           canonical:String(ship.canonicalUrl || job.canonical_url || ''), expectedMarker:marker,
           content:exactContent, approvedContentHash:exactContentHash,
           approvedArtifactHash: exactArtifactHash, approvedBodyHash: exactBodyHash,
+          renderedArtifact: exactArtifactContent,
           approvalActor:auth.profileId || null, prNumber:ship.prNumber || job.pr_number || null,
           approvedHeadSha:ship.commitSha || null,
         })

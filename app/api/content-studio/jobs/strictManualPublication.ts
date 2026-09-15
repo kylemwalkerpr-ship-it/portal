@@ -180,6 +180,10 @@ async function mergeExistingPr(
   if (!jobPassesShipGate(job)) {
     return NextResponse.json({ error: 'Ship gate not cleared' }, { status: 409 })
   }
+  if (dryRun) {
+    await assertRemoteExecution(execution)
+    return NextResponse.json({ ok: true, dryRun: true, action, prNumber: job.pr_number, message: 'PR merge validated; no publication performed' })
+  }
   const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
   try {
     await assertRemoteExecution(execution)
@@ -282,7 +286,7 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
     shortKeywordTerms: job.short_keyword_terms,
     longTailKeywordTerms: job.long_tail_keyword_terms,
   })
-  if (keywordContract.backfilled) {
+  if (keywordContract.backfilled && !body.dryRun) {
     job = await fencedUpdate(execution, {
       required_short_keywords: keywordContract.requiredShortKeywords,
       required_long_tail_keywords: keywordContract.requiredLongTailKeywords,
@@ -321,7 +325,7 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
   }
 
   try {
-    if (body.content != null) {
+    if (body.content != null && !body.dryRun) {
       job = await fencedUpdate(execution, {
         content,
         word_count: countBodyWords(content),
@@ -349,6 +353,7 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
       longTailKeywordTerms: keywordContract.longTailKeywordTerms,
       competingUrls,
     })
+    if (body.dryRun) return NextResponse.json({ ok: true, dryRun: true, ship, message: 'Artifact validated; no publication performed' })
     const now = new Date().toISOString()
     const terminal = ship.status === 'deployed' || ship.status === 'merged'
       ? 'merged'
@@ -391,7 +396,7 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Ship failed'
-    await recordFailureIfOwned(execution, message, true)
+    if (!body.dryRun) await recordFailureIfOwned(execution, message, true)
     return NextResponse.json({ ok: false, error: message }, { status: 422 })
   }
 }

@@ -98,7 +98,7 @@ describe('publication manifest exact-body hashing', () => {
   it('verifies the substantive body from the real consultancy blog renderer while excluding renderer-owned apparatus', async () => {
     const title = 'F-1 OPT Filing Guide for Students'
     const canonical = 'https://yousafeconsultancy.com/blog/f1-opt-filing-guide/'
-    const content = `---\ntitle: ${JSON.stringify(title)}\ndescription: "A practical filing guide."\n---\n\n# ${title}\n\nStudents & families should confirm the filing window before submitting.\n\n## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.\n\n## Fee table\n\n| Item | Amount |\n|---|---:|\n| Filing fee | $410 |`
+    const content = `---\ntitle: ${JSON.stringify(title)}\ndescription: "A practical filing guide."\n---\n\n# ${title}\n\nStudents & families should confirm the filing window before submitting.\n\n## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.\n\n## Fee table\n\n| Item | Amount |\n|---|---:|\n| Filing fee | $410 |\n\n## After filing\n\nKeep 3 copies of the receipt and confirm the filing date.`
     const plan = {
       host: 'www',
       repo: 'yousafe-consultancy',
@@ -150,6 +150,7 @@ describe('publication manifest exact-body hashing', () => {
       <p>Students &amp; families should confirm the filing window before submitting.</p>
       <section><h2>Filing steps</h2><ol><li>Gather 2 identity documents.</li><li>Pay the $410 fee on September 15, 2026.</li></ol></section>
       <section><h2>Fee table</h2><table><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody><tr><td>Filing fee</td><td>$410</td></tr></tbody></table></section>
+      <section><h2>After filing</h2><p>Keep 3 copies of the receipt and confirm the filing date.</p></section>
     </div>`
     const liveHtml = `<!doctype html><html><body><main><article>
       <header><p>September 15, 2026 · MyCaseworks Editorial</p><h1>${title}</h1></header>
@@ -179,6 +180,7 @@ describe('publication manifest exact-body hashing', () => {
       liveHtml.replace('$410 fee on September 15, 2026', '$420 fee on September 15, 2026'),
       liveHtml.replace('September 15, 2026.</li>', 'September 16, 2026.</li>'),
       liveHtml.replace('Gather 2 identity documents.', 'Gather 3 identity documents.'),
+      liveHtml.replace('Keep 3 copies', 'Keep 4 copies'),
     ]) {
       const rejected = evaluateLiveArtifact({
         httpStatus: 200,

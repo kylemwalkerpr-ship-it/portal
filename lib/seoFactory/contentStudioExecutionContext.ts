@@ -42,6 +42,7 @@ export type ContentStudioExecutionState = {
   lastPublicationMarker: string | null
   lastPublicationContentHash: string | null
   lastPublicationContent: string | null
+  lastPublicationArtifactContent: string | null
   lastPublicationArtifactHash: string | null
   lastPublicationBodyHash: string | null
 }
@@ -98,6 +99,7 @@ export function createContentStudioExecutionState(
     lastPublicationMarker: null,
     lastPublicationContentHash: null,
     lastPublicationContent: null,
+    lastPublicationArtifactContent: null,
     lastPublicationArtifactHash: null,
     lastPublicationBodyHash: null,
   }
@@ -176,9 +178,10 @@ export function recordPublicationMarker(marker: string, content?: string): void 
     state.lastPublicationContentHash = contentHash(content)
   }
 }
-export function recordStrictPublicationDigests(input: { artifactHash: string; bodyHash: string }): void {
+export function recordStrictPublicationDigests(input: { artifactHash: string; artifactContent?: string; bodyHash: string }): void {
   const state = activeState()
   if (!state?.strict) return
+  state.lastPublicationArtifactContent = input.artifactContent ?? null
   state.lastPublicationArtifactHash = String(input.artifactHash || '').trim() || null
   state.lastPublicationBodyHash = String(input.bodyHash || '').trim() || null
 }
