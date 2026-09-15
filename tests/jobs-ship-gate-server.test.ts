@@ -48,13 +48,16 @@ jest.mock('@/lib/seoFactory/writingContractStore', () => ({
 }))
 
 const mockGithubFetch = jest.fn()
-jest.mock('@/lib/githubContents', () => ({
-  githubFetch: (...args: unknown[]) => mockGithubFetch(...args),
-}))
+jest.mock('@/lib/githubContents', () => {
+  const actual = jest.requireActual('@/lib/githubContents')
+  return {
+    ...actual,
+    githubFetch: (...args: unknown[]) => mockGithubFetch(...args),
+  }
+})
 
-// Stateful Supabase chain: first .single() returns the requested job row, an
-// .update() marks the row updated so subsequent select/single calls can return
-// the test-provided persisted row, and bare update chains resolve via .then().
+// Stateful Supabase chain. Each .from() call starts a fresh logical query so
+// update state cannot leak from one bulk-approval child request into the next.
 const makeSupabaseClient = () => {
   const builder: Record<string, any> = {
     _updated: false,
@@ -84,7 +87,13 @@ const makeSupabaseClient = () => {
     then: (resolve: (v: unknown) => unknown) =>
       Promise.resolve({ data: builder._updated ? builder._updatedRow ?? null : null, error: null }).then(resolve),
   }
-  const client = { from: (_t: string) => builder }
+  const client = {
+    from: (_t: string) => {
+      builder._updated = false
+      builder._key = ''
+      return builder
+    },
+  }
   ;(client as any).__builder = builder
   return client
 }
