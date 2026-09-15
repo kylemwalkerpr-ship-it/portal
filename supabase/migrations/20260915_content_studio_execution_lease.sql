@@ -95,7 +95,7 @@ create or replace function public.check_content_studio_execution(
 )
 returns boolean
 language sql
-stable
+volatile
 security definer
 set search_path = public
 as $$
