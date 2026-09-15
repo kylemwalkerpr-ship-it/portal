@@ -1,8 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
+import type { SeoFactoryAudit } from './audit'
+import type { SealedBrief } from './sealedBrief'
 
 export type ContentStudioDeskState = 'not_started' | 'running' | 'completed' | 'failed'
 export type ContentStudioRevisionState = 'not_started' | 'running' | 'completed' | 'failed'
+export type ContentStudioContractOwnership = {
+  host: string
+  repo: string
+  filePath: string
+  canonicalUrl: string
+}
 
 export type ContentStudioExecutionState = {
   strict: boolean
@@ -14,6 +22,12 @@ export type ContentStudioExecutionState = {
   contractId: string | null
   contractHash: string | null
   opportunityId: string | null
+  contractBrief: SealedBrief | null
+  contractOwnership: ContentStudioContractOwnership | null
+  requestedModel: string | null
+  executionOwner: string | null
+  executionAttempt: number | null
+  auditEvaluator: ((content: string) => SeoFactoryAudit) | null
   lastPublicationMarker: string | null
   lastPublicationContentHash: string | null
   lastPublicationContent: string | null
@@ -29,7 +43,16 @@ export function contentHash(content: string): string {
 
 export function createContentStudioExecutionState(
   strict = true,
-  identity?: { contractId?: string | null; contractHash?: string | null; opportunityId?: string | null },
+  identity?: {
+    contractId?: string | null
+    contractHash?: string | null
+    opportunityId?: string | null
+    contractBrief?: SealedBrief | null
+    contractOwnership?: ContentStudioContractOwnership | null
+    requestedModel?: string | null
+    executionOwner?: string | null
+    executionAttempt?: number | null
+  },
 ): ContentStudioExecutionState {
   return {
     strict,
@@ -41,19 +64,34 @@ export function createContentStudioExecutionState(
     contractId: identity?.contractId || null,
     contractHash: identity?.contractHash || null,
     opportunityId: identity?.opportunityId || null,
+    contractBrief: identity?.contractBrief || null,
+    contractOwnership: identity?.contractOwnership || null,
+    requestedModel: String(identity?.requestedModel || '').trim() || null,
+    executionOwner: String(identity?.executionOwner || '').trim() || null,
+    executionAttempt: Number.isInteger(identity?.executionAttempt) ? Number(identity?.executionAttempt) : null,
+    auditEvaluator: null,
     lastPublicationMarker: null,
     lastPublicationContentHash: null,
     lastPublicationContent: null,
   }
 }
 
+function activeStore(): ExecutionStore | undefined {
+  return storage.getStore()
+}
+
 function activeState(): ContentStudioExecutionState | undefined {
-  const store = storage.getStore()
+  const store = activeStore()
   return store?.lease.active ? store.state : undefined
 }
 
 export function currentContentStudioExecution(): ContentStudioExecutionState | undefined {
   return activeState()
+}
+
+export function currentContentStudioExecutionStore(): { state: ContentStudioExecutionState; active: boolean } | undefined {
+  const store = activeStore()
+  return store ? { state: store.state, active: store.lease.active } : undefined
 }
 
 export async function runInContentStudioExecution<T>(
@@ -77,6 +115,17 @@ export async function runWithContentStudioExecution<T>(
   const state = createContentStudioExecutionState(strict)
   const result = await runInContentStudioExecution(state, fn)
   return { result, state }
+}
+
+export function recordStrictAuditEvaluator(evaluator: (content: string) => SeoFactoryAudit): void {
+  const state = activeState()
+  if (!state?.strict) return
+  state.auditEvaluator = evaluator
+}
+
+export function currentStrictAuditEvaluator(): ((content: string) => SeoFactoryAudit) | null {
+  const state = activeState()
+  return state?.strict ? state.auditEvaluator : null
 }
 
 export function recordPublicationMarker(marker: string, content?: string): void {
@@ -142,7 +191,7 @@ export function markBoundedRevisionCompleted(content: string): void {
 }
 
 export function assertIsolatedAuthoringAllowed(): void {
-  const store = storage.getStore()
+  const store = activeStore()
   if (!store?.state.strict) return
   if (!store.lease.active) {
     throw new Error('strict Content Studio execution forbids authoring after the execution window closed')
@@ -156,6 +205,35 @@ export function assertIsolatedAuthoringAllowed(): void {
     throw new Error('strict Content Studio execution forbids isolated authoring after the accepted draft')
   }
   throw new Error('strict Content Studio execution forbids AI authoring before the validated writing stage starts')
+}
+
+export function assertContractProviderSelection(opts: { aiProvider?: string | null; model?: string | null }): void {
+  const state = activeState()
+  if (!state?.strict || !state.requestedModel) return
+  const requested = state.requestedModel.trim().toLowerCase()
+  const runtimeProvider = String(opts.aiProvider || '').trim().toLowerCase()
+  const runtimeModel = String(opts.model || '').trim().toLowerCase()
+  if (runtimeProvider && runtimeProvider !== 'auto' && runtimeProvider !== requested) {
+    throw new Error(`strict Content Studio provider conflicts with immutable contract: ${runtimeProvider} != ${requested}`)
+  }
+  if (runtimeModel && runtimeModel !== requested) {
+    throw new Error(`strict Content Studio model conflicts with immutable contract: ${runtimeModel} != ${requested}`)
+  }
+}
+
+export function assertStrictOwnerTarget(actual: ContentStudioContractOwnership): void {
+  const state = activeState()
+  if (!state?.strict || !state.contractOwnership) return
+  const expected = state.contractOwnership
+  const norm = (value: unknown) => String(value || '').trim().replace(/\/+$/, '').toLowerCase()
+  const mismatch =
+    norm(actual.host) !== norm(expected.host)
+    || norm(actual.repo) !== norm(expected.repo)
+    || norm(actual.filePath) !== norm(expected.filePath)
+    || norm(actual.canonicalUrl) !== norm(expected.canonicalUrl)
+  if (mismatch) {
+    throw new Error(`strict Content Studio ownership drift: resolved ${actual.repo}:${actual.filePath} does not match immutable contract ${expected.repo}:${expected.filePath}`)
+  }
 }
 
 export function assertStrictShipContent(content: string): void {
