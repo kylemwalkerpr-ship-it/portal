@@ -27,6 +27,31 @@ describe('Content Studio Approach B architecture boundary', () => {
     expect(provider).not.toMatch(/contentAiProviderLegacy/)
   })
 
+  it('keeps Linear Desk core internal and injects immutable contract provenance through the public facade', () => {
+    const facade = read('lib/seoFactory/linearDesk.ts')
+    expect(facade).toContain("from './linearDeskCore'")
+    expect(facade).toContain('contractQueryCoverage')
+    expect(facade).toContain('shortKeywordTerms')
+    expect(facade).toContain('longTailKeywordTerms')
+
+    const offenders: string[] = []
+    const roots = [path.join(root, 'app'), path.join(root, 'lib')]
+    const walk = (dir: string) => {
+      if (!fs.existsSync(dir)) return
+      for (const entry of fs.readdirSync(dir, { withFileTypes:true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (/\.(?:ts|tsx)$/.test(entry.name)) {
+          const rel = path.relative(root, full)
+          if (rel === 'lib/seoFactory/linearDesk.ts' || rel === 'lib/seoFactory/linearDeskCore.ts') continue
+          if (/from ['"](?:\.\/|@\/lib\/seoFactory\/)linearDeskCore['"]/.test(fs.readFileSync(full, 'utf8'))) offenders.push(rel)
+        }
+      }
+    }
+    roots.forEach(walk)
+    expect(offenders).toEqual([])
+  })
+
   it('binds JSON and SSE routes to contract runners before legacy compatibility paths', () => {
     const json = read('app/api/seo-factory/generate/route.ts')
     const sse = read('app/api/seo-factory/generate-stream/route.ts')
