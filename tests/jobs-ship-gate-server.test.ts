@@ -43,11 +43,24 @@ jest.mock('@/lib/seoFactory/deployMonitor', () => ({
 }))
 
 const mockLoadWritingContract = jest.fn()
-const mockClaimExecution = jest.fn(async (_db?: unknown, _input?: unknown) => ({
-  owner: 'test-execution-owner',
-  attempt: 5,
-  leaseExpiresAt: new Date(Date.now() + 900_000).toISOString(),
-}))
+const mockClaimExecution = jest.fn(async (_db?: unknown, input?: any) => {
+  const leaseExpiresAt = new Date(Date.now() + 900_000).toISOString()
+  const jobId = String(input?.jobId || '')
+  const row = supabaseClient?.__builder?._rows?.get(jobId)
+  if (row) {
+    supabaseClient.__builder._rows.set(jobId, {
+      ...row,
+      execution_owner: 'test-execution-owner',
+      execution_attempt: 5,
+      execution_lease_expires_at: leaseExpiresAt,
+    })
+  }
+  return {
+    owner: 'test-execution-owner',
+    attempt: 5,
+    leaseExpiresAt,
+  }
+})
 const mockAssertExecution = jest.fn(async (_db?: unknown, _input?: unknown) => undefined)
 const mockReleaseExecution = jest.fn(async (_db?: unknown, _input?: unknown) => true)
 jest.mock('@/lib/seoFactory/writingContractStore', () => ({
@@ -71,9 +84,9 @@ jest.mock('@/lib/githubContents', () => {
 const makeSupabaseClient = () => {
   const builder: Record<string, any> = {
     _updated: false,
-    _rows: new Map<string, unknown>(),
+    _rows: new Map<string, Record<string, any>>(),
     _key: '',
-    _updatedRow: null,
+    _patch: null,
     select: () => builder,
     eq: (k: string, v: unknown) => {
       if (k === 'id') builder._key = String(v)
@@ -84,14 +97,16 @@ const makeSupabaseClient = () => {
     order: () => builder,
     limit: () => builder,
     range: () => builder,
-    maybeSingle: () => Promise.resolve({
-      data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null),
-      error: null,
-    }),
-    single: () => Promise.resolve({
-      data: builder._updated ? builder._updatedRow : (builder._rows.get(builder._key) ?? null),
-      error: null,
-    }),
+    _resolve: () => {
+      const prior = builder._rows.get(builder._key) ?? null
+      if (!builder._updated) return prior
+      if (!prior) return null
+      const updated = { ...prior, ...(builder._patch || {}) }
+      builder._rows.set(builder._key, updated)
+      return updated
+    },
+    maybeSingle: () => Promise.resolve({ data: builder._resolve(), error: null }),
+    single: () => Promise.resolve({ data: builder._resolve(), error: null }),
     update: (patch: Record<string, unknown>) => {
       builder._updated = true
       builder._patch = patch
@@ -100,12 +115,13 @@ const makeSupabaseClient = () => {
     insert: () => builder,
     delete: () => builder,
     then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: builder._updated ? builder._updatedRow ?? null : null, error: null }).then(resolve),
+      Promise.resolve({ data: builder._resolve(), error: null }).then(resolve),
   }
   const client = {
     from: (_t: string) => {
       builder._updated = false
       builder._key = ''
+      builder._patch = null
       return builder
     },
   }
@@ -273,7 +289,6 @@ describe('PATCH merge_pr — refuses an ungated PR', () => {
 
   it('merges a contracted PR only when gate and persisted publication manifest both pass', async () => {
     supabaseClient.__builder._rows.set('j1', contractedJob({ audit_json: { score: 88, shipReady: true, blockers: 0 } }))
-    supabaseClient.__builder._updatedRow = { id: 'j1', status: 'merged' }
     const res = await patch({ id: 'j1', action: 'merge_pr' })
     expect(res.status).toBe(200)
     expect(mockLoadWritingContract).toHaveBeenCalled()
@@ -286,7 +301,6 @@ describe('PATCH merge_pr — refuses an ungated PR', () => {
 
   it('merges a contracted PR when blockers is an empty array and its manifest matches the PR head', async () => {
     supabaseClient.__builder._rows.set('j1', contractedJob({ audit_json: { score: 88, shipReady: true, blockers: [] } }))
-    supabaseClient.__builder._updatedRow = { id: 'j1', status: 'merged' }
     const res = await patch({ id: 'j1', action: 'merge_pr' })
     expect(res.status).toBe(200)
     expect(mockMergePullRequest).toHaveBeenCalled()
@@ -314,7 +328,6 @@ describe('PATCH approve — PR-merge shortcut (no editor content) refuses an ung
 
   it('ships contracted content and persists exact-renderer publication proof when gate is true', async () => {
     supabaseClient.__builder._rows.set('j1', contractedJob({ status: 'drafting', pr_number: null, audit_json: { score: 96, shipReady: true, blockers: [] } }))
-    supabaseClient.__builder._updatedRow = { id: 'j1' }
     const res = await patch({ id: 'j1', action: 'approve', humanApproved: true, content: mkContent() })
     expect(res.status).toBe(200)
     expect(mockLoadWritingContract).toHaveBeenCalled()
@@ -345,7 +358,6 @@ describe('POST bulk_approve — never ships an ungated row', () => {
   it('skips only the failing id and ships the contracted gated one, returning skipped in JSON', async () => {
     supabaseClient.__builder._rows.set('bad', baseJob({ id: 'bad', audit_json: { score: 100, blockers: [] } }))
     supabaseClient.__builder._rows.set('good', contractedJob({ id: 'good', status: 'drafting', pr_number: null, audit_json: { score: 88, shipReady: true, blockers: 0 } }))
-    supabaseClient.__builder._updatedRow = { id: 'good' }
     const res = await post({ action: 'bulk_approve', ids: ['bad', 'good'] })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -370,7 +382,6 @@ describe('PATCH save — protects gate state and accepted content', () => {
       model: 'grok',
     }
     supabaseClient.__builder._rows.set('j1', baseJob({ status: 'drafting', pr_number: null, audit_json: priorAudit }))
-    supabaseClient.__builder._updatedRow = baseJob({ status: 'drafting', audit_json: priorAudit })
     const res = await patch({ id: 'j1', action: 'save', content: mkContent() })
     expect(res.status).toBe(200)
     const patchWritten = supabaseClient.__builder._patch
