@@ -120,6 +120,19 @@ export function publicationBodyHash(content: string): string {
   return createHash('sha256').update(canonical).digest('hex')
 }
 
+/**
+ * Renderer/live-proof contract: when a supported renderer wraps the authored
+ * reader-facing payload with data-content-studio-body="true", both approval and
+ * live verification hash that exact inner representation. Site-owned article
+ * apparatus (bylines, CTA modules, related-reading components) stays outside.
+ */
+export function extractPublicationBodyBoundaryMarkup(content: string | null | undefined): string | null {
+  const source = String(content || '')
+  if (!source) return null
+  const match = source.match(/<div\b[^>]*data-content-studio-body=["']true["'][^>]*>([\s\S]*?)<\/div>/i)
+  return match?.[1]?.trim() || null
+}
+
 export function buildExpectedRevisionMarker(input: PublicationMarkerIdentity & { content: string }): string {
   const digest = createHash('sha256')
     .update(`${input.contractId}|${input.contractHash}|${normalizedBody(input.content)}`)
@@ -256,7 +269,8 @@ export function publicationMarkerForContent(content: string): string | null {
 
 export function recordPublicationRenderedArtifact(fileContent: string, sourceBody: string): { artifactHash: string; bodyHash: string } {
   const artifactHash = artifactContentHash(fileContent)
-  const bodyHash = publicationBodyHash(sourceBody)
+  const renderedBoundary = extractPublicationBodyBoundaryMarkup(fileContent)
+  const bodyHash = publicationBodyHash(renderedBoundary || sourceBody)
   const ctx = publicationStorage.getStore()
   if (ctx?.active) {
     ctx.lastArtifactHash = artifactHash
