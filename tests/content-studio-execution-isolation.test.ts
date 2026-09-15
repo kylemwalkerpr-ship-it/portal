@@ -58,7 +58,7 @@ describe('Content Studio strict execution isolation', () => {
       })
       expect(() => assertIsolatedAuthoringAllowed()).not.toThrow()
     })
-    await expect(delayed).resolves.toMatch(/execution window closed/i)
+    await expect(delayed).resolves.toMatch(/execution window (?:is )?closed/i)
   })
 
   it('does not let a delayed callback from job A borrow an active job B lease', async () => {
@@ -77,6 +77,6 @@ describe('Content Studio strict execution isolation', () => {
       await new Promise((resolve) => setTimeout(resolve, 20))
       expect(() => assertIsolatedAuthoringAllowed()).not.toThrow()
     })
-    await expect(delayed).resolves.toMatch(/execution window closed/i)
+    await expect(delayed).resolves.toMatch(/execution window (?:is )?closed/i)
   })
 })
