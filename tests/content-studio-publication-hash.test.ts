@@ -84,4 +84,12 @@ describe('publication manifest exact-body hashing', () => {
     expect(out.artifactHash).toBe(artifactContentHash(artifact))
     expect(out.bodyHash).toBe(publicationBodyHash(content))
   })
+
+  it('hashes equivalent Markdown and HTML ordered lists identically without discarding meaningful numbers', () => {
+    const markdown = `## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.`
+    const html = `<article><h2>Filing steps</h2><ol><li>Gather 2 identity documents.</li><li>Pay the $410 fee on September 15, 2026.</li></ol></article>`
+    const changedFee = `<article><h2>Filing steps</h2><ol><li>Gather 2 identity documents.</li><li>Pay the $420 fee on September 15, 2026.</li></ol></article>`
+    expect(publicationBodyHash(markdown)).toBe(publicationBodyHash(html))
+    expect(publicationBodyHash(markdown)).not.toBe(publicationBodyHash(changedFee))
+  })
 })

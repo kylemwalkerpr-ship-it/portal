@@ -16,6 +16,18 @@ jobs:
   focused:
     name: Focused Content Studio tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -29,5 +41,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Execution lease PostgreSQL lifecycle
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: postgres
+        run: psql -v ON_ERROR_STOP=1 -f tests/sql/content-studio-execution-lease.sql
+
       - name: Focused Content Studio tests
-        run: npx jest --ci --runInBand --runTestsByPath tests/content-studio-architecture-boundary.test.ts tests/content-studio-author-revise-route.test.ts tests/content-studio-codex-regressions.test.ts tests/content-studio-contract-store-behavior.test.ts tests/content-studio-evidence-contract.test.ts tests/content-studio-execution-isolation.test.ts tests/content-studio-execution-lease.test.ts tests/content-studio-failure-recovery.test.ts tests/content-studio-git-lease.test.ts tests/content-studio-live-verify-http.test.ts tests/content-studio-manual-publication-lease.test.ts tests/content-studio-production-entrypoints.test.ts tests/content-studio-publication-hash.test.ts tests/content-studio-publication-monitor.test.ts tests/content-studio-publication-proof.test.ts tests/content-studio-stream-producer.test.ts tests/content-studio-ui-contract-route.test.ts
+        run: npx jest --ci --runInBand --runTestsByPath tests/content-studio-architecture-boundary.test.ts tests/content-studio-author-revise-route.test.ts tests/content-studio-codex-regressions.test.ts tests/content-studio-contract-store-behavior.test.ts tests/content-studio-evidence-contract.test.ts tests/content-studio-execution-isolation.test.ts tests/content-studio-execution-lease.test.ts tests/content-studio-failure-recovery.test.ts tests/content-studio-git-lease.test.ts tests/content-studio-live-verify-http.test.ts tests/content-studio-manual-publication-lease.test.ts tests/content-studio-persist-fencing.test.ts tests/content-studio-production-entrypoints.test.ts tests/content-studio-publication-hash.test.ts tests/content-studio-publication-monitor.test.ts tests/content-studio-publication-proof.test.ts tests/content-studio-stream-producer.test.ts tests/content-studio-ui-contract-route.test.ts
