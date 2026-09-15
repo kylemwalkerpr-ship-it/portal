@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runStoredContentJob, type StoredContentJob } from '@/lib/seoFactory/storedJobExecution'
-import { GET as legacyGET, POST as legacyPOST } from './legacy'
+import { GET as legacyGET, POST as legacyPOST, PATCH as legacyPATCH } from './legacy'
 
 export async function GET(request: NextRequest) {
   return legacyGET(request)
+}
+
+export async function PATCH(request: NextRequest) {
+  return legacyPATCH(request)
 }
 
 /**
