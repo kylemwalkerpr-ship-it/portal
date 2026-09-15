@@ -15,6 +15,7 @@ export type ContentStudioExecutionState = {
   contractHash: string | null
   opportunityId: string | null
   lastPublicationMarker: string | null
+  lastPublicationContentHash: string | null
 }
 
 type ExecutionLease = { active: boolean }
@@ -22,7 +23,7 @@ type ExecutionStore = { state: ContentStudioExecutionState; lease: ExecutionLeas
 const storage = new AsyncLocalStorage<ExecutionStore>()
 
 export function contentHash(content: string): string {
-  return createHash('sha256').update(String(content || '').replace(/\r\n/g, '\n')).digest('hex')
+  return createHash('sha256').update(String(content || '').replace(/\r\n/g, '\n').trim()).digest('hex')
 }
 
 export function createContentStudioExecutionState(
@@ -40,6 +41,7 @@ export function createContentStudioExecutionState(
     contractHash: identity?.contractHash || null,
     opportunityId: identity?.opportunityId || null,
     lastPublicationMarker: null,
+    lastPublicationContentHash: null,
   }
 }
 
@@ -61,9 +63,6 @@ export async function runInContentStudioExecution<T>(
     try {
       return await fn()
     } finally {
-      // Async resources (timers, callbacks) inherit the store object. Closing
-      // this mutable lease makes those delayed callbacks fail closed after the
-      // production stage returns, instead of inheriting authoring permission.
       lease.active = false
     }
   })
@@ -78,10 +77,11 @@ export async function runWithContentStudioExecution<T>(
   return { result, state }
 }
 
-export function recordPublicationMarker(marker: string): void {
+export function recordPublicationMarker(marker: string, content?: string): void {
   const state = activeState()
   if (!state?.strict) return
   state.lastPublicationMarker = String(marker || '').trim() || null
+  if (content != null) state.lastPublicationContentHash = contentHash(content)
 }
 
 export function markCoherentDeskRunning(): void {
