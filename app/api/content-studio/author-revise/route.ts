@@ -11,7 +11,14 @@ import { type CohesionFinding } from '@/lib/seoFactory/cohesionCritique'
 import { runThroughline } from '@/lib/seoFactory/throughline'
 import { runFactoryMaskedDenoise } from '@/lib/seoFactory/maskedDenoise'
 import type { EditorSeoHint } from '@/lib/editorMetrics'
-import { loadWritingContract, WritingContractMismatchError } from '@/lib/seoFactory/writingContractStore'
+import {
+  assertContentStudioExecution,
+  claimContentStudioExecution,
+  loadWritingContract,
+  releaseContentStudioExecution,
+  WritingContractMismatchError,
+  type ContentStudioExecutionClaim,
+} from '@/lib/seoFactory/writingContractStore'
 import {
   createContentStudioExecutionState,
   markBoundedRevisionCompleted,
@@ -26,6 +33,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdminUser()
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
+  let leasedDb: ReturnType<typeof createSupabaseAdminClient> | null = null
+  let executionClaim: ContentStudioExecutionClaim | null = null
+  let leaseJobId = ''
   try {
     const body = await request.json()
     const jobId = String(body.jobId || body.existingJobId || '').trim()
@@ -47,6 +57,9 @@ export async function POST(request: NextRequest) {
     let contractId: string | null = null
     let contractHash: string | null = null
     let opportunityId: string | null = null
+    let contractRequestedModel: string | null = null
+    let contractOwnership: { host:string; repo:string; filePath:string; canonicalUrl:string } | null = null
+    let contractBrief: any = null
     let db: ReturnType<typeof createSupabaseAdminClient> | null = null
     let priorAuditJson: Record<string, unknown> = {}
 
@@ -55,6 +68,8 @@ export async function POST(request: NextRequest) {
         throw new WritingContractMismatchError('contract-bound revision requires jobId + contractId + contractHash')
       }
       db = createSupabaseAdminClient()
+      leasedDb = db
+      leaseJobId = jobId
       const jobResult = await db
         .from('content_jobs')
         .select('id,content,audit_json,opportunity_id,contract_id,contract_version,contract_hash,evidence_hash')
@@ -92,7 +107,21 @@ export async function POST(request: NextRequest) {
       contractId = contract.contractId
       contractHash = contract.contractHash
       opportunityId = contract.opportunity.id
+      contractRequestedModel = String(contract.requestedModel || '').trim() || null
+      contractOwnership = contract.ownership
+      contractBrief = contract.brief
       priorAuditJson = job.audit_json && typeof job.audit_json === 'object' ? job.audit_json : {}
+
+      const explicitReviewModel = typeof body.reviewModel === 'string' ? body.reviewModel.trim() : ''
+      if (contractRequestedModel && explicitReviewModel && explicitReviewModel !== contractRequestedModel) {
+        throw new WritingContractMismatchError('review model conflicts with immutable writing contract')
+      }
+
+      executionClaim = await claimContentStudioExecution(db, {
+        jobId,
+        contractId,
+        contractHash,
+      })
     } else {
       const hint: EditorSeoHint = body.hint || {}
       contentType = typeof hint.contentType === 'string' ? hint.contentType : 'legal_guide'
@@ -125,9 +154,10 @@ export async function POST(request: NextRequest) {
           }))
           .filter((f: CohesionFinding) => f.code || f.message)
       : []
-    const reviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
+    const clientReviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
       ? body.reviewModel.trim()
       : DEFAULT_REVIEW_PIN
+    const reviewPin = contractBound && contractRequestedModel ? contractRequestedModel : clientReviewPin
 
     const runAudit = (draft: string) => auditContent({
       content: draft,
@@ -148,7 +178,18 @@ export async function POST(request: NextRequest) {
       maxWords,
     })
 
-    const state = createContentStudioExecutionState(contractBound)
+    const state = createContentStudioExecutionState(contractBound, contractBound && executionClaim ? {
+      contractId,
+      contractHash,
+      opportunityId,
+      contractBrief,
+      contractOwnership,
+      requestedModel: contractRequestedModel,
+      executionJobId: jobId,
+      executionOwner: executionClaim.owner,
+      executionAttempt: executionClaim.attempt,
+      executionLeaseExpiresAt: executionClaim.leaseExpiresAt,
+    } : undefined)
     const result = await runInContentStudioExecution(state, async () => {
       if (contractBound) markBoundedRevisionRunning(content)
       try {
@@ -220,9 +261,21 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    if (contractBound && db && jobId && contractId && contractHash && opportunityId) {
+    if (contractBound && db && jobId && contractId && contractHash && opportunityId && executionClaim) {
+      await assertContentStudioExecution(db, {
+        jobId, contractId, contractHash, owner:executionClaim.owner, attempt:executionClaim.attempt,
+      })
+      const applyFence = (query:any) => query
+        .eq('id', jobId)
+        .eq('opportunity_id', opportunityId)
+        .eq('contract_id', contractId)
+        .eq('contract_hash', contractHash)
+        .eq('execution_owner', executionClaim!.owner)
+        .eq('execution_attempt', executionClaim!.attempt)
+        .gt('execution_lease_expires_at', new Date().toISOString())
+
       if (result.rejected) {
-        await db.from('content_jobs').update({
+        const update = await applyFence(db.from('content_jobs').update({
           execution_stage: 'revision_required',
           error_message: String(result.reason || 'revision candidate rejected').slice(0, 1000),
           audit_json: {
@@ -233,16 +286,15 @@ export async function POST(request: NextRequest) {
               contractId,
             },
           },
-        })
-          .eq('id', jobId)
-          .eq('opportunity_id', opportunityId)
-          .eq('contract_id', contractId)
-          .eq('contract_hash', contractHash)
+        })).select('id').maybeSingle()
+        if (update.error || !update.data?.id) {
+          throw new WritingContractMismatchError(`rejected revision state was not persisted to the exact execution: ${update.error?.message || 'lease changed'}`)
+        }
         return NextResponse.json({ content, rejected: true, reason: result.reason }, { status: 422 })
       }
 
       const audit = runAudit(result.content)
-      const update = await db.from('content_jobs').update({
+      const update = await applyFence(db.from('content_jobs').update({
         content: result.content,
         word_count: audit.wordCount,
         seo_score: audit.score,
@@ -258,15 +310,9 @@ export async function POST(request: NextRequest) {
         actual_model: reviewPin,
         execution_stage: audit.blockers.length ? 'revision_required' : 'ready_for_approval',
         error_message: audit.blockers.length ? 'Revision accepted but publishing blockers remain.' : null,
-      })
-        .eq('id', jobId)
-        .eq('opportunity_id', opportunityId)
-        .eq('contract_id', contractId)
-        .eq('contract_hash', contractHash)
-        .select('id')
-        .maybeSingle()
+      })).select('id').maybeSingle()
       if (update.error || !update.data?.id) {
-        throw new WritingContractMismatchError(`accepted revision was not persisted to the exact contract job: ${update.error?.message || 'identity changed'}`)
+        throw new WritingContractMismatchError(`accepted revision was not persisted to the exact contract execution: ${update.error?.message || 'lease changed'}`)
       }
     }
 
@@ -277,7 +323,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Author revise failed'
-    const contractError = /writing contract|contract identity|client draft is stale|evidence.*mismatch/i.test(message)
+    const contractError = /writing contract|contract identity|client draft is stale|evidence.*mismatch|execution already active|lease|review model conflicts/i.test(message)
     return NextResponse.json({ error: message }, { status: contractError ? 409 : 502 })
+  } finally {
+    if (leasedDb && executionClaim && leaseJobId) {
+      try {
+        await releaseContentStudioExecution(leasedDb, {
+          jobId: leaseJobId,
+          owner: executionClaim.owner,
+          attempt: executionClaim.attempt,
+        })
+      } catch {
+        // A stale attempt must not clear a newer takeover; the RPC is fenced.
+      }
+    }
   }
 }
