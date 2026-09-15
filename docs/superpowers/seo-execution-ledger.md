@@ -144,3 +144,14 @@ For the 29 squash-merge deletions, the branch tip was proven byte-identical to t
 - The only edits made were documentation scope corrections: the narrowed Task 1 claim (two RPCs + four views) and separate base-table follow-up row in the parity matrix, and the corresponding ledger record.
 - Accepted the supervisor correction that `admin-command-center.tsx` is DEPRECATED / not mounted and must not be cited as live Realtime compatibility evidence; the live path recorded is `components/design/admin-content-studio.tsx:7533` via `lib/supabaseRealtime.ts` → `createSupabaseBrowserClient()`.
 - The run stopped without commit, push, PR, merge, deploy, or production DDL. No approval is claimed; Task 1 remains `IN_PROGRESS`.
+
+### Production acceptance — merge, deploy, migration, live boundary (2026-09-15)
+
+- PR #203 (`security: harden support RPC and internal view boundary`) squash-merged to `main` as `9a21bfab291d5f381a2fce765a77a949a4d5ad8e`, which is the exact base of this evidence worktree. Read-only re-verification during this documentation pass confirmed the PR merge commit and both workflow run IDs below.
+- `Deploy YouSafe Portal` run `35024648249` completed success (`headSha` = `9a21bfab291d5f381a2fce765a77a949a4d5ad8e`), including Cloudflare deploy, secrets health, and post-deploy smoke test.
+- Migration run `35024648323` overall FAILED and must not be recorded as green. The failure is unrelated to Task 1: the older `20260911_marketplace_search_intelligence.sql` failed with `42P16` ("cannot drop columns from view"), and `content_jobs_fts_index.sql` hit HTTP 503 scheduled maintenance. The run log proves `20260915_support_security_boundary.sql = OK`.
+- Production SQL after the maintenance window: both support RPCs (`public.support_notify(uuid,text,text,text,text,text)`, `public.support_log_action(uuid,text,text,text,text,jsonb)`) have EXECUTE `anon=false`, `authenticated=false`, `service_role=true`.
+- Production SQL after the maintenance window: all four views (`content_job_health_summary`, `inquiry_engagement`, `seo_backlink_dashboard`, `support_user_notes_v`) have SELECT `anon=false`, `authenticated=false`, `service_role=true`, and all four view reloptions contain `security_invoker=true`.
+- Security advisors snapshot `2026-09-15T21:45:45Z`: no longer list either support RPC in `anon`/`authenticated` SECURITY DEFINER warnings and no longer list the four views as `security_definer_view` findings. Unrelated advisor backlog remains.
+- Result: the narrow Task 1 claim is now `PASS` in `docs/superpowers/seo-parity-matrix.md` (two RPCs + four views only). The separate base-table least-privilege follow-up row remains `PENDING` and out of scope for Task 1.
+- This evidence worktree is documentation-only: it changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`, and performs no commit, push, PR, merge, deploy, or production DDL. Stopped for supervisor review.
