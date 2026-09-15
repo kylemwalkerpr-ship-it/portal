@@ -2,11 +2,13 @@
 -- Review-only in PR #200. THIS MIGRATION IS INTENTIONALLY UNAPPLIED.
 -- Do not edit or replay supabase/migrations/20260914_content_studio_evidence_contract.sql.
 --
--- Contract:
---   * claim is atomic and increments execution_attempt on every acquisition/takeover;
---   * an expired lease can be taken over only through claim, producing a newer attempt;
---   * renew/check/release require the exact owner + attempt fencing token;
---   * renew/check refuse expired leases, so an expired worker cannot revive itself;
+-- Acquisition and finalization are deliberately separate:
+--   * normal acquisition is limited to active statuses;
+--   * an exact failed contracted job may be reacquired only with p_allow_failed_retry=true,
+--     which atomically transitions it back to drafting and increments the fencing token;
+--   * merged/failed rows are never generally claimable, but the CURRENT unexpired
+--     owner+attempt may renew/check them long enough to finalize and release;
+--   * stale/expired owners cannot renew or release a newer attempt;
 --   * only service_role can execute the RPCs.
 
 alter table if exists public.content_jobs
@@ -19,7 +21,8 @@ create or replace function public.claim_content_studio_execution(
   p_contract_id text,
   p_contract_hash text,
   p_execution_owner text,
-  p_lease_seconds integer default 900
+  p_lease_seconds integer default 900,
+  p_allow_failed_retry boolean default false
 )
 returns table(
   execution_owner text,
@@ -43,11 +46,17 @@ begin
      set execution_owner = p_execution_owner,
          execution_attempt = coalesce(j.execution_attempt, 0) + 1,
          execution_lease_expires_at = clock_timestamp()
-           + make_interval(secs => greatest(60, least(coalesce(p_lease_seconds, 900), 3600)))
+           + make_interval(secs => greatest(60, least(coalesce(p_lease_seconds, 900), 3600))),
+         status = case when p_allow_failed_retry and j.status = 'failed' then 'drafting' else j.status end,
+         execution_stage = case when p_allow_failed_retry and j.status = 'failed' then 'drafting' else j.execution_stage end,
+         error_message = case when p_allow_failed_retry and j.status = 'failed' then null else j.error_message end
    where j.id = p_job_id
      and j.contract_id = p_contract_id
      and j.contract_hash = p_contract_hash
-     and j.status in ('pending','drafting','processing','publishing','pr_created')
+     and (
+       j.status in ('pending','drafting','processing','publishing','pr_created')
+       or (p_allow_failed_retry and j.status = 'failed')
+     )
      and (
        j.execution_owner is null
        or j.execution_lease_expires_at is null
@@ -81,7 +90,7 @@ begin
      and j.execution_owner = p_execution_owner
      and j.execution_attempt = p_execution_attempt
      and j.execution_lease_expires_at > clock_timestamp()
-     and j.status in ('pending','drafting','processing','publishing','pr_created')
+     and j.status in ('pending','drafting','processing','publishing','pr_created','merged','failed')
   returning j.execution_lease_expires_at;
 end;
 $$;
@@ -108,7 +117,7 @@ as $$
        and j.execution_owner = p_execution_owner
        and j.execution_attempt = p_execution_attempt
        and j.execution_lease_expires_at > clock_timestamp()
-       and j.status in ('pending','drafting','processing','publishing','pr_created')
+       and j.status in ('pending','drafting','processing','publishing','pr_created','merged','failed')
   );
 $$;
 
@@ -135,12 +144,12 @@ begin
 end;
 $$;
 
-revoke all on function public.claim_content_studio_execution(uuid,text,text,text,integer) from public, anon, authenticated;
+revoke all on function public.claim_content_studio_execution(uuid,text,text,text,integer,boolean) from public, anon, authenticated;
 revoke all on function public.renew_content_studio_execution(uuid,text,text,text,integer,integer) from public, anon, authenticated;
 revoke all on function public.check_content_studio_execution(uuid,text,text,text,integer) from public, anon, authenticated;
 revoke all on function public.release_content_studio_execution(uuid,text,integer) from public, anon, authenticated;
 
-grant execute on function public.claim_content_studio_execution(uuid,text,text,text,integer) to service_role;
+grant execute on function public.claim_content_studio_execution(uuid,text,text,text,integer,boolean) to service_role;
 grant execute on function public.renew_content_studio_execution(uuid,text,text,text,integer,integer) to service_role;
 grant execute on function public.check_content_studio_execution(uuid,text,text,text,integer) to service_role;
 grant execute on function public.release_content_studio_execution(uuid,text,integer) to service_role;

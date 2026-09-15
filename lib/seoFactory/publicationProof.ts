@@ -18,11 +18,8 @@ export type PersistedPublicationManifest = {
   path: string
   canonical: string
   expectedMarker: string | null
-  /** Exact accepted markdown/body passed into the renderer. */
   approvedContentHash: string
-  /** Exact marked repository file emitted by the renderer. */
   approvedArtifactHash?: string | null
-  /** Canonicalized substantive article body, used against the live page. */
   approvedBodyHash?: string | null
   approvedAt: string
   approvalActor: string | null
@@ -59,11 +56,28 @@ export function artifactContentHash(content: string): string {
   return createHash('sha256').update(normalizedBody(content)).digest('hex')
 }
 
+function decodePublicationEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => {
+      const cp = Number.parseInt(hex, 16)
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : ' '
+    })
+    .replace(/&#(\d+);/g, (_m, dec: string) => {
+      const cp = Number.parseInt(dec, 10)
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : ' '
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+}
+
 /**
- * Normalize markdown/source text and extracted live article text into the same
- * substantive word stream. Metadata, URLs, markup and component wrappers are
- * excluded; reader-visible words and their order remain. This is deliberately
- * stricter than a revision marker: changing article prose changes the digest.
+ * Normalize the substantive reader-visible body across Markdown/MDX and rendered
+ * HTML. Only syntax-generated structure is discarded. Numeric facts inside list
+ * items, table cells, fees, dates and prose remain part of the digest.
  */
 export function canonicalPublicationBodyText(content: string): string {
   let text = normalizedBody(content)
@@ -72,6 +86,11 @@ export function canonicalPublicationBodyText(content: string): string {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
+    // Markdown table separator rows are renderer syntax, not reader-visible text.
+    .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, ' ')
+    // Ordered-list numerals are renderer-generated structure in HTML <ol>/<li>.
+    // Remove only a line-leading Markdown list marker; numbers in the item stay.
+    .replace(/^\s*\d{1,6}[.)]\s+(?=\S)/gm, '')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, ' $1 ')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, ' $1 ')
     .replace(/<([A-Z][A-Za-z0-9.]*)\b[^>]*\/>/g, ' ')
@@ -81,11 +100,13 @@ export function canonicalPublicationBodyText(content: string): string {
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^\s*>\s?/gm, '')
+    // Pipe characters delimit Markdown table cells; HTML renders the same cell
+    // text without pipes. Cell contents and all numbers are retained.
+    .replace(/\|/g, ' ')
+    // Markdown escaping changes syntax only; preserve the escaped character.
+    .replace(/\\([\\`*{}\[\]()#+\-.!_>|])/g, '$1')
     .replace(/[\*_~]/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
+  text = decodePublicationEntities(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}']+/gu, ' ')
     .replace(/\s+/g, ' ')
