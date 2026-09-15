@@ -30,7 +30,7 @@ function manifest(): PersistedPublicationManifest {
     schemaVersion:1, jobId:'job-1', contractId:'wc_1', contractHash:'hash-1', opportunityId:'opp-1',
     repoOwner:'kylemwalkerpr-ship-it', repoName:'portal', path:'app/x/page.tsx',
     canonical:'https://market.yousafeconsultancy.com/x/', expectedMarker:'csrev_marker',
-    approvedContentHash:'bodyhash', approvedAt:'2026-09-14T00:00:00Z', approvalActor:'admin',
+    approvedContentHash:'c'.repeat(64), approvedAt:'2026-09-14T00:00:00Z', approvalActor:'admin',
     prNumber:77, approvedHeadSha:'head-approved', mergeSha:null,
     deploymentRunId:null, deploymentCommitSha:null, deploymentWorkflowId:null,
     deploymentWorkflowPath:null, deploymentJobId:null, deploymentEnvironment:null,
@@ -74,9 +74,31 @@ describe('durable publication monitor', () => {
     expect(result.proof?.mergeSha).toBe('merge-sha')
     expect(result.proof?.deploymentCommitSha).toBe('new-main')
     expect(result.proof?.deploymentWorkflowPath).toBe('.github/workflows/deploy.yml')
+    expect(result.proof?.deploymentEnvironment).toBe('not configured')
     expect(result.proof?.lineageVerified).toBe(true)
     expect(getRepoFileContent).toHaveBeenCalledWith('kylemwalkerpr-ship-it','portal','app/x/page.tsx','merge-sha')
     expect(getRepoFileContent).toHaveBeenCalledWith('kylemwalkerpr-ship-it','portal','app/x/page.tsx','new-main')
+  })
+
+  it('records an actual GitHub Environment only when the successful deploy job reports one', async () => {
+    githubFetch.mockImplementation(async (path:string) => {
+      if (path.endsWith('/pulls/77')) return { merged:true, head:{sha:'head-approved'}, merge_commit_sha:'merge-sha' }
+      if (path.includes('/actions/runs?')) return { workflow_runs:[{ id:20,event:'push',head_branch:'main',status:'completed',conclusion:'success',path:'.github/workflows/deploy.yml',name:'Deploy YouSafe Portal',head_sha:'merge-sha',workflow_id:273970987 }] }
+      if (path.includes('/actions/runs/20/jobs')) return { jobs:[{ id:220,name:'Build and deploy Worker',status:'completed',conclusion:'success',environment:{name:'production'},steps:[{name:'Deploy via OpenNext to Cloudflare (with transient-failure retry)',conclusion:'success'},{name:'Post-deploy smoke test (studio contract + build freshness)',conclusion:'success'}] }] }
+      throw new Error(`unexpected ${path}`)
+    })
+    const result = await reconcilePublicationDeployment('job-1')
+    expect(result.ok).toBe(true)
+    expect(result.proof?.deploymentEnvironment).toBe('production')
+  })
+
+  it('rejects a manifest that lost the exact rendered-body hash', async () => {
+    job.audit_json.publicationManifest.approvedContentHash = ''
+    const result = await reconcilePublicationDeployment('job-1')
+    expect(result.ok).toBe(false)
+    expect(result.phase).toBe('verification_failed')
+    expect(result.reason).toMatch(/content hash/i)
+    expect(githubFetch).not.toHaveBeenCalled()
   })
 
   it('rejects a successful deployment-shaped but unauthorized workflow', async () => {
