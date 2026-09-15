@@ -3,10 +3,12 @@ import {
   buildExpectedRevisionMarker,
   injectRevisionMarkerIntoRenderedFile,
   publicationMarkerForContent,
+  recordPublicationRenderedArtifact,
 } from './publicationProof'
 import {
   currentContentStudioExecution,
   recordPublicationMarker,
+  recordStrictPublicationDigests,
 } from './contentStudioExecutionContext'
 
 export type BlogPostEntry = core.BlogPostEntry
@@ -14,9 +16,10 @@ export const buildBlogPostEntry = core.buildBlogPostEntry
 export const insertBlogPostIntoData = core.insertBlogPostIntoData
 
 /**
- * Single renderer facade. All layout/format behavior stays in renderTargetCore;
- * contracted shipping adds only the durable revision marker to the rendered
- * artifact. No marker context means byte-for-byte legacy rendering.
+ * Single renderer facade. Contracted shipping records proof from the actual
+ * marked file returned by the renderer, not from an earlier draft. This is the
+ * authoritative point at which source body, revision marker and Git artifact
+ * all coexist.
  */
 export function renderTargetFile(
   opts: Parameters<typeof core.renderTargetFile>[0],
@@ -35,8 +38,8 @@ export function renderTargetFile(
     marker = publicationMarkerForContent(opts.content)
   }
   if (!marker) return rendered
-  return {
-    ...rendered,
-    fileContent: injectRevisionMarkerIntoRenderedFile(rendered.fileContent, marker),
-  }
+  const fileContent = injectRevisionMarkerIntoRenderedFile(rendered.fileContent, marker)
+  const proof = recordPublicationRenderedArtifact(fileContent, opts.content)
+  if (execution?.strict) recordStrictPublicationDigests(proof)
+  return { ...rendered, fileContent }
 }
