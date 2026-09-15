@@ -93,6 +93,8 @@ function makeDb() {
 describe('normal Studio UI contract boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
     jest.mocked(createSupabaseAdminClient).mockReturnValue(makeDb())
     jest.mocked(resolveOwner).mockResolvedValue({ ...ownership, blockers: [], warnings: [], indexable: true, contentType: contract.contentType } as any)
     jest.mocked(resolvePipelineWritingContract).mockImplementation(async (input: any) => ({
@@ -125,6 +127,11 @@ describe('normal Studio UI contract boundary', () => {
         },
       } as any
     })
+  })
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
   })
 
   test('existingJobId alone is enough to require the persisted writing contract', async () => {
