@@ -32,6 +32,7 @@ export type PublicationManifest = {
   mergeSha?: string
   deploymentRunId?: string
   deploymentCommitSha?: string
+  lineageVerified?: boolean
   phase: PublicationPhase
 }
 
@@ -64,15 +65,13 @@ function lineageMatches(input: {
   approvedHeadSha?: string | null
   mergeSha?: string | null
   deploymentCommitSha?: string | null
+  lineageVerified?: boolean | null
 }): boolean {
   const approved = normalizedSha(input.approvedHeadSha)
   const merge = normalizedSha(input.mergeSha)
   const deployed = normalizedSha(input.deploymentCommitSha)
   if (!approved || !merge || !deployed) return false
-  // A deployment must identify the merge commit that contains the approved
-  // head. We cannot infer ancestry from timestamps inside this pure helper, so
-  // callers must supply the exact included merge SHA after GitHub reconciliation.
-  return deployed === merge
+  return input.lineageVerified === true || deployed === merge
 }
 
 export function canClaimLiveSuccess(input: {
@@ -86,20 +85,18 @@ export function canClaimLiveSuccess(input: {
   approvedHeadSha?: string | null
   mergeSha?: string | null
   deploymentCommitSha?: string | null
+  lineageVerified?: boolean | null
 }): boolean {
   if (input.phase !== 'live_verified') return false
   if (input.httpStatus !== 200) return false
   if (input.hasNoIndex !== false) return false
   if (input.canonicalMatches !== true) return false
-
   const expectedMarker = String(input.expectedMarker || '').trim()
   const liveMarker = String(input.liveMarker || '').trim()
   if (!expectedMarker || !liveMarker || expectedMarker !== liveMarker) return false
-
   const body = String(input.articleBody || '').replace(/\s+/g, ' ').trim()
   if (body.length < 80) return false
-  if (!lineageMatches(input)) return false
-  return true
+  return lineageMatches(input)
 }
 
 export function extractArticleBody(htmlInput: string | null | undefined): string {
@@ -134,31 +131,25 @@ export function evaluateLiveArtifact(input: {
   approvedHeadSha?: string | null
   mergeSha?: string | null
   deploymentCommitSha?: string | null
+  lineageVerified?: boolean | null
 }): { ok: boolean; phase: PublicationPhase; reason: string; articleBody: string } {
   const articleBody = extractArticleBody(input.html)
   const fail = (reason: string) => ({ ok: false as const, phase: 'verification_failed' as const, reason, articleBody })
-
   if (input.httpStatus === 404 || input.httpStatus === 410) return fail('soft-missing or HTTP missing page')
   if (input.httpStatus !== 200) return fail(`HTTP ${input.httpStatus}`)
   if (input.hasNoIndex == null) return fail('indexability assessment missing')
   if (input.hasNoIndex) return fail('noindex on live document')
   if (input.canonicalMatches == null) return fail('canonical assessment missing')
   if (input.canonicalMatches !== true) return fail('canonical mismatch')
-
   const html = String(input.html || '')
   if (/page not found|n(?:o|')t found/i.test(html) && html.length < 1500) return fail('soft 404 shell')
-
   const expectedMarker = String(input.expectedMarker || '').trim()
   if (!expectedMarker) return fail('expected revision marker missing from manifest')
   const liveMarker = String(input.liveMarker || '').trim() || (html.includes(expectedMarker) ? expectedMarker : '')
   if (!liveMarker || liveMarker !== expectedMarker) return fail('expected revision marker missing')
   if (articleBody.length < 80) return fail('expected article body missing or too small')
-
   const title = String(input.title || '').trim()
-  if (title && !articleBody.toLowerCase().includes(title.toLowerCase().slice(0, 24))) {
-    return fail('wrong article title')
-  }
-  if (!lineageMatches(input)) return fail('publication lineage incomplete or deployment commit mismatch')
-
-  return { ok: true, phase: 'live_verified', reason: 'artifact, canonical, indexability, marker and deployment lineage match', articleBody }
+  if (title && !articleBody.toLowerCase().includes(title.toLowerCase().slice(0, 24))) return fail('wrong article title')
+  if (!lineageMatches(input)) return fail('publication lineage incomplete or deployment ancestry unverified')
+  return { ok: true, phase: 'live_verified', reason: 'artifact, canonical, indexability, marker and verified deployment lineage match', articleBody }
 }
