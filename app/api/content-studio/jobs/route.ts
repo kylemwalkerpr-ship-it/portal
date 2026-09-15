@@ -190,15 +190,38 @@ export async function POST(request: NextRequest) {
 
   if (action === 'bulk_approve') {
     const ids = Array.isArray(body.ids) ? body.ids.map((v: unknown) => String(v).trim()).filter(Boolean).slice(0,25) : []
-    const results: Array<{ id:string; ok:boolean; error?:string }> = []
+    const results: Array<{ id:string; ok:boolean; error?:string; skipped?:boolean }> = []
     for (const id of ids) {
       const child = new NextRequest(request.url, { method:'PATCH', headers:request.headers, body:JSON.stringify({ id, action:'approve', dryRun:Boolean(body.dryRun) }) })
       const res = await PATCH(child)
       const out = await res.clone().json().catch(() => ({})) as any
-      results.push({ id, ok:res.ok && out.ok !== false, error:out.error })
+      const skipped = !res.ok && out.error === 'Ship gate not cleared'
+      results.push({ id, ok:res.ok && out.ok !== false, error:out.error, ...(skipped ? { skipped:true } : {}) })
     }
     const succeeded = results.filter(r=>r.ok).length
-    return NextResponse.json({ ok:succeeded===results.length, action, processed:results.length, succeeded, failed:results.length-succeeded, results }, { status:succeeded ? 200 : 409 })
+    const skippedIds = results.filter(r=>r.skipped).map(r=>r.id)
+    const failed = results.filter(r=>!r.ok && !r.skipped).length
+    if (ids.length > 0 && skippedIds.length === ids.length) {
+      return NextResponse.json({
+        ok:false,
+        action,
+        error:'Ship gate not cleared',
+        processed:results.length,
+        succeeded:0,
+        failed,
+        skipped:skippedIds,
+        results,
+      }, { status:409 })
+    }
+    return NextResponse.json({
+      ok:succeeded===results.length,
+      action,
+      processed:results.length,
+      succeeded,
+      failed,
+      ...(skippedIds.length ? { skipped:skippedIds } : {}),
+      results,
+    }, { status:succeeded ? 200 : 409 })
   }
 
   if (action !== 'rerun_resume') return legacyPOST(request)
