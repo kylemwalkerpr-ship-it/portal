@@ -14,7 +14,6 @@ type DeploymentPolicy = {
   jobName: string
   deploySteps: string[]
   requiredSuccessSteps?: string[]
-  environment: string
 }
 
 function parseRepo(targetRepo: unknown): { owner: string; repo: string } | null {
@@ -36,7 +35,6 @@ function deploymentPolicy(repo: string, path: string): DeploymentPolicy | null {
       jobName: 'Build and deploy Worker',
       deploySteps: ['Deploy via OpenNext to Cloudflare (with transient-failure retry)'],
       requiredSuccessSteps: ['Post-deploy smoke test (studio contract + build freshness)'],
-      environment: 'portal-production-main',
     }
   }
   if (repo === 'caseworks') {
@@ -49,7 +47,6 @@ function deploymentPolicy(repo: string, path: string): DeploymentPolicy | null {
         'Deploy to Cloudflare Workers (attempt 2)',
         'Deploy to Cloudflare Workers (attempt 3 / final)',
       ],
-      environment: 'caseworks-production-main',
     }
   }
   if (repo === 'yousafe-consultancy') {
@@ -60,7 +57,6 @@ function deploymentPolicy(repo: string, path: string): DeploymentPolicy | null {
         jobName: 'deploy',
         deploySteps: ['Promote uploaded Worker version to production'],
         requiredSuccessSteps: ['Verify deployed build is serving on apex'],
-        environment: 'yousafe-apex-production-main',
       }
     }
     const country = path.split('/')[0]?.toLowerCase()
@@ -78,7 +74,6 @@ function deploymentPolicy(repo: string, path: string): DeploymentPolicy | null {
         workflowName: entry.name,
         jobName: 'deploy',
         deploySteps: [entry.step],
-        environment: `yousafe-${country}-production-main`,
       }
     }
   }
@@ -151,10 +146,7 @@ async function verifyAuthorizedRun(input: {
       commitSha: deployedSha,
       workflowId: Number(run.workflow_id || 0),
       jobId: String(job.id || ''),
-      // Current estate workflows do not consistently declare GitHub Environment
-      // objects. The authorized production environment is therefore the exact
-      // main-push workflow + successful deploy job/step encoded by policy.
-      environment: String(job?.environment?.name || input.policy.environment),
+      environment: String(job?.environment?.name || 'not configured'),
     }
   }
   return null
@@ -186,6 +178,9 @@ export async function reconcilePublicationDeployment(jobId: string): Promise<{
     return persistFailure(db, jobId, 'contracted publication is missing its persisted approval manifest or revision marker')
   }
   if (!manifest) return { ok: false, phase: 'deployment_pending', proof: null, reason: 'legacy publication has no evidence-contract manifest' }
+  if (!/^[a-f0-9]{64}$/i.test(String(manifest.approvedContentHash || '').trim())) {
+    return persistFailure(db, jobId, 'persisted publication manifest is missing a valid exact-body content hash')
+  }
   if (
     manifest.jobId !== jobId
     || !same(manifest.contractId, job.contract_id)
@@ -222,8 +217,6 @@ export async function reconcilePublicationDeployment(jobId: string): Promise<{
     return { ok: false, phase: 'deployment_pending', proof: null, reason: 'approved-head/merge evidence unavailable' }
   }
 
-  // The merged commit itself must contain the approved marker before looking at
-  // deployment runs. This rejects a wrong PR/path even when a later deployment is green.
   const mergedArtifact = await getRepoFileContent(repoRef.owner, repoRef.repo, path, mergeSha).catch(() => null)
   if (!mergedArtifact || !mergedArtifact.includes(expectedMarker)) {
     return persistFailure(db, jobId, `merge commit does not contain expected marked artifact ${path}`)
