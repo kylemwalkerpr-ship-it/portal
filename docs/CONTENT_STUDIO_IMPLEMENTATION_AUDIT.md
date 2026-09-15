@@ -7,7 +7,7 @@
 **Implementer:** GPT-5.6 Sol  
 **Reviewer:** Codex
 
-This audit describes implementation and test coverage after Codex reviews `5205607087` and `5206721676`. It does **not** authorize a merge, deployment, Wrangler execution, article publication, or migration execution. Final CI run IDs/results belong in the PR description and review handoff so recording a passing run does not require another documentation-only commit.
+This audit describes implementation and test coverage after Codex reviews `5205607087`, `5206721676`, and `5207579936`. It does **not** authorize a merge, deployment, Wrangler execution, article publication, or migration execution. Final CI run IDs/results belong in the PR description and review handoff so recording a passing run does not require another documentation-only commit.
 
 ## Codex review 5205607087: eight production findings
 
@@ -20,7 +20,7 @@ This audit describes implementation and test coverage after Codex reviews `52056
 | 5 | Contract ownership, scope, and requested model were not fully enforced | `pipelineContract.ts` hydrates reader question, target scope and model from the persisted contract. `contentStudioPipelineCore.ts` re-resolves ownership before authoring; `contentAiProvider.ts` rejects provider/model drift; `renderTarget.ts` rechecks owner target and accepted content before artifact generation. | `tests/content-studio-production-entrypoints.test.ts`, `tests/content-studio-codex-regressions.test.ts`, `tests/content-studio-git-lease.test.ts`, revision-route coverage |
 | 6 | SSE terminal `error` events could bypass recovery persistence | Strict stream producer persists failure on explicit error events, premature EOF, thrown producer errors, cancellation, and consumer interruption. Accepted content is retained where available. | `tests/content-studio-stream-producer.test.ts`, `tests/content-studio-failure-recovery.test.ts` |
 | 7 | Two executions of one persisted job lacked execution ownership / fencing | New additive lease schema plus `writingContractStore.ts` and `contentStudioPipelineCore.ts` implement atomic claim, monotonic attempt token, heartbeat renewal and owner+attempt+expiry-conditioned terminal writes. `githubContents.ts` fences Git mutations with the same execution token. | `tests/content-studio-execution-lease.test.ts`, `tests/content-studio-stream-producer.test.ts`, `tests/content-studio-git-lease.test.ts`, `tests/content-studio-manual-publication-lease.test.ts`, `tests/content-studio-author-revise-route.test.ts` |
-| 8 | Changed article content could verify with an unchanged revision marker | Publication manifest binds the marker to both exact marked repository artifact hash and normalized substantive body hash. Deployment reconciliation verifies the exact artifact at merge/deployed commits; live verification recomputes the article body digest. Markdown/MDX-to-HTML normalization is tested so legitimate rendering does not fail simply because markup changes. | `tests/content-studio-publication-hash.test.ts`, `tests/content-studio-publication-proof.test.ts`, `tests/content-studio-publication-monitor.test.ts`, `tests/content-studio-live-verify-http.test.ts` |
+| 8 | Changed article content could verify with an unchanged revision marker | Publication manifest binds the marker to both exact marked repository artifact hash and normalized substantive body hash. Deployment reconciliation verifies the exact artifact at merge/deployed commits; live verification recomputes the article body digest. Renderer-specific substantive boundaries keep destination chrome outside that digest while preserving authored facts. | `tests/content-studio-publication-hash.test.ts`, `tests/content-studio-publication-proof.test.ts`, `tests/content-studio-publication-monitor.test.ts`, `tests/content-studio-live-verify-http.test.ts` |
 
 ## Codex review 5206721676: four remaining blockers
 
@@ -32,6 +32,14 @@ This audit describes implementation and test coverage after Codex reviews `52056
 | D | Equivalent numbered-list Markdown and HTML produced different publication hashes | Publication-body canonicalization now normalizes ordered-list presentation across Markdown/MDX and rendered HTML while retaining list item text and numeric facts. Equivalent rendering hashes identically; changing a substantive number still changes the digest and fails verification. | `tests/content-studio-publication-hash.test.ts`, publication proof/live verification suites |
 
 The restored strict SSE path is intentional: contracted SSE is **not** implemented by substituting the JSON producer. Its original whole-producer ALS context and heartbeat remain in `contentStudioPipelineCore.ts`; lower-level persistence is fenced at the actual database mutation doors.
+
+## Codex review 5207579936: three remaining publication blockers
+
+| # | Finding | Resolution | Behavioral / caller coverage |
+| --- | --- | --- | --- |
+| E | Manual publication could overwrite a newer execution through unfenced legacy writes | `app/api/content-studio/jobs/legacy.ts` is now a public facade. When the surrounding jobs route has entered a strict contracted execution, `approve`, `reship`, and `merge_pr` are routed to `strictManualPublicationPATCH` instead of the id-only legacy implementation. `strictManualPublication.ts` conditions reads, editor-content persistence, keyword backfill, terminal ship/merge persistence, and failure persistence on exact job + contract + opportunity + owner + attempt + unexpired lease. If a stale attempt loses ownership, `recordFailureIfOwned` cannot mark the replacement execution failed. The Git merge/ship boundary still flows through the guarded `githubContents` mutation door, which renews/asserts the same lease token immediately before Git writes. | `tests/content-studio-manual-publication-fencing.test.ts` exercises the public PATCH route with the real strict manual implementation, including stale A → B takeover → A Git failure with B unchanged and current-owner successful finalization. Existing `content-studio-manual-publication-lease.test.ts`, `content-studio-git-lease.test.ts`, and server ship-gate tests remain complementary. |
+| F | Real consultancy blog rendering added byline/CTA/depth text that made unchanged authored content fail the publication-body digest | `renderTarget.ts` marks the authored consultancy-blog portion as an explicit `data-content-studio-body="true"` substantive boundary after calling the real destination renderer. Date/byline, legal-guide CTA and `BlogDepthSection` remain rendered normally but outside that digest boundary. `recordPublicationRenderedArtifact` hashes the marked rendered substantive region when present; live `extractArticleBody` uses the same region and falls back to `<article>/<main>` only for destinations without the explicit boundary. Ordered lists/tables/entities still normalize structurally and factual numbers remain significant. | `tests/content-studio-publication-hash.test.ts` calls the actual supported consultancy renderer, asserts renderer apparatus remains present, proves unchanged rendered substantive content verifies, and retains same-marker changed prose/fee/date/count rejection. |
+| G | Contract lookup error/missing row allowed `liveVerify` to downgrade to legacy success | `verifyLiveUrl` now requires a successful positive `content_jobs` lookup whenever `jobId` is supplied. Lookup errors and missing rows return recoverable `verification_failed` before purge/fetch/reconciliation and cannot write `live_status='verified'`. Legacy health checks are available only after a successful lookup establishes a real uncontracted row (`contract_id = null`). | `tests/content-studio-live-verify-http.test.ts` exercises the actual `/verify-published` HTTP route for contract lookup error, missing job, established legacy job, normal contracted proof, stale/wrong marker, canonical/noindex/redirect/body failures, lineage failure and changed prose. |
 
 ## Other evidence-contract behavior retained
 
@@ -84,7 +92,7 @@ The submitted SQL provides:
 The focused review workflow starts PostgreSQL 16 and executes the review-only schema/lifecycle script in a disposable transaction:
 
 ```text
-psql -v ON_ERROR_STOP=1 -f tests/sql/content-studio-execution-lease.sql
+PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=postgres psql -v ON_ERROR_STOP=1 -f tests/sql/content-studio-execution-lease.sql
 ```
 
 The script applies the candidate execution-lease DDL/functions to the disposable database and rolls the transaction back after asserting: normal atomic claim, active-opportunity uniqueness, failed→explicit-retry acquisition, merged-owner finalization/release, failed-owner release/retry, expired takeover with an incremented attempt token, and rejection of stale owner/attempt tokens. This does **not** touch the live Supabase project and is not migration execution authorization.
@@ -93,12 +101,12 @@ Concurrency/Git-boundary tests submitted with the migration are also listed in t
 
 ## Full-Jest failure triage retained from earlier review passes
 
-The earlier `34914478631` failures were followed through the public paths rather than automatically classified as test-only. Important outcomes included:
+Earlier full-suite failures were followed through the public paths rather than automatically classified as test-only. Important outcomes included:
 
 - real `NextRequest` fixtures replacing clone-less request mocks;
 - a real bulk-approval production regression fixed so gated rows remain `skipped` and true failures stay distinct;
 - GitHub helper mocks changed to preserve real target normalization;
-- Supabase test builders isolated per request;
+- Supabase test builders isolated per request and later made faithful to `.update(...).select('*')` by preserving the full updated row through strict fenced writes;
 - manufactured-thesis / `Worked Example` expectations replaced with fail-closed behavior;
 - acceptance-intended rewrite fixtures upgraded to valid audit/contract context while damaging rewrites remain rejected;
 - thin overwrite protection tested behaviorally through the public PATCH route.
