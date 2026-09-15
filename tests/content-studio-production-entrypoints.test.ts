@@ -70,6 +70,31 @@ describe('contract-bound JSON production route', () => {
   })
 })
 
+describe('Content Studio compatibility JSON route', () => {
+  it('rejects an uncontracted request instead of exposing the raw pipeline', async () => {
+    const m = mocks()
+    const { POST } = await import('@/app/api/content-studio/generate/route')
+    const res = await POST(new NextRequest('http://localhost/api/content-studio/generate', {
+      method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ topic:'F-1 OPT timing' }),
+    }))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ ok:false })
+    expect(m.runContentStudioPipeline).not.toHaveBeenCalled()
+    expect(m.raw).not.toHaveBeenCalled()
+  })
+
+  it('runs valid Content Studio requests only through the contract runner', async () => {
+    const m = mocks(); m.runContentStudioPipeline.mockResolvedValue(RESULT)
+    const { POST } = await import('@/app/api/content-studio/generate/route')
+    const res = await POST(new NextRequest('http://localhost/api/content-studio/generate', {
+      method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(contractedBody()),
+    }))
+    expect(res.status).toBe(200)
+    expect(m.runContentStudioPipeline).toHaveBeenCalledTimes(1)
+    expect(m.raw).not.toHaveBeenCalled()
+  })
+})
+
 describe('contract-bound SSE production route', () => {
   it('surfaces provider failure as an SSE error without falling back to legacy transport', async () => {
     const m = mocks()
@@ -106,8 +131,8 @@ describe('contract-bound SSE production route', () => {
       method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(contractedBody()),
     }))
     const reader = res.body!.getReader()
-    await reader.read() // transport connect event
-    await reader.read() // pipeline progress event
+    await reader.read()
+    await reader.read()
     await reader.cancel()
     await Promise.resolve()
     expect(returnSpy).toHaveBeenCalled()
