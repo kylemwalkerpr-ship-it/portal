@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { artifactContentHash, publicationBodyHash, buildExpectedRevisionMarker, buildPublicationApprovalManifest, publicationMarkerForContent, recordPublicationRenderedArtifact } from '@/lib/seoFactory/publicationProof'
 
 const mockRequireAdminUser = jest.fn(async () => ({
   profileId: 'admin-1',
@@ -226,7 +227,10 @@ describe('manual publication write fencing through the real legacy handler', () 
   })
 
   test('the current owner can persist successful manual finalization', async () => {
-    mockShipContent.mockResolvedValue({
+    mockShipContent.mockImplementation(async (input: any) => {
+      const marker = publicationMarkerForContent(input.content)
+      recordPublicationRenderedArtifact('<article data-content-studio-revision="' + marker + '">' + input.content + '</article>', input.content)
+      return {
       status: 'deployed',
       mode: 'autodeploy',
       canonicalUrl: plan.canonicalUrl,
@@ -235,12 +239,38 @@ describe('manual publication write fencing through the real legacy handler', () 
       repo: 'caseworks',
       commitSha: 'commit-sha-current-owner',
       mergeCommitSha: 'commit-sha-current-owner',
-    })
+    }})
 
-    const response = await PATCH(request({ id: jobId, action: 'approve', dryRun: true }))
+    const response = await PATCH(request({ id: jobId, action: 'approve', dryRun: false }))
     expect(response.status).toBe(200)
     expect(db.__state.row.status).toBe('merged')
     expect(db.__state.row.error_message).toBeNull()
     expect(db.__state.updates.some((patch) => patch.status === 'merged')).toBe(true)
   })
+  test.each(['merge_pr', 'approve'])('%s dry-run cannot merge an existing PR or finalize publication', async (action) => {
+    const content = db.__state.row.content
+    const marker = buildExpectedRevisionMarker({ contractId: contract.contractId, contractHash: contract.contractHash, content })
+    const artifact = '<article data-content-studio-revision="' + marker + '">' + content + '</article>'
+    const manifest = buildPublicationApprovalManifest({
+      jobId, contractId: contract.contractId, contractHash: contract.contractHash,
+      repoOwner: 'caseworks', repoName: 'caseworks', path: plan.filePath,
+      canonical: plan.canonicalUrl, content, expectedMarker: marker,
+      approvedContentHash: artifactContentHash(content),
+      approvedArtifactHash: artifactContentHash(artifact),
+      approvedBodyHash: publicationBodyHash(content),
+      prNumber: 42, approvedHeadSha: 'approved-head',
+    })
+    Object.assign(db.__state.row, { status: 'pr_created', pr_number: 42, audit_json: { shipReady: true, publicationManifest: manifest } })
+    const github = jest.requireMock('@/lib/githubContents')
+    github.githubFetch.mockResolvedValue({ head: { sha: 'approved-head' } })
+    github.getRepoFileContent.mockResolvedValue(artifact)
+    mockMergePullRequest.mockResolvedValue({ merged: true, sha: 'unexpected-merge' })
+    const response = await PATCH(request({ id: jobId, action, dryRun: true }))
+    expect(response.status).toBe(200)
+    expect(mockMergePullRequest).not.toHaveBeenCalled()
+    expect(mockShipContent).not.toHaveBeenCalled()
+    expect(db.__state.row.status).toBe('pr_created')
+    expect(db.__state.updates).toEqual([])
+  })
+
 })

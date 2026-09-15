@@ -98,7 +98,7 @@ describe('publication manifest exact-body hashing', () => {
   it('verifies the substantive body from the real consultancy blog renderer while excluding renderer-owned apparatus', async () => {
     const title = 'F-1 OPT Filing Guide for Students'
     const canonical = 'https://yousafeconsultancy.com/blog/f1-opt-filing-guide/'
-    const content = `---\ntitle: ${JSON.stringify(title)}\ndescription: "A practical filing guide."\n---\n\nStudents & families should confirm the filing window before submitting.\n\n## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.\n\n## Fee table\n\n| Item | Amount |\n|---|---:|\n| Filing fee | $410 |`
+    const content = `---\ntitle: ${JSON.stringify(title)}\ndescription: "A practical filing guide."\n---\n\n# ${title}\n\nStudents & families should confirm the filing window before submitting.\n\n## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.\n\n## Fee table\n\n| Item | Amount |\n|---|---:|\n| Filing fee | $410 |`
     const plan = {
       host: 'www',
       repo: 'yousafe-consultancy',
@@ -125,6 +125,26 @@ describe('publication manifest exact-body hashing', () => {
     expect(rendered.result.fileContent).toContain('data-content-studio-body="true"')
     expect(rendered.marker).toBeTruthy()
     expect(rendered.bodyHash).toBeTruthy()
+
+    const manifest = buildPublicationApprovalManifest({
+      ...base,
+      content: rendered.content || '',
+      expectedMarker: rendered.marker,
+      approvedContentHash: rendered.contentHash,
+      approvedArtifactHash: rendered.artifactHash,
+      approvedBodyHash: rendered.bodyHash,
+      ...{ renderedArtifact: rendered.result.fileContent },
+    })
+    expect(manifest.approvedBodyHash).toBe(rendered.bodyHash)
+    expect(() => buildPublicationApprovalManifest({
+      ...base,
+      content: rendered.content || '',
+      expectedMarker: rendered.marker,
+      approvedContentHash: rendered.contentHash,
+      approvedArtifactHash: rendered.artifactHash,
+      approvedBodyHash: rendered.bodyHash,
+      ...{ renderedArtifact: rendered.result.fileContent.replace('$410', '$420') },
+    })).toThrow(/artifact/i)
 
     const substantiveHtml = `<div data-content-studio-body="true">
       <p>Students &amp; families should confirm the filing window before submitting.</p>
