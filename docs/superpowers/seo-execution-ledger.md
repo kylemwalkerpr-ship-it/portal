@@ -94,3 +94,53 @@ For the 29 squash-merge deletions, the branch tip was proven byte-identical to t
 
 - Matrix updated with P0 PASS evidence; no commit/push/PR/merge/deploy performed by the worker per instructions.
 - Remaining for supervisor: review this ledger + matrix diff, commit/push branch, open PR to `main`, run required checks, merge through GitHub; deployment only via `.github/workflows/deploy.yml`.
+
+## 2026-09-15 — Post-P0 Task 1 security boundary
+
+**Supervisor:** GPT-5.6 Sol
+**Primary executor:** DeepSeek V4.1 Flash / Novita + OpenCode (transitioned; provider review currently blocked by insufficient Novita balance)
+**Branch:** `security/support-rpc-boundary-20260915`
+**Base:** `main` / `origin/main` = `ca23e3d76dfc9fc0516a8021e5c21729c845de00`
+
+### Live read-only evidence
+
+- Production PostgreSQL version: `17.6`.
+- `public.support_notify(uuid,text,text,text,text,text)` and `public.support_log_action(uuid,text,text,text,text,jsonb)` are both `SECURITY DEFINER`, owned by `postgres`, and currently executable by `anon`, `authenticated`, and `service_role`.
+- `support_notify` accepts an arbitrary recipient UUID and inserts a support notification without binding the request to caller identity.
+- `support_log_action` accepts an arbitrary actor UUID and verifies only that the supplied profile has role `support|admin`; it does not bind that actor UUID to the caller.
+- `seo_backlink_dashboard` has no `security_invoker` relation option in production; prior authenticated audit established anonymous view access across the four internal views.
+- Service-role SELECT was independently verified on every underlying relation used by the four views: `content_jobs`, `inquiries`, `inquiry_messages`, `support_audit_log`, `seo_backlink_targets`, and `seo_backlink_outreach`.
+
+### Implementation and verification
+
+- RED was observed before implementation: `tests/support-security-boundary.test.ts` failed 3/3 because the migration did not yet exist.
+- Added guarded additive migration `supabase/migrations/20260915_support_security_boundary.sql`; it does not redefine function bodies or view queries and performs no data writes.
+- The migration revokes `PUBLIC`/`anon`/`authenticated` function execution, grants only `service_role`, enables `security_invoker=true` on all four internal views, revokes public client privileges, and grants service-role SELECT.
+- Fresh-replay guards use exact `to_regprocedure(...)` signatures and `to_regclass(...)` view checks so live-only schema drift does not break bootstrap migration order.
+- Focused security regression: `npx jest tests/support-security-boundary.test.ts --runInBand` → **3/3 PASS**.
+- Migration-order regression: `npm test -- tests/migration-order.test.ts` → **8/8 PASS**.
+- TypeScript: `npx tsc --noEmit` → **exit 0**.
+- Repository caller search found no browser/client caller for either support RPC or three of the four views. `seo_backlink_dashboard` is read through `createSupabaseAdminClient()`; deployment explicitly syncs `SUPABASE_SERVICE_ROLE_JWT` and marks anon fallback unhealthy.
+
+### Executor transition / blocker
+
+- OpenCode 1.18.31 launched in detached GNU screen `estate-audit-deepseek` in the exact security worktree.
+- TUI independently verified `DeepSeek V4.1 Flash · Novita` and reasoning variant `max`.
+- A bounded review-only security prompt was submitted; Novita returned `Forbidden: not enough balance` before model execution. No DeepSeek finding is claimed from that attempt.
+- Task 1 remains `IN_PROGRESS` until the migration reaches production through the approved GitHub path and post-apply privilege checks prove `anon/authenticated=false`, `service_role=true`.
+
+### Supervisor scope correction (2026-09-15, post-review)
+
+- Corrected the Task 1 claim to name its exact objects: two RPCs — `public.support_notify(uuid,text,text,text,text,text)` and `public.support_log_action(uuid,text,text,text,text,jsonb)` — and four views — `content_job_health_summary`, `inquiry_engagement`, `seo_backlink_dashboard`, `support_user_notes_v`. The earlier parity-matrix wording "Supabase support/internal security boundary is least-privilege" was too broad and has been replaced in `docs/superpowers/seo-parity-matrix.md`.
+- Supervisor live read-only finding: production base tables are separately exposed through permissive grants/RLS. Effective anon reads returned 240 `content_jobs` rows and all 14/14 `seo_backlink_targets` plus 14/14 `seo_backlink_outreach` rows; `support_audit_log` exposes anon SELECT privilege/policy shape, but its current effective anon row count was 0 (no rows leaked). The Task 1 migration does not remediate this; it is recorded as a separate unresolved security follow-up (new `PENDING` matrix row).
+- Compatibility constraint recorded: `content_jobs` cannot simply be locked to `service_role` in Task 1 because the live Content Studio browser Realtime client subscribes to `public.content_jobs` with the anon key (`lib/supabaseRealtime.ts` → `createSupabaseBrowserClient()`; live caller `components/design/admin-content-studio.tsx:7533`, mounted via `components/design/admin.jsx:19`). Base-table hardening must be Realtime-compatible.
+- `seo_backlink_targets` / `seo_backlink_outreach` appear server-side only (`lib/seoEngine/backlinkEngine.ts` → `createSupabaseAdminClient()`), and `support_audit_log` is used server-side (`app/api/admin/users/[id]/route.ts`), but broad base-table hardening remains explicitly out of scope for Task 1.
+- Migration and focused test were re-verified GREEN and left unchanged (no churn): `tests/support-security-boundary.test.ts` 3/3, `tests/migration-order.test.ts` 8/8, `npx tsc --noEmit` exit 0.
+
+### Execution resumed — first-party OpenCode provider (2026-09-15)
+
+- The earlier Novita provider block (`Forbidden: not enough balance`) was superseded: execution resumed successfully on the first-party OpenCode provider `deepseek` with model `deepseek-flash` (= DeepSeek V4.1 Flash), build variant `max`.
+- The resumed run reviewed the staged implementation and left `supabase/migrations/20260915_support_security_boundary.sql` and `tests/support-security-boundary.test.ts` unchanged (no churn).
+- The only edits made were documentation scope corrections: the narrowed Task 1 claim (two RPCs + four views) and separate base-table follow-up row in the parity matrix, and the corresponding ledger record.
+- Accepted the supervisor correction that `admin-command-center.tsx` is DEPRECATED / not mounted and must not be cited as live Realtime compatibility evidence; the live path recorded is `components/design/admin-content-studio.tsx:7533` via `lib/supabaseRealtime.ts` → `createSupabaseBrowserClient()`.
+- The run stopped without commit, push, PR, merge, deploy, or production DDL. No approval is claimed; Task 1 remains `IN_PROGRESS`.
