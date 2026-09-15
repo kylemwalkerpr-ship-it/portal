@@ -102,7 +102,10 @@ describe('Content Studio Codex second-review production seams', () => {
     expect(fence).toMatch(/\.gt\(['"]execution_lease_expires_at['"]/)
     expect(fence).toMatch(/COMPAT_COLUMNS/)
     expect(fence).toMatch(/insert['"]\s*\|\|\s*tableProperty\s*===\s*['"]upsert/)
-    expect(persist).toMatch(/strict Content Studio deliberately does not run the legacy broad sibling-closing/)
+    expect(persist).toMatch(/strictFence\([\s\S]{0,500}update\(baseRow\)/)
+    expect(persist).toMatch(/strictFence\([\s\S]{0,500}update\(legacyRow\)/)
+    expect(persist).not.toMatch(/\.neq\(['"]id['"]/)
+    expect(persist).not.toMatch(/core\.persistPipelineJob\(input\)[\s\S]{0,300}execution\?\.strict/)
   })
 
   test('publication proof binds both repository artifact and live substantive body digests', () => {
