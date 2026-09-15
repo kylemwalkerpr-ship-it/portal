@@ -168,7 +168,7 @@ export async function* runContentStudioPipelineStream(
     throw error
   } finally {
     if (!finished) {
-      try { await iterator.return?.() } catch { /* preserve original failure */ }
+      try { await iterator.return?.(undefined as never) } catch { /* preserve original failure */ }
       await persistExecutionFailure({
         request: hydrated,
         contract: resolved.contract,
