@@ -22,7 +22,7 @@ import {
   targetWordsForType,
 } from '@/lib/seoFactory/contentDepth'
 import { resolveProviderAuthors, citedProvidersPromptBlock, citedProvidersPublic, isMarketplaceServiceUrl, mergeMarketplaceServiceLinks } from '@/lib/seoFactory/providerAuthors'
-import { sealBriefFromAssembly } from '@/lib/seoFactory/sealedBrief'
+import { BriefInvalidError, sealBriefFromAssembly } from '@/lib/seoFactory/sealedBrief'
 
 /**
  * POST /api/content-studio/suggest-brief
@@ -39,8 +39,6 @@ import { sealBriefFromAssembly } from '@/lib/seoFactory/sealedBrief'
  * radarMeta fields — do not advertise them as guaranteed Stage I inputs.
  */
 export async function POST(req: NextRequest) {
-  // Grok 4.6 reasoning needs 1–3 minutes for a full brief. A 90s/120s
-  // ceiling is what produced "timed out after 90s" in the studio.
   const controller = new AbortController()
   const globalTimer = setTimeout(() => controller.abort(), 660_000)
   try {
@@ -58,29 +56,17 @@ export async function POST(req: NextRequest) {
     const audience = String(body.audience || '')
     const primaryKeyword = String(body.primaryKeyword || topic)
 
-    // ── REGION AUTO-SELECT ──────────────────────────────────────────────
-    // if detected.confident, ALWAYS use detected.region (even if body is the
-    // default US). If body.region is explicit AND detected is not confident,
-    // keep body. If they conflict and both are confident, topic wins.
     const resolvedRegion = resolveBriefRegion(typeof body.region === 'string' ? body.region : null, `${topic} ${primaryKeyword}`)
     region = resolvedRegion.region
     const regionAutoSelected = resolvedRegion.regionAutoSelected
-    // Claude Opus 5 via Run BiOS is the PRIMARY brief model (see
-    // lib/seoFactory/briefModel). Grok and DeepSeek V4 Flash (Run BiOS +
-    // Baseten) are the other two Brief families; every other value —
-    // including 'auto' or a stale drafting provider id — coerces to the
-    // Claude Opus 5 default. When the primary is unconfigured or fails, the
-    // call below falls back to Grok.
     const { aiProvider, model: modelOverride } = resolveBriefAiProvider(
       String(body.aiProvider || ''),
     )
 
-    // GSC live data
     const gscImpressions = Number(body.gscImpressions) || 0
     const gscPosition = Number(body.gscPosition) || 0
     const gscClicks = Number(body.gscClicks) || 0
 
-    // Discover intel
     const radarGaps = Array.isArray(body.radarGaps)
       ? body.radarGaps.map(String).slice(0, 8)
       : [] as string[]
@@ -113,8 +99,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Canonical estate shortlist. Metadata tells the brief model why a page
-    // belongs, where it should be placed, and whether it was live-verified.
     let interlinks = Array.isArray(body.interlinks)
       ? body.interlinks.map((l: any) => ({
           label: String(l.label || ''), url: String(l.url || ''),
@@ -128,7 +112,6 @@ export async function POST(req: NextRequest) {
       if (estate?.suggestions.length) interlinks = estate.suggestions
     }
 
-    // Sitemap stats
     const sitemapCount = Number(body.sitemapCount) || 0
 
     const engineFeed = await assembleMasterEngineFeed({
@@ -151,11 +134,6 @@ export async function POST(req: NextRequest) {
       regional_page: 'regional landing page (location-signalled)',
     }
 
-    // ── WORD COUNT BUDGET ────────────────────────────────────────────────
-    // Dictated by the canonical Google-aligned depth spec (contentDepth.ts)
-    // for THIS content type — never the model's whim or a hardcoded default.
-    // The draft-time audit + ship gate enforce the same numbers, so the brief
-    // must carry them verbatim and the model must plan sections to fill them.
     const minWords = minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
     const maxWords = maxWordsForType(contentType)
@@ -193,8 +171,8 @@ export async function POST(req: NextRequest) {
       '  "metaDescription": "140–160 character SEO meta description (compelling benefit + primary keyword, no clickbait)",',
       '  "recommendedTone": "professional | educational | authoritative | persuasive",',
       '  "recommendedAudience": "1-sentence description of the ideal reader",',
-      `  "minWords": ${minWords},   // minimum ${minWords} (Google depth floor)`,
-      `  "maxWords": ${maxWords},   // HARD MAX ${maxWords} — never exceed`,
+      `  "minWords": ${minWords},`,
+      `  "maxWords": ${maxWords},`,
       '  "readabilityLevel": "8th grade — active voice, short sentences, direct address (‘you’)",',
       '  "reasoning": "3–5 sentences explaining the editorial strategy: what gap this fills, why these keywords, how H2s map to search intent, which competitors to outrank.",',
       '  "thesis": "one sentence the whole article argues — not the raw keyword",',
@@ -260,8 +238,6 @@ export async function POST(req: NextRequest) {
     })
     const seedOfficialSources = await assembleDraftSourceAllowlist(region, discoverSources, citationCtx)
     const officialBankUrls = sourcesForBrief(citationCtx).map((s) => s.url)
-    // Never tell the writer not to invent government paths without also
-    // injecting the required official URLs into the allowlist.
     const verifiedAllowlist = seedOfficialSources.length ? seedOfficialSources : officialBankUrls
     const providerAuthors = await resolveProviderAuthors({
       region,
@@ -331,14 +307,8 @@ export async function POST(req: NextRequest) {
       'Produce the complete editorial brief JSON now.',
     ].filter(Boolean).join('\n')
 
-    // Claude Opus 5 / Grok are reasoning models: 90s is too short (live
-    // probe: a brief can land at ~43s, or take well over 90s on a loaded
-    // session). Floor at 5 minutes.
     const { ai, fallbackUsed } = await generateBriefText({
       aiProvider,
-      // Only forward a model override that the selected family OWNS — a
-      // stale non-family pin leaking in made the Entrim leg send
-      // model=grok-4.6 (400) on the deployed worker.
       model: modelOverride && String(modelOverride).toLowerCase().includes(String(aiProvider).split('-')[0].toLowerCase())
         ? modelOverride
         : undefined,
@@ -349,9 +319,6 @@ export async function POST(req: NextRequest) {
       timeoutMs: 600_000,
     })
 
-    // Models occasionally return a raw newline/tab inside a quoted JSON
-    // value. parseBriefJson performs only the narrow safe recovery for those
-    // control characters and still fails closed on malformed JSON structure.
     const parsed = parseBriefJson(ai.text || '')
 
     if (!parsed.suggestedH1 && !parsed.h2Outline) {
@@ -361,10 +328,6 @@ export async function POST(req: NextRequest) {
       }, { status: 502 })
     }
 
-    // ── INTERNAL LINK GUARANTEE (≥2 verified estate links in EVERY brief) ──
-    // The draft audit requires ≥2 internal/estate links; a brief with 0–1
-    // targets leaves the drafting model to improvise. Guarantee it
-    // mechanically: brief allowlist → live-verified registry → region anchors.
     let briefAllowlist = interlinks
     if (briefAllowlist.length === 0) {
       try {
@@ -397,27 +360,12 @@ export async function POST(req: NextRequest) {
       return { ...source, ...target, placement: target.placement || source?.placement || 'Contextually relevant section' }
     })
 
-    // The model may echo a sub-range INSIDE the canonical budget; anything
-    // below the floor or above the hard max is clamped back to the spec so a
-    // brief can never under-spec (or over-spec) the drafting length.
     const { minWords: finalMin, maxWords: finalMax } = clampBriefWordBudget(
       contentType,
       parsed.minWords as number | undefined,
       parsed.maxWords as number | undefined,
     )
 
-    // ── KEYWORD FLOOR GUARANTEE (≥5 short / ≥4 long-tail) ──────────────
-    // The quality gate hard-blocks drafts when the brief ships fewer than 5
-    // short keywords ("Brief shipped only N short keyword(s); need at least
-    // 5"). The model occasionally returns 3-4 shorts — merge its output with
-    // the deterministic partitioner so the floor is ALWAYS met. The
-    // partitioner derives short heads from the primary's own word windows
-    // (handles long primaries like "study abroad statement of purpose").
-    // ── BRIEF COHERENCE GUARD (deterministic, model-independent) ─────────
-    // The prompt forbids cross-region keywords/H2s; this ENFORCES it. A
-    // model that echoes "canada study permit" into a US brief gets it
-    // stripped here — and the kwH2Map entry goes with it, so the drafting AI
-    // can never inherit a mixed-region placement.
     const modelShortRaw = Array.isArray(parsed.shortTail) ? parsed.shortTail.map(String).filter(Boolean) : []
     const modelLongRaw = Array.isArray(parsed.longTail) ? parsed.longTail.map(String).filter(Boolean) : []
     const shortFilter = filterKeywordsByRegion(modelShortRaw, region)
@@ -443,32 +391,22 @@ export async function POST(req: NextRequest) {
     })
 
     const normalizeHeading = (value: string) => String(value || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim()
-    const skeletonOutline = [
-      'In 60 seconds',
-      `What ${primaryKeyword} means for this reader`,
-      'Eligibility and requirements',
-      'Documents and evidence checklist',
-      'Application process step by step',
-      'Costs, timing and common risks',
-      'Worked Example',
-      'FAQ',
-      'Sources',
-    ]
     const sanitizedModelOutline = sanitizeBriefOutline(
       outlineFilter.kept,
       [...merged.short, ...merged.longTail, primaryKeyword],
     )
-    const finalOutlineUncapped = ensureMinimumOutline(sanitizedModelOutline.length ? sanitizedModelOutline : skeletonOutline)
-    // Minimum-outline guarantee: legal/immigration guides need a real
-    // skeleton — a 5-section brief invites truncated expansion, and the
-    // review gate now BLOCKS when canonical outline sections are absent
-    // from the body. Deterministically complete the skeleton (content
-    // sections first, then structural) so sparse skeletons never ship again.
+    const structural = /^(in 60 seconds|table of contents|faq|sources)$/i
+    const substantiveCount = sanitizedModelOutline.filter((heading) => !structural.test(normalizeHeading(heading))).length
+    const requiredSubstantive = contentType === 'blog_post' || contentType === 'blog_summary' || contentType === 'news_summary' ? 3 : 4
+    if (!sanitizedModelOutline.length || substantiveCount < requiredSubstantive) {
+      throw new BriefInvalidError([
+        `outline: briefing produced ${substantiveCount} substantive section(s); need at least ${requiredSubstantive} evidence-led sections`,
+        'outline: generic eligibility/documents/process/cost/example sections are not manufactured as fallback',
+      ])
+    }
+    const finalOutlineUncapped = ensureMinimumOutline(sanitizedModelOutline, contentType)
     const finalOutline = finalOutlineUncapped.slice(0, 12)
 
-    // The keyword floor can add terms after the model response. Complete the
-    // placement map deterministically so the UI and drafting contract never
-    // show 9 required keywords beside an empty placement panel.
     const completedKwH2Map: Record<string, string> = {}
     const allKeywords = [...merged.short.slice(0, 8), ...merged.longTail.slice(0, 6)]
     const headingTokens = (heading: string) => new Set(heading.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))
@@ -481,9 +419,6 @@ export async function POST(req: NextRequest) {
         completedKwH2Map[keyword] = exact
         continue
       }
-      // Long-tail keywords belong in the FAQ ANSWER, never as the question
-      // text. Harper is prose-only and cannot rewrite an H2/FAQ question that
-      // is a pasted demand phrase. Prefer the FAQ H2 as the placement target.
       if (longTailSet.has(keyword.toLowerCase())) {
         completedKwH2Map[keyword] = faqHeading || finalOutline[1] || finalOutline[0]
         continue
@@ -516,10 +451,6 @@ export async function POST(req: NextRequest) {
       targetWords: /^(in 60 seconds|table of contents|sources)$/i.test(heading) ? 80 : sectionTarget,
       keywords: allKeywords.filter((keyword) => completedKwH2Map[keyword] === heading),
     }))
-    // Strict per-section word budgets — the hardlined single-run contract the
-    // drafter receives (page window distributed across the outline; TLDR/FAQ/
-    // Sources reserved). The studio carries these into generate-stream so the
-    // drafting prompt demands ONE article inside the window, never echoes.
     const sectionBudgets = buildSectionBudgets({
       sections: finalOutline.map((h) => ({
         heading: h,
@@ -546,9 +477,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      // Which model actually produced the brief — the contract owner pin for
-      // this article. The UI carries it into Draft + Review so re-audits use
-      // the same backend.
       provider: ai.provider,
       model: ai.model,
       ownerProvider: aiProvider,
@@ -617,7 +545,7 @@ export async function POST(req: NextRequest) {
       }),
       briefCompleteness: {
         identity: Boolean(parsed.suggestedH1 && parsed.targetSlug),
-        outline: finalOutline.length >= 6,
+        outline: substantiveCount >= requiredSubstantive,
         keywords: merged.short.length >= 5 && merged.longTail.length >= 4,
         placements: allKeywords.every((keyword) => Boolean(completedKwH2Map[keyword])),
         sources: finalSources.length >= 3,
@@ -628,7 +556,8 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     clearTimeout(globalTimer)
     const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = err instanceof BriefInvalidError ? 422 : 500
+    return NextResponse.json({ error: message }, { status })
   } finally {
     clearTimeout(globalTimer)
   }
