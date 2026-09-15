@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline, type RequestedShipMode, type PipelineInput } from '@/lib/seoFactory/pipeline'
-import { runContentStudioPipeline } from '@/lib/seoFactory/contentStudioPipeline'
+import { runContentStudioPipeline, type ContentStudioPipelineInput } from '@/lib/seoFactory/contentStudioPipeline'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
 
@@ -39,9 +39,6 @@ export async function POST(request: NextRequest) {
     const contractBound = Boolean(body.contractId || body.contract_id || body.writingContractRequired === true)
     const existingJobId = String(body.existingJobId || body.jobId || '').trim() || null
 
-    // A persisted contract already contains the accepted intelligence snapshot.
-    // Re-running Master Engine here would make JSON and SSE author from a
-    // different dossier than suggest-brief saved.
     const engineFeed = contractBound
       ? null
       : await assembleMasterEngineFeed({
@@ -113,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = contractBound
-      ? await runContentStudioPipeline(input as Parameters<typeof runContentStudioPipeline>[0])
+      ? await runContentStudioPipeline({ ...input, writingContractRequired: true } as unknown as ContentStudioPipelineInput)
       : await runSeoFactoryPipeline(input)
 
     if (result.shipError && !result.content) {
