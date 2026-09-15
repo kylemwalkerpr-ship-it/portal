@@ -1,8 +1,8 @@
 import * as core from './renderTargetCore'
 import {
   buildExpectedRevisionMarker,
-  currentPublicationMarker,
   injectRevisionMarkerIntoRenderedFile,
+  publicationMarkerForContent,
 } from './publicationProof'
 import {
   currentContentStudioExecution,
@@ -23,16 +23,20 @@ export function renderTargetFile(
 ): ReturnType<typeof core.renderTargetFile> {
   const rendered = core.renderTargetFile(opts)
   const execution = currentContentStudioExecution()
-  let marker = currentPublicationMarker()
-  if (!marker && execution?.strict && execution.contractId && execution.contractHash) {
+  let marker: string | null = null
+  if (execution?.strict && execution.contractId && execution.contractHash) {
     marker = buildExpectedRevisionMarker({
       contractId: execution.contractId,
       contractHash: execution.contractHash,
       content: opts.content,
     })
+    recordPublicationMarker(marker)
+  } else {
+    // Human approve/reship has no authoring lease. The publication-only
+    // context derives the marker from the exact post-repair body here.
+    marker = publicationMarkerForContent(opts.content)
   }
   if (!marker) return rendered
-  recordPublicationMarker(marker)
   return {
     ...rendered,
     fileContent: injectRevisionMarkerIntoRenderedFile(rendered.fileContent, marker),
