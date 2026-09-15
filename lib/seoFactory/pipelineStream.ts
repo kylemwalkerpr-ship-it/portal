@@ -219,10 +219,11 @@ export async function* runSeoFactoryPipelineStream(
     // The row is finalized (content/audit/ship) at the end of the stream.
     let earlyJobId: string | null = String(input.existingJobId || '').trim() || null
     try {
-      const earlySb = createClient(
+      const { fenceStreamContentJobsClient } = await import('./streamContentJobFence')
+      const earlySb = fenceStreamContentJobsClient(createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
+      ))
       const earlyRow: Record<string, unknown> = {
         user_id: input.userId || 'admin',
         source_job_id: input.sourceJobId || null,
