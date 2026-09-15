@@ -133,7 +133,7 @@ export async function verifyContractEvidenceRows(
   const ids = expected.map((ref) => String(ref.id))
   const result = await db
     .from('content_studio_evidence_items')
-    .select('id,source_kind,source_url,observed_at,jurisdiction,content_hash,confidence,verification')
+    .select('id,source_kind,source_url,publisher,observed_at,jurisdiction,locale,query,observation,excerpt,content_hash,confidence,verification')
     .in('id', ids)
   if (result.error) throw new Error(`evidence verification load failed: ${result.error.message}`)
   const rows = new Map(
@@ -156,6 +156,29 @@ export async function verifyContractEvidenceRows(
     }
     if (String(row.jurisdiction || '') !== String(ref.jurisdiction || '')) {
       throw new Error(`writing contract evidence jurisdiction mismatch: ${ref.id}`)
+    }
+
+    // Do not trust the content_hash column by itself. Recompute it from the
+    // persisted observation/excerpt and row provenance. Authority/claimSupport
+    // live in the immutable contract payload and are themselves protected by
+    // contract_hash, so both halves must agree for this check to pass.
+    const recomputed = hashEvidenceContent({
+      sourceKind: String(row.source_kind || ''),
+      sourceUrl: row.source_url ? String(row.source_url) : null,
+      publisher: row.publisher ? String(row.publisher) : null,
+      observedAt: String(row.observed_at || ''),
+      jurisdiction: row.jurisdiction ? String(row.jurisdiction) : null,
+      locale: row.locale ? String(row.locale) : null,
+      query: row.query ? String(row.query) : null,
+      observation: String(row.observation || ''),
+      excerpt: row.excerpt ? String(row.excerpt) : null,
+      authority: ref.authority,
+      claimSupport: ref.claimSupport,
+      confidence: String(row.confidence || 'unverified'),
+      verification: String(row.verification || 'pending') as ResearchEvidenceInput['verification'],
+    })
+    if (recomputed !== ref.contentHash) {
+      throw new Error(`writing contract evidence payload hash mismatch: ${ref.id}`)
     }
   }
 }
