@@ -3,13 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { githubFetch } from '@/lib/githubContents'
 import { runStoredContentJob, type StoredContentJob } from '@/lib/seoFactory/storedJobExecution'
-import {
-  createContentStudioExecutionState,
-  runInContentStudioExecution,
-} from '@/lib/seoFactory/contentStudioExecutionContext'
+import { loadWritingContract } from '@/lib/seoFactory/writingContractStore'
 import {
   buildPublicationApprovalManifest,
   publicationManifestFromAudit,
+  runWithPublicationIdentity,
   withPublicationManifest,
 } from '@/lib/seoFactory/publicationProof'
 import { GET as legacyGET, POST as legacyPOST, PATCH as legacyPATCH } from './legacy'
@@ -57,6 +55,19 @@ export async function PATCH(request: NextRequest) {
   const job = loaded.data as Record<string, any>
   if (!job.contract_id) return legacyPATCH(request)
 
+  // Every contracted admin action revalidates the immutable contract AND its
+  // persisted evidence hashes before it can regenerate, approve, reship or merge.
+  try {
+    const contract = await loadWritingContract(db(), {
+      contractId: String(job.contract_id),
+      contractHash: String(job.contract_hash || ''),
+      jobId: id,
+    })
+    if (!contract) return NextResponse.json({ ok:false, error:'Writing contract not found for job' }, { status:409 })
+  } catch (error) {
+    return NextResponse.json({ ok:false, error:error instanceof Error ? error.message : 'Writing contract validation failed' }, { status:409 })
+  }
+
   if (action === 'regenerate') {
     try {
       const result = await runStoredContentJob(job as unknown as StoredContentJob, {
@@ -78,12 +89,22 @@ export async function PATCH(request: NextRequest) {
     if (problem) return NextResponse.json({ ok:false, error: problem }, { status: 409 })
   }
 
-  const state = createContentStudioExecutionState(true, {
-    contractId: String(job.contract_id),
-    contractHash: String(job.contract_hash || ''),
-    opportunityId: String(job.opportunity_id || ''),
-  })
-  const response = await runInContentStudioExecution(state, () => legacyPATCH(request))
+  // Human approval is a publication operation, not an authoring operation.
+  // It receives NO AI execution lease. The publication-only context lets the
+  // renderer derive the marker from the exact post-repair body it is shipping.
+  let response: Response
+  let marker: string | null = null
+  if (mergingExisting) {
+    response = await legacyPATCH(request)
+  } else {
+    const publication = await runWithPublicationIdentity({
+      contractId: String(job.contract_id),
+      contractHash: String(job.contract_hash || ''),
+      opportunityId: String(job.opportunity_id || ''),
+    }, () => legacyPATCH(request))
+    response = publication.result
+    marker = publication.marker
+  }
   if (!response.ok) return response
 
   const payload = await response.clone().json().catch(() => ({})) as Record<string, any>
@@ -111,36 +132,28 @@ export async function PATCH(request: NextRequest) {
     return response
   }
 
-  const marker = state.lastPublicationMarker
   if ((action === 'approve' || action === 'reship') && !body.dryRun) {
     if (!marker || !ship) {
       await db().from('content_jobs').update({ publication_phase:'verification_failed', execution_stage:'verification_failed', error_message:'Contracted ship completed without a durable revision marker/ship result' }).eq('id', id)
-      return NextResponse.json({ ok:false, error:'Contracted ship completed without a durable revision marker/ship result' }, { status: 500 })
+      return NextResponse.json({ ok:false, error:'Contracted ship completed without a durable revision marker/ship result' }, { status:500 })
     }
-    const repo = { owner: String(ship.owner || repoParts(job.target_repo).owner), repo: String(ship.repo || repoParts(job.target_repo).repo) }
+    const repo = { owner:String(ship.owner || repoParts(job.target_repo).owner), repo:String(ship.repo || repoParts(job.target_repo).repo) }
+    // legacyPATCH returns the exact persisted post-repair body in job.content.
     const content = String(payload?.job?.content || body.content || job.content || '')
     const manifest = buildPublicationApprovalManifest({
-      jobId: id,
-      contractId: job.contract_id,
-      contractHash: job.contract_hash,
-      opportunityId: job.opportunity_id,
-      repoOwner: repo.owner,
-      repoName: repo.repo,
-      path: String(ship.path || job.content_path || ''),
-      canonical: String(ship.canonicalUrl || job.canonical_url || ''),
-      expectedMarker: marker,
-      content,
-      approvalActor: auth.profileId || null,
-      prNumber: ship.prNumber || job.pr_number || null,
-      approvedHeadSha: ship.commitSha || null,
+      jobId:id, contractId:job.contract_id, contractHash:job.contract_hash, opportunityId:job.opportunity_id,
+      repoOwner:repo.owner, repoName:repo.repo, path:String(ship.path || job.content_path || ''),
+      canonical:String(ship.canonicalUrl || job.canonical_url || ''), expectedMarker:marker, content,
+      approvalActor:auth.profileId || null, prNumber:ship.prNumber || job.pr_number || null,
+      approvedHeadSha:ship.commitSha || null,
     })
     manifest.mergeSha = ship.mergeCommitSha || (ship.status === 'deployed' ? ship.commitSha || null : null)
     const latest = await db().from('content_jobs').select('audit_json').eq('id', id).single()
     await db().from('content_jobs').update({
-      audit_json: withPublicationManifest(latest.data?.audit_json, manifest),
-      expected_revision_marker: marker,
-      publication_phase: ship.status === 'pr_created' ? 'pr_open' : 'deployment_pending',
-      execution_stage: ship.status === 'pr_created' ? 'pr_open' : 'merged',
+      audit_json:withPublicationManifest(latest.data?.audit_json, manifest),
+      expected_revision_marker:marker,
+      publication_phase:ship.status === 'pr_created' ? 'pr_open' : 'deployment_pending',
+      execution_stage:ship.status === 'pr_created' ? 'pr_open' : 'merged',
     }).eq('id', id).eq('contract_id', job.contract_id).eq('contract_hash', job.contract_hash)
   }
   return response
@@ -151,34 +164,31 @@ export async function POST(request: NextRequest) {
   const action = String(body.action || '').trim()
 
   if (action === 'bulk_approve') {
-    const ids = Array.isArray(body.ids) ? body.ids.map((v: unknown) => String(v).trim()).filter(Boolean).slice(0, 25) : []
+    const ids = Array.isArray(body.ids) ? body.ids.map((v: unknown) => String(v).trim()).filter(Boolean).slice(0,25) : []
     const results: Array<{ id:string; ok:boolean; error?:string }> = []
     for (const id of ids) {
-      const child = new NextRequest(request.url, {
-        method: 'PATCH', headers: request.headers,
-        body: JSON.stringify({ id, action:'approve', dryRun:Boolean(body.dryRun) }),
-      })
+      const child = new NextRequest(request.url, { method:'PATCH', headers:request.headers, body:JSON.stringify({ id, action:'approve', dryRun:Boolean(body.dryRun) }) })
       const res = await PATCH(child)
       const out = await res.clone().json().catch(() => ({})) as any
-      results.push({ id, ok: res.ok && out.ok !== false, error: out.error })
+      results.push({ id, ok:res.ok && out.ok !== false, error:out.error })
     }
     const succeeded = results.filter(r=>r.ok).length
-    return NextResponse.json({ ok:succeeded===results.length, action, processed:results.length, succeeded, failed:results.length-succeeded, results }, { status: succeeded ? 200 : 409 })
+    return NextResponse.json({ ok:succeeded===results.length, action, processed:results.length, succeeded, failed:results.length-succeeded, results }, { status:succeeded ? 200 : 409 })
   }
 
   if (action !== 'rerun_resume') return legacyPOST(request)
   const auth = await requireAdminUser()
-  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
-  const ids = Array.isArray(body.ids) ? body.ids.map((value: unknown) => String(value).trim()).filter(Boolean).slice(0, 10) : []
-  if (!ids.length) return NextResponse.json({ error: 'rerun_resume requires ids[]' }, { status: 400 })
-  const results: Array<{ id: string; ok: boolean; error?: string; newJobId?: string }> = []
+  if ('error' in auth) return NextResponse.json({ error:auth.error }, { status:auth.status })
+  const ids = Array.isArray(body.ids) ? body.ids.map((value:unknown)=>String(value).trim()).filter(Boolean).slice(0,10) : []
+  if (!ids.length) return NextResponse.json({ error:'rerun_resume requires ids[]' }, { status:400 })
+  const results: Array<{ id:string; ok:boolean; error?:string; newJobId?:string }> = []
   for (const id of ids) {
     try {
-      const { data: job, error } = await loadJob(id)
+      const { data:job, error } = await loadJob(id)
       if (error || !job) { results.push({ id, ok:false, error:error?.message || 'not found' }); continue }
       const result = await runStoredContentJob(job as unknown as StoredContentJob, {
         dryRun:Boolean(body.dryRun), minAuditScore:body.minAuditScore != null ? Number(body.minAuditScore) : 55,
-        maxRefine:body.maxRefine != null ? Math.min(2, Number(body.maxRefine) || 2) : 2, regenerationMode:'refresh',
+        maxRefine:body.maxRefine != null ? Math.min(2,Number(body.maxRefine)||2) : 2, regenerationMode:'refresh',
       })
       results.push({ id, ok:result.ok, newJobId:result.jobId || undefined, error:result.error || result.shipError || undefined })
     } catch (error) { results.push({ id, ok:false, error:error instanceof Error ? error.message : 'regenerate failed' }) }
