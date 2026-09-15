@@ -43,18 +43,18 @@ jest.mock('@/lib/seoFactory/deployMonitor', () => ({
 }))
 
 const mockLoadWritingContract = jest.fn()
-const mockClaimExecution = jest.fn(async () => ({
+const mockClaimExecution = jest.fn(async (_db?: unknown, _input?: unknown) => ({
   owner: 'test-execution-owner',
   attempt: 5,
   leaseExpiresAt: new Date(Date.now() + 900_000).toISOString(),
 }))
-const mockAssertExecution = jest.fn(async () => undefined)
-const mockReleaseExecution = jest.fn(async () => true)
+const mockAssertExecution = jest.fn(async (_db?: unknown, _input?: unknown) => undefined)
+const mockReleaseExecution = jest.fn(async (_db?: unknown, _input?: unknown) => true)
 jest.mock('@/lib/seoFactory/writingContractStore', () => ({
-  loadWritingContract: (...args: unknown[]) => mockLoadWritingContract(...args),
-  claimContentStudioExecution: (...args: unknown[]) => mockClaimExecution(...args),
-  assertContentStudioExecution: (...args: unknown[]) => mockAssertExecution(...args),
-  releaseContentStudioExecution: (...args: unknown[]) => mockReleaseExecution(...args),
+  loadWritingContract: (db: unknown, input: unknown) => mockLoadWritingContract(db, input),
+  claimContentStudioExecution: (db: unknown, input: unknown) => mockClaimExecution(db, input),
+  assertContentStudioExecution: (db: unknown, input: unknown) => mockAssertExecution(db, input),
+  releaseContentStudioExecution: (db: unknown, input: unknown) => mockReleaseExecution(db, input),
 }))
 
 const mockGithubFetch = jest.fn()
