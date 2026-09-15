@@ -1,16 +1,15 @@
 /**
  * POST /api/content-studio/generate
  *
- * Compatibility entry point for older UI tabs. Contracted jobs use the same
- * immutable production runner as /api/seo-factory/generate; historical calls
- * without contract identity retain the explicit legacy SEO Factory path.
+ * Content Studio generation is contract-bound. Historical uncontracted SEO
+ * Factory traffic belongs on /api/seo-factory/generate; this route never
+ * exposes the raw pipeline as an alternate Content Studio authoring path.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import {
-  runSeoFactoryPipeline,
-  type RequestedShipMode,
-  type PipelineInput,
+import type {
+  RequestedShipMode,
+  PipelineInput,
 } from '@/lib/seoFactory/pipeline'
 import { runContentStudioPipeline, type ContentStudioPipelineInput } from '@/lib/seoFactory/contentStudioPipeline'
 import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
@@ -24,6 +23,16 @@ export async function POST(request: NextRequest) {
     const topic = String(body.topic || body.title || '').trim()
     if (!topic) return NextResponse.json({ error: 'Topic is required' }, { status: 400 })
 
+    const contractId = String(body.contractId || body.contract_id || '').trim()
+    const contractHash = String(body.contractHash || body.contract_hash || '').trim()
+    const existingJobId = String(body.existingJobId || body.jobId || '').trim()
+    if (!contractId || !contractHash || !existingJobId) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Content Studio writing contract is required: jobId, contractId and contractHash must be supplied',
+      }, { status: 409 })
+    }
+
     const contentTypeRaw = String(body.content_type || body.contentType || 'legal_guide')
     const contentType = contentTypeRaw === 'article'
       ? 'legal_guide'
@@ -33,7 +42,6 @@ export async function POST(request: NextRequest) {
     const region = String(body.region || 'US').toUpperCase()
     const shipMode = (String(body.ship_mode || body.shipMode || 'pr').toLowerCase() || 'pr') as RequestedShipMode
     const isRegen = Boolean(body.sourceJobId)
-    const contractBound = Boolean(body.contractId || body.contract_id || body.writingContractRequired === true)
 
     const input: PipelineInput & Record<string, unknown> = {
       topic,
@@ -67,26 +75,20 @@ export async function POST(request: NextRequest) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 2,
       userId: auth.profileId || 'admin',
-      existingJobId: String(body.existingJobId || body.jobId || '').trim() || null,
+      existingJobId,
       sourceJobId: body.sourceJobId ? String(body.sourceJobId) : null,
       regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
       regenerationMode: body.regenerationMode === 'resume' ? 'resume' : body.sourceJobId ? 'manual' : 'new',
-      intelligenceLineage: contractBound
-        ? null
-        : body.intelligenceLineage && typeof body.intelligenceLineage === 'object'
-          ? body.intelligenceLineage as Record<string, unknown>
-          : null,
-      writingContractRequired: contractBound,
-      contractId: String(body.contractId || body.contract_id || '').trim() || null,
-      contractHash: String(body.contractHash || body.contract_hash || '').trim() || null,
+      intelligenceLineage: null,
+      writingContractRequired: true,
+      contractId,
+      contractHash,
       contractVersion: body.contractVersion ?? body.contract_version ?? null,
       evidenceHash: String(body.evidenceHash || body.evidence_hash || '').trim() || null,
       opportunityId: String(body.opportunityId || body.opportunity_id || '').trim() || null,
     }
 
-    const result = contractBound
-      ? await runContentStudioPipeline({ ...input, writingContractRequired: true } as unknown as ContentStudioPipelineInput)
-      : await runSeoFactoryPipeline(input)
+    const result = await runContentStudioPipeline({ ...input, writingContractRequired: true } as unknown as ContentStudioPipelineInput)
 
     return NextResponse.json({
       ok: result.ok,
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
       seoScore: result.audit.score,
       gsc: result.gsc,
       error: result.error || result.shipError || null,
-      pipeline: contractBound ? 'content-studio-contract-v2' : 'seo-factory-legacy',
+      pipeline: 'content-studio-contract-v2',
     })
   } catch (err) {
     console.error('[content-studio/generate]', err)
