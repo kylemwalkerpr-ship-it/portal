@@ -358,13 +358,15 @@ Real guidance for applicants who need a clear next step.
 import { ensureMinimumOutline } from '../lib/seoEngine/researchDemand'
 
 describe('ensureMinimumOutline', () => {
-  it('completes a sparse skeleton with structural + example sections', () => {
+  it('preserves supplied structure and adds only required guide apparatus', () => {
     const given = ['Eligibility and requirements', 'Application process']
     const out = ensureMinimumOutline(given)
+    expect(out).toContain(given[0])
+    expect(out).toContain(given[1])
     expect(out).toContain('In 60 seconds')
-    expect(out).toContain('Worked Example')
     expect(out).toContain('FAQ')
     expect(out).toContain('Sources')
+    expect(out).not.toContain('Worked Example')
     expect(out[0]).toBe('In 60 seconds')
   })
 
