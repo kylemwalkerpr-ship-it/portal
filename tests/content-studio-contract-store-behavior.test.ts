@@ -20,7 +20,7 @@ describe('persisted evidence verification', () => {
     sourceKind:'official', sourceUrl:'https://www.uscis.gov/example', publisher:'USCIS',
     observedAt:'2026-09-14T10:00:00.000Z', jurisdiction:'US', locale:'en-US', query:'OPT timing',
     observation:'USCIS states the filing window in the observed page.', excerpt:'Observed excerpt.',
-    authority:'authoritative' as const, claimSupport:'supported' as const,
+    authority:'authoritative' as const, claimSupport:'verified' as const,
     confidence:'observed', verification:'verified' as const,
   }
   const hash = hashEvidenceContent(base)
