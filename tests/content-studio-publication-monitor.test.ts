@@ -1,5 +1,9 @@
 import { reconcilePublicationDeployment } from '@/lib/seoFactory/publicationMonitor'
-import type { PersistedPublicationManifest } from '@/lib/seoFactory/publicationProof'
+import {
+  artifactContentHash,
+  publicationBodyHash,
+  type PersistedPublicationManifest,
+} from '@/lib/seoFactory/publicationProof'
 
 const githubFetch = jest.fn()
 const getRepoFileContent = jest.fn()
@@ -10,6 +14,9 @@ jest.mock('@/lib/githubContents', () => ({
   githubFetch: (...args: unknown[]) => githubFetch(...args),
   getRepoFileContent: (...args: unknown[]) => getRepoFileContent(...args),
 }))
+
+const APPROVED_BODY = '# Approved article\n\nThis is the exact substantive approved article body for deployment verification.'
+const APPROVED_ARTIFACT = `export const metadata = { other: { "content-studio-revision": "csrev_marker" } }\n${APPROVED_BODY}`
 
 function builder(table: string) {
   let patch: Record<string, unknown> | null = null
@@ -27,10 +34,13 @@ jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: () => adminDb })
 
 function manifest(): PersistedPublicationManifest {
   return {
-    schemaVersion:1, jobId:'job-1', contractId:'wc_1', contractHash:'hash-1', opportunityId:'opp-1',
+    schemaVersion:2, jobId:'job-1', contractId:'wc_1', contractHash:'hash-1', opportunityId:'opp-1',
     repoOwner:'kylemwalkerpr-ship-it', repoName:'portal', path:'app/x/page.tsx',
     canonical:'https://market.yousafeconsultancy.com/x/', expectedMarker:'csrev_marker',
-    approvedContentHash:'c'.repeat(64), approvedAt:'2026-09-14T00:00:00Z', approvalActor:'admin',
+    approvedContentHash:artifactContentHash(APPROVED_BODY),
+    approvedArtifactHash:artifactContentHash(APPROVED_ARTIFACT),
+    approvedBodyHash:publicationBodyHash(APPROVED_BODY),
+    approvedAt:'2026-09-14T00:00:00Z', approvalActor:'admin',
     prNumber:77, approvedHeadSha:'head-approved', mergeSha:null,
     deploymentRunId:null, deploymentCommitSha:null, deploymentWorkflowId:null,
     deploymentWorkflowPath:null, deploymentJobId:null, deploymentEnvironment:null,
@@ -47,11 +57,11 @@ beforeEach(() => {
     pr_number:77, deploy_sha:null, publication_phase:'pr_open', status:'pr_created',
     audit_json:{ score:90, publicationManifest:m },
   }
-  getRepoFileContent.mockResolvedValue('// csrev_marker marked artifact')
+  getRepoFileContent.mockResolvedValue(APPROVED_ARTIFACT)
 })
 
 describe('durable publication monitor', () => {
-  it('accepts a later deployed main commit only when exact authorized workflow/job/step and ancestry all match', async () => {
+  it('accepts a later deployed main commit only when exact authorized workflow/job/step, artifact and ancestry all match', async () => {
     githubFetch.mockImplementation(async (path:string) => {
       if (path.endsWith('/pulls/77')) return { merged:true, head:{sha:'head-approved'}, merge_commit_sha:'merge-sha' }
       if (path.includes('/actions/runs?')) return { workflow_runs:[
@@ -101,6 +111,14 @@ describe('durable publication monitor', () => {
     expect(githubFetch).not.toHaveBeenCalled()
   })
 
+  it('rejects a manifest that lost the exact repository artifact digest', async () => {
+    job.audit_json.publicationManifest.approvedArtifactHash = ''
+    const result = await reconcilePublicationDeployment('job-1')
+    expect(result.ok).toBe(false)
+    expect(result.phase).toBe('verification_failed')
+    expect(result.reason).toMatch(/artifact hash/i)
+  })
+
   it('rejects a successful deployment-shaped but unauthorized workflow', async () => {
     githubFetch.mockImplementation(async (path:string) => {
       if (path.endsWith('/pulls/77')) return { merged:true, head:{sha:'head-approved'}, merge_commit_sha:'merge-sha' }
@@ -129,8 +147,10 @@ describe('durable publication monitor', () => {
     expect(result.phase).toBe('deployment_pending')
   })
 
-  it('fails closed when the deployed artifact at the right commit lost the revision marker', async () => {
-    getRepoFileContent.mockImplementation(async (_o:string,_r:string,_p:string,ref:string) => ref === 'merge-sha' ? '// csrev_marker' : '// wrong artifact')
+  it('fails closed when the deployed artifact at the right commit differs even if the marker is retained', async () => {
+    getRepoFileContent.mockImplementation(async (_o:string,_r:string,_p:string,ref:string) =>
+      ref === 'merge-sha' ? APPROVED_ARTIFACT : APPROVED_ARTIFACT.replace('exact substantive approved', 'changed substantive approved'),
+    )
     githubFetch.mockImplementation(async (path:string) => {
       if (path.endsWith('/pulls/77')) return { merged:true, head:{sha:'head-approved'}, merge_commit_sha:'merge-sha' }
       if (path.includes('/actions/runs?')) return { workflow_runs:[{ id:5,event:'push',head_branch:'main',status:'completed',conclusion:'success',path:'.github/workflows/deploy.yml',name:'Deploy YouSafe Portal',head_sha:'new-main',workflow_id:273970987 }] }
