@@ -8,14 +8,18 @@ import {
   runContentStudioPipelineStream,
   type ContentStudioPipelineInput,
 } from '@/lib/seoFactory/contentStudioPipeline'
+import { generationRequiresWritingContract } from '@/lib/seoFactory/pipelineContract'
 import type { PipelineStreamEvent } from '@/lib/seoFactory/pipelineStream'
 import { POST as legacyUncontractedPOST } from './legacy'
 
 export const maxDuration = 300
 const HEARTBEAT_MS = 15_000
 
-function isContractBound(body: Record<string, any>): boolean {
+function explicitContractIdentity(body: Record<string, any>): boolean {
   return Boolean(body.contractId || body.contract_id || body.writingContractRequired === true)
+}
+function storedJobId(body: Record<string, any>): string {
+  return String(body.existingJobId || body.jobId || body.supersedesJobId || '').trim()
 }
 
 function buildContractInput(body: Record<string, any>, userId: string, signal: AbortSignal): ContentStudioPipelineInput {
@@ -57,7 +61,7 @@ function buildContractInput(body: Record<string, any>, userId: string, signal: A
     maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 2,
     opportunityAction: body.opportunityAction ? String(body.opportunityAction) : undefined,
     aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
-    existingJobId: String(body.existingJobId || body.jobId || body.supersedesJobId || '').trim() || null,
+    existingJobId: storedJobId(body) || null,
     sourceJobId: String(body.supersedesJobId || '').trim() || null,
     regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
     regenerationMode: body.regenerationMode === 'resume'
@@ -79,9 +83,9 @@ function buildContractInput(body: Record<string, any>, userId: string, signal: A
 }
 
 /**
- * SSE production transport. Contracted Content Studio work streams the shared
- * contract-bound runner directly; it never refreshes evidence or owns authorship.
- * Historical uncontracted SEO Factory traffic uses the preserved legacy transport.
+ * SSE production transport. Stored-job state, not a client opt-in flag, decides
+ * whether Content Studio must enter the immutable contract runner. Historical
+ * traffic with no contract-bearing job stays on the explicit legacy transport.
  */
 export async function POST(request: Request) {
   let body: Record<string, any>
@@ -91,9 +95,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 })
   }
 
-  if (!isContractBound(body)) {
-    return legacyUncontractedPOST(request)
-  }
+  const explicit = explicitContractIdentity(body)
+  const existingJobId = storedJobId(body)
+  if (!explicit && !existingJobId) return legacyUncontractedPOST(request)
 
   const auth = await requireAdminUser()
   if ('error' in auth) {
@@ -102,8 +106,21 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  let contractBound = explicit
+  if (!contractBound && existingJobId) {
+    try {
+      contractBound = await generationRequiresWritingContract({ existingJobId })
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : 'stored job contract lookup failed',
+      }, { status: 409 })
+    }
+  }
+  if (!contractBound) return legacyUncontractedPOST(request)
+
   const topic = String(body.topic || body.title || '').trim()
-  if (!topic) {
+  if (!topic && !existingJobId) {
     return new Response(JSON.stringify({ error: 'topic required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
@@ -115,7 +132,7 @@ export async function POST(request: Request) {
     (auth as { profileId?: string }).profileId ||
     'admin'
   const abort = new AbortController()
-  const onAbort = () => abort.abort()
+  const onAbort = () => abort.abort(request.signal.reason)
   if (request.signal.aborted) onAbort()
   else request.signal.addEventListener('abort', onAbort, { once: true })
   const input = buildContractInput(body, userId, abort.signal)
@@ -127,11 +144,8 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (event: PipelineStreamEvent) => {
         if (closed) return
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-        } catch {
-          closed = true
-        }
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)) }
+        catch { closed = true }
       }
       send({ type: 'progress', stage: 'connect', message: 'Contract verified — starting saved writing context…' })
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -157,9 +171,10 @@ export async function POST(request: Request) {
           if (event.type === 'error' || event.type === 'final') break
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Stream failed'
-        send({ type: 'error', error: message })
+        send({ type: 'error', error: error instanceof Error ? error.message : 'Stream failed' })
       } finally {
+        abort.abort(new Error('SSE transport closed'))
+        try { await iterator?.return?.(undefined) } catch { /* contract runner owns recovery persistence */ }
         request.signal.removeEventListener('abort', onAbort)
         if (!closed) {
           try {
@@ -172,8 +187,8 @@ export async function POST(request: Request) {
     },
     async cancel() {
       closed = true
-      abort.abort()
-      try { await iterator?.return?.() } catch { /* wrapper persists interruption */ }
+      abort.abort(new Error('SSE consumer cancelled'))
+      try { await iterator?.return?.(undefined) } catch { /* wrapper persists interruption */ }
       request.signal.removeEventListener('abort', onAbort)
     },
   })
