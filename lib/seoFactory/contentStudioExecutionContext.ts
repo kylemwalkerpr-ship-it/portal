@@ -31,6 +31,8 @@ export type ContentStudioExecutionState = {
   lastPublicationMarker: string | null
   lastPublicationContentHash: string | null
   lastPublicationContent: string | null
+  lastPublicationArtifactHash: string | null
+  lastPublicationBodyHash: string | null
 }
 
 type ExecutionLease = { active: boolean }
@@ -73,61 +75,41 @@ export function createContentStudioExecutionState(
     lastPublicationMarker: null,
     lastPublicationContentHash: null,
     lastPublicationContent: null,
+    lastPublicationArtifactHash: null,
+    lastPublicationBodyHash: null,
   }
 }
 
-function activeStore(): ExecutionStore | undefined {
-  return storage.getStore()
-}
-
+function activeStore(): ExecutionStore | undefined { return storage.getStore() }
 function activeState(): ContentStudioExecutionState | undefined {
   const store = activeStore()
   return store?.lease.active ? store.state : undefined
 }
-
-export function currentContentStudioExecution(): ContentStudioExecutionState | undefined {
-  return activeState()
-}
-
+export function currentContentStudioExecution(): ContentStudioExecutionState | undefined { return activeState() }
 export function currentContentStudioExecutionStore(): { state: ContentStudioExecutionState; active: boolean } | undefined {
   const store = activeStore()
   return store ? { state: store.state, active: store.lease.active } : undefined
 }
 
-export async function runInContentStudioExecution<T>(
-  state: ContentStudioExecutionState,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function runInContentStudioExecution<T>(state: ContentStudioExecutionState, fn: () => Promise<T>): Promise<T> {
   const lease: ExecutionLease = { active: true }
   return storage.run({ state, lease }, async () => {
-    try {
-      return await fn()
-    } finally {
-      lease.active = false
-    }
+    try { return await fn() }
+    finally { lease.active = false }
   })
 }
-
-export async function runWithContentStudioExecution<T>(
-  strict: boolean,
-  fn: () => Promise<T>,
-): Promise<{ result: T; state: ContentStudioExecutionState }> {
+export async function runWithContentStudioExecution<T>(strict: boolean, fn: () => Promise<T>): Promise<{ result: T; state: ContentStudioExecutionState }> {
   const state = createContentStudioExecutionState(strict)
   const result = await runInContentStudioExecution(state, fn)
   return { result, state }
 }
 
 export function recordStrictAuditEvaluator(evaluator: (content: string) => SeoFactoryAudit): void {
-  const state = activeState()
-  if (!state?.strict) return
-  state.auditEvaluator = evaluator
+  const state = activeState(); if (!state?.strict) return; state.auditEvaluator = evaluator
 }
-
 export function currentStrictAuditEvaluator(): ((content: string) => SeoFactoryAudit) | null {
-  const state = activeState()
-  return state?.strict ? state.auditEvaluator : null
+  const state = activeState(); return state?.strict ? state.auditEvaluator : null
 }
-
 export function recordPublicationMarker(marker: string, content?: string): void {
   const state = activeState()
   if (!state?.strict) return
@@ -137,73 +119,50 @@ export function recordPublicationMarker(marker: string, content?: string): void 
     state.lastPublicationContentHash = contentHash(content)
   }
 }
+export function recordStrictPublicationDigests(input: { artifactHash: string; bodyHash: string }): void {
+  const state = activeState()
+  if (!state?.strict) return
+  state.lastPublicationArtifactHash = String(input.artifactHash || '').trim() || null
+  state.lastPublicationBodyHash = String(input.bodyHash || '').trim() || null
+}
 
 export function markCoherentDeskRunning(): void {
-  const state = activeState()
-  if (!state?.strict) return
-  state.deskState = 'running'
-  state.failedReason = null
+  const state = activeState(); if (!state?.strict) return
+  state.deskState = 'running'; state.failedReason = null
 }
-
 export function markCoherentDeskFailed(reason: unknown): void {
-  const state = activeState()
-  if (!state?.strict) return
-  state.deskState = 'failed'
-  state.failedReason = reason instanceof Error ? reason.message : String(reason || 'coherent writing failed')
+  const state = activeState(); if (!state?.strict) return
+  state.deskState = 'failed'; state.failedReason = reason instanceof Error ? reason.message : String(reason || 'coherent writing failed')
 }
-
 export function markCoherentDeskCompleted(content: string): void {
-  const state = activeState()
-  if (!state?.strict) return
+  const state = activeState(); if (!state?.strict) return
   const accepted = String(content || '')
-  state.deskState = 'completed'
-  state.acceptedContent = accepted
-  state.acceptedHash = contentHash(accepted)
-  state.failedReason = null
+  state.deskState = 'completed'; state.acceptedContent = accepted; state.acceptedHash = contentHash(accepted); state.failedReason = null
 }
-
 export function markBoundedRevisionRunning(previousContent: string): void {
-  const state = activeState()
-  if (!state?.strict) return
+  const state = activeState(); if (!state?.strict) return
   const previous = String(previousContent || '')
   if (!previous.trim()) throw new Error('strict Content Studio revision requires an accepted previous draft')
-  state.revisionState = 'running'
-  state.acceptedContent = previous
-  state.acceptedHash = contentHash(previous)
-  state.failedReason = null
+  state.revisionState = 'running'; state.acceptedContent = previous; state.acceptedHash = contentHash(previous); state.failedReason = null
 }
-
 export function markBoundedRevisionFailed(reason: unknown): void {
-  const state = activeState()
-  if (!state?.strict) return
-  state.revisionState = 'failed'
-  state.failedReason = reason instanceof Error ? reason.message : String(reason || 'bounded revision failed')
+  const state = activeState(); if (!state?.strict) return
+  state.revisionState = 'failed'; state.failedReason = reason instanceof Error ? reason.message : String(reason || 'bounded revision failed')
 }
-
 export function markBoundedRevisionCompleted(content: string): void {
-  const state = activeState()
-  if (!state?.strict) return
+  const state = activeState(); if (!state?.strict) return
   const accepted = String(content || '')
-  state.revisionState = 'completed'
-  state.acceptedContent = accepted
-  state.acceptedHash = contentHash(accepted)
-  state.failedReason = null
+  state.revisionState = 'completed'; state.acceptedContent = accepted; state.acceptedHash = contentHash(accepted); state.failedReason = null
 }
 
 export function assertIsolatedAuthoringAllowed(): void {
   const store = activeStore()
   if (!store?.state.strict) return
-  if (!store.lease.active) {
-    throw new Error('strict Content Studio execution forbids authoring after the execution window closed')
-  }
+  if (!store.lease.active) throw new Error('strict Content Studio execution forbids authoring after the execution window closed')
   const state = store.state
   if (state.deskState === 'running' || state.revisionState === 'running') return
-  if (state.deskState === 'failed' || state.revisionState === 'failed') {
-    throw new Error(`strict Content Studio execution stopped after authoring failure: ${state.failedReason || 'unknown failure'}`)
-  }
-  if (state.deskState === 'completed' || state.revisionState === 'completed') {
-    throw new Error('strict Content Studio execution forbids isolated authoring after the accepted draft')
-  }
+  if (state.deskState === 'failed' || state.revisionState === 'failed') throw new Error(`strict Content Studio execution stopped after authoring failure: ${state.failedReason || 'unknown failure'}`)
+  if (state.deskState === 'completed' || state.revisionState === 'completed') throw new Error('strict Content Studio execution forbids isolated authoring after the accepted draft')
   throw new Error('strict Content Studio execution forbids AI authoring before the validated writing stage starts')
 }
 
@@ -213,12 +172,8 @@ export function assertContractProviderSelection(opts: { aiProvider?: string | nu
   const requested = state.requestedModel.trim().toLowerCase()
   const runtimeProvider = String(opts.aiProvider || '').trim().toLowerCase()
   const runtimeModel = String(opts.model || '').trim().toLowerCase()
-  if (runtimeProvider && runtimeProvider !== 'auto' && runtimeProvider !== requested) {
-    throw new Error(`strict Content Studio provider conflicts with immutable contract: ${runtimeProvider} != ${requested}`)
-  }
-  if (runtimeModel && runtimeModel !== requested) {
-    throw new Error(`strict Content Studio model conflicts with immutable contract: ${runtimeModel} != ${requested}`)
-  }
+  if (runtimeProvider && runtimeProvider !== 'auto' && runtimeProvider !== requested) throw new Error(`strict Content Studio provider conflicts with immutable contract: ${runtimeProvider} != ${requested}`)
+  if (runtimeModel && runtimeModel !== requested) throw new Error(`strict Content Studio model conflicts with immutable contract: ${runtimeModel} != ${requested}`)
 }
 
 export function assertStrictOwnerTarget(actual: ContentStudioContractOwnership): void {
@@ -226,21 +181,13 @@ export function assertStrictOwnerTarget(actual: ContentStudioContractOwnership):
   if (!state?.strict || !state.contractOwnership) return
   const expected = state.contractOwnership
   const norm = (value: unknown) => String(value || '').trim().replace(/\/+$/, '').toLowerCase()
-  const mismatch =
-    norm(actual.host) !== norm(expected.host)
-    || norm(actual.repo) !== norm(expected.repo)
-    || norm(actual.filePath) !== norm(expected.filePath)
-    || norm(actual.canonicalUrl) !== norm(expected.canonicalUrl)
-  if (mismatch) {
+  if (norm(actual.host) !== norm(expected.host) || norm(actual.repo) !== norm(expected.repo) || norm(actual.filePath) !== norm(expected.filePath) || norm(actual.canonicalUrl) !== norm(expected.canonicalUrl)) {
     throw new Error(`strict Content Studio ownership drift: resolved ${actual.repo}:${actual.filePath} does not match immutable contract ${expected.repo}:${expected.filePath}`)
   }
 }
-
 export function assertStrictShipContent(content: string): void {
   const state = activeState()
   if (!state?.strict) return
   if (!state.acceptedHash) throw new Error('strict Content Studio ship blocked: no accepted revision is bound to this execution')
-  if (contentHash(content) !== state.acceptedHash) {
-    throw new Error('strict Content Studio ship blocked: post-acceptance content changed without reevaluation')
-  }
+  if (contentHash(content) !== state.acceptedHash) throw new Error('strict Content Studio ship blocked: post-acceptance content changed without reevaluation')
 }
