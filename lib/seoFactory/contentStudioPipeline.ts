@@ -88,61 +88,69 @@ async function persistExecutionStage(input: {
 }): Promise<void> {
   const jobId = String(input.request.existingJobId || input.result.jobId || '').trim()
   if (!jobId) return
-  try {
-    const ship = input.result.ship
-    const shipStatus = ship?.status
-    const stage = shipStatus === 'pr_created'
-      ? 'pr_open'
-      : shipStatus === 'merged' || shipStatus === 'deployed'
-        ? 'merged'
-        : input.result.audit?.blockers?.length
-          ? 'revision_required'
-          : 'ready_for_approval'
-    // A Git commit/merge is never itself deployment proof. The durable monitor
-    // advances deployment_pending → deployed only after the authorized workflow.
-    const publicationPhase = shipStatus === 'pr_created'
-      ? 'pr_open'
-      : shipStatus === 'merged' || shipStatus === 'deployed'
-        ? 'deployment_pending'
-        : null
-    const patch: Record<string, unknown> = {
-      execution_stage: stage,
-      actual_model: input.result.model || null,
-    }
-    if (publicationPhase) patch.publication_phase = publicationPhase
-    if (input.state.lastPublicationMarker) patch.expected_revision_marker = input.state.lastPublicationMarker
 
-    const db = createSupabaseAdminClient()
-    if (ship && input.result.content && input.state.lastPublicationMarker) {
-      const current = await db.from('content_jobs').select('audit_json').eq('id', jobId).maybeSingle()
-      const manifest = buildPublicationApprovalManifest({
-        jobId,
-        contractId: input.contract.contractId,
-        contractHash: input.contract.contractHash,
-        opportunityId: input.contract.opportunity.id,
-        repoOwner: ship.owner,
-        repoName: ship.repo,
-        path: ship.path,
-        canonical: ship.canonicalUrl,
-        expectedMarker: input.state.lastPublicationMarker,
-        content: input.result.content,
-        approvalActor: input.request.userId || null,
-        prNumber: ship.prNumber || null,
-        approvedHeadSha: ship.commitSha || null,
-      })
-      manifest.mergeSha = ship.mergeCommitSha || (ship.status === 'deployed' ? ship.commitSha || null : null)
-      patch.audit_json = withPublicationManifest(current.data?.audit_json, manifest)
-    }
+  const ship = input.result.ship
+  const shipStatus = ship?.status
+  const stage = shipStatus === 'pr_created'
+    ? 'pr_open'
+    : shipStatus === 'merged' || shipStatus === 'deployed'
+      ? 'merged'
+      : input.result.audit?.blockers?.length
+        ? 'revision_required'
+        : 'ready_for_approval'
+  const publicationPhase = shipStatus === 'pr_created'
+    ? 'pr_open'
+    : shipStatus === 'merged' || shipStatus === 'deployed'
+      ? 'deployment_pending'
+      : null
+  const patch: Record<string, unknown> = {
+    execution_stage: stage,
+    actual_model: input.result.model || null,
+  }
+  if (publicationPhase) patch.publication_phase = publicationPhase
 
-    await db
-      .from('content_jobs')
-      .update(patch)
-      .eq('id', jobId)
-      .eq('opportunity_id', input.contract.opportunity.id)
-      .eq('contract_id', input.contract.contractId)
-      .eq('contract_hash', input.contract.contractHash)
-  } catch (error) {
-    console.warn('[contentStudioPipeline] stage persistence skipped:', error instanceof Error ? error.message : error)
+  const db = createSupabaseAdminClient()
+  if (ship) {
+    const marker = String(input.state.lastPublicationMarker || '').trim()
+    const exactContent = String(input.state.lastPublicationContent || '')
+    const exactContentHash = String(input.state.lastPublicationContentHash || '').trim()
+    if (!marker || !exactContent.trim() || !exactContentHash) {
+      throw new Error('contracted publication completed without exact renderer marker/body/hash proof')
+    }
+    patch.expected_revision_marker = marker
+    const current = await db.from('content_jobs').select('audit_json').eq('id', jobId).maybeSingle()
+    if (current.error) throw new Error(`publication manifest load failed: ${current.error.message}`)
+    const manifest = buildPublicationApprovalManifest({
+      jobId,
+      contractId: input.contract.contractId,
+      contractHash: input.contract.contractHash,
+      opportunityId: input.contract.opportunity.id,
+      repoOwner: ship.owner,
+      repoName: ship.repo,
+      path: ship.path,
+      canonical: ship.canonicalUrl,
+      expectedMarker: marker,
+      content: exactContent,
+      approvedContentHash: exactContentHash,
+      approvalActor: input.request.userId || null,
+      prNumber: ship.prNumber || null,
+      approvedHeadSha: ship.commitSha || null,
+    })
+    manifest.mergeSha = ship.mergeCommitSha || (ship.status === 'deployed' ? ship.commitSha || null : null)
+    patch.audit_json = withPublicationManifest(current.data?.audit_json, manifest)
+  }
+
+  const updated = await db
+    .from('content_jobs')
+    .update(patch)
+    .eq('id', jobId)
+    .eq('opportunity_id', input.contract.opportunity.id)
+    .eq('contract_id', input.contract.contractId)
+    .eq('contract_hash', input.contract.contractHash)
+    .select('id')
+    .maybeSingle()
+  if (updated.error || !updated.data?.id) {
+    throw new Error(`contracted execution stage persistence failed: ${updated.error?.message || 'job identity changed'}`)
   }
 }
 
