@@ -1,29 +1,26 @@
 import { assertIsolatedAuthoringAllowed } from '@/lib/seoFactory/contentStudioExecutionContext'
 import {
-  generateContentText as generateContentTextLegacy,
-  generateContentTextStream as generateContentTextStreamLegacy,
-} from './contentAiProviderLegacy'
+  generateContentText as generateContentTextCore,
+  generateContentTextStream as generateContentTextStreamCore,
+} from './contentAiProviderCore'
 
-export * from './contentAiProviderLegacy'
+export * from './contentAiProviderCore'
 
 /**
- * Contract-aware authoring door. Outside a strict persisted-contract execution
- * this is byte-for-byte delegated to the existing provider implementation.
- * Inside strict Content Studio execution, only calls made while linearDesk is
- * actively running are allowed. A desk failure cannot silently fall back to an
- * isolated draft, and a completed desk cannot be rewritten by later legacy
- * rescue passes.
+ * The only public content-authoring door. The core file owns provider/cascade
+ * implementation; strict Content Studio executions add the contract-stage
+ * permission check here so no alternate exported provider path can bypass it.
  */
 export function generateContentText(
-  ...args: Parameters<typeof generateContentTextLegacy>
-): ReturnType<typeof generateContentTextLegacy> {
+  ...args: Parameters<typeof generateContentTextCore>
+): ReturnType<typeof generateContentTextCore> {
   assertIsolatedAuthoringAllowed()
-  return generateContentTextLegacy(...args)
+  return generateContentTextCore(...args)
 }
 
 export function generateContentTextStream(
-  ...args: Parameters<typeof generateContentTextStreamLegacy>
-): ReturnType<typeof generateContentTextStreamLegacy> {
+  ...args: Parameters<typeof generateContentTextStreamCore>
+): ReturnType<typeof generateContentTextStreamCore> {
   assertIsolatedAuthoringAllowed()
-  return generateContentTextStreamLegacy(...args)
+  return generateContentTextStreamCore(...args)
 }
