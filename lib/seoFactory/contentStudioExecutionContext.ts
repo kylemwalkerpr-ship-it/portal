@@ -17,7 +17,9 @@ export type ContentStudioExecutionState = {
   lastPublicationMarker: string | null
 }
 
-const storage = new AsyncLocalStorage<ContentStudioExecutionState>()
+type ExecutionLease = { active: boolean }
+type ExecutionStore = { state: ContentStudioExecutionState; lease: ExecutionLease }
+const storage = new AsyncLocalStorage<ExecutionStore>()
 
 export function contentHash(content: string): string {
   return createHash('sha256').update(String(content || '').replace(/\r\n/g, '\n')).digest('hex')
@@ -41,15 +43,30 @@ export function createContentStudioExecutionState(
   }
 }
 
+function activeState(): ContentStudioExecutionState | undefined {
+  const store = storage.getStore()
+  return store?.lease.active ? store.state : undefined
+}
+
 export function currentContentStudioExecution(): ContentStudioExecutionState | undefined {
-  return storage.getStore()
+  return activeState()
 }
 
 export async function runInContentStudioExecution<T>(
   state: ContentStudioExecutionState,
   fn: () => Promise<T>,
 ): Promise<T> {
-  return storage.run(state, fn)
+  const lease: ExecutionLease = { active: true }
+  return storage.run({ state, lease }, async () => {
+    try {
+      return await fn()
+    } finally {
+      // Async resources (timers, callbacks) inherit the store object. Closing
+      // this mutable lease makes those delayed callbacks fail closed after the
+      // production stage returns, instead of inheriting authoring permission.
+      lease.active = false
+    }
+  })
 }
 
 export async function runWithContentStudioExecution<T>(
@@ -62,27 +79,27 @@ export async function runWithContentStudioExecution<T>(
 }
 
 export function recordPublicationMarker(marker: string): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   state.lastPublicationMarker = String(marker || '').trim() || null
 }
 
 export function markCoherentDeskRunning(): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   state.deskState = 'running'
   state.failedReason = null
 }
 
 export function markCoherentDeskFailed(reason: unknown): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   state.deskState = 'failed'
   state.failedReason = reason instanceof Error ? reason.message : String(reason || 'coherent writing failed')
 }
 
 export function markCoherentDeskCompleted(content: string): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   const accepted = String(content || '')
   state.deskState = 'completed'
@@ -92,7 +109,7 @@ export function markCoherentDeskCompleted(content: string): void {
 }
 
 export function markBoundedRevisionRunning(previousContent: string): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   const previous = String(previousContent || '')
   if (!previous.trim()) throw new Error('strict Content Studio revision requires an accepted previous draft')
@@ -103,14 +120,14 @@ export function markBoundedRevisionRunning(previousContent: string): void {
 }
 
 export function markBoundedRevisionFailed(reason: unknown): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   state.revisionState = 'failed'
   state.failedReason = reason instanceof Error ? reason.message : String(reason || 'bounded revision failed')
 }
 
 export function markBoundedRevisionCompleted(content: string): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
   const accepted = String(content || '')
   state.revisionState = 'completed'
@@ -120,8 +137,12 @@ export function markBoundedRevisionCompleted(content: string): void {
 }
 
 export function assertIsolatedAuthoringAllowed(): void {
-  const state = storage.getStore()
-  if (!state?.strict) return
+  const store = storage.getStore()
+  if (!store?.state.strict) return
+  if (!store.lease.active) {
+    throw new Error('strict Content Studio execution forbids authoring after the execution window closed')
+  }
+  const state = store.state
   if (state.deskState === 'running' || state.revisionState === 'running') return
   if (state.deskState === 'failed' || state.revisionState === 'failed') {
     throw new Error(`strict Content Studio execution stopped after authoring failure: ${state.failedReason || 'unknown failure'}`)
@@ -132,17 +153,10 @@ export function assertIsolatedAuthoringAllowed(): void {
   throw new Error('strict Content Studio execution forbids AI authoring before the validated writing stage starts')
 }
 
-/**
- * Exact-hash ship guard for callers that intentionally promise no deterministic
- * post-processing. The SEO Factory ship path performs a fresh final gate over
- * deterministic repairs, so it records the actual rendered marker instead.
- */
 export function assertStrictShipContent(content: string): void {
-  const state = storage.getStore()
+  const state = activeState()
   if (!state?.strict) return
-  if (!state.acceptedHash) {
-    throw new Error('strict Content Studio ship blocked: no accepted revision is bound to this execution')
-  }
+  if (!state.acceptedHash) throw new Error('strict Content Studio ship blocked: no accepted revision is bound to this execution')
   if (contentHash(content) !== state.acceptedHash) {
     throw new Error('strict Content Studio ship blocked: post-acceptance content changed without reevaluation')
   }
