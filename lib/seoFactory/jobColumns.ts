@@ -17,6 +17,8 @@ export const JOB_LIST_COLUMNS = [
   'tone',
   'region',
   'status',
+  'execution_stage',
+  'publication_phase',
   'error_message',
   'target_repo',
   'branch_name',
@@ -24,9 +26,17 @@ export const JOB_LIST_COLUMNS = [
   'pr_url',
   'pr_number',
   'ai_provider',
+  'requested_model',
+  'actual_model',
   'word_count',
   'seo_score',
   'primary_keyword',
+  'opportunity_id',
+  'contract_id',
+  'contract_version',
+  'contract_hash',
+  'evidence_hash',
+  'expected_revision_marker',
   'required_short_keywords',
   'required_long_tail_keywords',
   // Per-term provenance (demand vs synthesized backfill). Without these the
@@ -70,7 +80,22 @@ export const JOB_LIST_GATE_PROJECTION = [
 
 export const JOB_LIST_WITH_GATE_COLUMNS = [JOB_LIST_COLUMNS, JOB_LIST_GATE_PROJECTION].join(',')
 
-export const JOB_BODY_COLUMNS = 'id,content,word_count,error_message,status,updated_at,audit_json'
+export const JOB_BODY_COLUMNS = [
+  'id',
+  'content',
+  'word_count',
+  'error_message',
+  'status',
+  'execution_stage',
+  'opportunity_id',
+  'contract_id',
+  'contract_version',
+  'contract_hash',
+  'evidence_hash',
+  'expected_revision_marker',
+  'updated_at',
+  'audit_json',
+].join(',')
 
 /** Jobs that already failed and need regen must not auto-fetch the stored body.
  *  That fetch (and the editor mount that follows) is what freezes the modal. */
@@ -90,8 +115,6 @@ export function slimJobForClient<T extends Record<string, unknown>>(row: T): T {
   delete (next as Record<string, unknown>).event_log
   delete (next as Record<string, unknown>).lineage
   delete (next as Record<string, unknown>).gsc_json
-  // Lazy import avoided — callers that need audit slim use withSlimAuditJson /
-  // projectListJobGate. Keeping this function sync + dependency-light.
   return next
 }
 
@@ -162,6 +185,10 @@ export const JOB_LINEAGE_COLUMNS = [
   'title',
   'topic',
   'status',
+  'execution_stage',
+  'contract_id',
+  'contract_version',
+  'contract_hash',
   'created_at',
   'regeneration_mode',
   'regeneration_reason',

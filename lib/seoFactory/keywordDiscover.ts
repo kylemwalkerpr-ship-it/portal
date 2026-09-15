@@ -4,6 +4,7 @@
  */
 
 export type KeywordSource = 'gsc' | 'suggest' | 'manual' | 'serp'
+export type SuggestionState = 'ok' | 'empty' | 'unavailable'
 
 export type KeywordCandidate = {
   id: string
@@ -159,7 +160,7 @@ export function candidatesFromSuggestions(
   return out
 }
 
-type SuggestCacheEntry = { at: number; phrases: string[] }
+type SuggestCacheEntry = { at: number; phrases: string[]; state: Exclude<SuggestionState, 'unavailable'> }
 const suggestCache = new Map<string, SuggestCacheEntry>()
 const SUGGEST_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -167,31 +168,43 @@ export function resetSuggestCache(): void {
   suggestCache.clear()
 }
 
-export async function fetchGoogleSuggestions(
+export async function fetchGoogleSuggestionsDetailed(
   q: string,
   opts?: { fetchImpl?: typeof fetch; timeoutMs?: number },
-): Promise<string[]> {
+): Promise<{ phrases: string[]; state: SuggestionState }> {
   const key = normalizeKeyword(q)
-  if (!key) return []
+  if (!key) return { phrases: [], state: 'empty' }
   const hit = suggestCache.get(key)
-  if (hit && Date.now() - hit.at < SUGGEST_TTL_MS) return hit.phrases
+  if (hit && Date.now() - hit.at < SUGGEST_TTL_MS) {
+    return { phrases: hit.phrases, state: hit.state }
+  }
   const fetchImpl = opts?.fetchImpl || fetch
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), opts?.timeoutMs ?? 2500)
   try {
     const url = `https://suggestqueries.google.com/complete/search?client=firefox&hl=en&q=${encodeURIComponent(q)}`
     const res = await fetchImpl(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
-    if (!res.ok) return []
+    if (!res.ok) return { phrases: [], state: 'unavailable' }
     const json = (await res.json()) as unknown
-    const list = Array.isArray(json) && Array.isArray(json[1]) ? json[1].map(String) : []
-    const phrases = list.map(displayKeyword).filter(Boolean).slice(0, 12)
-    suggestCache.set(key, { at: Date.now(), phrases })
-    return phrases
+    if (!Array.isArray(json) || !Array.isArray(json[1])) {
+      return { phrases: [], state: 'unavailable' }
+    }
+    const phrases = json[1].map(String).map(displayKeyword).filter(Boolean).slice(0, 12)
+    const state: Exclude<SuggestionState, 'unavailable'> = phrases.length ? 'ok' : 'empty'
+    suggestCache.set(key, { at: Date.now(), phrases, state })
+    return { phrases, state }
   } catch {
-    return []
+    return { phrases: [], state: 'unavailable' }
   } finally {
     clearTimeout(timer)
   }
+}
+
+export async function fetchGoogleSuggestions(
+  q: string,
+  opts?: { fetchImpl?: typeof fetch; timeoutMs?: number },
+): Promise<string[]> {
+  return (await fetchGoogleSuggestionsDetailed(q, opts)).phrases
 }
 
 export async function discoverKeywords(opts: {
@@ -202,7 +215,12 @@ export async function discoverKeywords(opts: {
   templates?: readonly string[]
   fetchImpl?: typeof fetch
   maxSuggestCalls?: number
-}): Promise<{ candidates: KeywordCandidate[]; suggestOk: boolean; suggestCalls: number }> {
+}): Promise<{
+  candidates: KeywordCandidate[]
+  suggestOk: boolean
+  suggestCalls: number
+  suggestState: SuggestionState
+}> {
   const seed = displayKeyword(opts.seed)
   const templates = opts.templates || DEFAULT_EXPAND_TEMPLATES
   const manual = expandSeedTemplates(seed, templates, opts.modifiers || [])
@@ -211,26 +229,26 @@ export async function discoverKeywords(opts: {
   const suggestSeeds = [seed]
   if (opts.includeAlphabet) suggestSeeds.push(...alphabetSeeds(seed).slice(0, 8))
   const maxCalls = Math.max(1, opts.maxSuggestCalls ?? 6)
-  let suggestOk = true
   let suggestCalls = 0
+  let sawUnavailable = false
   const suggested: string[] = []
   for (const q of suggestSeeds.slice(0, maxCalls)) {
     suggestCalls++
-    const before = suggested.length
-    const got = await fetchGoogleSuggestions(q, { fetchImpl: opts.fetchImpl })
-    if (!got.length && before === suggested.length) {
-      /* empty is fine; network throw already swallowed */
-    }
-    suggested.push(...got)
+    const result = await fetchGoogleSuggestionsDetailed(q, { fetchImpl: opts.fetchImpl })
+    if (result.state === 'unavailable') sawUnavailable = true
+    suggested.push(...result.phrases)
   }
-  if (suggestCalls > 0 && suggested.length === 0 && (opts.fetchImpl || true)) {
-    // still ok — empty suggestions must not fail discovery
-    suggestOk = true
-  }
+
+  const suggestState: SuggestionState = suggested.length
+    ? 'ok'
+    : sawUnavailable
+      ? 'unavailable'
+      : 'empty'
   const suggest = candidatesFromSuggestions(suggested, seed)
   return {
     candidates: mergeKeywordCandidates([gsc, suggest, manual]),
-    suggestOk,
+    suggestOk: suggestState !== 'unavailable',
     suggestCalls,
+    suggestState,
   }
 }

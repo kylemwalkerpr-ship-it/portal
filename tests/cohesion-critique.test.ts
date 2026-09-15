@@ -173,8 +173,12 @@ Form I-20 is explained at https://www.uscis.gov/i-20. Applicants must not promis
 
 describe('author-revise route contract', () => {
   it('is exclusive reviewer policy with skipQualityContract false', () => {
-    const source = readFileSync(
+    const facade = readFileSync(
       path.join(process.cwd(), 'app/api/content-studio/author-revise/route.ts'),
+      'utf8',
+    )
+    const source = readFileSync(
+      path.join(process.cwd(), 'app/api/content-studio/author-revise/routeCore.ts'),
       'utf8',
     )
     expect(source).toContain('exclusive: true')
@@ -184,7 +188,10 @@ describe('author-revise route contract', () => {
     expect(source).toContain('runThroughline')
     expect(source).toContain('runFactoryMaskedDenoise')
     expect(source).toContain('rejected: true')
-    expect(source).toContain('maxDuration = 180')
+    expect(facade).toContain('maxDuration = 180')
+    expect(facade).toContain("POST as corePOST")
+    expect(facade).toContain('runWithContentStudioRecoveryClaim')
+    expect(facade).toContain('corePOST(request)')
     const throughline = readFileSync(
       path.join(process.cwd(), 'lib/seoFactory/throughline.ts'),
       'utf8',

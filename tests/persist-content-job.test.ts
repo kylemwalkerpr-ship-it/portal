@@ -474,12 +474,16 @@ describe('hop locks — empty-content wipe and jobs save thin guard stay wired',
     expect(src).not.toMatch(/content:\s*['"]{2}/)
   })
 
-  it('jobs PATCH save refuses a thin overwrite', () => {
+  it('jobs PATCH save delegates to the guarded save implementation', () => {
     const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const { join } = require('node:path') as typeof import('node:path')
-    const src = readFileSync(join(__dirname, '../app/api/content-studio/jobs/route.ts'), 'utf8')
-    expect(src).toContain('shouldRefuseThinOverwrite')
-    expect(src).toContain('thin_overwrite_refused')
+    const route = readFileSync(join(__dirname, '../app/api/content-studio/jobs/route.ts'), 'utf8')
+    const legacyFacade = readFileSync(join(__dirname, '../app/api/content-studio/jobs/legacy.ts'), 'utf8')
+    const legacyCore = readFileSync(join(__dirname, '../app/api/content-studio/jobs/legacyCore.ts'), 'utf8')
+    expect(route).toContain('return legacyPATCH(request)')
+    expect(legacyFacade).toContain('return core.PATCH(request)')
+    expect(legacyCore).toContain('shouldRefuseThinOverwrite')
+    expect(legacyCore).toContain('thin_overwrite_refused')
   })
 
   it('drafter promptOutline is sanitized headings, never the raw h2Outline array', () => {

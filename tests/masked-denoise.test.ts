@@ -194,13 +194,20 @@ describe('pipeline wiring', () => {
   it('runs masked denoise after throughline on JSON, stream, and author-revise', () => {
     const json = readFileSync(path.join(process.cwd(), 'lib/seoFactory/pipeline.ts'), 'utf8')
     const stream = readFileSync(path.join(process.cwd(), 'lib/seoFactory/pipelineStream.ts'), 'utf8')
-    const revise = readFileSync(
+    const reviseFacade = readFileSync(
       path.join(process.cwd(), 'app/api/content-studio/author-revise/route.ts'),
+      'utf8',
+    )
+    const reviseCore = readFileSync(
+      path.join(process.cwd(), 'app/api/content-studio/author-revise/routeCore.ts'),
       'utf8',
     )
     expect(json.lastIndexOf('runFactoryMaskedDenoise')).toBeGreaterThan(json.lastIndexOf('runFactoryThroughline'))
     expect(stream.lastIndexOf('runFactoryMaskedDenoise')).toBeGreaterThan(stream.lastIndexOf('runFactoryThroughline'))
-    expect(revise).toContain('runFactoryMaskedDenoise')
-    expect(revise.indexOf('runFactoryMaskedDenoise')).toBeGreaterThan(revise.indexOf('runThroughline'))
+    expect(reviseCore).toContain('runFactoryMaskedDenoise')
+    expect(reviseCore.indexOf('runFactoryMaskedDenoise')).toBeGreaterThan(reviseCore.indexOf('runThroughline'))
+    expect(reviseFacade).toContain("POST as corePOST")
+    expect(reviseFacade).toContain('runWithContentStudioRecoveryClaim')
+    expect(reviseFacade).toContain('corePOST(request)')
   })
 })

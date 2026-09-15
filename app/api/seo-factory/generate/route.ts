@@ -1,56 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { runSeoFactoryPipeline, type RequestedShipMode } from '@/lib/seoFactory/pipeline'
+import { runSeoFactoryPipeline, type RequestedShipMode, type PipelineInput } from '@/lib/seoFactory/pipeline'
+import { runContentStudioPipeline, type ContentStudioPipelineInput } from '@/lib/seoFactory/contentStudioPipeline'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
+import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
 
 /**
  * POST /api/seo-factory/generate
- * Full factory: plan → GSC → Cloudflare AI (+ refine) → audit → optional ship
+ * Full factory: plan → GSC → authoring → audit → optional ship.
  *
- * Body extras:
- *   minAuditScore?: number (default 65)
- *   maxRefine?: number (default 2)
- *   shipMode?: 'pr' | 'autodeploy' | 'none' | 'auto'
+ * Contracted Content Studio requests are identified by contractId (or the
+ * explicit writingContractRequired flag). They resolve the immutable contract
+ * server-side before any pipeline/model call and never recompute brief inputs.
+ * Uncontracted calls retain the historical SEO Factory behavior.
  */
 export async function POST(request: NextRequest) {
-  // ── abort guard: client disconnect → fast 499 (the pipeline polls
-  //    request.signal via throwIfAborted between passes) ──
   if (request.signal.aborted) {
     return NextResponse.json({ error: 'Request cancelled by client' }, { status: 499 })
   }
 
   try {
     const auth = await requireAdminUser()
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status })
-    }
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const body = await request.json()
     const topic = String(body.topic || '').trim()
-    if (!topic) {
-      return NextResponse.json({ error: 'topic required' }, { status: 400 })
-    }
+    if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
 
     const userId =
-      (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile
-        ?.clerk_user_id ||
+      (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile?.clerk_user_id ||
       (auth as { profileId?: string }).profileId ||
       'admin'
 
     const primaryKeyword = String(body.primaryKeyword || body.primary_keyword || topic).trim()
     const region = String(body.region || 'US').toUpperCase()
     const contentType = String(body.contentType || body.content_type || 'legal_guide')
-    const userSources = Array.isArray(body.sources) ? body.sources.map(String) : []
-    const engineFeed = await assembleMasterEngineFeed({
-      topic,
-      primaryKeyword,
-      region,
-      contentType,
-      title: String(body.title || topic).trim(),
-    }).catch(() => null)
+    const contractBound = Boolean(body.contractId || body.contract_id || body.writingContractRequired === true)
+    const existingJobId = String(body.existingJobId || body.jobId || '').trim() || null
 
-    const result = await runSeoFactoryPipeline({
+    const engineFeed = contractBound
+      ? null
+      : await assembleMasterEngineFeed({
+          topic,
+          primaryKeyword,
+          region,
+          contentType,
+          title: String(body.title || topic).trim(),
+        }).catch(() => null)
+
+    const input: PipelineInput & Record<string, unknown> = {
       topic,
       title: String(body.title || topic).trim(),
       primaryKeyword,
@@ -58,7 +57,27 @@ export async function POST(request: NextRequest) {
       contentType,
       tone: String(body.tone || 'educational'),
       audience: body.audience ? String(body.audience) : undefined,
-      keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
+      keywords: Array.isArray(body.keywords) ? body.keywords.map(String) : undefined,
+      requiredShortKeywords: parseKeywordPhrases(body.requiredShortKeywords),
+      requiredLongTailKeywords: parseKeywordPhrases(body.requiredLongTailKeywords),
+      shortKeywordTerms: parseKeywordTerms(body.shortKeywordTerms),
+      longTailKeywordTerms: parseKeywordTerms(body.longTailKeywordTerms),
+      h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
+      sectionPlan: Array.isArray(body.sectionPlan) ? body.sectionPlan : undefined,
+      thesis: body.thesis ? String(body.thesis) : undefined,
+      takeaways: Array.isArray(body.takeaways) ? body.takeaways.map(String) : undefined,
+      faqQuestions: Array.isArray(body.faqQuestions) ? body.faqQuestions.map(String) : undefined,
+      lede: body.lede ? String(body.lede) : undefined,
+      sources: contractBound
+        ? (Array.isArray(body.sources) ? body.sources.map(String) : undefined)
+        : [
+            ...(Array.isArray(body.sources) ? body.sources.map(String) : []),
+            ...(engineFeed?.sources || []),
+          ].filter(Boolean),
+      interlinks: Array.isArray(body.interlinks) ? body.interlinks : undefined,
+      minWords: body.minWords != null ? Number(body.minWords) : undefined,
+      maxWords: body.maxWords != null ? Number(body.maxWords) : undefined,
+      targetSlug: body.targetSlug ? String(body.targetSlug) : undefined,
       slug: body.slug,
       indexable: body.indexable !== false,
       shipMode: (body.shipMode || body.ship_mode || 'pr') as RequestedShipMode,
@@ -75,15 +94,24 @@ export async function POST(request: NextRequest) {
           }
         : undefined,
       titleCandidate: body.titleCandidate ? String(body.titleCandidate).trim() : undefined,
-      masterEngineBlock: engineFeed?.promptBlock || null,
-      // Brief Assembly Panel user sources are preserved; the feed's verified
-      // official-origin evidence URLs are appended so the draft can cite them.
-      // (runSeoFactoryPipeline re-validates + dedupes the combined allowlist.)
-      sources: [...userSources, ...(engineFeed?.sources || [])].filter(Boolean),
-      intelligenceLineage: engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
+      masterEngineBlock: contractBound ? null : engineFeed?.promptBlock || null,
+      intelligenceLineage: contractBound
+        ? null
+        : engineFeed?.lineage ? { masterEngine: engineFeed.lineage } : null,
       userId,
+      existingJobId,
       signal: request.signal,
-    })
+      writingContractRequired: contractBound,
+      contractId: String(body.contractId || body.contract_id || '').trim() || null,
+      contractHash: String(body.contractHash || body.contract_hash || '').trim() || null,
+      contractVersion: body.contractVersion ?? body.contract_version ?? null,
+      evidenceHash: String(body.evidenceHash || body.evidence_hash || '').trim() || null,
+      opportunityId: String(body.opportunityId || body.opportunity_id || '').trim() || null,
+    }
+
+    const result = contractBound
+      ? await runContentStudioPipeline({ ...input, writingContractRequired: true } as unknown as ContentStudioPipelineInput)
+      : await runSeoFactoryPipeline(input)
 
     if (result.shipError && !result.content) {
       return NextResponse.json({ ok: false, error: result.shipError, ...result }, { status: 422 })
@@ -108,9 +136,10 @@ export async function POST(request: NextRequest) {
     console.error('[seo-factory/generate]', err)
     const message = err instanceof Error ? err.message : 'Generate failed'
     const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
+    const contractError = /writing contract|contractHash|contractId|evidence.*mismatch|client .* conflicts/i.test(message)
     return NextResponse.json(
       { error: message },
-      { status: isCpuTimeout ? 503 : 500 },
+      { status: contractError ? 409 : isCpuTimeout ? 503 : 500 },
     )
   }
 }

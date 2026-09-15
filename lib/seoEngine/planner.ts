@@ -62,7 +62,7 @@ import {
   type PlanEvidencePacket,
 } from './planEvidence'
 
-export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads'
+export type DemandSourceId = 'gsc' | 'ga4' | 'ubersuggest' | 'ads' | 'marketplace'
 
 export interface GscSignalInput {
   term: string
@@ -87,6 +87,13 @@ export interface GscSignalInput {
   snapshot?: boolean
   /** Age of the snapshot in whole days when `snapshot` (for provenance display). */
   snapshotAgeDays?: number
+  /** First-party submitted searches; not monthly keyword-research volume. */
+  marketplaceSearchCount?: number | null
+  /** Marketplace sessions, not unique people. */
+  marketplaceUniqueSessions?: number | null
+  /** Null when conversion instrumentation coverage is unknown. */
+  marketplaceConversionCount?: number | null
+  conversionCoverage?: 'instrumented' | 'unknown'
 }
 
 export interface PlanRequest {

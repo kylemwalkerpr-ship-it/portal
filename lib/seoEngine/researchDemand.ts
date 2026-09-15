@@ -6,6 +6,7 @@
 import { checkCompetingPages, loadPlansDashboard, normalizePlannerTopic } from './planner'
 import { loadUbersuggestConfig } from './ubersuggest'
 import { loadShippedCoverage, type ShippedPage as ResearchShippedPage } from './shippedCoverage'
+import { usesGuideApparatus } from '@/lib/seoFactory/writingShape'
 
 // Shipped coverage lives in its own module so the planner can consume it
 // without a circular import. Re-exported for existing callers.
@@ -55,7 +56,6 @@ const STRONG_SINGLE_MARKERS: Array<{ region: string; re: RegExp }> = [
   { region: 'AU', re: /\b485 visa\b/i },
   { region: 'AU', re: /\bsubclass 189\b/i },
 ]
-
 
 /** Check if a keyword is clearly from a specific region. */
 export function keywordRegion(term: string): string | null {
@@ -198,7 +198,7 @@ export function inferOpportunityRegion(term: string, scanRegion?: string | null)
 /**
  * Keep GSC / knowledge rows that can legally live on this country's queue.
  * Foreign-marked queries are dropped. Generic demand (no country marker)
- * stays — it can be written for the selected country.
+ * stays — they can be written for the selected country.
  */
 export function queryBelongsToRegion(term: string, scanRegion: string | null | undefined): boolean {
   if (isEstateWideRegion(scanRegion)) return true
@@ -221,8 +221,6 @@ export function strategicKeywordBelongsToRegion(
   if (fromCluster === rc) return true
   return queryBelongsToRegion(term, rc)
 }
-
-
 
 /**
  * Deterministically drop keywords that belong to a DIFFERENT region than the
@@ -265,27 +263,20 @@ export function filterOutlineByRegion(headings: string[], regionCode: string): {
 }
 
 /**
- * Minimum-outline guarantee for long-form briefs. A truncated skeleton
- * invites truncated expansion — and the review gate now BLOCKS on
- * missing_outline_section when the canonical brief outline is absent from
- * the body. This deterministically completes the skeleton:
- *  - "In 60 seconds" at the front (answer-first contract),
- *  - a Worked Example (GEO/AEO substance),
- *  - FAQ (seed for FAQPage JSON-LD),
- *  - Sources (citation contract).
- * Returns ≥ the input, capped at 12; idempotent — never duplicates.
+ * Format-aware structural completion. This may add only apparatus explicitly
+ * required by the product family; it never adds a Worked Example or arbitrary
+ * content section merely to clear a gate. Blogs keep the author's outline.
  */
-export function ensureMinimumOutline(headings: string[]): string[] {
+export function ensureMinimumOutline(headings: string[], contentType?: string): string[] {
   const list = [...(headings || [])]
     .map((h) => String(h || '').replace(/^#{1,3}\s*/, '').replace(/^H2:\s*/i, '').trim())
     .filter(Boolean)
     .filter((heading, index, all) => all.findIndex((h) => h.toLowerCase() === heading.toLowerCase()) === index)
+  if (!usesGuideApparatus(contentType)) return list.slice(0, 12)
+
   const has = (re: RegExp) => list.some((h) => re.test(h))
-  if (!has(/worked example|example\b/i)) list.push('Worked Example')
   if (!has(/^faq$/i) && !has(/faq/i)) list.push('FAQ')
   if (!has(/sources|official sources/i)) list.push('Sources')
-  // Answer-first: the promise must open the document. Guarded by the same
-  // containment check as the structural sections, so an existing TOC leads.
   if (!has(/^in 60 seconds\b/i) && !has(/^table of contents\b/i)) list.unshift('In 60 seconds')
   return list.slice(0, 12)
 }
@@ -301,8 +292,6 @@ export async function loadResearchDemandContext(topic: string, primaryKeyword?: 
 
   const engineTerms: string[] = []
   for (const p of plansDash.plans || []) {
-    // Filter master engine plans by the selected region/country.
-    // Plans without a country default to the selected region.
     const planCountry = String(p.country || regionCode || 'US').toUpperCase().slice(0, 2)
     if (planCountry !== regionCode && planCountry !== 'ALL') continue
     const primary = String(p.primary_term || '').trim()
@@ -318,7 +307,6 @@ export async function loadResearchDemandContext(topic: string, primaryKeyword?: 
     .filter((term) => {
       if (!term) return false
       const termRegion = keywordRegion(term)
-      // Keep if: no region marker (generic) OR matches selected region
       return !termRegion || termRegion === regionCode
     })
 
@@ -348,7 +336,9 @@ export async function loadResearchDemandContext(topic: string, primaryKeyword?: 
 }
 
 /** Prefer engine + Ubersuggest terms that are not already a shipped canonical. */
-const KEYWORD_NOISE_RE = /(?:yousafe|mycaseworks|\.com\b|https?:\/\/|\.pdf\b|sites\/default|user\d+|meal\s+plan|room\s+and\s+meal|ministerial\s+direction|status\s+violation|tier\s+5\s+to\s+tier\s+2|\b485\b|\bf-?1\b|\b(?:uk|canada|australia)\s+student\s+visa\b)/i
+const KEYWORD_NOISE_RE = /(?:yousafe|mycaseworks|\.com\b|https?:\/\/|\.pdf\b|sites\/default|user\d+|meal\s+plan|room\s+and\s+meal|ministerial\s+direction|status\s+violation|tier\s+5\s+to\s+tier\s+2)/i
+const IMMIGRATION_DEMAND_RE = /\b(?:f-?1|opt|cpt|i-?485|adjustment of status|subclass\s*485|485\s+visa|student\s+visa|study\s+permit|graduate\s+route|skilled\s+worker|express\s+entry|pgwp|uscis|ircc|ukvi|home\s+affairs)\b/i
+const IMMIGRATION_TOPIC_RE = /\b(?:visa|immigration|student|study|permit|status|work|graduate|adjustment|uscis|ircc|ukvi|application|filing)\b/i
 
 const KEYWORD_STOPWORDS = new Set(['a', 'an', 'and', 'for', 'from', 'how', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'what', 'with'])
 
@@ -360,19 +350,16 @@ function keywordTokens(term: string): Set<string> {
   )
 }
 
-function isRelevantResearchKeyword(term: string, topic: string): boolean {
+export function isRelevantResearchKeyword(term: string, topic: string): boolean {
   if (KEYWORD_NOISE_RE.test(term)) return false
+  if (IMMIGRATION_DEMAND_RE.test(term) && IMMIGRATION_TOPIC_RE.test(topic)) return true
+
   const candidate = keywordTokens(term)
   const subject = keywordTokens(topic)
   if (!candidate.size || !subject.size) return false
   const overlap = [...candidate].filter((token) => subject.has(token)).length
   if (overlap === 0) return false
-  // Preserve an exact topic/primary term even when it is four or more words;
-  // the caller's canonical topic is the one safe exception to the short-list
-  // relevance rule.
   if (normalizePlannerTopic(term) === normalizePlannerTopic(topic)) return true
-  // A single shared generic word (e.g. "visa") is not enough to import a
-  // keyword from another engine cluster. Require a meaningful topic overlap.
   const genericOnly = candidate.size === 1 && /^(visa|service|guide|requirements?|application|process|documents?)$/i.test([...candidate][0])
   const topicalAnchor = [...candidate].some((token) => subject.has(token) && !KEYWORD_STOPWORDS.has(token))
   return overlap >= 1 && !genericOnly && topicalAnchor && (overlap >= 2 || candidate.size <= 2 || subject.size <= 2)

@@ -32,6 +32,8 @@ import {
 import { deskLayoutPromptBlock } from '@/lib/seoFactory/deskLayout'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
 import type { QualityGateResult } from '@/lib/seoFactory/contentQualityGate'
+import type { SeoFactoryAudit } from '@/lib/seoFactory/audit'
+import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 
 const plan = {
   host: 'legal.yousafeconsultancy.com',
@@ -140,6 +142,25 @@ USCIS usually issues a request for evidence rather than a silent refusal.
 **Disclaimer:** This page is educational and editorial only. It is **not legal advice**.
 `
 
+const REVIEWED_DRAFT = DRAFT.replace(
+  'Keep the certified LCA with the passport and the I-129 packet. USCIS issues a receipt once that packet is in.',
+  'Keep the certified LCA with the passport and the I-129 packet. USCIS issues a receipt once that packet is in. Before filing, compare the assembled packet with the current USCIS instructions and confirm that each supporting document named for the petition is present. Keep a copy of the certified LCA with the petition record so you can trace what was filed if USCIS later asks for evidence. Check the receipt against the filing copy rather than reconstructing the packet from memory.',
+)
+
+const deskAudit = (content: string): SeoFactoryAudit => ({
+  score: 90,
+  grade: 'A',
+  blockers: [],
+  warnings: [],
+  passes: [],
+  indexableRecommended: true,
+  llmsRecommended: true,
+  wordCount: countBodyWords(content),
+  primaryKeyword: 'h-1b visa',
+  humanScore: 90,
+  contentType: 'legal_guide',
+})
+
 const blockedQuality = (): QualityGateResult => ({
   ok: false,
   findings: [{ code: 'thin_content', severity: 'blocker', message: 'thin', fix: 'expand' }],
@@ -247,7 +268,7 @@ describe('sealed brief — no guesswork', () => {
     expect(validateSealedBrief({ ...brief, unresolved: ['USCIS filing fee for 2026'] }, { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' })).toEqual([])
   })
 
-  it('fills missing plan fields from the operator outline instead of leaving the writer to guess', () => {
+  it('preserves supplied structure but fails closed when substantive plan fields are missing', () => {
     const sealed = sealBriefFromAssembly({
       primaryKeyword: 'h-1b visa',
       audience: 'specialty occupation workers',
@@ -255,11 +276,14 @@ describe('sealed brief — no guesswork', () => {
       h2Outline: ['In 60 seconds', 'Eligibility', 'Documents', 'Process', 'FAQ', 'Sources'],
       kwH2Map: { 'specialty occupation': 'Eligibility', 'labor condition': 'Documents' },
     })
-    expect(sealed.thesis.length).toBeGreaterThan(24)
-    expect(sealed.takeaways.length).toBeGreaterThanOrEqual(3)
+    expect(sealed.thesis).toBe('')
+    expect(sealed.takeaways).toEqual([])
+    expect(sealed.faqQuestions).toEqual([])
     expect(sealed.outline.find((c) => c.heading === 'Documents')?.bridgeFrom).toMatch(/Eligibility/)
     expect(sealed.outline.find((c) => c.heading === 'Eligibility')?.coverTopics).toContain('specialty occupation')
-    expect(sealed.faqQuestions.some((q) => /eligibility/i.test(q) && /requirements/i.test(q))).toBe(false)
+    const issues = validateSealedBrief(sealed, { primaryKeyword: 'h-1b visa', contentType: 'legal_guide' })
+    expect(issues.some((issue) => /thesis/i.test(issue))).toBe(true)
+    expect(issues.some((issue) => /takeaways/i.test(issue))).toBe(true)
   })
 })
 
@@ -482,7 +506,6 @@ describe('linear desk conversation', () => {
     }))
     expect(system).toMatch(/ONE CONVERSATION/)
     expect(system).toMatch(/EXPLORES Discover/)
-    expect(system).toMatch(/READER_QUESTION/)
     expect(system).toMatch(/SELF-REFLECTS/)
     expect(system).toMatch(/automated score/)
     expect(system).toMatch(/IN 60 SECONDS is the takeaways slot/)
@@ -497,10 +520,13 @@ describe('linear desk conversation', () => {
     const prompt = renderDeskConversation(
       [{ role: 'user', name: 'discover', text: discover }],
       'explore',
-      'EXPLORE — chain of thought before the brief.',
+      explorePrompt({ contentType: 'legal_guide' }),
     )
     expect(prompt).toMatch(/DISCOVER INTELLIGENCE/)
     expect(prompt).toMatch(/USER · explore/)
+    expect(prompt).toMatch(/READER_QUESTION/)
+    expect(prompt).toMatch(/CHAPTER_CONTINUITY/)
+    expect(prompt).toMatch(/GATE_WATCH/)
     expect(prompt).toMatch(/Do not start over/)
   })
 
@@ -573,9 +599,10 @@ describe('linear desk conversation', () => {
         expect(opts.prompt).toMatch(/EXECUTE the sealed brief/)
         expect(opts.prompt).toMatch(/Revise plan/)
         expect(opts.prompt).toMatch(/AUTOMATED SCORE/)
-        return { text: DRAFT, provider: 'test', model: 'test' }
+        return { text: REVIEWED_DRAFT, provider: 'test', model: 'test' }
       },
       evaluate: blockedQuality,
+      audit: deskAudit,
     })
     expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
     expect(calls.filter((c) => c === 'review').length).toBeGreaterThanOrEqual(1)
@@ -587,6 +614,7 @@ describe('linear desk conversation', () => {
     expect(result.explored).toBe(true)
     expect(result.reflected).toBe(true)
     expect(result.reviewed).toBe(true)
+    expect(result.rejectedRewrites).toEqual([])
     expect(result.exploreScore?.missing || []).toEqual([])
     expect(result.reflectionScore?.pass).toBe(false)
     expect(result.brief.thesis).toMatch(/LCA is certified/)
@@ -667,13 +695,15 @@ describe('linear desk conversation', () => {
           }
         }
         expect(opts.prompt).toMatch(/Open Documents on the LCA/)
-        return { text: DRAFT, provider: 'test', model: 'test' }
+        return { text: REVIEWED_DRAFT, provider: 'test', model: 'test' }
       },
       evaluate: cleanQuality,
+      audit: deskAudit,
     })
     expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
     expect(calls.filter((c) => c === 'review').length).toBeLessThanOrEqual(2)
     expect(result.reviewed).toBe(true)
+    expect(result.rejectedRewrites).toEqual([])
   })
 
   it('rewrites when the automated score fails even if the model says ship', async () => {
@@ -710,13 +740,15 @@ describe('linear desk conversation', () => {
         }
         expect(opts.prompt).toMatch(/AUTOMATED SCORE/)
         expect(opts.prompt).toMatch(/must revise/)
-        return { text: DRAFT, provider: 'test', model: 'test' }
+        return { text: REVIEWED_DRAFT, provider: 'test', model: 'test' }
       },
       evaluate: cleanQuality,
+      audit: deskAudit,
     })
     expect(calls.slice(0, 5)).toEqual(['explore', 'brief', 'draft', 'reflect', 'review'])
     expect(calls.filter((c) => c === 'review').length).toBeLessThanOrEqual(2)
     expect(result.reviewed).toBe(true)
+    expect(result.rejectedRewrites).toEqual([])
     expect(result.reflection?.verdict).toBe('ship')
     expect(result.content).not.toMatch(/This section covers/)
   })

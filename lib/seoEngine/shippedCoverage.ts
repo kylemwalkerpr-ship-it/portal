@@ -17,30 +17,44 @@ export interface ShippedPage {
   status: string
 }
 
+const SHIPPED_STATUSES = ['merged', 'closed'] as const
+const COVERAGE_PAGE_SIZE = 500
+const COVERAGE_HARD_CAP = 10_000
+
+async function loadCoverageRows(
+  table: 'content_jobs' | 'content_jobs_archive',
+  orderColumn: 'updated_at' | 'archived_at',
+  requestedLimit: number,
+): Promise<Array<Record<string, unknown>>> {
+  const db = createSupabaseAdminClient()
+  const rows: Array<Record<string, unknown>> = []
+  const cap = Math.min(Math.max(1, requestedLimit), COVERAGE_HARD_CAP)
+  for (let from = 0; from < cap; from += COVERAGE_PAGE_SIZE) {
+    const to = Math.min(cap - 1, from + COVERAGE_PAGE_SIZE - 1)
+    const result = await db
+      .from(table)
+      .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
+      .in('status', [...SHIPPED_STATUSES])
+      .order(orderColumn, { ascending: false })
+      .range(from, to)
+    if (result.error) throw new Error(result.error.message)
+    const chunk = (result.data || []) as Array<Record<string, unknown>>
+    rows.push(...chunk)
+    if (chunk.length < to - from + 1) break
+  }
+  return rows
+}
+
 export async function loadShippedCoverage(limit = 300): Promise<ShippedPage[]> {
   try {
-    const db = createSupabaseAdminClient()
-    // Only MERGED/DEPLOYED work counts as "shipped coverage". A job sitting
-    // in pr_created (PR open, never merged) is a 404 — treating it as shipped
-    // starved the planner of the exact topics still missing online (audit S1).
-    const [activeResult, archiveResult] = await Promise.all([
-      db
-        .from('content_jobs')
-        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'deployed'])
-        .order('updated_at', { ascending: false })
-        .limit(limit),
-      db
-        .from('content_jobs_archive')
-        .select('title, topic, primary_keyword, canonical_url, content_path, status, pr_url')
-        .in('status', ['merged', 'deployed'])
-        .order('archived_at', { ascending: false })
-        .limit(limit),
+    // Only terminal Git states count here. `deployed` is not a valid live
+    // content_jobs.status in the current schema; deployment/live proof is
+    // tracked separately. `closed` is retained for archived historical rows.
+    const [activeRows, archiveRows] = await Promise.all([
+      loadCoverageRows('content_jobs', 'updated_at', limit),
+      loadCoverageRows('content_jobs_archive', 'archived_at', limit),
     ])
-    const rows = [
-      ...(activeResult.data || []),
-      ...(archiveResult.data || []),
-    ]
+    const rows = [...activeRows, ...archiveRows]
     const seen = new Set<string>()
     const out: ShippedPage[] = []
     for (const row of rows) {
@@ -94,4 +108,3 @@ export function shippedOverlap(term: string, shippedStems: Set<string>): string 
   if (match.kind === 'spoke' || match.kind === 'unrelated') return null
   return match.owner
 }
-
