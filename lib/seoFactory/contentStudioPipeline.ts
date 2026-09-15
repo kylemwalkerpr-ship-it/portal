@@ -14,27 +14,28 @@ export async function runContentStudioPipeline(
 }
 
 /**
- * Contracted SSE uses the same fenced JSON producer rather than the legacy stream
- * implementation, whose early progress row writes predate execution ownership.
- * The HTTP surface remains SSE (job/progress/provider/ship/final/error), while all
- * job mutations now pass through the single fenced persist door.
+ * Preserve the verified SSE producer exactly: contentStudioPipelineCore owns one
+ * full-lifetime AsyncLocalStorage execution window plus its heartbeat while it
+ * drains runSeoFactoryPipelineStream. The recovery context is needed only when
+ * the core generator first acquires a failed-job retry lease; it must never be
+ * replaced by the JSON producer or by per-yield execution contexts.
  */
 export async function* runContentStudioPipelineStream(
   request: core.ContentStudioPipelineInput,
 ): AsyncGenerator<PipelineStreamEvent> {
-  yield { type: 'progress', stage: 'contract', message: 'Contract-bound generation started under a fenced execution lease' }
-  const existingJobId = String(request.existingJobId || '').trim()
-  if (existingJobId) yield { type: 'job', jobId: existingJobId }
+  const iterator = core.runContentStudioPipelineStream(request)[Symbol.asyncIterator]()
   try {
-    const result = await runWithContentStudioRecoveryClaim(() => core.runContentStudioPipeline(request))
-    if (result.provider || result.model) {
-      yield { type: 'provider', provider: String(result.provider || ''), model: String(result.model || '') }
+    while (true) {
+      const next = await runWithContentStudioRecoveryClaim(() => iterator.next())
+      if (next.done) return
+      yield next.value
     }
-    if (result.ship || result.shipError) {
-      yield { type: 'ship', ship: result.ship || null, shipError: result.shipError || null, shipMode: String(result.shipMode || request.shipMode || 'none') }
+  } finally {
+    try {
+      await runWithContentStudioRecoveryClaim(() => iterator.return?.(undefined) ?? Promise.resolve({ done: true, value: undefined as never }))
+    } catch {
+      // The core producer owns terminal failure persistence and stale attempts
+      // are fenced; closing a consumer must not mask the already-emitted error.
     }
-    yield { type: 'final', result }
-  } catch (error) {
-    yield { type: 'error', error: error instanceof Error ? error.message : String(error || 'Content Studio generation failed') }
   }
 }
