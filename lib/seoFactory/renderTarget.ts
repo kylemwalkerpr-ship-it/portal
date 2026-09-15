@@ -30,10 +30,8 @@ export function renderTargetFile(
       contractHash: execution.contractHash,
       content: opts.content,
     })
-    recordPublicationMarker(marker)
+    recordPublicationMarker(marker, opts.content)
   } else {
-    // Human approve/reship has no authoring lease. The publication-only
-    // context derives the marker from the exact post-repair body here.
     marker = publicationMarkerForContent(opts.content)
   }
   if (!marker) return rendered
