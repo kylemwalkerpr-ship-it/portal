@@ -4,6 +4,7 @@ import {
   markCoherentDeskRunning,
   runInContentStudioExecution,
 } from '@/lib/seoFactory/contentStudioExecutionContext'
+import { assemblyFromPipelineInput } from '@/lib/seoFactory/linearDesk'
 
 function strictState(name: string) {
   return createContentStudioExecutionState(true, {
@@ -78,5 +79,48 @@ describe('Content Studio strict execution isolation', () => {
       expect(() => assertIsolatedAuthoringAllowed()).not.toThrow()
     })
     await expect(delayed).resolves.toMatch(/execution window (?:is )?closed/i)
+  })
+
+  it('injects immutable contract keyword provenance into strict Linear Desk assembly', async () => {
+    const state = createContentStudioExecutionState(true, {
+      contractId:'wc_provenance',
+      contractHash:'h_provenance',
+      opportunityId:'o_provenance',
+      executionJobId:'00000000-0000-0000-0000-provenance00',
+      executionOwner:'owner_provenance',
+      executionAttempt:4,
+      executionLeaseExpiresAt:new Date(Date.now() + 60_000).toISOString(),
+      contractQueryCoverage: {
+        requiredShortKeywords:['opt timing','filing window'],
+        requiredLongTailKeywords:['when should f-1 students file for opt'],
+        shortKeywordTerms:[
+          { term:'opt timing', source:'demand' },
+          { term:'filing window', source:'synthesized' },
+        ],
+        longTailKeywordTerms:[
+          { term:'when should f-1 students file for opt', source:'demand' },
+        ],
+      },
+    })
+
+    await runInContentStudioExecution(state, async () => {
+      const assembly = assemblyFromPipelineInput({
+        primaryKeyword:'f-1 opt timing',
+        contentType:'legal_guide',
+        requiredShortKeywords:['mutable request keyword'],
+        requiredLongTailKeywords:[],
+        shortKeywordTerms:[{ term:'mutable request keyword', source:'demand' }],
+        longTailKeywordTerms:[],
+      })
+      expect(assembly.requiredShortKeywords).toEqual(['opt timing','filing window'])
+      expect(assembly.requiredLongTailKeywords).toEqual(['when should f-1 students file for opt'])
+      expect(assembly.shortKeywordTerms).toEqual([
+        { term:'opt timing', source:'demand' },
+        { term:'filing window', source:'synthesized' },
+      ])
+      expect(assembly.longTailKeywordTerms).toEqual([
+        { term:'when should f-1 students file for opt', source:'demand' },
+      ])
+    })
   })
 })
