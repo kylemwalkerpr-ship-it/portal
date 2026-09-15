@@ -8,7 +8,7 @@ export type PublicationMarkerIdentity = {
 }
 
 export type PersistedPublicationManifest = {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   jobId: string
   contractId: string | null
   contractHash: string | null
@@ -18,7 +18,12 @@ export type PersistedPublicationManifest = {
   path: string
   canonical: string
   expectedMarker: string | null
+  /** Exact accepted markdown/body passed into the renderer. */
   approvedContentHash: string
+  /** Exact marked repository file emitted by the renderer. */
+  approvedArtifactHash?: string | null
+  /** Canonicalized substantive article body, used against the live page. */
+  approvedBodyHash?: string | null
   approvedAt: string
   approvalActor: string | null
   prNumber: number | null
@@ -40,6 +45,8 @@ type PublicationContext = {
   lastMarker: string | null
   lastContentHash: string | null
   lastContent: string | null
+  lastArtifactHash: string | null
+  lastBodyHash: string | null
   active: boolean
 }
 const publicationStorage = new AsyncLocalStorage<PublicationContext>()
@@ -50,6 +57,46 @@ function normalizedBody(content: string): string {
 
 export function artifactContentHash(content: string): string {
   return createHash('sha256').update(normalizedBody(content)).digest('hex')
+}
+
+/**
+ * Normalize markdown/source text and extracted live article text into the same
+ * substantive word stream. Metadata, URLs, markup and component wrappers are
+ * excluded; reader-visible words and their order remain. This is deliberately
+ * stricter than a revision marker: changing article prose changes the digest.
+ */
+export function canonicalPublicationBodyText(content: string): string {
+  let text = normalizedBody(content)
+  if (/^---\n/.test(text)) text = text.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  text = text
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, ' $1 ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, ' $1 ')
+    .replace(/<([A-Z][A-Za-z0-9.]*)\b[^>]*\/>/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, ' $1 ')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/[\*_~]/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}']+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text
+}
+
+export function publicationBodyHash(content: string): string {
+  const canonical = canonicalPublicationBodyText(content)
+  if (!canonical) return ''
+  return createHash('sha256').update(canonical).digest('hex')
 }
 
 export function buildExpectedRevisionMarker(input: PublicationMarkerIdentity & { content: string }): string {
@@ -71,6 +118,8 @@ export function buildPublicationApprovalManifest(input: {
   expectedMarker?: string | null
   content: string
   approvedContentHash?: string | null
+  approvedArtifactHash?: string | null
+  approvedBodyHash?: string | null
   approvalActor?: string | null
   prNumber?: number | null
   approvedHeadSha?: string | null
@@ -79,31 +128,25 @@ export function buildPublicationApprovalManifest(input: {
   const contractHash = String(input.contractHash || '').trim()
   const expectedMarker = String(input.expectedMarker || '').trim()
   const approvedContentHash = String(input.approvedContentHash || '').trim()
+  const approvedArtifactHash = String(input.approvedArtifactHash || '').trim()
+  const approvedBodyHash = String(input.approvedBodyHash || '').trim()
   const content = String(input.content || '')
 
-  if (!contractId || !contractHash) {
-    throw new Error('publication manifest requires contract identity')
+  if (!contractId || !contractHash) throw new Error('publication manifest requires contract identity')
+  if (!content.trim()) throw new Error('publication manifest requires the exact rendered body')
+  if (!approvedContentHash) throw new Error('approved content hash is required from the exact renderer body')
+  if (approvedContentHash !== artifactContentHash(content)) throw new Error('approved content hash does not match the exact renderer body')
+  if (!approvedArtifactHash) throw new Error('publication manifest requires the exact marked repository artifact hash')
+  const calculatedBodyHash = publicationBodyHash(content)
+  if (!approvedBodyHash || !calculatedBodyHash || approvedBodyHash !== calculatedBodyHash) {
+    throw new Error('approved body hash does not match the exact renderer body')
   }
-  if (!content.trim()) {
-    throw new Error('publication manifest requires the exact rendered body')
-  }
-  if (!approvedContentHash) {
-    throw new Error('approved content hash is required from the exact renderer body')
-  }
-  const calculatedHash = artifactContentHash(content)
-  if (approvedContentHash !== calculatedHash) {
-    throw new Error('approved content hash does not match the exact renderer body')
-  }
-  if (!expectedMarker) {
-    throw new Error('publication manifest requires the exact revision marker')
-  }
+  if (!expectedMarker) throw new Error('publication manifest requires the exact revision marker')
   const calculatedMarker = buildExpectedRevisionMarker({ contractId, contractHash, opportunityId: input.opportunityId, content })
-  if (expectedMarker !== calculatedMarker) {
-    throw new Error('revision marker does not match the exact renderer body')
-  }
+  if (expectedMarker !== calculatedMarker) throw new Error('revision marker does not match the exact renderer body')
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     jobId: String(input.jobId),
     contractId,
     contractHash,
@@ -114,6 +157,8 @@ export function buildPublicationApprovalManifest(input: {
     canonical: String(input.canonical || '').trim(),
     expectedMarker,
     approvedContentHash,
+    approvedArtifactHash,
+    approvedBodyHash,
     approvedAt: new Date().toISOString(),
     approvalActor: String(input.approvalActor || '').trim() || null,
     prNumber: input.prNumber ? Number(input.prNumber) : null,
@@ -135,10 +180,9 @@ export function publicationManifestFromAudit(auditJson: unknown): PersistedPubli
   const raw = (auditJson as Record<string, unknown>).publicationManifest
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (Number(m.schemaVersion) !== 1 || !String(m.jobId || '').trim()) return null
+  if (![1, 2].includes(Number(m.schemaVersion)) || !String(m.jobId || '').trim()) return null
   return m as unknown as PersistedPublicationManifest
 }
-
 export function withPublicationManifest(auditJson: unknown, manifest: PersistedPublicationManifest): Record<string, unknown> {
   const base = auditJson && typeof auditJson === 'object' ? auditJson as Record<string, unknown> : {}
   return { ...base, publicationManifest: manifest }
@@ -147,39 +191,33 @@ export function withPublicationManifest(auditJson: unknown, manifest: PersistedP
 export async function runWithPublicationIdentity<T>(
   identity: PublicationMarkerIdentity,
   fn: () => Promise<T>,
-): Promise<{ result: T; marker: string | null; contentHash: string | null; content: string | null }> {
+): Promise<{ result: T; marker: string | null; contentHash: string | null; content: string | null; artifactHash: string | null; bodyHash: string | null }> {
   const ctx: PublicationContext = {
-    identity,
-    fixedMarker: null,
-    lastMarker: null,
-    lastContentHash: null,
-    lastContent: null,
-    active: true,
+    identity, fixedMarker: null, lastMarker: null, lastContentHash: null, lastContent: null,
+    lastArtifactHash: null, lastBodyHash: null, active: true,
   }
   try {
     const result = await publicationStorage.run(ctx, fn)
-    return { result, marker: ctx.lastMarker, contentHash: ctx.lastContentHash, content: ctx.lastContent }
-  } finally {
-    ctx.active = false
-  }
+    return {
+      result,
+      marker: ctx.lastMarker,
+      contentHash: ctx.lastContentHash,
+      content: ctx.lastContent,
+      artifactHash: ctx.lastArtifactHash,
+      bodyHash: ctx.lastBodyHash,
+    }
+  } finally { ctx.active = false }
 }
 
 export async function runWithPublicationMarker<T>(marker: string | null | undefined, fn: () => Promise<T>): Promise<T> {
   const value = String(marker || '').trim()
   if (!value) return fn()
   const ctx: PublicationContext = {
-    identity: null,
-    fixedMarker: value,
-    lastMarker: null,
-    lastContentHash: null,
-    lastContent: null,
-    active: true,
+    identity: null, fixedMarker: value, lastMarker: null, lastContentHash: null, lastContent: null,
+    lastArtifactHash: null, lastBodyHash: null, active: true,
   }
-  try {
-    return await publicationStorage.run(ctx, fn)
-  } finally {
-    ctx.active = false
-  }
+  try { return await publicationStorage.run(ctx, fn) }
+  finally { ctx.active = false }
 }
 
 export function publicationMarkerForContent(content: string): string | null {
@@ -190,8 +228,20 @@ export function publicationMarkerForContent(content: string): string | null {
     ctx.lastMarker = marker
     ctx.lastContentHash = artifactContentHash(content)
     ctx.lastContent = String(content || '')
+    ctx.lastBodyHash = publicationBodyHash(content)
   }
   return marker
+}
+
+export function recordPublicationRenderedArtifact(fileContent: string, sourceBody: string): { artifactHash: string; bodyHash: string } {
+  const artifactHash = artifactContentHash(fileContent)
+  const bodyHash = publicationBodyHash(sourceBody)
+  const ctx = publicationStorage.getStore()
+  if (ctx?.active) {
+    ctx.lastArtifactHash = artifactHash
+    ctx.lastBodyHash = bodyHash
+  }
+  return { artifactHash, bodyHash }
 }
 
 export function currentPublicationMarker(): string | null {
@@ -205,9 +255,7 @@ export function injectRevisionMarkerIntoRenderedFile(fileContent: string, marker
   if (fileContent.includes(value)) return fileContent
   const metadataNeedles = ['export const metadata: Metadata = {', 'export const metadata = {']
   for (const needle of metadataNeedles) {
-    if (fileContent.includes(needle)) {
-      return fileContent.replace(needle, `${needle}\n  other: { "content-studio-revision": ${JSON.stringify(value)} },`)
-    }
+    if (fileContent.includes(needle)) return fileContent.replace(needle, `${needle}\n  other: { "content-studio-revision": ${JSON.stringify(value)} },`)
   }
   if (fileContent.startsWith('---\n')) {
     const withFrontmatter = fileContent.replace(/^---\n/, `---\ncontentStudioRevision: ${JSON.stringify(value)}\n`)
