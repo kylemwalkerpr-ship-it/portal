@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
 import type { SeoFactoryAudit } from './audit'
 import type { SealedBrief } from './sealedBrief'
+import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 
 export type ContentStudioDeskState = 'not_started' | 'running' | 'completed' | 'failed'
 export type ContentStudioRevisionState = 'not_started' | 'running' | 'completed' | 'failed'
@@ -10,6 +11,12 @@ export type ContentStudioContractOwnership = {
   repo: string
   filePath: string
   canonicalUrl: string
+}
+export type ContentStudioContractQueryCoverage = {
+  requiredShortKeywords: string[]
+  requiredLongTailKeywords: string[]
+  shortKeywordTerms: KeywordTerm[]
+  longTailKeywordTerms: KeywordTerm[]
 }
 
 export type ContentStudioExecutionState = {
@@ -24,6 +31,7 @@ export type ContentStudioExecutionState = {
   opportunityId: string | null
   contractBrief: SealedBrief | null
   contractOwnership: ContentStudioContractOwnership | null
+  contractQueryCoverage: ContentStudioContractQueryCoverage | null
   requestedModel: string | null
   executionJobId: string | null
   executionOwner: string | null
@@ -54,6 +62,7 @@ export function createContentStudioExecutionState(
     opportunityId?: string | null
     contractBrief?: SealedBrief | null
     contractOwnership?: ContentStudioContractOwnership | null
+    contractQueryCoverage?: ContentStudioContractQueryCoverage | null
     requestedModel?: string | null
     executionJobId?: string | null
     executionOwner?: string | null
@@ -73,6 +82,12 @@ export function createContentStudioExecutionState(
     opportunityId: identity?.opportunityId || null,
     contractBrief: identity?.contractBrief || null,
     contractOwnership: identity?.contractOwnership || null,
+    contractQueryCoverage: identity?.contractQueryCoverage ? {
+      requiredShortKeywords: [...identity.contractQueryCoverage.requiredShortKeywords],
+      requiredLongTailKeywords: [...identity.contractQueryCoverage.requiredLongTailKeywords],
+      shortKeywordTerms: identity.contractQueryCoverage.shortKeywordTerms.map((term) => ({ ...term })),
+      longTailKeywordTerms: identity.contractQueryCoverage.longTailKeywordTerms.map((term) => ({ ...term })),
+    } : null,
     requestedModel: String(identity?.requestedModel || '').trim() || null,
     executionJobId: String(identity?.executionJobId || '').trim() || null,
     executionOwner: String(identity?.executionOwner || '').trim() || null,
