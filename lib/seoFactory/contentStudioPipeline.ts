@@ -66,6 +66,7 @@ function createStrictState(
     opportunityId: contract.opportunity.id,
     contractBrief: contract.brief,
     contractOwnership: contract.ownership,
+    contractQueryCoverage: contract.queryCoverage,
     requestedModel: contract.requestedModel,
     executionJobId: jobId,
     executionOwner: claim.owner,
