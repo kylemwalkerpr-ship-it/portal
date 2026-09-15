@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { shipContent, mergePullRequest, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
-import { resolveOwner } from '@/lib/seoFactory/ownership'
+import {
+  resolveOwner,
+  type ContentRepo,
+  type OwnerHost,
+  type OwnerPlan,
+} from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -129,15 +134,36 @@ async function enqueueRepurposeHook(sourceUrl: string, relatedJobId: string) {
   }
 }
 
-function exactContractPlan(resolved: Awaited<ReturnType<typeof resolveOwner>>, execution: StrictExecution) {
+const OWNER_HOSTS = new Set<OwnerHost>(['legal', 'usa', 'ca', 'uk', 'au', 'apex', 'market'])
+const CONTENT_REPOS = new Set<ContentRepo>(['caseworks', 'yousafe-consultancy', 'portal'])
+
+function strictOwnerHost(value: unknown, fallback: OwnerHost): OwnerHost {
+  const candidate = String(value || '').trim()
+  if (!candidate) return fallback
+  if (!OWNER_HOSTS.has(candidate as OwnerHost)) {
+    throw new Error(`Contracted publication owner host is invalid: ${candidate}`)
+  }
+  return candidate as OwnerHost
+}
+
+function strictContentRepo(value: unknown, fallback: ContentRepo): ContentRepo {
+  const candidate = String(value || '').trim()
+  if (!candidate) return fallback
+  if (!CONTENT_REPOS.has(candidate as ContentRepo)) {
+    throw new Error(`Contracted publication repository is invalid: ${candidate}`)
+  }
+  return candidate as ContentRepo
+}
+
+function exactContractPlan(resolved: OwnerPlan, execution: StrictExecution): OwnerPlan {
   const ownership = execution.contractOwnership
   if (!ownership) return resolved
   return {
     ...resolved,
-    host: ownership.host || resolved.host,
-    repo: ownership.repo || resolved.repo,
-    filePath: ownership.filePath || resolved.filePath,
-    canonicalUrl: ownership.canonicalUrl || resolved.canonicalUrl,
+    host: strictOwnerHost(ownership.host, resolved.host),
+    repo: strictContentRepo(ownership.repo, resolved.repo),
+    filePath: String(ownership.filePath || resolved.filePath),
+    canonicalUrl: String(ownership.canonicalUrl || resolved.canonicalUrl),
   }
 }
 
