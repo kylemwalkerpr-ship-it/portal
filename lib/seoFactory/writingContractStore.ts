@@ -14,6 +14,8 @@ import {
 } from './opportunityIdentity'
 
 export const ACTIVE_OPPORTUNITY_STATUSES = ['pending','drafting','processing','publishing','pr_created'] as const
+export const DEFAULT_CONTENT_STUDIO_LEASE_SECONDS = 900
+export const CONTENT_STUDIO_LEASE_RENEW_MS = 4 * 60 * 1000
 
 export type WritingContractDb = Pick<SupabaseClient, 'from' | 'rpc'>
 
@@ -28,6 +30,10 @@ export type ContentStudioExecutionClaim = {
   owner: string
   attempt: number
   leaseExpiresAt: string | null
+}
+
+function boundedLeaseSeconds(value?: number): number {
+  return Math.max(60, Math.min(Number(value || DEFAULT_CONTENT_STUDIO_LEASE_SECONDS), 3600))
 }
 
 export async function nextWritingContractVersion(db: WritingContractDb, jobId: string): Promise<number> {
@@ -125,7 +131,7 @@ export async function claimContentStudioExecution(
     p_contract_id: input.contractId,
     p_contract_hash: input.contractHash,
     p_execution_owner: owner,
-    p_lease_seconds: Math.max(60, Math.min(Number(input.leaseSeconds || 900), 3600)),
+    p_lease_seconds: boundedLeaseSeconds(input.leaseSeconds),
   })
   if (result.error) {
     throw new ContentStudioExecutionClaimError(`execution claim failed: ${result.error.message}`)
@@ -138,6 +144,60 @@ export async function claimContentStudioExecution(
     owner: String(row.execution_owner),
     attempt: Number(row.execution_attempt),
     leaseExpiresAt: row.execution_lease_expires_at ? String(row.execution_lease_expires_at) : null,
+  }
+}
+
+/**
+ * Extend a still-current lease. Expired executions cannot renew themselves;
+ * they must lose to a fresh atomic claim, which increments the fencing token.
+ */
+export async function renewContentStudioExecution(
+  db: WritingContractDb,
+  input: {
+    jobId: string
+    contractId: string
+    contractHash: string
+    owner: string
+    attempt: number
+    leaseSeconds?: number
+  },
+): Promise<string> {
+  const result = await db.rpc('renew_content_studio_execution', {
+    p_job_id: input.jobId,
+    p_contract_id: input.contractId,
+    p_contract_hash: input.contractHash,
+    p_execution_owner: input.owner,
+    p_execution_attempt: input.attempt,
+    p_lease_seconds: boundedLeaseSeconds(input.leaseSeconds),
+  })
+  if (result.error) {
+    throw new ContentStudioExecutionClaimError(`execution lease renewal failed: ${result.error.message}`)
+  }
+  const row = Array.isArray(result.data) ? result.data[0] : result.data
+  const expires = String(row?.execution_lease_expires_at || '').trim()
+  if (!expires) {
+    throw new ContentStudioExecutionClaimError('execution lease renewal refused: owner/attempt is stale or expired')
+  }
+  return expires
+}
+
+/** Immediate fencing check used before Git mutations and terminal writes. */
+export async function assertContentStudioExecution(
+  db: WritingContractDb,
+  input: { jobId: string; contractId: string; contractHash: string; owner: string; attempt: number },
+): Promise<void> {
+  const result = await db.rpc('check_content_studio_execution', {
+    p_job_id: input.jobId,
+    p_contract_id: input.contractId,
+    p_contract_hash: input.contractHash,
+    p_execution_owner: input.owner,
+    p_execution_attempt: input.attempt,
+  })
+  if (result.error) {
+    throw new ContentStudioExecutionClaimError(`execution fencing check failed: ${result.error.message}`)
+  }
+  if (result.data !== true) {
+    throw new ContentStudioExecutionClaimError('execution lease is stale, expired, or no longer owned by this attempt')
   }
 }
 
