@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { githubFetch } from '@/lib/githubContents'
+import { getRepoFileContent, githubFetch } from '@/lib/githubContents'
 import { runStoredContentJob, type StoredContentJob } from '@/lib/seoFactory/storedJobExecution'
 import { loadWritingContract } from '@/lib/seoFactory/writingContractStore'
 import {
@@ -13,9 +13,7 @@ import {
 } from '@/lib/seoFactory/publicationProof'
 import { GET as legacyGET, POST as legacyPOST, PATCH as legacyPATCH } from './legacy'
 
-function db() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-}
+function db() { return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!) }
 function repoParts(value: unknown): { owner: string; repo: string } {
   const raw = String(value || '').replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, '')
   if (raw.includes('/')) { const [owner, repo] = raw.split('/'); return { owner, repo } }
@@ -23,22 +21,23 @@ function repoParts(value: unknown): { owner: string; repo: string } {
 }
 
 export async function GET(request: NextRequest) { return legacyGET(request) }
-
-async function loadJob(id: string) {
-  return db().from('content_jobs').select('*').eq('id', id).single()
-}
+async function loadJob(id: string) { return db().from('content_jobs').select('*').eq('id', id).single() }
 
 async function validateMarkedPr(job: Record<string, any>): Promise<string | null> {
   const manifest = publicationManifestFromAudit(job.audit_json)
-  if (!manifest || !manifest.expectedMarker || !manifest.approvedContentHash || !manifest.approvedHeadSha || !manifest.prNumber) {
-    return 'Contracted PR cannot be merged: persisted approval manifest is incomplete'
-  }
+  if (
+    !manifest || !manifest.expectedMarker || !manifest.approvedContentHash
+    || !manifest.approvedArtifactHash || !manifest.approvedBodyHash
+    || !manifest.approvedHeadSha || !manifest.prNumber
+  ) return 'Contracted PR cannot be merged: persisted approval manifest is incomplete'
   if (Number(job.pr_number || 0) !== Number(manifest.prNumber)) return 'Contracted PR number changed after approval'
   const { owner, repo } = repoParts(job.target_repo)
   const pr = await githubFetch(`/repos/${owner}/${repo}/pulls/${manifest.prNumber}`).catch(() => null) as any
   if (!pr) return 'Approved PR evidence is unavailable'
-  if (String(pr?.head?.sha || '').toLowerCase() !== manifest.approvedHeadSha.toLowerCase()) {
-    return 'PR head changed after approval; re-audit and approve the new head'
+  if (String(pr?.head?.sha || '').toLowerCase() !== manifest.approvedHeadSha.toLowerCase()) return 'PR head changed after approval; re-audit and approve the new head'
+  const approvedFile = await getRepoFileContent({ owner, repo, path: manifest.path, ref: manifest.approvedHeadSha }).catch(() => null)
+  if (!approvedFile || artifactContentHash(approvedFile) !== manifest.approvedArtifactHash) {
+    return 'Approved PR artifact changed after approval; re-audit and approve the exact artifact'
   }
   return null
 }
@@ -58,9 +57,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const contract = await loadWritingContract(db(), {
-      contractId: String(job.contract_id),
-      contractHash: String(job.contract_hash || ''),
-      jobId: id,
+      contractId: String(job.contract_id), contractHash: String(job.contract_hash || ''), jobId: id,
     })
     if (!contract) return NextResponse.json({ ok:false, error:'Writing contract not found for job' }, { status:409 })
   } catch (error) {
@@ -92,18 +89,20 @@ export async function PATCH(request: NextRequest) {
   let marker: string | null = null
   let exactContentHash: string | null = null
   let exactContent: string | null = null
+  let exactArtifactHash: string | null = null
+  let exactBodyHash: string | null = null
   if (mergingExisting) {
     response = await legacyPATCH(request)
   } else {
     const publication = await runWithPublicationIdentity({
-      contractId: String(job.contract_id),
-      contractHash: String(job.contract_hash || ''),
-      opportunityId: String(job.opportunity_id || ''),
+      contractId: String(job.contract_id), contractHash: String(job.contract_hash || ''), opportunityId: String(job.opportunity_id || ''),
     }, () => legacyPATCH(request))
     response = publication.result
     marker = publication.marker
     exactContentHash = publication.contentHash
     exactContent = publication.content
+    exactArtifactHash = publication.artifactHash
+    exactBodyHash = publication.bodyHash
   }
   if (!response.ok) return response
 
@@ -133,12 +132,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   if ((action === 'approve' || action === 'reship') && !body.dryRun) {
-    if (!marker || !ship || !exactContentHash || !exactContent?.trim()) {
+    if (!marker || !ship || !exactContentHash || !exactContent?.trim() || !exactArtifactHash || !exactBodyHash) {
       await db().from('content_jobs').update({
         publication_phase:'verification_failed', execution_stage:'verification_failed',
-        error_message:'Contracted ship completed without exact renderer marker/body/hash proof',
+        error_message:'Contracted ship completed without exact renderer marker/body/artifact proof',
       }).eq('id', id)
-      return NextResponse.json({ ok:false, error:'Contracted ship completed without exact renderer marker/body/hash proof' }, { status:500 })
+      return NextResponse.json({ ok:false, error:'Contracted ship completed without exact renderer marker/body/artifact proof' }, { status:500 })
     }
 
     const returnedPersistedContent = String(payload?.job?.content || '')
@@ -158,6 +157,7 @@ export async function PATCH(request: NextRequest) {
         repoOwner:repo.owner, repoName:repo.repo, path:String(ship.path || job.content_path || ''),
         canonical:String(ship.canonicalUrl || job.canonical_url || ''), expectedMarker:marker,
         content:exactContent, approvedContentHash:exactContentHash,
+        approvedArtifactHash: exactArtifactHash, approvedBodyHash: exactBodyHash,
         approvalActor:auth.profileId || null, prNumber:ship.prNumber || job.pr_number || null,
         approvedHeadSha:ship.commitSha || null,
       })
@@ -177,9 +177,7 @@ export async function PATCH(request: NextRequest) {
       publication_phase:ship.status === 'pr_created' ? 'pr_open' : 'deployment_pending',
       execution_stage:ship.status === 'pr_created' ? 'pr_open' : 'merged',
     }).eq('id', id).eq('contract_id', job.contract_id).eq('contract_hash', job.contract_hash).select('id').maybeSingle()
-    if (persisted.error || !persisted.data?.id) {
-      return NextResponse.json({ ok:false, error:persisted.error?.message || 'Publication manifest persistence lost contract identity' }, { status:409 })
-    }
+    if (persisted.error || !persisted.data?.id) return NextResponse.json({ ok:false, error:persisted.error?.message || 'Publication manifest persistence lost contract identity' }, { status:409 })
   }
   return response
 }
@@ -202,26 +200,9 @@ export async function POST(request: NextRequest) {
     const skippedIds = results.filter(r=>r.skipped).map(r=>r.id)
     const failed = results.filter(r=>!r.ok && !r.skipped).length
     if (ids.length > 0 && skippedIds.length === ids.length) {
-      return NextResponse.json({
-        ok:false,
-        action,
-        error:'Ship gate not cleared',
-        processed:results.length,
-        succeeded:0,
-        failed,
-        skipped:skippedIds,
-        results,
-      }, { status:409 })
+      return NextResponse.json({ ok:false, action, error:'Ship gate not cleared', processed:results.length, succeeded:0, failed, skipped:skippedIds, results }, { status:409 })
     }
-    return NextResponse.json({
-      ok:succeeded===results.length,
-      action,
-      processed:results.length,
-      succeeded,
-      failed,
-      ...(skippedIds.length ? { skipped:skippedIds } : {}),
-      results,
-    }, { status:succeeded ? 200 : 409 })
+    return NextResponse.json({ ok:succeeded===results.length, action, processed:results.length, succeeded, failed, ...(skippedIds.length ? { skipped:skippedIds } : {}), results }, { status:succeeded ? 200 : 409 })
   }
 
   if (action !== 'rerun_resume') return legacyPOST(request)
