@@ -160,3 +160,5 @@ The user authorized Codex to fix the final blockers and merge after verification
 - Exact final CI results are recorded in the PR metadata rather than claimed in advance here. Local verification uses the downloaded exact PR tree and isolated dependencies; the unrelated older dirty checkout was preserved.
 
 The execution-lease migration remains unapplied and must not be confused with the already-applied migration 20260914181604. Code merge does not execute SQL. Strict contracted runtime operations require that separate schema prerequisite. No article generation, article publication or live benchmark is claimed by this fix. The 12-pair benchmark remains NOT RUN / NOT MET.
+
+The final renderer regression also runs inside strict execution, matching manual approval's nested contexts. It exposed a missing publication-context marker; the renderer now populates both execution and publication proof from the same input and refuses mismatched identities. That regression failed before the fix and passed afterward.

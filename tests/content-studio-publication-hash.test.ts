@@ -1,3 +1,4 @@
+import { createContentStudioExecutionState, runInContentStudioExecution, contentHash } from '@/lib/seoFactory/contentStudioExecutionContext'
 import {
   artifactContentHash,
   buildExpectedRevisionMarker,
@@ -95,7 +96,7 @@ describe('publication manifest exact-body hashing', () => {
     expect(publicationBodyHash(markdown)).not.toBe(publicationBodyHash(changedFee))
   })
 
-  it('verifies the substantive body from the real consultancy blog renderer while excluding renderer-owned apparatus', async () => {
+  it.each([false, true])('verifies the real renderer through manifest and live proof (strict execution: %s)', async (strict) => {
     const title = 'F-1 OPT Filing Guide for Students'
     const canonical = 'https://yousafeconsultancy.com/blog/f1-opt-filing-guide/'
     const content = `---\ntitle: ${JSON.stringify(title)}\ndescription: "A practical filing guide."\n---\n\n# ${title}\n\nStudents & families should confirm the filing window before submitting.\n\n## Filing steps\n\n1. Gather 2 identity documents.\n2. Pay the $410 fee on September 15, 2026.\n\n## Fee table\n\n| Item | Amount |\n|---|---:|\n| Filing fee | $410 |\n\n## After filing\n\nKeep 3 copies of the receipt and confirm the filing date.`
@@ -108,7 +109,14 @@ describe('publication manifest exact-body hashing', () => {
       blockers: [],
     } as any
 
-    const rendered = await runWithPublicationIdentity(identity, async () => renderTargetFile({
+    const state = createContentStudioExecutionState(strict, {
+      ...identity, contractOwnership: plan,
+      executionJobId: 'job-1', executionOwner: 'owner-1', executionAttempt: 1,
+      executionLeaseExpiresAt: new Date(Date.now() + 900000).toISOString(),
+    })
+    state.acceptedContent = content
+    state.acceptedHash = contentHash(content)
+    const rendered = await runInContentStudioExecution(state, () => runWithPublicationIdentity(identity, async () => renderTargetFile({
       plan,
       content,
       title,
@@ -117,7 +125,7 @@ describe('publication manifest exact-body hashing', () => {
       primaryKeyword: 'F-1 OPT filing guide',
       indexable: true,
       canonicalUrl: canonical,
-    }))
+    })))
 
     expect(rendered.result.fileContent).toContain('MyCaseworks Editorial')
     expect(rendered.result.fileContent).toContain('Need the full legal guide?')
@@ -133,7 +141,7 @@ describe('publication manifest exact-body hashing', () => {
       approvedContentHash: rendered.contentHash,
       approvedArtifactHash: rendered.artifactHash,
       approvedBodyHash: rendered.bodyHash,
-      ...{ renderedArtifact: rendered.result.fileContent },
+      ...{ renderedArtifact: rendered.artifactContent },
     })
     expect(manifest.approvedBodyHash).toBe(rendered.bodyHash)
     expect(() => buildPublicationApprovalManifest({

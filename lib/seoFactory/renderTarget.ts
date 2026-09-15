@@ -78,6 +78,12 @@ export function renderTargetFile(
   let marker: string | null = null
   if (execution?.strict && execution.contractId && execution.contractHash) {
     marker = buildExpectedRevisionMarker({ contractId: execution.contractId, contractHash: execution.contractHash, content: opts.content })
+    // Manual publication nests its proof context inside strict execution.
+    // Populate both consumers from the same renderer input.
+    const contextualMarker = publicationMarkerForContent(opts.content)
+    if (contextualMarker && contextualMarker !== marker) {
+      throw new Error('Refusing ship: publication context differs from the execution contract')
+    }
     recordPublicationMarker(marker, opts.content)
   } else {
     marker = publicationMarkerForContent(opts.content)
