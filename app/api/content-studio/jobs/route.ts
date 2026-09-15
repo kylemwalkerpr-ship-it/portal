@@ -5,6 +5,7 @@ import { githubFetch } from '@/lib/githubContents'
 import { runStoredContentJob, type StoredContentJob } from '@/lib/seoFactory/storedJobExecution'
 import { loadWritingContract } from '@/lib/seoFactory/writingContractStore'
 import {
+  artifactContentHash,
   buildPublicationApprovalManifest,
   publicationManifestFromAudit,
   runWithPublicationIdentity,
@@ -29,7 +30,7 @@ async function loadJob(id: string) {
 
 async function validateMarkedPr(job: Record<string, any>): Promise<string | null> {
   const manifest = publicationManifestFromAudit(job.audit_json)
-  if (!manifest || !manifest.expectedMarker || !manifest.approvedHeadSha || !manifest.prNumber) {
+  if (!manifest || !manifest.expectedMarker || !manifest.approvedContentHash || !manifest.approvedHeadSha || !manifest.prNumber) {
     return 'Contracted PR cannot be merged: persisted approval manifest is incomplete'
   }
   if (Number(job.pr_number || 0) !== Number(manifest.prNumber)) return 'Contracted PR number changed after approval'
@@ -55,8 +56,6 @@ export async function PATCH(request: NextRequest) {
   const job = loaded.data as Record<string, any>
   if (!job.contract_id) return legacyPATCH(request)
 
-  // Every contracted admin action revalidates the immutable contract AND its
-  // persisted evidence hashes before it can regenerate, approve, reship or merge.
   try {
     const contract = await loadWritingContract(db(), {
       contractId: String(job.contract_id),
@@ -89,11 +88,10 @@ export async function PATCH(request: NextRequest) {
     if (problem) return NextResponse.json({ ok:false, error: problem }, { status: 409 })
   }
 
-  // Human approval is a publication operation, not an authoring operation.
-  // It receives NO AI execution lease. The publication-only context lets the
-  // renderer derive the marker from the exact post-repair body it is shipping.
   let response: Response
   let marker: string | null = null
+  let exactContentHash: string | null = null
+  let exactContent: string | null = null
   if (mergingExisting) {
     response = await legacyPATCH(request)
   } else {
@@ -104,6 +102,8 @@ export async function PATCH(request: NextRequest) {
     }, () => legacyPATCH(request))
     response = publication.result
     marker = publication.marker
+    exactContentHash = publication.contentHash
+    exactContent = publication.content
   }
   if (!response.ok) return response
 
@@ -133,28 +133,53 @@ export async function PATCH(request: NextRequest) {
   }
 
   if ((action === 'approve' || action === 'reship') && !body.dryRun) {
-    if (!marker || !ship) {
-      await db().from('content_jobs').update({ publication_phase:'verification_failed', execution_stage:'verification_failed', error_message:'Contracted ship completed without a durable revision marker/ship result' }).eq('id', id)
-      return NextResponse.json({ ok:false, error:'Contracted ship completed without a durable revision marker/ship result' }, { status:500 })
+    if (!marker || !ship || !exactContentHash || !exactContent?.trim()) {
+      await db().from('content_jobs').update({
+        publication_phase:'verification_failed', execution_stage:'verification_failed',
+        error_message:'Contracted ship completed without exact renderer marker/body/hash proof',
+      }).eq('id', id)
+      return NextResponse.json({ ok:false, error:'Contracted ship completed without exact renderer marker/body/hash proof' }, { status:500 })
     }
+
+    const returnedPersistedContent = String(payload?.job?.content || '')
+    if (returnedPersistedContent.trim() && artifactContentHash(returnedPersistedContent) !== exactContentHash) {
+      await db().from('content_jobs').update({
+        publication_phase:'verification_failed', execution_stage:'verification_failed',
+        error_message:'Persisted approved body does not match the exact renderer body hash',
+      }).eq('id', id)
+      return NextResponse.json({ ok:false, error:'Persisted approved body does not match the exact renderer body hash' }, { status:500 })
+    }
+
     const repo = { owner:String(ship.owner || repoParts(job.target_repo).owner), repo:String(ship.repo || repoParts(job.target_repo).repo) }
-    // legacyPATCH returns the exact persisted post-repair body in job.content.
-    const content = String(payload?.job?.content || body.content || job.content || '')
-    const manifest = buildPublicationApprovalManifest({
-      jobId:id, contractId:job.contract_id, contractHash:job.contract_hash, opportunityId:job.opportunity_id,
-      repoOwner:repo.owner, repoName:repo.repo, path:String(ship.path || job.content_path || ''),
-      canonical:String(ship.canonicalUrl || job.canonical_url || ''), expectedMarker:marker, content,
-      approvalActor:auth.profileId || null, prNumber:ship.prNumber || job.pr_number || null,
-      approvedHeadSha:ship.commitSha || null,
-    })
+    let manifest
+    try {
+      manifest = buildPublicationApprovalManifest({
+        jobId:id, contractId:job.contract_id, contractHash:job.contract_hash, opportunityId:job.opportunity_id,
+        repoOwner:repo.owner, repoName:repo.repo, path:String(ship.path || job.content_path || ''),
+        canonical:String(ship.canonicalUrl || job.canonical_url || ''), expectedMarker:marker,
+        content:exactContent, approvedContentHash:exactContentHash,
+        approvalActor:auth.profileId || null, prNumber:ship.prNumber || job.pr_number || null,
+        approvedHeadSha:ship.commitSha || null,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Publication manifest validation failed'
+      await db().from('content_jobs').update({
+        publication_phase:'verification_failed', execution_stage:'verification_failed', error_message:message.slice(0,1000),
+      }).eq('id', id)
+      return NextResponse.json({ ok:false, error:message }, { status:500 })
+    }
     manifest.mergeSha = ship.mergeCommitSha || (ship.status === 'deployed' ? ship.commitSha || null : null)
     const latest = await db().from('content_jobs').select('audit_json').eq('id', id).single()
-    await db().from('content_jobs').update({
+    const persisted = await db().from('content_jobs').update({
+      content:exactContent,
       audit_json:withPublicationManifest(latest.data?.audit_json, manifest),
       expected_revision_marker:marker,
       publication_phase:ship.status === 'pr_created' ? 'pr_open' : 'deployment_pending',
       execution_stage:ship.status === 'pr_created' ? 'pr_open' : 'merged',
-    }).eq('id', id).eq('contract_id', job.contract_id).eq('contract_hash', job.contract_hash)
+    }).eq('id', id).eq('contract_id', job.contract_id).eq('contract_hash', job.contract_hash).select('id').maybeSingle()
+    if (persisted.error || !persisted.data?.id) {
+      return NextResponse.json({ ok:false, error:persisted.error?.message || 'Publication manifest persistence lost contract identity' }, { status:409 })
+    }
   }
   return response
 }
