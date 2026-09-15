@@ -10,8 +10,8 @@ const finalPlan = {
   canonicalUrl: 'https://yousafeconsultancy.com/blog/custom-model-slug/',
 }
 const mockResolveOwner = jest.fn(async (input: any) => input?.slug ? finalPlan : initialPlan)
-const mockAttach = jest.fn(async () => undefined)
-const mockPersist = jest.fn(async (_db: any, contract: any) => contract)
+const mockAttach = jest.fn(async (..._args: any[]) => undefined)
+const mockPersist = jest.fn(async (...args: any[]) => args[1])
 const mockTargetUpdates: any[] = []
 
 jest.mock('@/lib/seoFactory/ownership', () => ({
