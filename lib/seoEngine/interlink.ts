@@ -34,6 +34,10 @@ import {
 } from './ontology'
 import { ESTATE_REPOS, type ContentType } from './ontology'
 import { getAllSubcategories, getCategoryById } from '@/lib/categories'
+import {
+  getMarketplaceBaseUrl,
+  marketplaceCategoryHref as canonicalMarketplaceCategoryHref,
+} from '@/lib/marketplaceSeo'
 
 export type InterlinkReason =
   | 'ontology_neighbor'
@@ -62,7 +66,10 @@ export const ESTATE_BASE: Record<string, string> = {
   ca: 'https://ca.yousafeconsultancy.com',
   au: 'https://au.yousafeconsultancy.com',
   apex: 'https://yousafeconsultancy.com',
-  market: 'https://portal.yousafeconsultancy.com',
+  // Marketplace canonical host — derived from the shared canonical authority
+  // (lib/marketplaceSeo.ts), never hard-coded. The retired
+  // portal.yousafeconsultancy.com Marketplace base must never be emitted.
+  market: getMarketplaceBaseUrl(),
 }
 
 export interface InterlinkPlanInput {
@@ -76,10 +83,10 @@ export interface InterlinkPlanInput {
 }
 
 /**
- * Resolve a stage service key (e.g. 'visa', 'study-permits') to a REAL
- * marketplace URL. The marketplace routes are /marketplace/categories/<id>
- * (top-level category or subcategory) — the previous `/marketplace/category/…`
- * target with raw service keys produced 404s on live pages.
+ * Resolve a stage service key (e.g. 'study-permits') to a REAL
+ * marketplace URL. Public category pages live at /categories/<id> on
+ * market.yousafeconsultancy.com — the retired
+ * portal.yousafeconsultancy.com/marketplace/... form is never emitted.
  */
 export function marketplaceCategoryHref(service: string): string {
   const id = String(service || '').trim()
@@ -87,7 +94,7 @@ export function marketplaceCategoryHref(service: string): string {
     Boolean(getCategoryById(id)) ||
     getAllSubcategories().some((s) => s.id === id)
   const resolved = isValid ? id : 'immigration'
-  return `${ESTATE_BASE.market}/marketplace/categories/${resolved}`
+  return canonicalMarketplaceCategoryHref(resolved)
 }
 
 function hostForContentType(ct: ContentType): string {
