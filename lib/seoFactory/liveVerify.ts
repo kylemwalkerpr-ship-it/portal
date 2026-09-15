@@ -35,7 +35,16 @@ async function pingSitemap(canonicalUrl:string):Promise<string>{try{const sm=`ht
 export async function verifyLiveUrl(input:LiveVerifyInput):Promise<LiveVerifyResult>{
   const url=input.canonicalUrl,verifiedAt=new Date().toISOString(),db=dbc()
   let contracted=false
-  if(input.jobId){const{data}=await db.from('content_jobs').select('contract_id').eq('id',input.jobId).maybeSingle();contracted=Boolean((data as any)?.contract_id)}
+  if(input.jobId){
+    const lookup=await db.from('content_jobs').select('contract_id').eq('id',input.jobId).maybeSingle()
+    if(lookup.error||!lookup.data){
+      const reason=lookup.error
+        ? `content job lookup failed: ${lookup.error.message}`
+        : `content job not found for live verification: ${input.jobId}`
+      return{ok:false,liveUrl:url,responseUrl:null,responseUrlMatches:null,httpStatus:null,verifiedAt,wordCount:null,auditScore:null,humanScore:null,hasNoIndex:null,canonicalHref:null,hasCanonical:null,purgeStatus:null,sitemapStatus:null,indexNowStatus:null,expectedMarker:null,liveMarker:null,publicationPhase:'verification_failed',lineageVerified:null,error:reason}
+    }
+    contracted=Boolean((lookup.data as any)?.contract_id)
+  }
   const deployment=contracted&&input.jobId?await reconcilePublicationDeployment(input.jobId):null
   const[purgeStatus,sitemapStatus,indexNowRes]=await Promise.all([
     purgeCdn([url]),pingSitemap(url),(async()=>{try{const r:any=await submitUrlsToIndexNow([url]);return`${r.host||'indexnow'}: ${r.status}`}catch(ex:any){return`indexnow error: ${String(ex?.message||ex).slice(0,200)}`}})(),
