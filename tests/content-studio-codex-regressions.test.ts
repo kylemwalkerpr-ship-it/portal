@@ -19,10 +19,12 @@ describe('Content Studio Codex second-review production seams', () => {
     expect(src).toMatch(/renewContentStudioExecution/)
   })
 
-  test('contracted Linear Desk executes an immutable saved brief instead of rebriefing', () => {
+  test('contracted Linear Desk executes the immutable saved brief instead of rebriefing', () => {
     const src = read('lib/seoFactory/linearDesk.ts')
-    expect(src).toMatch(/contractBrief|persistedBrief|savedBrief/)
-    expect(src).toMatch(/contractBrief[\s\S]{0,1800}executeBriefPrompt/)
+    expect(src).toMatch(/if \(contractBrief\)/)
+    expect(src).toMatch(/brief\s*=\s*contractBrief/)
+    expect(src).toMatch(/executeBriefPrompt\(brief\)/)
+    expect(src).toMatch(/rebriefing disabled/i)
   })
 
   test('shared production desk supplies canonical before/after audits when callers omit an override', () => {
@@ -34,12 +36,16 @@ describe('Content Studio Codex second-review production seams', () => {
     expect(desk).toMatch(/keywordTerms/)
   })
 
-  test('contract hydration pins reader question, ownership and requested model', () => {
-    const src = read('lib/seoFactory/pipelineContract.ts')
-    expect(src).toMatch(/reader\.primaryQuestion/)
-    expect(src).not.toMatch(/topic:\s*input\.topic\s*\|\|\s*contract\.reader\.primaryQuestion/)
-    expect(src).toMatch(/ownership\.(repo|filePath|canonicalUrl)/)
-    expect(src).toMatch(/requestedModel/)
+  test('contract hydration pins reader question and model while strict runner enforces saved ownership', () => {
+    const contract = read('lib/seoFactory/pipelineContract.ts')
+    const runner = read('lib/seoFactory/contentStudioPipeline.ts')
+    const provider = read('lib/contentAiProvider.ts')
+    expect(contract).toMatch(/reader\.primaryQuestion/)
+    expect(contract).not.toMatch(/topic:\s*input\.topic\s*\|\|\s*contract\.reader\.primaryQuestion/)
+    expect(contract).toMatch(/requestedModel/)
+    expect(runner).toMatch(/contract\.ownership\.(host|repo|filePath|canonicalUrl)/)
+    expect(runner).toMatch(/assertContractOwnershipBeforeAuthoring/)
+    expect(provider).toMatch(/assertContractProviderSelection/)
   })
 
   test('actual rendered/Git ship boundary checks strict content, owner and execution lease', () => {
