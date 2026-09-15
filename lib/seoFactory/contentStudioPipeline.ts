@@ -15,6 +15,8 @@ import {
 import {
   assertStrictOwnerTarget,
   createContentStudioExecutionState,
+  markContentStudioExecutionLeaseLost,
+  markContentStudioExecutionLeaseRenewed,
   runInContentStudioExecution,
   type ContentStudioExecutionState,
 } from './contentStudioExecutionContext'
@@ -22,7 +24,11 @@ import type { WritingContractV2 } from './writingContract'
 import { BriefInvalidError } from './sealedBrief'
 import { resolveOwner } from './ownership'
 import {
+  assertContentStudioExecution,
   claimContentStudioExecution,
+  CONTENT_STUDIO_LEASE_RENEW_MS,
+  DEFAULT_CONTENT_STUDIO_LEASE_SECONDS,
+  renewContentStudioExecution,
   type ContentStudioExecutionClaim,
 } from './writingContractStore'
 import {
@@ -34,6 +40,13 @@ export type ContentStudioPipelineInput = PipelineInput & ContractAwarePipelineIn
   writingContractRequired: true
 }
 
+type PreparedStrictExecution = {
+  hydrated: ContentStudioPipelineInput
+  contract: WritingContractV2
+  claim: ContentStudioExecutionClaim
+  state: ContentStudioExecutionState
+}
+
 function failureStage(error: unknown, state: ContentStudioExecutionState): string {
   if (state.acceptedContent) return 'revision_required'
   if (error instanceof BriefInvalidError) return error.executionStage
@@ -42,7 +55,11 @@ function failureStage(error: unknown, state: ContentStudioExecutionState): strin
   return 'brief_invalid'
 }
 
-function createStrictState(contract: WritingContractV2, claim: ContentStudioExecutionClaim): ContentStudioExecutionState {
+function createStrictState(
+  contract: WritingContractV2,
+  claim: ContentStudioExecutionClaim,
+  jobId: string,
+): ContentStudioExecutionState {
   return createContentStudioExecutionState(true, {
     contractId: contract.contractId,
     contractHash: contract.contractHash,
@@ -50,8 +67,10 @@ function createStrictState(contract: WritingContractV2, claim: ContentStudioExec
     contractBrief: contract.brief,
     contractOwnership: contract.ownership,
     requestedModel: contract.requestedModel,
+    executionJobId: jobId,
     executionOwner: claim.owner,
     executionAttempt: claim.attempt,
+    executionLeaseExpiresAt: claim.leaseExpiresAt,
   })
 }
 
@@ -79,7 +98,62 @@ async function assertContractOwnershipBeforeAuthoring(contract: WritingContractV
 function ownerCondition<T>(query: T, claim: ContentStudioExecutionClaim): T {
   return (query as any)
     .eq('execution_owner', claim.owner)
-    .eq('execution_attempt', claim.attempt) as T
+    .eq('execution_attempt', claim.attempt)
+    .gt('execution_lease_expires_at', new Date().toISOString()) as T
+}
+
+async function assertPreparedExecution(prepared: PreparedStrictExecution): Promise<void> {
+  const jobId = String(prepared.hydrated.existingJobId || '').trim()
+  if (!jobId) throw new Error('contracted execution lost its persisted job id')
+  await assertContentStudioExecution(createSupabaseAdminClient(), {
+    jobId,
+    contractId: prepared.contract.contractId,
+    contractHash: prepared.contract.contractHash,
+    owner: prepared.claim.owner,
+    attempt: prepared.claim.attempt,
+  })
+}
+
+function startExecutionLeaseHeartbeat(
+  prepared: PreparedStrictExecution,
+  abort?: AbortController,
+): { stop: () => Promise<void> } {
+  let stopped = false
+  let inFlight: Promise<void> | null = null
+  const jobId = String(prepared.hydrated.existingJobId || '').trim()
+
+  const renew = async () => {
+    if (stopped || inFlight || !jobId) return
+    inFlight = (async () => {
+      try {
+        const expiresAt = await renewContentStudioExecution(createSupabaseAdminClient(), {
+          jobId,
+          contractId: prepared.contract.contractId,
+          contractHash: prepared.contract.contractHash,
+          owner: prepared.claim.owner,
+          attempt: prepared.claim.attempt,
+          leaseSeconds: DEFAULT_CONTENT_STUDIO_LEASE_SECONDS,
+        })
+        prepared.claim.leaseExpiresAt = expiresAt
+        prepared.state.executionLeaseExpiresAt = expiresAt
+        markContentStudioExecutionLeaseRenewed(expiresAt)
+      } catch (error) {
+        markContentStudioExecutionLeaseLost(error)
+        if (abort && !abort.signal.aborted) abort.abort(error)
+        throw error
+      }
+    })()
+    try { await inFlight } finally { inFlight = null }
+  }
+
+  const timer = setInterval(() => { void renew().catch(() => {}) }, CONTENT_STUDIO_LEASE_RENEW_MS)
+  return {
+    async stop() {
+      stopped = true
+      clearInterval(timer)
+      if (inFlight) await inFlight.catch(() => {})
+    },
+  }
 }
 
 async function persistExecutionFailure(input: {
@@ -92,6 +166,13 @@ async function persistExecutionFailure(input: {
   const jobId = String(input.request.existingJobId || '').trim()
   if (!jobId) return false
   try {
+    await assertContentStudioExecution(createSupabaseAdminClient(), {
+      jobId,
+      contractId: input.contract.contractId,
+      contractHash: input.contract.contractHash,
+      owner: input.claim.owner,
+      attempt: input.claim.attempt,
+    })
     const db = createSupabaseAdminClient()
     const message = input.error instanceof Error ? input.error.message : String(input.error || 'Content Studio execution failed')
     const patch: Record<string, unknown> = {
@@ -136,6 +217,14 @@ async function persistExecutionStage(input: {
   const jobId = String(input.request.existingJobId || input.result.jobId || '').trim()
   if (!jobId) throw new Error('contracted execution cannot complete without its reserved job id')
 
+  await assertContentStudioExecution(createSupabaseAdminClient(), {
+    jobId,
+    contractId: input.contract.contractId,
+    contractHash: input.contract.contractHash,
+    owner: input.claim.owner,
+    attempt: input.claim.attempt,
+  })
+
   const ship = input.result.ship
   const shipStatus = ship?.status
   const stage = shipStatus === 'pr_created'
@@ -163,8 +252,10 @@ async function persistExecutionStage(input: {
     const marker = String(input.state.lastPublicationMarker || '').trim()
     const exactContent = String(input.state.lastPublicationContent || '')
     const exactContentHash = String(input.state.lastPublicationContentHash || '').trim()
-    if (!marker || !exactContent.trim() || !exactContentHash) {
-      throw new Error('contracted publication completed without exact renderer marker/body/hash proof')
+    const exactArtifactHash = String(input.state.lastPublicationArtifactHash || '').trim()
+    const exactBodyHash = String(input.state.lastPublicationBodyHash || '').trim()
+    if (!marker || !exactContent.trim() || !exactContentHash || !exactArtifactHash || !exactBodyHash) {
+      throw new Error('contracted publication completed without exact renderer marker/body/artifact digest proof')
     }
     patch.expected_revision_marker = marker
     let currentQuery = db.from('content_jobs').select('audit_json').eq('id', jobId)
@@ -183,6 +274,8 @@ async function persistExecutionStage(input: {
       expectedMarker: marker,
       content: exactContent,
       approvedContentHash: exactContentHash,
+      approvedArtifactHash: exactArtifactHash,
+      approvedBodyHash: exactBodyHash,
       approvalActor: input.request.userId || null,
       prNumber: ship.prNumber || null,
       approvedHeadSha: ship.commitSha || null,
@@ -201,16 +294,11 @@ async function persistExecutionStage(input: {
   updatedQuery = ownerCondition(updatedQuery, input.claim)
   const updated = await updatedQuery.select('id').maybeSingle()
   if (updated.error || !updated.data?.id) {
-    throw new Error(`contracted execution stage persistence failed: ${updated.error?.message || 'execution ownership changed'}`)
+    throw new Error(`contracted execution stage persistence failed: ${updated.error?.message || 'execution ownership changed or lease expired'}`)
   }
 }
 
-async function prepareStrictExecution(request: ContentStudioPipelineInput): Promise<{
-  hydrated: ContentStudioPipelineInput
-  contract: WritingContractV2
-  claim: ContentStudioExecutionClaim
-  state: ContentStudioExecutionState
-}> {
+async function prepareStrictExecution(request: ContentStudioPipelineInput): Promise<PreparedStrictExecution> {
   const resolved = await resolvePipelineWritingContract({ ...request, writingContractRequired: true })
   if (!resolved.contract) throw new Error('writing contract required')
   const hydrated = resolved.input as ContentStudioPipelineInput
@@ -221,10 +309,13 @@ async function prepareStrictExecution(request: ContentStudioPipelineInput): Prom
     jobId,
     contractId: resolved.contract.contractId,
     contractHash: resolved.contract.contractHash,
+    leaseSeconds: DEFAULT_CONTENT_STUDIO_LEASE_SECONDS,
   })
-  const state = createStrictState(resolved.contract, claim)
+  const state = createStrictState(resolved.contract, claim, jobId)
+  const prepared = { hydrated, contract: resolved.contract, claim, state }
   try {
     await runInContentStudioExecution(state, async () => {
+      await assertPreparedExecution(prepared)
       await assertContractOwnershipBeforeAuthoring(resolved.contract!)
       assertStrictOwnerTarget(resolved.contract!.ownership)
     })
@@ -232,18 +323,42 @@ async function prepareStrictExecution(request: ContentStudioPipelineInput): Prom
     await persistExecutionFailure({ request: hydrated, contract: resolved.contract, state, claim, error })
     throw error
   }
-  return { hydrated, contract: resolved.contract, claim, state }
+  return prepared
+}
+
+function linkAbortSignal(source: AbortSignal | undefined, target: AbortController): () => void {
+  if (!source) return () => {}
+  const forward = () => {
+    if (!target.signal.aborted) target.abort(source.reason)
+  }
+  if (source.aborted) forward()
+  else source.addEventListener('abort', forward, { once: true })
+  return () => source.removeEventListener('abort', forward)
 }
 
 export async function runContentStudioPipeline(request: ContentStudioPipelineInput): Promise<PipelineResult> {
   const prepared = await prepareStrictExecution(request)
+  const cancel = new AbortController()
+  const unlinkAbort = linkAbortSignal(prepared.hydrated.signal, cancel)
+  const hydrated = { ...prepared.hydrated, signal: cancel.signal } as ContentStudioPipelineInput
+
   try {
-    const result = await runInContentStudioExecution(prepared.state, () => runSeoFactoryPipeline(prepared.hydrated))
-    await persistExecutionStage({ ...prepared, request: prepared.hydrated, result })
-    return result
-  } catch (error) {
-    await persistExecutionFailure({ ...prepared, request: prepared.hydrated, error })
-    throw error
+    return await runInContentStudioExecution(prepared.state, async () => {
+      const heartbeat = startExecutionLeaseHeartbeat(prepared, cancel)
+      try {
+        const result = await runSeoFactoryPipeline(hydrated)
+        await heartbeat.stop()
+        await assertPreparedExecution(prepared)
+        await persistExecutionStage({ ...prepared, request: hydrated, result })
+        return result
+      } catch (error) {
+        await heartbeat.stop()
+        await persistExecutionFailure({ ...prepared, request: hydrated, error })
+        throw error
+      }
+    })
+  } finally {
+    unlinkAbort()
   }
 }
 
@@ -271,17 +386,13 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
   const prepared = await prepareStrictExecution(request)
   const queue: StreamQueue = { values: [], waiters: [], closed: false }
   const cancel = new AbortController()
-  const upstreamSignal = prepared.hydrated.signal
-  const abortForwarder = () => cancel.abort(upstreamSignal?.reason)
-  if (upstreamSignal) {
-    if (upstreamSignal.aborted) cancel.abort(upstreamSignal.reason)
-    else upstreamSignal.addEventListener('abort', abortForwarder, { once: true })
-  }
+  const unlinkAbort = linkAbortSignal(prepared.hydrated.signal, cancel)
   const hydrated = { ...prepared.hydrated, signal: cancel.signal } as ContentStudioPipelineInput
   let rawIterator: AsyncIterator<PipelineStreamEvent> | null = null
   let persistedTerminal = false
 
   const producer = runInContentStudioExecution(prepared.state, async () => {
+    const heartbeat = startExecutionLeaseHeartbeat(prepared, cancel)
     rawIterator = runSeoFactoryPipelineStream(hydrated)[Symbol.asyncIterator]()
     let sawFinal = false
     try {
@@ -290,6 +401,7 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
         if (next.done) {
           if (!sawFinal) {
             const error = new Error('Content Studio stream ended without final event')
+            await heartbeat.stop()
             await persistExecutionFailure({ ...prepared, request: hydrated, error })
             persistedTerminal = true
             pushStream(queue, { type: 'error', error: error.message })
@@ -299,6 +411,7 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
         const event = next.value
         if (event.type === 'error') {
           const error = new Error(event.error || 'Content Studio streaming pipeline failed')
+          await heartbeat.stop()
           await persistExecutionFailure({ ...prepared, request: hydrated, error })
           persistedTerminal = true
           pushStream(queue, event)
@@ -306,6 +419,8 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
         }
         if (event.type === 'final') {
           sawFinal = true
+          await heartbeat.stop()
+          await assertPreparedExecution(prepared)
           await persistExecutionStage({ ...prepared, request: hydrated, result: event.result })
           persistedTerminal = true
           pushStream(queue, event)
@@ -314,12 +429,14 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
         pushStream(queue, event)
       }
     } catch (error) {
+      await heartbeat.stop()
       if (!persistedTerminal) {
         await persistExecutionFailure({ ...prepared, request: hydrated, error })
         persistedTerminal = true
       }
       pushStream(queue, { type: 'error', error: error instanceof Error ? error.message : String(error || 'stream failed') })
     } finally {
+      await heartbeat.stop()
       try { await rawIterator?.return?.(undefined) } catch { /* failure already persisted */ }
       closeStream(queue)
     }
@@ -337,7 +454,7 @@ export async function* runContentStudioPipelineStream(request: ContentStudioPipe
     cancel.abort(new Error('Content Studio stream consumer closed'))
     try { await rawIterator?.return?.(undefined) } catch { /* producer persists terminal state */ }
     try { await producer } catch { /* producer emits/persists its own terminal failure */ }
-    if (upstreamSignal) upstreamSignal.removeEventListener('abort', abortForwarder)
+    unlinkAbort()
     if (!persistedTerminal) {
       await persistExecutionFailure({
         ...prepared,
