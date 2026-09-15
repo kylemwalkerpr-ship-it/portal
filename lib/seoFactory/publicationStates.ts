@@ -81,6 +81,7 @@ export function canClaimLiveSuccess(input: {
   httpStatus?: number | null
   hasNoIndex?: boolean | null
   canonicalMatches?: boolean | null
+  responseUrlMatches?: boolean | null
   articleBody?: string | null
   approvedHeadSha?: string | null
   mergeSha?: string | null
@@ -91,6 +92,7 @@ export function canClaimLiveSuccess(input: {
   if (input.httpStatus !== 200) return false
   if (input.hasNoIndex !== false) return false
   if (input.canonicalMatches !== true) return false
+  if (input.responseUrlMatches === false) return false
   const expectedMarker = String(input.expectedMarker || '').trim()
   const liveMarker = String(input.liveMarker || '').trim()
   if (!expectedMarker || !liveMarker || expectedMarker !== liveMarker) return false
@@ -125,6 +127,7 @@ export function evaluateLiveArtifact(input: {
   html?: string | null
   canonicalMatches?: boolean | null
   hasNoIndex?: boolean | null
+  responseUrlMatches?: boolean | null
   expectedMarker?: string
   liveMarker?: string | null
   title?: string
@@ -137,6 +140,7 @@ export function evaluateLiveArtifact(input: {
   const fail = (reason: string) => ({ ok: false as const, phase: 'verification_failed' as const, reason, articleBody })
   if (input.httpStatus === 404 || input.httpStatus === 410) return fail('soft-missing or HTTP missing page')
   if (input.httpStatus !== 200) return fail(`HTTP ${input.httpStatus}`)
+  if (input.responseUrlMatches === false) return fail('response URL redirected to a different article')
   if (input.hasNoIndex == null) return fail('indexability assessment missing')
   if (input.hasNoIndex) return fail('noindex on live document')
   if (input.canonicalMatches == null) return fail('canonical assessment missing')
