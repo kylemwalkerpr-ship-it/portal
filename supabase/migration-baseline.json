@@ -1,0 +1,430 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-09-16T00:37:03.553Z",
+  "generatedFrom": {
+    "repository": "kylemwalkerpr-ship-it/portal",
+    "gitSha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+    "migrationOrderSource": "scripts/migration-order.mjs",
+    "migrationCount": 69
+  },
+  "ledger": {
+    "schema": "supabase_migrations",
+    "table": "yousafe_migration_ledger"
+  },
+  "files": [
+    {
+      "filename": "content_jobs.sql",
+      "sha256": "5447521c49918ab21406ece72eb6fcf0bb73c56fa8cb3f85c3faf0940fccb55b",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "gsc_tokens.sql",
+      "sha256": "9a685ff1a0572f8071c115807cc0e3125edd842944a7f9653ee43d7f3b020e04",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "seo_factory_columns.sql",
+      "sha256": "538218534cdb85ee00d601f0e482a96d9b22b0821c7a3c24ab57dd5be558fe64",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "content_jobs_event_log.sql",
+      "sha256": "72df0a71903fdba67be1d8884b992e3f709e0e87e71c08068cfcee21a004057e",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "live_verify_columns.sql",
+      "sha256": "08c05f8b167c11db97b91a1a963d5271245e5914e5abd2fce8cf79ad4276dbf3",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "mission_log.sql",
+      "sha256": "63a2bef297bc231dae90a4eda25cf4b6d216b5c9a394af3a0c333463de740935",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "war_room_daily_runs.sql",
+      "sha256": "5219aaf6841b24a5c36580de1dcfa03338aa948ddbd7bc26e5c9a822984b9736",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "ai_provider_keys.sql",
+      "sha256": "8777979dbe17c1810a51a515a6c75cc2c3c3c0341242810c59b8e233352216cd",
+      "tier": "base",
+      "legacy": true
+    },
+    {
+      "filename": "20260806_hardening.sql",
+      "sha256": "3b053795d744489832a14f7c98436f6d05de5799155a31e00f128bbf78f9fe06",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260808_cannibal_merges.sql",
+      "sha256": "4cad465f9f549545bdbc14d46f141e4c90425587fe492c3ac2f6f4db610d9066",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260809_cannibal_rechecks.sql",
+      "sha256": "db2cf2bbf6f1be3bf71ed569ccb594d20d7d4f04bcf21a122c2c77b6613c1bd7",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260809_seo_master_engine.sql",
+      "sha256": "a44d179d2b115afb1ca8b1356d870e281dcb51c43d7bb27ee8d95b05bf5ecc67",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260810_seo_engine_v2.sql",
+      "sha256": "caf3f05a638fe9288d60bdfa75c1f51e5aebd4dfcc92819153c143ca6687d669",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260811_content_jobs_archive.sql",
+      "sha256": "779311bbe40a5baddb0aff6e25e646f666168e3bd248be52c917cdf58197d6d8",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260811_table_guarantees.sql",
+      "sha256": "0da0b8a29b49cd5b410802dc7ccb1c1dc052afa58dafb02df4fec28d38a1a1a6",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260812_competing_urls.sql",
+      "sha256": "3b328c7f12f936821d6f94e156164be80315aca760b1807251924d545423be0e",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260812_content_jobs_hardening.sql",
+      "sha256": "18f1fa4f4713a36dd614b269ca6e938967e40b598e4222acd49b64ce89e883a6",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260813_ai_admin_provider_order.sql",
+      "sha256": "65c32f60d014ca327fc23f29f7ba15544f8e56326930fabdd7149e5a975aa837",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260813_backlink_engine.sql",
+      "sha256": "7766926eae3e5897d8afbc3433464c22888cced1888125c8cadf2e86b42df602",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260813_rhythm_alerts.sql",
+      "sha256": "fe489b486124b501089247452204dfc111c4081af4403600e9e5a8fbc685f937",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260814_ai_baseten_provider.sql",
+      "sha256": "0836d6a8db4b1ee24962ca6a8c6faa72dd700fa46823f242ef765cd7fdd5e702",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260815_backlinks_json.sql",
+      "sha256": "6a172028746daf4aa2b670f2330dc73263c1e102fc361a5c2334abafa0b43556",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260815_competing_snippets.sql",
+      "sha256": "1e3cd5405bad611db56390967e8bd9c76f33b683a7ba86ed9f7ce8f9cd94797c",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260815_keyword_partition.sql",
+      "sha256": "4338c2824fb33b3a5054ecceca0642da38a2492e4b93db0c3bc68ec9bf38cf58",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260815_master_engine_backfill.sql",
+      "sha256": "f1c4a9b6610ee9c6433188bfaa7936a086669ab1eff1152854d83afa2e61041d",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260815_seo_intelligence.sql",
+      "sha256": "bdc925a76263148a648deb979af92f83722e4a8d79215a7d178740e29f0c3ba4",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260816_ai_nemotron_provider.sql",
+      "sha256": "f4d743cec6831665758442aec2b6c6f18eba4b28b803bb6266e567c7c0116cc0",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260816_content_jobs_replica_identity.sql",
+      "sha256": "8468f86ad1ea69b5205e146895e4e73fda605f85d828a0dafe99af73df48464d",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260816_gsc_index_coverage.sql",
+      "sha256": "2ed6a3254d49d80d4992e5f2f72da35c1df7c1b3c34bd8370470eb084457023a",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260816_seo_llm_visibility_v3.sql",
+      "sha256": "4eda94ffede8164897af5cd54e8a19e61e0545044fda8c37d771e7b151859241",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260816_site_health_pages.sql",
+      "sha256": "f8bea0158edc3aa193c16f91b1b2b11c0324cd830456321ae2d054038bf0faae",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_ahrefs_snapshots.sql",
+      "sha256": "27e86d531c1b4d29eebbd58176dab534fada74f1c8f6409cefb554be1476fa35",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_seo_competitive_v1.sql",
+      "sha256": "32d02392392aa17d05f6a0f53a16100b9a3492a0047eb4ab70f2cf7b38dec0fc",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_seo_content_semantic_v1.sql",
+      "sha256": "e6f15bb0d3c4969975ccac2497c515d1f465c79282912e091830cfcb22660f09",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_seo_eeat_v1.sql",
+      "sha256": "6c2d8ceee928483e77ae8bd3d30de2da5e767cc544c4061db64bc3ab19317126",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_seo_local_v1.sql",
+      "sha256": "fe700d2089e1c7c2685b4f46681ed6e438f7e205508f1adda5e821f818789557",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260817_site_health_rls.sql",
+      "sha256": "7f28310e9a47f3f83ee718e73bee8bc8c0ae3bd11a1449ca72bf65112a67e6cd",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260819_content_job_reviews.sql",
+      "sha256": "594055b54438307b3cba9928186b7752d1bdaa29a5687489dd100c57ce22236e",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260819_seo_engine_runs_kind.sql",
+      "sha256": "bbdedbc06d1b7cb96b2bfa10337a8e7917949e2fa3cfe650ce1c04f8911e7993",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260826_nvidia_minimax_draft_default.sql",
+      "sha256": "64051e3d2674a617f7ab511515ffebc6a1bb8b86cf36b30b3c087ccd9e2705e0",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260831_keyword_provenance.sql",
+      "sha256": "c2768a2a3cfe265acf6c0cd9f184cbe14cb6e062d702580eeca023082ecda2f1",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260901_content_job_reviews_fingerprint.sql",
+      "sha256": "04690bf22425aad7deb643f5bd226459a3869f9d3c50d46accb81ceec6dc37df",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260901_seo_ranking_model.sql",
+      "sha256": "b31ef86f45f61045af6921dd3eff3a3fdd59b536825038ce5a9d279b2575ac7d",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260902_seo_cluster_plan_economics.sql",
+      "sha256": "b455264dc8fd424611f1470aff1251df542449d3f7dd8b944be941fc1b3c53f1",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260902_seo_cluster_plan_lifecycle.sql",
+      "sha256": "e62c970604619e7bfe42884d9b7ee5db6e920964db1ca7c42d886d62a810f719",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260902_seo_llm_fanout.sql",
+      "sha256": "87d17ada40b855c77dc86945154ee06c59643f930b7ae0ae2698e944d650611a",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260902_seo_title_history.sql",
+      "sha256": "9a33ee3f29d2fe542b2ded7fdab3c84d0a879ffecb8322bd51dd8588ba867109",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260903_content_jobs_target_repo_default.sql",
+      "sha256": "0aaa8cba7852844c497484dfaf72657deec99e7c09d334f797e5d2f69847f5f7",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260903_content_jobs_target_repo_trigger.sql",
+      "sha256": "ebbc735dd92048e3ad12ef20b3777bcd84454da7f5e2c5b723e584ad230791da",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260903_seo_engine_integrity.sql",
+      "sha256": "faebbd9f432b828ae3dea5c4d92f1b0068e04ac7c89ee2da3be00ecae14db8db",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260904_seo_gsc_rows.sql",
+      "sha256": "cc3b6e070ad53dd416586fd98c9a6e46c9b9b759b1804851ecd7de5aeab7161d",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260904_seo_topic_graph.sql",
+      "sha256": "6d487b170bf23b3c9f9bc6910dee854d50012ce9896ed92e227c36527f418045",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260906_studio_specialist_signals.sql",
+      "sha256": "316e541ef29b639b377f888e27cc85779b1d3061f578b5cd5e777c7c874fcf90",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260907_attorney_show_bar_number.sql",
+      "sha256": "b7d54ba8c793fdde1e4b51669b2a841c527c67bd1299a9ef33c1feca321751f7",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260907_conversation_ai_mode.sql",
+      "sha256": "ad410d5c5a4bbb4af968f2956af0a134cfdf83e252a25a841da9b7b169492788",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260907_engine_evidence_attribution.sql",
+      "sha256": "fb28a0e815a2e9df2264559f603de0aafaff1befb7eaa5f5a016a0b6c28ee50b",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260908_marketplace_gig_jurisdiction_au.sql",
+      "sha256": "55a6226fcf375c218f519a8256159602483ae1b6f5797386d20eee7c586c4dbf",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260909_client_order_cancellation.sql",
+      "sha256": "4b145f0347b6c14244e4fdbad1d46323f8217aef84228b6f5fbee049a1deb486",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260909_marketplace_gig_gallery_public.sql",
+      "sha256": "0217b170d2c826bea4f35519d503d2e48cde6adf81a0b6bcc245ad47f66ca1d3",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260911_marketplace_search_intelligence.sql",
+      "sha256": "f29f8f51454779f350e8da0fc83f799c6515f146bc79798c60ed2a7f0febe8c6",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260911_marketplace_search_intelligence_metrics.sql",
+      "sha256": "2df10a0ae34343bee77b22401e9d66fa48a0ac2396f39e94a55cfedfac685741",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260911_provider_credential_visibility_controls.sql",
+      "sha256": "ed9bc3a5b831b85c5c0b87850ed467b0bbe8190b286d9c46f86798117a401419",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260914_content_studio_evidence_contract.sql",
+      "sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260915_content_studio_execution_lease.sql",
+      "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "20260915_support_security_boundary.sql",
+      "sha256": "6b551ec8090ec4b727459cb7fe45ebd2b584c9dca4a93d018ceaf0de10a151e3",
+      "tier": "timestamped",
+      "legacy": true
+    },
+    {
+      "filename": "pg_trgm_indexes.sql",
+      "sha256": "cf7b2b2f1d62231aca60f78f13705e0249c937013b4ce556ca37310a5d9588e5",
+      "tier": "index",
+      "legacy": true
+    },
+    {
+      "filename": "additional_fts_indexes.sql",
+      "sha256": "6abaa93fcadfc16fc07455fa21183fb07ae2a7aa917f05afb7cecbf03a64a6c8",
+      "tier": "index",
+      "legacy": true
+    },
+    {
+      "filename": "application_fts_indexes.sql",
+      "sha256": "0b86a931aa3787782aa73f165741ad720c7d62605a8ae863063628cdf11d9faf",
+      "tier": "index",
+      "legacy": true
+    },
+    {
+      "filename": "content_jobs_fts_index.sql",
+      "sha256": "dc8d89bd7a1bce11d583aea651ad6287c8008b521f284a273c9a12311a21c503",
+      "tier": "index",
+      "legacy": true
+    }
+  ]
+}
