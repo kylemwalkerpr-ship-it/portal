@@ -201,7 +201,7 @@ export const JOB_LINEAGE_COLUMNS = [
 
 /**
  * Provider-parity additive columns
- * (`supabase/migrations/20260915_content_studio_provider_parity.sql`, which is
+ * (`supabase/migrations/20260916122441_content_studio_provider_parity.sql`, which is
  * INTENTIONALLY UNAPPLIED). Until it is applied, a SELECT projection naming
  * either column fails with a missing-column/schema-cache error, so jobs reads
  * retry once without ONLY these two columns.

@@ -265,7 +265,7 @@ Completeness is part of the P2 atomic flip: the boundary scan enumerates every `
 
 ### 4.2 New additive migration (unapplied)
 
-`supabase/migrations/20260915_content_studio_provider_parity.sql`:
+`supabase/migrations/20260916122441_content_studio_provider_parity.sql`:
 
 ```sql
 alter table if exists public.content_jobs
@@ -434,7 +434,7 @@ Set by GPT-5.6 Sol after Task 0. They are final for this architecture; the progr
 4. **Selectability.** DeepSeek must be selectable for all relevant brief/draft/review/revision/command stages; there is no Grok-only style review.
 5. **Base URL.** The first-party DeepSeek base is exactly `https://api.deepseek.com/v1`; no `DEEPSEEK_BASE_URL` and no vault `base_url` override for this provider.
 6. **Secret retirement.** Removal of retired secrets requires the 30-consecutive-day zero-use prerequisite in §7.1 and is a separate approval; it is not part of this program.
-7. **Migration.** `20260915_content_studio_provider_parity.sql` may be merged unapplied but is never applied without separate supervisor approval.
+7. **Migration.** `20260916122441_content_studio_provider_parity.sql` may be merged unapplied but is never applied without separate supervisor approval.
 8. **(PR #204 review) P2 atomicity.** P2 is one atomic commission flip covering every surface that can select, inject, test, or execute a provider: adapter/registrations, fail-closed routes, catalog/UI, vault/settings/test/health routes and vault UI, and deployment/runtime declarations. No P2-afterward state may leave `deploy.yml` injecting `CONTENT_AI_PROVIDER=entrim-qwen-27b` or any retired provider configuration injected/effective. Task 6/Task 7 work is sequenced inside the atomic P2 flip (Tasks 3–7 land together). Secret deletion remains §7.1, separately approved and out of scope.
 9. **(PR #204 review) Non-registrable retired transports.** After P2, no retired provider transport can be registered or route-reachable even if dead-code cleanup happens later; the boundary test and runtime registration proof are the enforcement, not the P3 deletion.
 10. **(PR #204 review) Grok transport semantics.** The existing xAI Grok transport is authorized to remain; it is not an additional AI provider and not a cross-provider fallback. Its existing CLI-proxy fallback (`cli-chat-proxy.grok.com/v1`), if retained, stays within Grok/xAI credential behavior and cannot select or route to another model/provider. Scope/test requirement: Grok and DeepSeek never cross-fallback, and DeepSeek remains `api.deepseek.com` only. The intermediary prohibition does not apply to the retained Grok transport path.

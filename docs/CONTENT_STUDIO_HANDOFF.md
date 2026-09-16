@@ -138,7 +138,7 @@ No migration was applied by this program.
 
 - `supabase/migrations/20260915_content_studio_execution_lease.sql` — **UNAPPLIED**
   (PR #200 lease/fencing prerequisite).
-- `supabase/migrations/20260915_content_studio_provider_parity.sql` — **UNAPPLIED**
+- `supabase/migrations/20260916122441_content_studio_provider_parity.sql` — **UNAPPLIED**
   (additive `actual_provider` / `provider_error_class`; applies only on the
   supervisor's separate approval and production-state check).
 

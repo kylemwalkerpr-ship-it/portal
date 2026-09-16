@@ -165,7 +165,7 @@ const applyBodies = (requests: string[]) => requests.filter((sql) => sql.startsW
 
 describe('ledger runner — cutover gates and classification (T3, T8)', () => {
   it('T3 skip: all 69 baseline rows recorded with equal hashes applies nothing and compares native pre/post', () => {
-    const out = runRunner({})
+    const out = runRunner({ order: BASELINE_ORDER })
     expect(out.result.ok).toBe(true)
     expect(out.result.status).toBe('OK')
     expect(out.result.applied).toEqual([])
@@ -503,7 +503,7 @@ describe('ledger runner — naming, modes, interface (T3/T17)', () => {
     expect(applyBodies(badSession.requests)).toHaveLength(0)
     expect(badSession.logs.some((line) => line.startsWith('RUNTIME ROLE VERIFIED'))).toBe(false)
 
-    const noPending = runRunner({ role: { current_user: 'postgres', session_user: 'postgres', role: 'none' } })
+    const noPending = runRunner({ order: BASELINE_ORDER, role: { current_user: 'postgres', session_user: 'postgres', role: 'none' } })
     expect(noPending.result.status).toBe('OK')
     expect(noPending.requests.some((sql) => sql.includes('current_user'))).toBe(true)
     expect(noPending.logs).toContain(

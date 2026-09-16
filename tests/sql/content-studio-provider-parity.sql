@@ -25,9 +25,9 @@ create table public.content_jobs (
 insert into public.content_jobs(id, status, execution_stage, ai_provider, execution_attempt)
 values ('00000000-0000-0000-0000-000000000001', 'drafting', 'drafting', 'entrim-deepseek', 0);
 
-\ir ../../supabase/migrations/20260915_content_studio_provider_parity.sql
+\ir ../../supabase/migrations/20260916122441_content_studio_provider_parity.sql
 -- Additive + if-not-exists: re-applying the review candidate is a no-op.
-\ir ../../supabase/migrations/20260915_content_studio_provider_parity.sql
+\ir ../../supabase/migrations/20260916122441_content_studio_provider_parity.sql
 
 do $test$
 declare

@@ -291,7 +291,7 @@ TZ=UTC NODE_OPTIONS=--max-old-space-size=8192 npx jest --ci --runInBand
 → remaining failures: tests/migration-ledger-policy.test.ts (6) and
   tests/migration-transaction-safety.test.ts (2) — pre-existing frozen
   69-file migration-count expectations vs the 70th migration added by P2
-  (20260915_content_studio_provider_parity.sql). No provider test fails.
+  (20260916122441_content_studio_provider_parity.sql). No provider test fails.
 → cleanup-only run before the restored suite was 379 passed / 2 failed /
   2 skipped suites and 3943 passed / 8 failed / 4 skipped tests; the delta is
   exactly tests/content-ai-provider-stream.test.ts.
@@ -326,7 +326,7 @@ git status --porcelain → only the P3 paths listed above plus the new
 ### Remaining external/runtime risks
 
 - `npm run build` is red at the starting SHA and after P3 (see above); it must be fixed before any deploy attempt and is outside the P3 mandate.
-- Both migrations remain **UNAPPLIED** (`20260915_content_studio_execution_lease.sql` and `20260915_content_studio_provider_parity.sql`); the provider-parity columns are tolerated as absent.
+- Both migrations remain **UNAPPLIED** (`20260915_content_studio_execution_lease.sql` and `20260916122441_content_studio_provider_parity.sql`); the provider-parity columns are tolerated as absent.
 - No live provider canary was performed with real credentials; DeepSeek first-party behavior is proven by mocked transport tests only.
 - The exported legacy `resolveAiProviderPin`/`preferProvider` chain, the `ENTRIM_QWEN_*` aliases, and the generic OpenAI-compatible branches keyed on retired labels (see "Executable vs inert") remain inert for compatibility with retained legacy tests; they resolve labels or shape generic request JSON only, are not registrable transports, are not reachable through the execution doors, and can be removed in a later cleanup with those tests.
 - `lib/runbiosCatalog.ts` and the tombstoned `scripts/probe-runbios-pipeline.ts` remain by design (boundary-test inventory); neither can execute a provider.

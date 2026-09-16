@@ -22,6 +22,11 @@
 -- Additive and least-privilege: no grants, no RLS changes, no new objects, and
 -- no change to any PR #200 object. ai_provider data is never rewritten; only
 -- its comment is documented below.
+--
+-- Reverse block (documented here as the rollback; intentionally NOT executed):
+--   alter table public.content_jobs drop column if exists provider_error_class;
+--   alter table public.content_jobs drop column if exists actual_provider;
+-- Both columns are nullable additions, so a code revert needs no schema rollback.
 
 alter table if exists public.content_jobs
   add column if not exists actual_provider text,
@@ -33,8 +38,3 @@ comment on column public.content_jobs.actual_provider is
   'Commissioned pin that produced the accepted artifact; null until first successful provider completion.';
 comment on column public.content_jobs.provider_error_class is
   'Granular provider failure class: auth|quota|rate_limit|timeout|malformed|empty|unavailable|destination_violation|unusable_generation|selection_required.';
-
--- Reverse block (documented here as the rollback; intentionally NOT executed):
---   alter table public.content_jobs drop column if exists provider_error_class;
---   alter table public.content_jobs drop column if exists actual_provider;
--- Both columns are nullable additions, so a code revert needs no schema rollback.

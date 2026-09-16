@@ -2,7 +2,7 @@
 
 **PR:** Content Studio DeepSeek provider parity (P2-C persistence)
 **Status:** **UNAPPLIED — REVIEW REQUIRED**
-**Migration:** `supabase/migrations/20260915_content_studio_provider_parity.sql`
+**Migration:** `supabase/migrations/20260916122441_content_studio_provider_parity.sql`
 **Review copy:** `tests/sql/content-studio-provider-parity.sql`
 **Runtime dependency:** none. The application works identically with or without this migration (absent-column compatibility retry); it is required before `actual_provider` / `provider_error_class` lineage can be persisted in production.
 
@@ -81,7 +81,7 @@ The SQL test wraps the candidate schema/lifecycle assertions in a transaction an
 
 ## Exact SQL submitted for schema review
 
-The block below is intentionally identical to `supabase/migrations/20260915_content_studio_provider_parity.sql` in this review candidate.
+The block below is intentionally identical to `supabase/migrations/20260916122441_content_studio_provider_parity.sql` in this review candidate.
 
 ```sql
 -- Content Studio provider parity persistence (additive).
@@ -108,6 +108,11 @@ The block below is intentionally identical to `supabase/migrations/20260915_cont
 -- Additive and least-privilege: no grants, no RLS changes, no new objects, and
 -- no change to any PR #200 object. ai_provider data is never rewritten; only
 -- its comment is documented below.
+--
+-- Reverse block (documented here as the rollback; intentionally NOT executed):
+--   alter table public.content_jobs drop column if exists provider_error_class;
+--   alter table public.content_jobs drop column if exists actual_provider;
+-- Both columns are nullable additions, so a code revert needs no schema rollback.
 
 alter table if exists public.content_jobs
   add column if not exists actual_provider text,
@@ -119,11 +124,6 @@ comment on column public.content_jobs.actual_provider is
   'Commissioned pin that produced the accepted artifact; null until first successful provider completion.';
 comment on column public.content_jobs.provider_error_class is
   'Granular provider failure class: auth|quota|rate_limit|timeout|malformed|empty|unavailable|destination_violation|unusable_generation|selection_required.';
-
--- Reverse block (documented here as the rollback; intentionally NOT executed):
---   alter table public.content_jobs drop column if exists provider_error_class;
---   alter table public.content_jobs drop column if exists actual_provider;
--- Both columns are nullable additions, so a code revert needs no schema rollback.
 ```
 
 ## Approval gate

@@ -191,7 +191,7 @@
 - Modify: `lib/seoFactory/contentStudioPipelineCore.ts:211-301` (persist `actual_provider`, provider_error_class on failure `:160-209`)
 - Modify: `lib/seoFactory/suggestBriefContractCore.ts:310-319` (attach requested provider/model)
 - Modify: `lib/seoFactory/storedJobExecution.ts:30-68` (carry pin explicitly)
-- Create: `supabase/migrations/20260915_content_studio_provider_parity.sql` (additive, reversible, **unapplied**)
+- Create: `supabase/migrations/20260916122441_content_studio_provider_parity.sql` (additive, reversible, **unapplied**)
 - Create: `tests/sql/content-studio-provider-parity.sql` (review copy, mirrors PR #200 SQL-test pattern)
 - Create: `docs/content-studio/PROVIDER_PARITY_SCHEMA_REVIEW_20260915.md`
 - Modify: `tests/jobs-ship-gate-server.test.ts`, `tests/persist-content-job.test.ts` (fixture columns)
@@ -294,7 +294,7 @@
 
 - [ ] Report to GPT-5.6 Sol: branch, head SHA, files changed, RED/GREEN evidence per task, accepted risks, supervisor decisions implemented (design §13, including PR #204 review corrections §13.8–13.11: P2 atomic across Tasks 3–7, non-registrable retired transports with boundary/runtime proofs, Grok transport semantics with no cross-fallback, DeepSeek hard-pin unchanged), migration not applied, secret checklist status.
 - [ ] On approval: commit, push, open PR (draft) against `main`; include the design/plan links and commands.
-- [ ] On approval: request DB application of `20260915_content_studio_provider_parity.sql` as a separate step; verify column presence after application; do not apply it locally.
+- [ ] On approval: request DB application of `20260916122441_content_studio_provider_parity.sql` as a separate step; verify column presence after application; do not apply it locally.
 - [ ] On approval: request a single canary generation per provider through the real Worker, then live verification; record provider/model/attempt/hash evidence.
 - [ ] STOP after handoff; no merge, no deploy, no production verification without GPT-5.6 Sol.
 

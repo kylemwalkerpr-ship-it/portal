@@ -42,7 +42,7 @@ type ProviderParityQueryResponse = { data: unknown; error: { message?: string | 
 /**
  * Pre-migration read compatibility (Task 5 P2-C). `actual_provider` /
  * `provider_error_class` are additive columns whose migration
- * (`20260915_content_studio_provider_parity.sql`) is intentionally unapplied,
+ * (`20260916122441_content_studio_provider_parity.sql`) is intentionally unapplied,
  * so a jobs projection naming them fails until it is applied. Retry the exact
  * same read without ONLY those two columns — and only for that exact
  * missing-column/schema-cache error — preserving every filter, fence,
