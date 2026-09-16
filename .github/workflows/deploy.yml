@@ -65,24 +65,21 @@ jobs:
           node scripts/seo-audit-guard.mjs
           echo "::endgroup::"
 
-      # AI provider keys for the SEO assistant + chat widget. Pushed
-      # idempotently BEFORE each deploy so rotating a key in GitHub repo
-      # secrets takes effect on the next git push — no local
-      # `wrangler secret put` ever required. Skips silently if a key is
-      # not set so the deploy stays green when only one provider is
-      # configured.
-      #
-      # Runs BEFORE the deploy on purpose: each `wrangler secret put`
-      # creates a new Worker Version, and the last one created becomes the
-      # active deployment. If secrets were pushed after the deploy, a race
-      # could base a secret version on stale deployment state and overwrite
-      # the fresh code we just shipped (regression caught by the post-deploy
-      # smoke gate on 2026-08-11). Wrangler's deploy inherits these secret
-      # bindings (keepSecrets:true), so secrets-first + deploy-last is safe.
-      - name: Sync AI provider secrets
+      # Every Worker secret the old per-secret sync loop pushed is written to
+      # ONE ephemeral JSON file and passed atomically to
+      # `wrangler deploy --secrets-file` in the deploy step below. Secrets
+      # and code therefore land in the SAME Worker Version: no post-deploy
+      # secret-push race, and secrets not present in the file are preserved
+      # by Cloudflare. The deploy credential CLOUDFLARE_API_TOKEN is
+      # deliberately NOT in this step's env and is never written to the
+      # runtime secret file. CONTENT_AI_PROVIDER stays pinned LITERALLY to
+      # the commissioned registry default ('grok') so a leftover/rotated
+      # GitHub secret cannot re-pin a retired host ahead of a code deploy.
+      # The file is mode 0600 under RUNNER_TEMP, values are never printed,
+      # and an `if: always()` step deletes it after the deploy.
+      - name: Prepare Worker secrets file (ephemeral, atomic deploy)
         if: github.event_name != 'pull_request'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -132,121 +129,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NMI_SECURITY_KEY: ${{ secrets.NMI_SECURITY_KEY }}
         run: |
-          # Cloudflare's secret API occasionally rejects subsequent secret
-          # pushes within the same workflow run with "Secret edit failed.
-          # You attempted to modify a secret, but the latest version of
-          # your Worker isn't currently deployed." This is a race condition
-          # between Cloudflare's deployment-state propagation and the
-          # secrets API. The race bit us on run #26874086278 (commit
-          # 1b3c8d8) — 5 secrets uploaded successfully, 6th failed.
-          #
-          # Mitigation: wrap each secret push in a bounded retry loop with
-          # exponential-ish backoff. The "latest version not deployed"
-          # error clears within 5-15s as Cloudflare's internal state
-          # settles, so 3 retries with 5s/10s/20s waits cover the worst
-          # case.
-          put_secret() {
-            local name="$1"
-            local value="$2"
-            if [ -z "$value" ]; then
-              echo "$name not set in repo secrets — skipping"
-              return 0
-            fi
-            for attempt in 1 2 3 4; do
-              if printf '%s' "$value" | npx wrangler secret put "$name" 2>&1 | tee /tmp/wrangler-secret-$$.log; then
-                rm -f /tmp/wrangler-secret-$$.log
-                return 0
-              fi
-              if grep -q "latest version of your Worker isn't currently deployed" /tmp/wrangler-secret-$$.log; then
-                local wait=$((attempt * 5))
-                echo "Cloudflare deployment-state race — waiting ${wait}s and retrying $name (attempt $attempt/4)…"
-                sleep "$wait"
-                continue
-              fi
-              # Some other error — surface it and fail the step.
-              cat /tmp/wrangler-secret-$$.log
-              rm -f /tmp/wrangler-secret-$$.log
-              return 1
-            done
-            echo "ERROR: failed to push $name after 4 attempts"
-            return 1
-          }
-
-
-          put_secret GROQ_API_KEY              "$GROQ_API_KEY"
-          put_secret GEMINI_API_KEY            "$GEMINI_API_KEY"
-          # Cloudflare Workers AI — third fallback provider, runs
-          # on Cloudflare's GPU fleet (lib/chatProvider.ts buildCloudflareAI).
-          # Uses a SCOPED token (Workers AI : Read) stored as
-          # CLOUDFLARE_AI_TOKEN. The deploy-time CLOUDFLARE_API_TOKEN does
-          # NOT have Workers AI scope and returns 401 code 10000 when used
-          # against the AI REST endpoint, so we keep the two tokens distinct.
-          # Independent quota from Groq + Gemini — when both hit their
-          # daily TPD limits the AI surface stays alive via this path.
-          # Free tier: 10k Neurons/day ≈ 2000 Llama-3.3-70b generations.
-          # If CLOUDFLARE_AI_TOKEN is unset the third provider is dropped
-          # from the chain (put_secret is a no-op on empty value).
-          put_secret CLOUDFLARE_ACCOUNT_ID     "$CLOUDFLARE_ACCOUNT_ID"
-          # NOTE: the deploy token (CLOUDFLARE_API_TOKEN) is deliberately NOT
-          # uploaded as a runtime secret — lib/chatProvider.ts only reads the
-          # scoped CLOUDFLARE_AI_TOKEN, and runtime should never hold deploy
-          # credentials.
-          put_secret CLOUDFLARE_AI_TOKEN       "$CLOUDFLARE_AI_TOKEN"
-          # OpenRouter — fourth fallback. The free models have their own
-          # per-day quota separate from every other provider, so the chain
-          # gets genuine extra headroom rather than re-hitting an upstream
-          # that's already throttled. Drop-in if unset.
-          put_secret OPENROUTER_API_KEY        "$OPENROUTER_API_KEY"
-          # GSC live-keyword signals (lib/gscKeywordSignals.ts). All four
-          # must be set for the live path to activate; the module returns
-          # null and falls back to static keywords if any are missing.
-          # Skipping silently keeps the deploy green when GSC isn't yet
-          # provisioned.
-          put_secret GSC_OAUTH_CLIENT_ID       "$GSC_OAUTH_CLIENT_ID"
-          put_secret GSC_OAUTH_CLIENT_SECRET   "$GSC_OAUTH_CLIENT_SECRET"
-          put_secret GSC_OAUTH_REFRESH_TOKEN   "$GSC_OAUTH_REFRESH_TOKEN"
-          put_secret GSC_SITE_URL              "$GSC_SITE_URL"
-          # Service account JSON (gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com).
-          # Must be added as Full user on each Search Console property for live queries.
-          put_secret GSC_SERVICE_ACCOUNT_JSON  "$GSC_SERVICE_ACCOUNT_JSON"
-          # Content Studio AI chain (lib/contentAiProvider.ts) — exactly two
-          # commissioned providers with NO cross-provider fallback:
-          #   grok               — Grok 4.6 via the retained xAI transport (api.x.ai/v1)
-          #   deepseek-v41-flash — DeepSeek V4.1 Flash, first-party
-          #                        api.deepseek.com/v1 only
-          # A job resolved to one provider never calls the other host and never
-          # calls an intermediary. Retired Content Studio hosts (Entrim, NVIDIA,
-          # Baseten, AIHubmix, OpenAI, CUSTOM_AI) are no longer injected here.
-          # CONTENT_AI_PROVIDER is pinned LITERALLY to the commissioned registry
-          # default — never interpolate the CONTENT_AI_PROVIDER GitHub secret;
-          # a leftover/rotated value must not re-pin a retired host ahead of a
-          # code deploy.
-          put_secret CONTENT_AI_PROVIDER       "grok"
-          put_secret XAI_API_KEY               "$XAI_API_KEY"
-          put_secret XAI_MODEL                 "$XAI_MODEL"
-          put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
-          # DataForSEO Backlinks API — Master SEO Engine links subsystem.
-          # Basic-auth login + password; put_secret no-ops when unset so a
-          # deploy stays green until the credentials are provisioned.
-          put_secret DATAFORSEO_LOGIN          "$DATAFORSEO_LOGIN"
-          put_secret DATAFORSEO_PASSWORD       "$DATAFORSEO_PASSWORD"
-          # Content Studio GSC OAuth (routes accept GOOGLE_* / GSC_OAUTH_* / GOOGLE_OAUTH_*)
-          put_secret GOOGLE_CLIENT_ID          "${GOOGLE_CLIENT_ID:-${GSC_OAUTH_CLIENT_ID:-$GOOGLE_OAUTH_CLIENT_ID}}"
-          put_secret GOOGLE_CLIENT_SECRET      "${GOOGLE_CLIENT_SECRET:-${GSC_OAUTH_CLIENT_SECRET:-$GOOGLE_OAUTH_CLIENT_SECRET}}"
-          put_secret GSC_OAUTH_CLIENT_ID       "${GSC_OAUTH_CLIENT_ID:-${GOOGLE_CLIENT_ID:-$GOOGLE_OAUTH_CLIENT_ID}}"
-          put_secret GSC_OAUTH_CLIENT_SECRET   "${GSC_OAUTH_CLIENT_SECRET:-${GOOGLE_CLIENT_SECRET:-$GOOGLE_OAUTH_CLIENT_SECRET}}"
-          # Prefer dedicated Content Studio GitHub token; fall back to GITHUB_TOKEN_CONTENT
-          put_secret GITHUB_TOKEN              "${CONTENT_STUDIO_GITHUB_TOKEN:-$GITHUB_TOKEN_CONTENT}"
-          # Weekly payout cron auth — POST /api/cron/weekly-payouts checks this.
-          put_secret CRON_SECRET               "$CRON_SECRET"
-          # Core auth/database secrets (see env block above). Keeping these
-          # synced on every deploy prevents the "all profiles treated as new"
-          # failure mode caused by missing Worker secrets.
-          put_secret CLERK_SECRET_KEY          "$CLERK_SECRET_KEY"
-          put_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
-          put_secret SUPABASE_SERVICE_ROLE_JWT "$SUPABASE_SERVICE_ROLE_JWT"
-          put_secret RESEND_API_KEY            "$RESEND_API_KEY"
-          put_secret NMI_SECURITY_KEY          "$NMI_SECURITY_KEY"
+          node scripts/prepare-worker-secrets.mjs "$RUNNER_TEMP/worker-secrets.json"
+          echo "WORKER_SECRETS_FILE=$RUNNER_TEMP/worker-secrets.json" >> "$GITHUB_ENV"
 
       # Mirror the just-synced Worker secrets into the Supabase AI Key Vault
       # (ai_provider_keys). The runtime reads the vault overlay BEFORE Worker
@@ -278,23 +162,25 @@ jobs:
           echo "::warning::AI vault sync failed after 3 attempts — continuing Deploy; vault may be stale until next successful sync."
           exit 1
 
-      # Worker secrets (RESEND_API_KEY, CLERK_SECRET_KEY,
-      # SUPABASE_SERVICE_ROLE_KEY, NMI_SECURITY_KEY) live on the worker itself,
-      # set once via `wrangler versions secret put`. CI does not push them.
-      #
-      # ORDERING INVARIANT: this step MUST be the LAST deploy action in
-      # the workflow. The secrets-sync step runs BEFORE it (see below), and
-      # wrangler's deploy path uses keepSecrets:true to inherit every secret
-      # binding from the previous Worker Version. If a `wrangler secret put`
-      # ever runs AFTER this step, a deployment-propagation race can make it
-      # base its new version on STALE code, and because the last secret put
-      # becomes the active deployment, stale code would silently win.
-      # Cloudflare's Workers API sporadically returns [code: 10013]
+      # Direct `wrangler deploy` (NOT `opennextjs-cloudflare deploy`): the
+      # OpenNext deploy command calls getEnvFromPlatformProxy first, which
+      # hits the account's workers/subdomain/edge-preview endpoint and fails
+      # with Cloudflare code 10000 under the narrow account-owned CI token.
+      # scripts/deploy-production.mjs sets OPEN_NEXT_DEPLOY=true so Wrangler
+      # cannot delegate back into OpenNext, and passes the prepared
+      # `--secrets-file` so code + secrets publish in the SAME Worker
+      # Version. Cloudflare's Workers API sporadically returns [code: 10013]
       # ("unknown error") on the assets-upload-session endpoint during peak
       # hours — the deploy is idempotent, so a bounded retry recovers
       # without manual `gh run rerun --failed` intervention. Three attempts
-      # with 30s + 60s back-off; if all three fail the step fails red so we
+      # with 30s + 60s back-off; if all three fail the step exits 1 so we
       # never silently mask a real deploy break.
+      #
+      # LEGACY COMPATIBILITY LABEL: this step name is intentionally retained
+      # verbatim because lib/seoFactory/publicationMonitor.ts matches the
+      # deploy history by this exact step name. Renaming it silently breaks
+      # publication monitoring even though the implementation inside now
+      # invokes direct Wrangler.
       - name: Deploy via OpenNext to Cloudflare (with transient-failure retry)
         if: github.event_name != 'pull_request'
         env:
@@ -318,6 +204,22 @@ jobs:
             fi
           done
           echo "::error::All 3 deploy attempts failed."
+          exit 1
+
+      # The ephemeral Worker secrets file is single-use: delete it as soon as
+      # the deploy step has consumed it, even if the deploy failed. Runs on
+      # every non-PR path, but never on pull_request jobs (they skip the
+      # prepare step, so there is never a file to clean up). The body stays
+      # nonexistent-safe defensively.
+      - name: Remove ephemeral Worker secrets file
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          if [ -n "${WORKER_SECRETS_FILE:-}" ] && [ -f "$WORKER_SECRETS_FILE" ]; then
+            rm -f "$WORKER_SECRETS_FILE"
+            echo "Removed ephemeral Worker secrets file."
+          else
+            echo "No ephemeral Worker secrets file to remove."
+          fi
 
       # Startup health check: confirm CLERK_SECRET_KEY and
       # SUPABASE_SERVICE_ROLE_KEY actually landed on the freshly deployed
