@@ -7,12 +7,13 @@
  *      ONLY, upstream model id `deepseek-flash`) — first-party transport.
  *
  * Exactly these two providers may register or execute; `adapterFor` is the
- * only transport factory. Every retired host (Entrim / NVIDIA / Baseten /
+ * only transport factory. The retired hosts (Entrim / NVIDIA / Baseten /
  * Parasail / Run BiOS / OpenAI / Cloudflare / Groq / Gemini / OpenRouter /
- * DeepSeek.com aliases) remains as inert, non-registrable dead code until the
- * P3 purge. A legacy/unknown pin is a typed selection-required failure
- * (`ProviderSelectionRequiredError`, 409) with ZERO outbound requests — no
- * redirect, no break-glass restore, no cross-provider fallback.
+ * DeepSeek.com aliases) were purged in P3 (2026-09-16): their transports no
+ * longer exist in this module. A legacy/unknown pin is a typed
+ * selection-required failure (`ProviderSelectionRequiredError`, 409) with
+ * ZERO outbound requests — no redirect, no break-glass restore, no
+ * cross-provider fallback.
  *
  * Owner model: when `aiProvider` names a commissioned pin (or a Grok alias),
  * the call stays on that provider — no capacity cascade to another backend.
@@ -23,7 +24,6 @@ import { qualityPromptBlock } from './seoFactory/contentQualityGate'
 import {
   canonicalizeRunbiosPin,
   isRunbiosPin,
-  RUNBIOS_BASE_URL as RUNBIOS_CATALOG_BASE,
   runbiosSlot,
   RUNBIOS_SLOTS,
 } from './runbiosCatalog'
@@ -45,103 +45,15 @@ import {
   type StudioLane,
 } from './contentAiRegistry'
 
-const CF_AI_MODEL =
-  process.env.CLOUDFLARE_AI_MODEL?.trim() ||
-  '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-
 /** Default output budget — long-form guides need ~2k words (~3–4k tokens). */
 const DEFAULT_MAX_TOKENS = 8192
-/** NVIDIA DeepSeek V4 Flash via NVIDIA NIM — replaced EOL V4 Pro on 2026-08-07. */
-const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
-// Keep the cascade bounded while allowing one additional configured provider
-// after a primary timeout and an exhausted quota fallback.
-function maxProviderCandidates(): number {
-  return Math.max(
-    1,
-    Math.min(10, Number.parseInt(env('CONTENT_AI_MAX_PROVIDERS') || '3', 10) || 3),
-  )
-}
 
-const NVIDIA_INTEGRATE_BASE_DEFAULT = 'https://integrate.api.nvidia.com/v1'
-const NVIDIA_MINIMAX_MODEL_DEFAULT = 'minimaxai/minimax-m3'
-const NVIDIA_MINIMAX_MAX_TOKENS = 16384
-const NVIDIA_DEEPSEEK_MODEL_DEFAULT = 'deepseek-ai/deepseek-v4-flash-0731'
-
-/**
- * NVIDIA NIM catalog ids are ALL-LOWERCASE. The Baseten/Parasail form of the
- * same DeepSeek checkpoint is mixed-case (`deepseek-ai/DeepSeek-V4-Flash-0731`),
- * and if that string reaches integrate.api.nvidia.com NVIDIA answers "404 page
- * not found" — the model is not recognized. The vault/env model override can
- * carry either case (the admin may paste the Baseten id into the NVIDIA slot),
- * so canonicalize to the lowercase catalog form before any request leaves the
- * NVIDIA host. Verified live: lowercase 0731 → model found (529 overload),
- * mixed-case 0731 → 404. Safe for GLM / Nemotron too — every NVIDIA catalog id
- * is lowercase. */
-export function canonicalizeNvidiaModelId(raw?: string | null): string {
-  const id = String(raw || '').trim()
-  if (!id) return NVIDIA_DEEPSEEK_MODEL_DEFAULT
-  const lower = id.toLowerCase()
-  // DeepSeek V4 Pro reached EOL on NVIDIA on 2026-08-07 (410 Gone) and the
-  // bare `deepseek-ai/deepseek-v4-pro` id (NO -0813 suffix) is the retired
-  // base checkpoint. Remap it to the live Flash checkpoint so a stale Worker
-  // secret, vault model row, or pass-through id can never send the retired
-  // model to integrate.api.nvidia.com again (410 regression). Pro-0813 is a
-  // DIFFERENT id (live on Parasail/Baseten, not NVIDIA) and passes through.
-  if (/deepseek-v4-pro(?!-0813)/i.test(lower)) return NVIDIA_DEEPSEEK_MODEL_DEFAULT
-  return lower
-}
-
-/**
- * NVIDIA GLM 5.2 (z-ai/glm-5.2) — verified live against integrate.api.nvidia.com/v1
- * with NVAPI auth in 2026 Q3. Same base URL + OpenAI-compatible API as NVIDIA
- * DeepSeek, but with stronger multi-language / instruction-following in YMYL
- * contexts. Zhipu AI's GLM 5.2 family running on NVIDIA's NIM catalog.
- *
- * PROMOTED: GLM is now the preferred NVIDIA lead over DeepSeek on this
- * estate because (1) compliance-grade output on legal content and (2)
- * instruction-following are measurably stronger for our SEO briefs.
- *
- * NOTE: DeepSeek V4 Pro reached EOL 2026-08-07. Default is now
- * deepseek-v4-flash-0731 via NVIDIA and Baseten.
- */
-const NVIDIA_GLM_MODEL_DEFAULT = 'z-ai/glm-5.2'
-const NVIDIA_GLM_MAX_TOKENS = 16384
-/** NVIDIA Nemotron 3 Ultra — retained as an explicit reasoning alternative. */
-const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
-const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
-const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
-const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-const BASETEN_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
-/** Baseten-hosted GLM 5.2 Fast — efficient high-volume drafting partner. */
-const BASETEN_GLM_MODEL = 'zai-org/GLM-5.2-Fast'
-/** Baseten-hosted GLM 5.3 Flash — low-token fallback for every stage. */
-const BASETEN_GLM_53_MODEL = 'zai-org/GLM-5.3-Flash'
-/** AIHubmix OpenAI-compatible aggregator (aihubmix.com/v1) — GLM 5.2 Fast
- *  is served as `glm-5.2-fast-preview` (the high-speed flagship route). */
-const AIHUBMIX_BASE_URL = 'https://aihubmix.com/v1'
-const AIHUBMIX_GLM_MODEL = 'glm-5.2-fast-preview'
-const AIHUBMIX_MAX_TOKENS = 16384
-/** Parasail (api.parasail.io/v1) — OpenAI-compatible serverless. One psk-
- *  key unlocks Flash (draft), Pro-0813 (research/review), and GLM 5.2.
- *  Keys are issued as `psk-…`; a pasted psk- on another slot is recognized
- *  as Parasail and never sent to OpenAI / DeepSeek.com. */
-const PARASAIL_BASE_URL = 'https://api.parasail.io/v1'
-const PARASAIL_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-const PARASAIL_DEEPSEEK_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
-/** Entrim OpenAI-compatible endpoint (api.entrim.ai/v1). Serves FIRST-PARTY
- *  DeepSeek V4 Flash as `deepseek-ai/DeepSeek-V4-Flash` — the EXACT upstream
- *  id, no -0731 suffix. That string must be sent verbatim; never canonicalize
- *  it down to the Baseten/Parasail checkpoint forms. */
-export const ENTRIM_DEEPSEEK_LABEL = 'entrim-deepseek'
-/** Entrim-hosted Qwen3.6 27B — the second first-party Entrim model. The id
- *  `Qwen/Qwen3.6-27B` is sent VERBATIM to api.entrim.ai/v1 (same rule as the
- *  DeepSeek flash: Entrim serves upstream ids as-is, never canonicalize). */
+/** Legacy Entrim Qwen pin aliases. Retained only because the exported legacy
+ *  `resolveAiProviderPin` alias map still names them for callers/tests; they
+ *  are NOT executable — no Entrim transport remains in this module. */
 export const ENTRIM_QWEN_LABEL = 'entrim-qwen-27b'
 export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
-const ENTRIM_BASE_URL = 'https://api.entrim.ai/v1'
-const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
-const ENTRIM_MAX_TOKENS = 16384
 
 /**
  * COMMISSIONED PROVIDER POLICY (P2, 2026-09-15) — registry-derived.
@@ -152,10 +64,6 @@ const ENTRIM_MAX_TOKENS = 16384
  * tables, and a legacy/unknown pin fails closed with a typed
  * selection-required error before any configuration or network work.
  */
-export function isLiveProviderLabel(label: string): boolean {
-  return isCommissionedPin(label)
-}
-
 /** All commissioned adapters (registration is code-level, not env-gated). */
 function commissionedAdapters(opts: ContentAiOptions): Map<CommissionedProviderPin, ContentProviderAdapter> {
   const adapters = new Map<CommissionedProviderPin, ContentProviderAdapter>()
@@ -217,10 +125,6 @@ function commissionedAdapterFor(pin: CommissionedProviderPin, opts: ContentAiOpt
   if (!adapter.isConfigured()) throw commissionedNotConfiguredError(pin)
   return adapter
 }
-const RUNBIOS_BASE_URL = RUNBIOS_CATALOG_BASE
-const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
-const RUNBIOS_MAX_TOKENS = 16384
-
 /**
  * Org tokens-per-minute ceiling. Providers that meter each request as
  * prompt + max_tokens against a shared org TPM allowance (Run BiOS: 200k)
@@ -266,85 +170,6 @@ export function clampMaxTokensToBudget(
   )
   return clamped
 }
-
-/**
- * Pin DeepSeek V4 to the dated checkpoints. Hosts that accept a bare
- * `DeepSeek-V4-Flash` / `deepseek-v4-pro` alias will silently serve the
- * April preview (base) instead of Flash-0731 / Pro-0813.
- */
-export function canonicalizeDeepseekModelId(raw?: string | null, lane: 'flash' | 'pro' = 'flash'): string {
-  const id = String(raw || '').trim()
-  const lower = id.toLowerCase()
-  const wantsPro =
-    lane === 'pro' ||
-    /v4[-_.]?pro/.test(lower) ||
-    /pro-0813/.test(lower)
-  if (wantsPro) {
-    if (/0813/.test(lower) && /deepseek-ai\//.test(lower)) {
-      return /deepseek-v4-pro-0813/.test(lower) ? 'deepseek-ai/DeepSeek-V4-Pro-0813' : id
-    }
-    return PARASAIL_DEEPSEEK_PRO_MODEL
-  }
-  if (/0731/.test(lower) && /deepseek-ai\//.test(lower)) {
-    return /deepseek-v4-flash-0731/.test(lower) ? 'deepseek-ai/DeepSeek-V4-Flash-0731' : id
-  }
-  if (/0731/.test(lower)) return PARASAIL_DEEPSEEK_MODEL
-  return PARASAIL_DEEPSEEK_MODEL
-}
-
-/**
- * Strict host-lane normalizer. The legacy normalizer intentionally accepts a
- * Pro-looking value when called for a Pro lane, but that flexibility is not
- * safe for a provider slot: a stale vault value must never turn a Flash lane
- * into a Pro request (or vice versa). Only the exact dated SKU for the lane
- * is accepted; every other value falls back to that lane's default.
- */
-export function canonicalizeDeepseekLaneModelId(
-  raw: string | null | undefined,
-  lane: 'flash' | 'pro',
-): string {
-  const lower = String(raw || '').trim().toLowerCase()
-  if (lane === 'pro') {
-    return lower === 'deepseek-ai/deepseek-v4-pro-0813'
-      ? 'deepseek-ai/DeepSeek-V4-Pro-0813'
-      : PARASAIL_DEEPSEEK_PRO_MODEL
-  }
-  return lower === 'deepseek-ai/deepseek-v4-flash-0731'
-    ? PARASAIL_DEEPSEEK_MODEL
-    : PARASAIL_DEEPSEEK_MODEL
-}
-/**
- * Parasail GLM 5.2 catalog id. `nvidia/GLM-5.2-NVFP4` 404s on api.parasail.io
- * ("Deployment doesn't exist"). NVIDIA NIM / Parasail both serve `z-ai/glm-5.2`.
- */
-const PARASAIL_GLM_MODEL = 'z-ai/glm-5.2'
-
-/** Map retired Parasail GLM ids onto the live deployment. */
-export function canonicalizeParasailGlmModelId(raw?: string | null): string {
-  const id = String(raw || '').trim()
-  if (!id) return PARASAIL_GLM_MODEL
-  const lower = id.toLowerCase()
-  if (/nvfp4/.test(lower) || /nvidia\/glm-5\.2/.test(lower)) return PARASAIL_GLM_MODEL
-  return id
-}
-const PARASAIL_MAX_TOKENS = 16384
-const DEEPSEEK_OFFICIAL_BASE_URL = 'https://api.deepseek.com/v1'
-const DEEPSEEK_OFFICIAL_FLASH_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-const DEEPSEEK_OFFICIAL_PRO_MODEL = 'deepseek-ai/DeepSeek-V4-Pro-0813'
-const ZAI_BASE_URL = 'https://api.z.ai/api/paas/v4'
-const ZAI_GLM_MODEL = 'glm-5.2'
-const ZAI_MAX_TOKENS = 16384
-/**
- * Kept as a compatibility note for older configuration rows. Nemotron now
- * follows NVIDIA's current hosted API example and does not emit a separate
- * `reasoning_budget` field.
- */
-export const NVIDIA_NEMOTRON_REASONING_BUDGET_DEFAULT = 8192
-// Raised from 16384: DeepSeek V4 Flash is a reasoning model that spends part of
-// the budget on reasoning_content. With thinking disabled (extraBody below) the
-// full budget goes to the article, but a 32768 cap leaves headroom for long
-// regional guides without tripping finish_reason:'length'.
-const BASETEN_MAX_TOKENS = 32768
 
 export interface ContentAiResult {
   text: string
@@ -547,59 +372,6 @@ export function contentAiEnv(name: string): string {
   return env(name)
 }
 
-/**
- * A provider base-URL override must be an http(s) URL. The AI Key Vault or a
- * Worker secret can hold a pasted API key / truncated value in the base-URL
- * field (2026-08: Baseten shipped "Invalid URL: <key>/chat/completions" when
- * BASETEN_BASE_URL resolved to a non-URL string). Anything that isn't an
- * http(s) URL is ignored so the provider falls back to its known-good default.
- */
-function validBaseUrl(raw: string, fallback: string): string {
-  const v = String(raw || '').trim()
-  return /^https?:\/\//i.test(v) ? v.replace(/\/+$/, '') : fallback
-}
-
-/**
- * Provider endpoints are part of the provider identity. A model-specific
- * vault row must never be able to redirect NVIDIA traffic through a stale
- * Cloudflare Worker, or redirect Baseten traffic to another host. Keep the
- * operator override only when its hostname is the provider's documented host.
- */
-function providerBaseUrl(raw: string, fallback: string, allowedHosts: string[]): string {
-  const candidate = validBaseUrl(raw, fallback)
-  try {
-    const host = new URL(candidate).hostname.toLowerCase()
-    return allowedHosts.includes(host) ? candidate : fallback
-  } catch {
-    return fallback
-  }
-}
-
-/** NVIDIA's DeepSeek lane may never inherit Nemotron, GLM, Pro, or custom IDs. */
-export function canonicalizeNvidiaDeepseekModelId(raw?: string | null): string {
-  const id = String(raw || '').trim().toLowerCase()
-  return id === NVIDIA_DEEPSEEK_MODEL_DEFAULT ? id : NVIDIA_DEEPSEEK_MODEL_DEFAULT
-}
-
-/** NVIDIA's GLM lane may never inherit DeepSeek or Nemotron IDs. */
-export function canonicalizeNvidiaGlmModelId(raw?: string | null): string {
-  const id = String(raw || '').trim().toLowerCase()
-  return id === 'z-ai/glm-5.2' ? id : NVIDIA_GLM_MODEL_DEFAULT
-}
-
-/** NVIDIA's MiniMax lane always uses the exact hosted catalog id. */
-export function canonicalizeNvidiaMinimaxModelId(_raw?: string | null): string {
-  return NVIDIA_MINIMAX_MODEL_DEFAULT
-}
-
-/** NVIDIA's Nemotron lane may never inherit DeepSeek or GLM IDs. */
-export function canonicalizeNvidiaNemotronModelId(_raw?: string | null): string {
-  // NVIDIA's documented deployment is case-sensitive. Do not allow a vault or
-  // Worker override from another Nemotron deployment to change the request;
-  // always emit the exact lowercase catalog id from NVIDIA's example.
-  return NVIDIA_NEMOTRON_MODEL_DEFAULT
-}
-
 /** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
 function isDailyQuotaError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -619,14 +391,6 @@ function isSuperGrokSubscriptionMode(): boolean {
   return env('XAI_AUTH_MODE').toLowerCase() === 'supergrok'
 }
 
-function grokQuotaGuidance(value: unknown): string {
-  if (!isPaymentOrQuotaFailure(value) && !isGrokBuildUsageExhausted(value)) return ''
-  if (isSuperGrokSubscriptionMode() || isGrokBuildUsageExhausted(value)) {
-    return ' The connected SuperGrok account is authenticated, but its Grok Build usage balance is exhausted. Check Grok Settings → Usage for the reset time or add Extra Usage Credits. Reconnecting SuperGrok will not restore usage.'
-  }
-  return ' The xAI developer API key has hit a billing or credit limit. Check xAI API billing/credits or connect SuperGrok.'
-}
-
 /** 524s and exhausted quotas should not be retried against the same provider. */
 function isNoRetryProviderError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value || '')
@@ -641,26 +405,6 @@ export function isRetryableProviderFailure(value: unknown): boolean {
   if (/\b522\b/.test(message)) return true
   if (isNoRetryProviderError(message)) return false
   return /\b(429|502|503|504|524|529)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted|empty content|empty response/i.test(message)
-}
-
-/**
- * Transient infrastructure failures — capacity overloads, upstream timeouts,
- * and request aborts ("The operation was aborted"). The pinned provider may
- * recover a moment later, so an exclusive pin with cascadeOnCapacity falls
- * through to the next provider instead of hard-failing the call. Auth
- * (401/403), model (404/410), and contract errors are NOT transient and
- * still fail loudly.
- */
-function isTransientInfraError(value: unknown): boolean {
-  const message = value instanceof Error ? value.message : String(value || '')
-  return /\b(429|502|503|504|522|524|529)\b|overload|high[ ._-]?demand|rate[ ._-]?limit|too many requests|capacity|aborted|timed out|gateway timeout|upstream.*timeout|fetch failed|econnreset|etimedout|socket hang up|network error|Function id .* not found|Specified function in account .* is not found/i.test(message)
-}
-
-/** Exclusive draft pins should cascade when the pinned host produced no
- *  usable article (reasoning-only burn, empty SSE, or still truncated). */
-function isUnusableGenerationFailure(value: unknown): boolean {
-  const message = value instanceof Error ? value.message : String(value || '')
-  return /empty content|stream returned empty|output was truncated \(token limit\)/i.test(message)
 }
 
 /** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
@@ -682,23 +426,6 @@ function formatProviderFailure(label: string, status: number, body: string): str
     return `${label} ${status}: upstream gateway timeout; try again later or use another configured provider`
   }
   return `${label} ${status}: ${body.slice(0, 400)}`
-}
-
-/** Resolve account + API token for Workers AI REST. */
-export function resolveCloudflareAiAuth(): { accountId: string; token: string } | null {
-  const accountId =
-    env('CLOUDFLARE_ACCOUNT_ID') ||
-    // documented account for YouSafe CF (safe public ID, not a secret)
-    env('CF_ACCOUNT_ID')
-
-  // Prefer AI-scoped tokens; allow general API token when it has Workers AI permission
-  const token =
-    env('CLOUDFLARE_AI_TOKEN') ||
-    env('CLOUDFLARE_WORKERS_AI_TOKEN') ||
-    env('CLOUDFLARE_API_TOKEN')
-
-  if (!accountId || !token) return null
-  return { accountId, token }
 }
 
 /**
@@ -820,41 +547,10 @@ export function isReasoningModelId(model: string): boolean {
   return /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|zai-org\/glm|glm-5\.3|parasail-(?:deepseek|glm)|nemotron|grok)/i.test(model)
 }
 
-/** Host says the pinned deployment is gone — retrying the same model cannot recover. */
-export function isUnavailableDeploymentError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err || '')
-  return /\b404\b|doesn't exist|isn't accessible|model_not_found|not_found|unknown model|invalid model/i.test(msg)
-}
-
 /** Unpaid / quota / billing failures across developer APIs and subscription-backed Grok Build. */
 export function isPaymentOrQuotaFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err || '')
   return /insufficient_quota|unpaid|payment.?required|\b402\b|billing|past.?due|credit.?exhausted|requires.?payment|account.?not.?funded|quota.?exceeded|exceeded.?your.?current.?quota|You exceeded your current quota|permission-denied|spending.?limit|monthly.?spending|used all available credits|purchase more credits|raise yo|usage.?balance.?exhausted|grok.?build.*exhausted/i.test(msg)
-}
-
-function quotaFailureSummary(errors: string[]): { note: string; nextStep: string } {
-  if (errors.some(isGrokBuildUsageExhausted)) {
-    return {
-      note: ' Grok Build usage balance is exhausted for the connected SuperGrok account. Check Grok Settings → Usage for the reset time or add Extra Usage Credits.',
-      nextStep: ' Configure another provider or retry after the Grok Build usage reset.',
-    }
-  }
-  if (errors.some(isDailyQuotaError)) {
-    return {
-      note: ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.',
-      nextStep: ' Configure another provider or retry after the UTC quota reset.',
-    }
-  }
-  if (errors.some((error) => isPaymentOrQuotaFailure(error))) {
-    return {
-      note: ' A provider billing or quota limit was reached.',
-      nextStep: ' Configure another provider or retry after that provider restores capacity.',
-    }
-  }
-  return {
-    note: '',
-    nextStep: ' Retry the request or configure another provider.',
-  }
 }
 
 /** Pull final prose out of an xAI / OpenAI Responses payload. */
@@ -1033,8 +729,7 @@ async function openAiCompatFetch(
   } catch (e) {
     // The abort timer and the friendly timeout reject at the same instant;
     // the raw AbortError ("The operation was aborted") usually wins the race
-    // and leaks to the UI. Normalize it so callers see the readable timeout
-    // (which isTransientInfraError can also classify for cascading).
+    // and leaks to the UI. Normalize it so callers see the readable timeout.
     if (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))) {
       throw new Error(`${p.label} timed out after ${Math.round(timeoutMs / 1000)}s`)
     }
@@ -1066,14 +761,9 @@ async function openAiCompatFetch(
  * Resolve the model id actually sent to a provider.
  *
  * A request-level `opts.model` wins over the provider default ONLY when it is
- * a real API id (contains a host slash like `deepseek-ai/…` / `z-ai/…`, or is
- * a GPT-5.6 alias). Bare pins (`nvidia-deepseek`, `parasail-deepseek-pro`, …)
- * are NOT model ids and must never be sent as the model — they fall back to
- * the provider default. NVIDIA ids are canonicalized to the lowercase catalog
- * form (mixed-case 404s on integrate.api.nvidia.com). Without this, a reviewer
- * pinned to `nvidia-deepseek` silently used the deployed NVIDIA_DEEPSEEK_MODEL
- * secret (defaulted to the EOL'd deepseek-v4-pro → 410 Gone) instead of the
- * Flash checkpoint the user actually selected.
+ * a real API id (contains a host slash, or is a GPT-5.6 alias). Bare pins are
+ * NOT model ids and must never be sent as the model — they fall back to the
+ * provider default.
  */
 export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): string {
   const requested = String(opts.model || '').trim()
@@ -1082,13 +772,6 @@ export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): 
   if (!isRealModelId) return p.model
   if (p.label === 'openai' || p.label === 'custom') {
     return requested.replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
-  }
-  if (p.label === 'nvidia-deepseek') return canonicalizeNvidiaDeepseekModelId(requested)
-  if (p.label === 'nvidia-glm') return canonicalizeNvidiaGlmModelId(requested)
-  if (p.label === 'nvidia-minimax') return canonicalizeNvidiaMinimaxModelId(requested)
-  if (p.label === 'nvidia-nemotron') return canonicalizeNvidiaNemotronModelId(requested)
-  if (p.label === 'baseten-deepseek' || p.label === 'baseten-deepseek-pro') {
-    return canonicalizeDeepseekLaneModelId(requested, p.label === 'baseten-deepseek-pro' ? 'pro' : 'flash')
   }
   return requested
 }
@@ -1173,31 +856,9 @@ export async function openAiCompatibleComplete(
   }
 }
 
-/** NVIDIA Integrate API key for DeepSeek (long-form primary). */
-export function resolveNvidiaApiKey(): string {
-  return (
-    env('NVIDIA_API_KEY') ||
-    env('NVAPI_KEY') ||
-    env('NVIDIA_NIM_API_KEY') ||
-    env('NVIDIA_DEEPSEEK_API_KEY') ||
-    ''
-  )
-}
-
-export function isNvidiaGlmConfigured(): boolean {
-  return Boolean(resolveNvidiaApiKey())
-}
-
 /** True when Grok can run: SuperGrok OAuth overlay or an XAI_API_KEY. */
 export function isGrokConfigured(): boolean {
   return Boolean(env('XAI_API_KEY'))
-}
-
-/** True when OpenAI can run: an OPENAI_API_KEY that isn't a Parasail psk- key.
- *  ChatGPT Plus OAuth was removed — only a real OpenAI API key counts. */
-export function isOpenaiConfigured(): boolean {
-  const key = env('OPENAI_API_KEY')
-  return key ? !looksLikeParasailKey(key) : false
 }
 
 /** UI / pin aliases that are not xAI model ids. "grok" must never be sent. */
@@ -1514,663 +1175,10 @@ export async function grokComplete(opts: ContentAiOptions): Promise<ContentAiRes
   })
 }
 
-export function isNvidiaDeepseekConfigured(): boolean {
-  return Boolean(resolveNvidiaApiKey())
-}
-
-export function isNvidiaNemotronConfigured(): boolean {
-  return Boolean(resolveNvidiaApiKey())
-}
-
-export function isNvidiaMinimaxConfigured(): boolean {
-  return Boolean(resolveNvidiaApiKey())
-}
-
-/** NVIDIA-hosted MiniMax M3 — OpenAI-compatible drafting model. */
-export function getNvidiaMinimaxProvider(): OpenAiCompat | null {
-  const apiKey = resolveNvidiaApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'nvidia-minimax',
-    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
-    apiKey,
-    model: canonicalizeNvidiaMinimaxModelId(env('NVIDIA_MINIMAX_MODEL') || NVIDIA_MINIMAX_MODEL_DEFAULT),
-    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
-    maxTokensCap: NVIDIA_MINIMAX_MAX_TOKENS,
-  }
-}
-
-/** NVIDIA-hosted Nemotron 3 Ultra — reasoning-enabled OpenAI-compatible NIM. */
-export function getNvidiaNemotronProvider(): OpenAiCompat | null {
-  const apiKey = resolveNvidiaApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'nvidia-nemotron',
-    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
-    apiKey,
-    model: canonicalizeNvidiaNemotronModelId(env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT),
-    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
-    maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
-    // Thinking mode ON, matching NVIDIA's documented integration example. The
-    // request builder uses the Nemotron-specific `max_tokens` contract below;
-    // reasoning_content is discarded by the SSE parser so it never enters the
-    // article.
-    extraBody: {
-      chat_template_kwargs: { enable_thinking: true },
-    },
-  }
-}
-
-/** NVIDIA-hosted GLM 5.2 (z-ai/glm-5.2) — 16k max tokens, OpenAI-compatible. */
-export function getNvidiaGlmProvider(): OpenAiCompat | null {
-  const apiKey = resolveNvidiaApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'nvidia-glm',
-    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
-    apiKey,
-    model: canonicalizeNvidiaGlmModelId(env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT),
-    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
-    maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
-    // NOTE: NO reasoning_budget here — NVIDIA rejects it for GLM with a 400
-    // ("Unsupported parameter(s): `reasoning_budget`"). Truncation recovery for
-    // GLM comes from the bounded continuation retry in openAiCompatibleStream.
-    // Thinking mode ON — reasoning improves quality. GLM 5.2 uses enable_thinking
-    // (z-ai-style) rather than `thinking` (DeepSeek-style). The parser skips
-    // reasoning_content deltas, so only final prose lands in the article.
-    extraBody: {
-      chat_template_kwargs: { enable_thinking: true },
-    },
-  }
-}
-
-/** NVIDIA-hosted DeepSeek V4 Flash — 16k max tokens, OpenAI-compatible. */
-export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
-  const apiKey = resolveNvidiaApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'nvidia-deepseek',
-    baseURL: providerBaseUrl(env('NVIDIA_BASE_URL'), NVIDIA_INTEGRATE_BASE_DEFAULT, ['integrate.api.nvidia.com']),
-    apiKey,
-    // NVIDIA's DeepSeek lane is isolated from the shared Nemotron/GLM
-    // settings. A cross-wired vault value falls back to Flash-0731.
-    model: canonicalizeNvidiaDeepseekModelId(env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT),
-    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
-    maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
-    // NOTE: NO reasoning_budget here — NVIDIA DeepSeek V4 Flash returns a 400
-    // for `reasoning_budget` ("Unsupported parameter(s)"). Truncation recovery
-    // comes from the bounded continuation retry instead.
-    // Thinking mode ON — reasoning improves factual/structured output. The SSE
-    // parser skips reasoning_content deltas, so only final prose lands in the
-    // article. Segmented writing keeps each run within the token budget.
-    extraBody: {
-      chat_template_kwargs: { thinking: true },
-    },
-  }
-}
-
-/** Baseten-hosted DeepSeek V4 Flash — OpenAI-compatible complete + SSE stream. */
-export function resolveBasetenApiKey(): string {
-  return env('BASETEN_API_KEY')
-}
-
-export function isBasetenConfigured(): boolean {
-  return Boolean(resolveBasetenApiKey())
-}
-
-export function getBasetenProvider(): OpenAiCompat | null {
-  const apiKey = resolveBasetenApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'baseten-deepseek',
-    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
-    apiKey,
-    model: canonicalizeDeepseekLaneModelId(env('BASETEN_MODEL') || BASETEN_MODEL, 'flash'),
-    maxTokensCap: BASETEN_MAX_TOKENS,
-    // Thinking mode ON — reasoning improves quality. The SSE parser consumes
-    // ONLY delta.content, so reasoning chains never leak into the article.
-    // Segmented writing keeps each run small enough that thinking + content fit
-    // the token budget, so finish_reason:'length' truncation is avoided.
-    extraBody: {
-      chat_template_kwargs: { enable_thinking: true },
-    },
-  }
-}
-
-/** Baseten-hosted DeepSeek V4 Pro 0813 — research/review pin. */
-export function getBasetenDeepseekProProvider(): OpenAiCompat | null {
-  const apiKey = resolveBasetenApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'baseten-deepseek-pro',
-    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
-    apiKey,
-    model: canonicalizeDeepseekLaneModelId(env('BASETEN_PRO_MODEL') || BASETEN_PRO_MODEL, 'pro'),
-    maxTokensCap: BASETEN_MAX_TOKENS,
-    extraBody: {
-      chat_template_kwargs: { enable_thinking: true },
-    },
-  }
-}
-
-/** Baseten-hosted GLM 5.2 Fast — a fast, efficient partner for drafting.
- *  Reuses the same BASETEN_API_KEY; model overridable via BASETEN_GLM_MODEL. */
-export function resolveRunbiosApiKey(): string {
-  return env('RUNBIOS_API_KEY')
-}
-
-export function isRunbiosConfigured(): boolean {
-  return Boolean(resolveRunbiosApiKey())
-}
-
-export function getRunbiosProvider(pin?: string): OpenAiCompat | null {
-  const apiKey = resolveRunbiosApiKey()
-  if (!apiKey) return null
-  const id = canonicalizeRunbiosPin(pin || 'runbios-glm-53-flash')
-  const slot = runbiosSlot(id) || RUNBIOS_SLOTS[0]
-  const model =
-    slot.id === 'runbios-glm-53-flash'
-      ? (env('RUNBIOS_GLM_MODEL') || slot.apiModel)
-      : slot.apiModel
-  return {
-    label: slot.id,
-    baseURL: providerBaseUrl(env('RUNBIOS_BASE_URL'), RUNBIOS_BASE_URL, ['api.runbios.ai']),
-    apiKey,
-    model,
-    maxTokensCap: RUNBIOS_MAX_TOKENS,
-    extraBody: slot.reasoningLow ? { reasoning_effort: 'low' } : undefined,
-  }
-}
-
-export function getRunbiosGlm53FlashProvider(): OpenAiCompat | null {
-  return getRunbiosProvider('runbios-glm-53-flash')
-}
-
-export function getBasetenGlm53FlashProvider(): OpenAiCompat | null {
-  const apiKey = resolveBasetenApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'baseten-glm-53-flash',
-    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
-    apiKey,
-    model: BASETEN_GLM_53_MODEL,
-    maxTokensCap: BASETEN_MAX_TOKENS,
-  }
-}
-
-export function getBasetenGlmFastProvider(): OpenAiCompat | null {
-  const apiKey = resolveBasetenApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'baseten-glm-fast',
-    baseURL: providerBaseUrl(env('BASETEN_BASE_URL'), BASETEN_BASE_URL, ['inference.baseten.co']),
-    apiKey,
-    model: env('BASETEN_GLM_MODEL') === BASETEN_GLM_MODEL ? BASETEN_GLM_MODEL : BASETEN_GLM_MODEL,
-    maxTokensCap: BASETEN_MAX_TOKENS,
-  }
-}
-
-/** AIHubmix-hosted GLM 5.2 Fast (glm-5.2-fast-preview) — OpenAI-compatible
- *  aggregator route. Credentials: AIHUBMIX_API_KEY (Bearer); endpoint and
- *  model overridable via AIHUBMIX_BASE_URL / AIHUBMIX_GLM_MODEL. */
-export function getAihubmixGlmFastProvider(): OpenAiCompat | null {
-  const apiKey = env('AIHUBMIX_API_KEY')
-  if (!apiKey) return null
-  return {
-    label: 'aihubmix-glm-fast',
-    baseURL: validBaseUrl(env('AIHUBMIX_BASE_URL'), AIHUBMIX_BASE_URL),
-    apiKey,
-    model: env('AIHUBMIX_GLM_MODEL') || AIHUBMIX_GLM_MODEL,
-    maxTokensCap: AIHUBMIX_MAX_TOKENS,
-  }
-}
-
-export function isAihubmixGlmFastConfigured(): boolean {
-  return Boolean(env('AIHUBMIX_API_KEY'))
-}
-
 /** Parasail keys are issued as `psk-…`. A key pasted into another provider
  *  slot must still route to api.parasail.io — never OpenAI / DeepSeek.com. */
 export function looksLikeParasailKey(value: string): boolean {
   return /^psk-/i.test(String(value || '').trim())
-}
-
-export function resolveParasailApiKey(): string {
-  const dedicated = env('PARASAIL_API_KEY')
-  if (dedicated) return dedicated
-  for (const name of ['CUSTOM_AI_API_KEY', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY'] as const) {
-    const v = env(name)
-    if (looksLikeParasailKey(v)) return v
-  }
-  return ''
-}
-
-export function isParasailConfigured(): boolean {
-  return Boolean(resolveParasailApiKey())
-}
-
-function parasailBaseURL(): string {
-  return providerBaseUrl(env('PARASAIL_BASE_URL'), PARASAIL_BASE_URL, ['api.parasail.io'])
-}
-
-/** Drafting/writing: DeepSeek V4 Flash on Parasail. */
-export function getParasailDeepseekProvider(): OpenAiCompat | null {
-  const apiKey = resolveParasailApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'parasail-deepseek',
-    baseURL: parasailBaseURL(),
-    apiKey,
-    model: canonicalizeDeepseekLaneModelId(env('PARASAIL_DEEPSEEK_MODEL') || PARASAIL_DEEPSEEK_MODEL, 'flash'),
-    maxTokensCap: PARASAIL_MAX_TOKENS,
-  }
-}
-
-/**
- * Research + Review: DeepSeek V4 Pro 0813 on Parasail.
- * Default reasoning_effort is `low`. Env PARASAIL_PRO_REASONING_EFFORT may
- * raise it to `medium` only — high/max are refused so briefs/reviews cannot
- * burn a Pro thinking budget.
- */
-export function parasailProReasoningEffort(): 'low' | 'medium' {
-  const raw = env('PARASAIL_PRO_REASONING_EFFORT').toLowerCase()
-  return raw === 'medium' ? 'medium' : 'low'
-}
-
-export function getParasailDeepseekProProvider(): OpenAiCompat | null {
-  const apiKey = resolveParasailApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'parasail-deepseek-pro',
-    baseURL: parasailBaseURL(),
-    apiKey,
-    model: canonicalizeDeepseekLaneModelId(env('PARASAIL_DEEPSEEK_PRO_MODEL') || PARASAIL_DEEPSEEK_PRO_MODEL, 'pro'),
-    maxTokensCap: PARASAIL_MAX_TOKENS,
-    extraBody: { reasoning_effort: parasailProReasoningEffort() },
-  }
-}
-
-/** GLM 5.2 via Parasail — same model family as NVIDIA GLM.
- *  Master Engine pair sends reasoning_effort medium. */
-export function getParasailGlmProvider(effort?: 'low' | 'medium' | 'high'): OpenAiCompat | null {
-  const apiKey = resolveParasailApiKey()
-  if (!apiKey) return null
-  const reasoning = effort === 'high' ? 'medium' : effort
-  return {
-    label: 'parasail-glm',
-    baseURL: parasailBaseURL(),
-    apiKey,
-    model: canonicalizeParasailGlmModelId(env('PARASAIL_GLM_MODEL') || PARASAIL_GLM_MODEL),
-    maxTokensCap: PARASAIL_MAX_TOKENS,
-    extraBody: reasoning ? { reasoning_effort: reasoning } : undefined,
-  }
-}
-
-export function resolveDeepseekOfficialApiKey(): string {
-  const key = env('DEEPSEEK_API_KEY')
-  if (!key || looksLikeParasailKey(key)) return ''
-  return key
-}
-
-export function isDeepseekOfficialConfigured(): boolean {
-  return Boolean(resolveDeepseekOfficialApiKey())
-}
-
-function deepseekOfficialBaseURL(): string {
-  const raw = env('DEEPSEEK_BASE_URL')
-  return providerBaseUrl(raw, DEEPSEEK_OFFICIAL_BASE_URL, ['api.deepseek.com'])
-}
-
-function deepseekOfficialProvider(label: string, model: string): OpenAiCompat | null {
-  const apiKey = resolveDeepseekOfficialApiKey()
-  if (!apiKey) return null
-  return {
-    label,
-    baseURL: deepseekOfficialBaseURL(),
-    apiKey,
-    model,
-    maxTokensCap: PARASAIL_MAX_TOKENS,
-  }
-}
-
-/** Official DeepSeek.com — Flash-0731 (draft + review). */
-export function getDeepseekOfficialFlashProvider(): OpenAiCompat | null {
-  return deepseekOfficialProvider(
-    'deepseek-flash',
-    canonicalizeDeepseekModelId(env('DEEPSEEK_FLASH_MODEL') || env('DEEPSEEK_MODEL') || DEEPSEEK_OFFICIAL_FLASH_MODEL, 'flash'),
-  )
-}
-
-/** Official DeepSeek.com — Pro-0813 (brief + review). */
-export function getDeepseekOfficialProProvider(): OpenAiCompat | null {
-  return deepseekOfficialProvider(
-    'deepseek-pro',
-    canonicalizeDeepseekModelId(env('DEEPSEEK_PRO_MODEL') || DEEPSEEK_OFFICIAL_PRO_MODEL, 'pro'),
-  )
-}
-
-/** Entrim DeepSeek V4 Flash — first-party flash served at api.entrim.ai/v1.
- *  The model id `deepseek-ai/DeepSeek-V4-Flash` is sent VERBATIM: Entrim does
- *  not use the -0731 checkpoint suffix, and canonicalizing it would 404. */
-export function resolveEntrimApiKey(): string {
-  return env('ENTRIM_API_KEY')
-}
-
-export function isEntrimConfigured(): boolean {
-  return Boolean(resolveEntrimApiKey())
-}
-
-export function getEntrimProvider(modelOverride?: string): OpenAiCompat | null {
-  const apiKey = resolveEntrimApiKey()
-  if (!apiKey) return null
-  const override = String(modelOverride || '').trim()
-  const envModel = String(env('ENTRIM_MODEL') || '').trim()
-  // The DeepSeek lane NEVER sends the Qwen id. A stale ENTRIM_MODEL value
-  // (carried over from the pre-lane-isolation grid) or an accidentally
-  // forwarded Qwen override falls back to the exact first-party DeepSeek
-  // flash id — Qwen/Qwen3.6-27B stays on its own lane.
-  const model =
-    override === ENTRIM_QWEN_MODEL || envModel === ENTRIM_QWEN_MODEL
-      ? ENTRIM_DEEPSEEK_MODEL
-      : override || envModel || ENTRIM_DEEPSEEK_MODEL
-  return {
-    label: ENTRIM_DEEPSEEK_LABEL,
-    baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
-    apiKey,
-    model,
-    maxTokensCap: ENTRIM_MAX_TOKENS,
-  }
-}
-
-/** Entrim Qwen3.6 27B — api.entrim.ai/v1, same vault key as the DeepSeek
- *  flash row. Used by Discover-stage engines, the Generate-Brief lane and
- *  the Reviewer lane (all three accept explicit `entrim-qwen-27b` pins).
- *  Forces the exact Qwen id verbatim and never consults ENTRIM_MODEL — the
- *  DeepSeek lane's env. */
-export function getEntrimQwenProvider(): OpenAiCompat | null {
-  const apiKey = resolveEntrimApiKey()
-  if (!apiKey) return null
-  return {
-    label: ENTRIM_QWEN_LABEL,
-    baseURL: validBaseUrl(env('ENTRIM_BASE_URL'), ENTRIM_BASE_URL),
-    apiKey,
-    model: ENTRIM_QWEN_MODEL,
-    maxTokensCap: ENTRIM_MAX_TOKENS,
-  }
-}
-
-/** Entrim Qwen3.6 27B single-provider completion (OpenAI-compatible). */
-export async function entrimQwenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getEntrimQwenProvider()
-  if (!p) throw new Error('Entrim not configured (ENTRIM_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
-  })
-}
-
-export function resolveZaiApiKey(): string {
-  return env('ZAI_API_KEY') || env('ZHIPU_API_KEY') || env('Z_AI_API_KEY')
-}
-
-export function isZaiConfigured(): boolean {
-  return Boolean(resolveZaiApiKey())
-}
-
-/** Official Z.ai / Zhipu GLM 5.2. */
-export function getZaiGlmProvider(): OpenAiCompat | null {
-  const apiKey = resolveZaiApiKey()
-  if (!apiKey) return null
-  return {
-    label: 'zai-glm',
-    baseURL: validBaseUrl(env('ZAI_BASE_URL'), ZAI_BASE_URL),
-    apiKey,
-    model: env('ZAI_GLM_MODEL') || ZAI_GLM_MODEL,
-    maxTokensCap: ZAI_MAX_TOKENS,
-  }
-}
-
-async function parasailDeepseekComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getParasailDeepseekProvider()
-  if (!p) throw new Error('Parasail not configured (PARASAIL_API_KEY or a psk- key)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-  })
-}
-
-async function parasailDeepseekProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getParasailDeepseekProProvider()
-  if (!p) throw new Error('Parasail Pro not configured (PARASAIL_API_KEY or a psk- key)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-  })
-}
-
-async function parasailGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getParasailGlmProvider(opts.reasoningEffort)
-  if (!p) throw new Error('Parasail GLM not configured (PARASAIL_API_KEY or a psk- key)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? PARASAIL_MAX_TOKENS, PARASAIL_MAX_TOKENS),
-  })
-}
-
-async function basetenDeepseekProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getBasetenDeepseekProProvider()
-  if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-  })
-}
-
-async function deepseekOfficialFlashComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getDeepseekOfficialFlashProvider()
-  if (!p) throw new Error('DeepSeek.com not configured (DEEPSEEK_API_KEY)')
-  return openAiCompatibleComplete(p, opts)
-}
-
-async function deepseekOfficialProComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getDeepseekOfficialProProvider()
-  if (!p) throw new Error('DeepSeek.com not configured (DEEPSEEK_API_KEY)')
-  return openAiCompatibleComplete(p, opts)
-}
-
-async function zaiGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getZaiGlmProvider()
-  if (!p) throw new Error('Zai not configured (ZAI_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? ZAI_MAX_TOKENS, ZAI_MAX_TOKENS),
-  })
-}
-
-async function basetenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getBasetenProvider()
-  if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-  })
-}
-
-async function basetenGlmFastComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getBasetenGlmFastProvider()
-  if (!p) throw new Error('Baseten GLM 5.2 Fast not configured (BASETEN_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
-  })
-}
-
-async function aihubmixGlmFastComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getAihubmixGlmFastProvider()
-  if (!p) throw new Error('AIHubmix GLM 5.2 Fast not configured (AIHUBMIX_API_KEY)')
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens: Math.min(opts.maxTokens ?? AIHUBMIX_MAX_TOKENS, AIHUBMIX_MAX_TOKENS),
-  })
-}
-
-async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getNvidiaGlmProvider()
-  if (!p) throw new Error('NVIDIA GLM not configured (NVIDIA_API_KEY / NVAPI_KEY)')
-  // NVIDIA's GLM integration is most reliable over SSE. Consume the streamed
-  // response here so non-stream refinement calls use the same proven transport
-  // as the operator-provided integration example instead of waiting for one
-  // large buffered response until the 120s deadline.
-  const maxTokens = Math.min(
-    opts.maxTokens ?? NVIDIA_GLM_MAX_TOKENS,
-    NVIDIA_GLM_MAX_TOKENS,
-  )
-  return withRetry('nvidia-glm', async () => {
-    const chunks: string[] = []
-    for await (const event of openAiCompatibleStream(p, {
-      ...opts,
-      maxTokens,
-      temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
-    })) {
-      if (event.type === 'delta') chunks.push(event.text)
-    }
-    const text = chunks.join('').trim()
-    if (!text) throw new Error('nvidia-glm stream returned empty content')
-    return { text, provider: p.label, model: p.model }
-  })
-}
-
-/** NVIDIA-hosted MiniMax M3 — the default long-form drafting transport. */
-async function nvidiaMinimaxComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getNvidiaMinimaxProvider()
-  if (!p) throw new Error('NVIDIA MiniMax not configured (NVIDIA_API_KEY / NVAPI_KEY)')
-  const maxTokens = Math.min(opts.maxTokens ?? NVIDIA_MINIMAX_MAX_TOKENS, NVIDIA_MINIMAX_MAX_TOKENS)
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens,
-    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
-  })
-}
-
-async function nvidiaNemotronComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getNvidiaNemotronProvider()
-  if (!p) throw new Error('NVIDIA Nemotron not configured (NVIDIA_API_KEY / NVAPI_KEY)')
-  const maxTokens = Math.min(opts.maxTokens ?? NVIDIA_NEMOTRON_MAX_TOKENS, NVIDIA_NEMOTRON_MAX_TOKENS)
-  const chunks: string[] = []
-  for await (const event of openAiCompatibleStream(p, {
-    ...opts,
-    maxTokens,
-    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
-  })) {
-    if (event.type === 'delta') {
-      chunks.push(event.text)
-    }
-  }
-  const text = chunks.join('').trim()
-  if (!text) throw new Error('nvidia-nemotron stream returned empty content')
-  return { text, provider: p.label, model: p.model }
-}
-
-async function nvidiaDeepseekComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const p = getNvidiaDeepseekProvider()
-  if (!p) throw new Error('NVIDIA DeepSeek not configured (NVIDIA_API_KEY)')
-  // Prefer high budget for factory long-form
-  const maxTokens = Math.min(
-    opts.maxTokens ?? NVIDIA_DEEPSEEK_MAX_TOKENS,
-    NVIDIA_DEEPSEEK_MAX_TOKENS,
-  )
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens,
-    // NVIDIA sample uses temperature=1; slightly lower for factual legal content
-    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
-  })
-}
-
-const GEMINI_MODEL = env('GEMINI_MODEL') || 'gemini-2.5-flash'
-const OPENROUTER_MODELS = [
-  env('OPENROUTER_MODEL') || 'meta-llama/llama-3.3-70b-instruct:free',
-  'nousresearch/hermes-3-llama-3.1-405b:free',
-]
-
-async function geminiComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const apiKey = env('GEMINI_API_KEY') || env('GOOGLE_GEMINI_API_KEY')
-  if (!apiKey) throw new Error('Gemini not configured (GEMINI_API_KEY)')
-  const model = GEMINI_MODEL
-  return withRetry('gemini', async () => {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: opts.system }] },
-        contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
-        generationConfig: {
-          temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-          maxOutputTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-        },
-      }),
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      const fp = `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
-      throw new Error(`gemini ${res.status} ${fp}: ${body.slice(0, 400)}`)
-    }
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-    }
-    const text = data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text)
-      .filter(Boolean)
-      .join('')
-      .trim()
-    if (!text) throw new Error('gemini returned empty content')
-    return { text, provider: 'gemini', model }
-  })
-}
-
-/** OpenRouter free models with walk-on 404/429 (same as gig chatProvider). */
-async function openRouterComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const apiKey = env('OPENROUTER_API_KEY')
-  if (!apiKey) throw new Error('OpenRouter not configured (OPENROUTER_API_KEY)')
-  let lastErr: Error | null = null
-  // One OpenRouter model per invocation. Walking multiple free models can
-  // multiply requests before the outer fallback chain gets a chance to stop.
-  for (const model of OPENROUTER_MODELS.slice(0, 1)) {
-    try {
-      return await openAiCompatibleComplete(
-        {
-          label: 'openrouter',
-          baseURL: 'https://openrouter.ai/api/v1',
-          apiKey,
-          model,
-        },
-        opts,
-      )
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      lastErr = e instanceof Error ? e : new Error(msg)
-      const tryNext =
-        /\b(404|429|503)\b/.test(msg) || /not.found|rate.?limit|overload|unavailable/i.test(msg)
-      if (!tryNext) break
-    }
-  }
-  throw lastErr || new Error('OpenRouter: no free models succeeded')
-}
-
-/** Last-resort: reuse exact gig-creation provider chain. */
-async function chatProviderBridge(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const { getChatProvider } = await import('@/lib/chatProvider')
-  const provider = getChatProvider()
-  if (!provider) throw new Error('chatProvider chain not configured')
-  const text = await provider.reply(opts.system, [{ role: 'user', content: opts.prompt }], {
-    maxOutputTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-  })
-  if (!text?.trim()) throw new Error(`${provider.name} returned empty content`)
-  return { text: text.trim(), provider: `chatProvider:${provider.name}`, model: provider.name }
 }
 
 /**
@@ -2572,238 +1580,12 @@ export async function* openAiCompatibleStream(
   yield { type: 'done', text: full.trim(), provider: p.label, model }
 }
 
-async function* cloudflareAiStream(
-  opts: ContentAiOptions,
-): AsyncGenerator<ContentAiStreamEvent> {
-  const auth = resolveCloudflareAiAuth()
-  if (!auth) {
-    throw new Error(
-      'Cloudflare AI not configured (need CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN or CLOUDFLARE_API_TOKEN with Workers AI Read)',
-    )
-  }
-
-  const { accountId, token } = auth
-  const model = CF_AI_MODEL
-  const messages = [
-    { role: 'system', content: opts.system },
-    { role: 'user', content: opts.prompt },
-  ]
-  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
-  const temperature = opts.temperature ?? DEFAULT_TEMPERATURE
-  const chatUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`
-
-  const res = await fetch(chatUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...(env('CLOUDFLARE_AI_GATEWAY_ID')
-        ? { 'cf-aig-gateway-id': env('CLOUDFLARE_AI_GATEWAY_ID') }
-        : {}),
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: true,
-    }),
-  })
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(formatProviderFailure('cloudflare-ai stream', res.status, body))
-  }
-  if (!res.body) throw new Error('cloudflare-ai stream: empty body')
-
-  yield { type: 'provider', provider: 'cloudflare-ai', model }
-  let full = ''
-  for await (const delta of parseOpenAiSse(res.body)) {
-    full += delta
-    yield { type: 'delta', text: delta }
-  }
-  if (!full.trim()) throw new Error('cloudflare-ai stream returned empty content')
-  yield { type: 'done', text: full.trim(), provider: 'cloudflare-ai', model }
-}
-
-/** Non-stream complete → synthetic single-delta stream (fallback). */
-async function* completeAsStream(
-  complete: () => Promise<ContentAiResult>,
-): AsyncGenerator<ContentAiStreamEvent> {
-  const result = await complete()
-  yield { type: 'provider', provider: result.provider, model: result.model }
-  // Chunk large responses so the editor updates progressively even without true SSE
-  const text = result.text
-  const step = Math.max(80, Math.floor(text.length / 40))
-  for (let i = 0; i < text.length; i += step) {
-    const chunk = text.slice(i, i + step)
-    yield { type: 'delta', text: chunk }
-  }
-  yield { type: 'done', text, provider: result.provider, model: result.model }
-}
-
 /**
- * Workers AI via OpenAI-compatible chat completions endpoint first,
- * then legacy /ai/run/{model} if needed.
- */
-async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
-  const auth = resolveCloudflareAiAuth()
-  if (!auth) {
-    throw new Error(
-      'Cloudflare AI not configured (need CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN or CLOUDFLARE_API_TOKEN with Workers AI Read)',
-    )
-  }
-
-  const { accountId, token } = auth
-  const model = CF_AI_MODEL
-  const messages = [
-    { role: 'system', content: opts.system },
-    { role: 'user', content: opts.prompt },
-  ]
-  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
-  const temperature = opts.temperature ?? DEFAULT_TEMPERATURE
-
-  // 1) OpenAI-compatible Workers AI endpoint (dashboard quick-start / AI Gateway style)
-  const chatUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`
-  let chatErr = 'chat/completions not attempted'
-  try {
-    const res = await fetch(chatUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        // Optional AI Gateway routing when configured
-        ...(env('CLOUDFLARE_AI_GATEWAY_ID')
-          ? { 'cf-aig-gateway-id': env('CLOUDFLARE_AI_GATEWAY_ID') }
-          : {}),
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-      }),
-    })
-
-    if (res.ok) {
-      const data = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>
-        result?: { response?: string; choices?: Array<{ message?: { content?: string } }> }
-        success?: boolean
-        errors?: Array<{ message: string }>
-      }
-
-      // Shape A: OpenAI-style at top level
-      let text = data.choices?.[0]?.message?.content?.trim()
-      // Shape B: wrapped in result
-      if (!text) text = data.result?.choices?.[0]?.message?.content?.trim()
-      if (!text) text = data.result?.response?.trim()
-
-      if (text) return { text, provider: 'cloudflare-ai', model }
-      if (data.success === false) {
-        const errs = (data.errors || []).map((e) => e.message).join(' | ')
-        if (isDailyQuotaError(errs)) {
-          throw new Error('cloudflare-ai 429: daily Workers AI free allocation exhausted; retry after the UTC quota reset or configure paid Workers AI')
-        }
-        throw new Error(`chat/completions success=false: ${errs}`)
-      }
-      throw new Error('chat/completions empty content')
-    }
-
-    const body = await res.text().catch(() => '')
-    // Quota/rate-limit responses are provider-level failures. Trying the legacy
-    // endpoint as well would spend another request and cannot restore quota.
-    if (res.status === 429 || isDailyQuotaError(body)) {
-      throw new Error(formatProviderFailure('cloudflare-ai', res.status, body))
-    }
-    // Fall through to legacy /run only for endpoint compatibility (normally 404).
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(formatProviderFailure('cloudflare-ai', res.status, body))
-    }
-    chatErr = `chat/completions ${res.status}: ${body.slice(0, 200)}`
-  } catch (e) {
-    if (e instanceof Error && /cloudflare-ai (401|403)/.test(e.message)) throw e
-    chatErr = e instanceof Error ? e.message : String(e)
-  }
-
-  // 2) Legacy Workers AI run endpoint
-  const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`
-  const res = await fetch(runUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  })
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(
-      `${formatProviderFailure('cloudflare-ai', res.status, body)} (also tried: ${chatErr})`,
-    )
-  }
-
-  const data = (await res.json()) as {
-    success?: boolean
-    result?: { response?: string; choices?: Array<{ message?: { content?: string } }> }
-    errors?: Array<{ message: string }>
-  }
-
-  if (data.success === false) {
-    const errs = (data.errors || []).map((e) => e.message).join(' | ').slice(0, 280)
-    throw new Error(`cloudflare-ai success=false: ${errs || 'no detail'}`)
-  }
-
-  const text =
-    data.result?.response?.trim() ||
-    data.result?.choices?.[0]?.message?.content?.trim()
-
-  if (!text) throw new Error('cloudflare-ai returned empty content')
-  return { text, provider: 'cloudflare-ai', model }
-}
-
-/**
- * OpenAI-compatible fallbacks in gig-creation order where possible:
- * Groq → OpenRouter → custom → xAI → OpenAI → DeepSeek
- * (Gemini is native REST and tried separately.)
+ * Grok chat-completions fallback record. `grokComplete` uses this only for
+ * the Responses-API 404 path (console API keys); no other provider remains.
  */
 function listOpenAiFallbackProviders(): OpenAiCompat[] {
   const out: OpenAiCompat[] = []
-
-  // Baseten DeepSeek V4 Flash — OpenAI-compatible inference endpoint.
-  if (isBasetenConfigured()) {
-    const p = getBasetenProvider()
-    if (p) out.push(p)
-  }
-  // 1) Groq — primary free tier for gigs (fastest)
-  if (env('GROQ_API_KEY')) {
-    out.push({
-      label: 'groq',
-      baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: env('GROQ_API_KEY'),
-      model: env('GROQ_MODEL') || 'llama-3.3-70b-versatile',
-    })
-  }
-  // 2) OpenRouter free models — separate daily quota (same as gigs)
-  // Handled by openRouterComplete (multi-model walk), not listed here as single OpenAiCompat
-  // 3) Custom OpenAI-compatible
-  if (isParasailConfigured()) {
-    const p = getParasailDeepseekProvider()
-    if (p) out.push(p)
-  }
-  if (env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY') && !looksLikeParasailKey(env('CUSTOM_AI_API_KEY'))) {
-    out.push({
-      label: 'custom',
-      baseURL: env('CUSTOM_AI_BASE_URL'),
-      apiKey: env('CUSTOM_AI_API_KEY'),
-      model: env('CUSTOM_AI_MODEL') || 'gpt-5.6-luna',
-    })
-  }
   if (isGrokConfigured()) {
     out.push({
       label: 'grok',
@@ -2812,44 +1594,7 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
       model: env('XAI_MODEL') || 'grok-4.6',
     })
   }
-  if (env('OPENAI_API_KEY') && !looksLikeParasailKey(env('OPENAI_API_KEY'))) {
-    out.push({
-      label: 'openai',
-      baseURL: 'https://api.openai.com/v1',
-      apiKey: env('OPENAI_API_KEY'),
-      model: env('OPENAI_MODEL') || 'gpt-5.6-luna',
-    })
-  }
-  if (env('DEEPSEEK_API_KEY') && !looksLikeParasailKey(env('DEEPSEEK_API_KEY'))) {
-    out.push({
-      label: 'deepseek',
-      baseURL: deepseekOfficialBaseURL(),
-      apiKey: env('DEEPSEEK_API_KEY'),
-      model: canonicalizeDeepseekModelId(env('DEEPSEEK_MODEL') || DEEPSEEK_OFFICIAL_FLASH_MODEL, 'flash'),
-    })
-  }
-  // Entrim — first-party DeepSeek V4 Flash. Only pushed when ENTRIM_API_KEY is
-  // present, so an explicit `entrim-deepseek` pin with no key fails closed at
-  // the early-fail gate instead of silently executing another host.
-  if (isEntrimConfigured()) {
-    const entrim = getEntrimProvider()
-    if (entrim) out.push(entrim)
-  }
-
   return out
-}
-
-function isGeminiConfigured(): boolean {
-  return Boolean(env('GEMINI_API_KEY') || env('GOOGLE_GEMINI_API_KEY'))
-}
-
-function isOpenRouterConfigured(): boolean {
-  return Boolean(env('OPENROUTER_API_KEY'))
-}
-
-/** True when CF Workers AI credentials are present. */
-export function isCloudflareAiConfigured(): boolean {
-  return resolveCloudflareAiAuth() !== null
 }
 
 /** Operator-facing list of the commissioned content AI backends (registry-derived). */
@@ -2868,15 +1613,12 @@ export function listConfiguredContentProviders(): Array<{
 }
 
 /**
- * Resolve preferred provider label.
+ * Resolve the legacy preferred provider label for `resolveAiProviderPin`.
  *
- * HARD DEFAULT: NVIDIA MiniMax M3 (`nvidia-minimax`) — matches the Draft lane
- * UI default. Run BiOS GLM 5.3 Flash is the auto-cascade runner-up.
- * Cloudflare remains a fallback and never becomes the default lead unless
- * CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
- *
- * Empty / unknown / legacy "primary" values resolve through the configured
- * order, whose default lead is nvidia-minimax.
+ * The commissioned execution doors do NOT use this function — they select
+ * through `resolveExecutionProvider` (registry). Kept only for the exported
+ * legacy resolver; empty/unknown values resolve through the legacy configured
+ * order, whose lead is Grok.
  */
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
@@ -3013,29 +1755,6 @@ function preferProvider(): string {
   return explicit
 }
 
-function isNvidiaPrefer(prefer: string): boolean {
-  return (
-    prefer === 'nvidia' ||
-    prefer === 'nvidia-deepseek' ||
-    prefer === 'nvidia-glm' ||
-    prefer === 'nvidia-nemotron' ||
-    prefer === 'nvidia-minimax' ||
-    prefer === 'glm' ||
-    prefer === 'z-ai' ||
-    prefer === 'deepseek' ||
-    prefer === 'deepseek-v4' ||
-    prefer === 'deepseek-v4-pro' ||
-    prefer === 'nim' ||
-    prefer === 'auto' ||
-    prefer === 'default' ||
-    !prefer
-  )
-}
-
-function isCloudflareExclusive(prefer: string): boolean {
-  return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
-}
-
 /** Graduate Grok + Entrim families to the lead of the auto cascade — the same
  *  order DEFAULT_PROVIDER_ORDER declares (Grok first, then Entrim Qwen /
  *  DeepSeek), so AUTO prefers the paid SuperGrok subscription. */
@@ -3043,11 +1762,6 @@ function promoteLiveStudioLead(order: string[]): string[] {
   const lead = ['grok', 'entrim-qwen-27b', 'entrim-deepseek']
   const without = order.filter((id) => !lead.includes(id))
   return [...lead, ...without]
-}
-
-/** @deprecated alias — prefer promoteLiveStudioLead (Grok-first). */
-function promoteEntrimAsLead(order: string[]): string[] {
-  return promoteLiveStudioLead(order)
 }
 
 /** Parse the admin-saved order defensively (JSON or CSV). */
@@ -3100,31 +1814,6 @@ function configuredProviderOrder(): string[] {
   // New providers remain selectable even when an older saved order predates them.
   const merged = [...configured, ...[...known].filter((id) => !configured.includes(id))]
   return promoteLiveStudioLead(merged)
-}
-
-function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
-  const order = configuredProviderOrder()
-  if (!order.length) return items
-  const rank = new Map(order.map((id, index) => [id, index]))
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => (rank.get(a.item.label) ?? 10000) - (rank.get(b.item.label) ?? 10000) || a.index - b.index)
-    .map(({ item }) => item)
-}
-
-/**
- * Track whether we've hit a subrequest budget error so the fallback cascade
- * stops immediately rather than pointlessly trying every remaining provider.
- */
-let subrequestBudgetExhausted = false
-
-/**
- * Check if an error is (or was caused by) the Cloudflare Workers subrequest limit.
- * When true, all remaining providers will also fail — stop the cascade.
- */
-function isSubrequestLimitError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /Too many subrequest/i.test(msg)
 }
 
 /**
@@ -3334,8 +2023,6 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Every provider receives the same compliance contract, including custom
   // depth-rescue systems that do not pass through the factory prompt builder.
   opts = withUniversalQualityContract(opts)
-  // Reset subrequest budget flag so a fresh request doesn't inherit stale state
-  subrequestBudgetExhausted = false
 
   const adapter = commissionedAdapterFor(selection.pin, opts)
   return withDeadline(
@@ -3344,7 +2031,6 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     adapter.complete(),
   )
 }
-
 
 /**
  * Stream long-form content into the editor through the single commissioned
@@ -3367,8 +2053,6 @@ export async function* generateContentTextStream(
   await refreshAiVault()
   // Streaming and complete generation share one compliance contract.
   opts = withUniversalQualityContract(opts)
-  // Reset subrequest budget flag so a fresh request doesn't inherit stale state
-  subrequestBudgetExhausted = false
 
   const adapter = commissionedAdapterFor(selection.pin, opts)
   yield* adapter.stream()

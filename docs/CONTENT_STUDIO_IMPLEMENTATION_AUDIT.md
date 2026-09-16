@@ -162,3 +162,173 @@ The user authorized Codex to fix the final blockers and merge after verification
 The execution-lease migration remains unapplied and must not be confused with the already-applied migration 20260914181604. Code merge does not execute SQL. Strict contracted runtime operations require that separate schema prerequisite. No article generation, article publication or live benchmark is claimed by this fix. The 12-pair benchmark remains NOT RUN / NOT MET.
 
 The final renderer regression also runs inside strict execution, matching manual approval's nested contexts. It exposed a missing publication-context marker; the renderer now populates both execution and publication proof from the same input and refuses mismatched identities. That regression failed before the fix and passed afterward.
+
+## Provider-parity P3 cleanup pass (2026-09-16) — DeepSeek first-party commission
+
+**Worktree:** `/Users/phantomdarne/Documents/GitHub/yousafe-portal-worktrees/content-studio-provider-parity-p2`
+**Branch:** `feature/content-studio-provider-parity-p2-20260915`
+**P2 starting checkpoint SHA:** `b54e86c77bbe2f3a4497c2825f13097dda53e1ff` (unchanged; P3 work is uncommitted)
+**Executor:** DeepSeek V4.1 Flash · **Supervisor/release owner:** GPT-5.6 Sol
+
+This pass is cleanup only (plan Task 8 / P3). Non-registrability and
+route-unreachability were already enforced at P2 by the boundary test and the
+runtime registration proof; P3 removed the retired registered/executable
+transport code and the retired cascade remnants, and never becomes a safety
+dependency. It deliberately did not remove every retired-label reference:
+inert legacy label-resolution compatibility and generic OpenAI-compatible
+branches remain (see "Executable vs inert" below). No commit, push, merge,
+deploy, migration application, secret change, or production write occurred.
+
+### Purged in this pass
+
+`lib/contentAiProviderCore.ts` (3,375 → 2,059 lines, −1,316 net): NVIDIA, Baseten,
+Parasail, Run BiOS, AIHubmix, Zai, Entrim, DeepSeek.com-alias, Gemini,
+OpenRouter, and Cloudflare Workers AI getters/completers/constants; the
+`canonicalizeDeepseek*`/`canonicalizeParasailGlm*`/`canonicalizeNvidia*` model
+canonicalizers; dead cascade remnants (`maxProviderCandidates`,
+`isSubrequestLimitError`, `subrequestBudgetExhausted`, `sortByAdminOrder`,
+`isNvidiaPrefer`, `isCloudflareExclusive`, `promoteEntrimAsLead`,
+`isGeminiConfigured`, `isOpenRouterConfigured`, `isCloudflareAiConfigured`,
+`resolveCloudflareAiAuth`, `completeAsStream`, `isLiveProviderLabel`,
+`isOpenaiConfigured`, `isUnavailableDeploymentError`, `quotaFailureSummary`,
+`grokQuotaGuidance`, `isTransientInfraError`, `isUnusableGenerationFailure`);
+the retired `listOpenAiFallbackProviders` entries (Grok record retained for the
+existing Responses-404 chat fallback). Unused base-URL resolver helpers and
+retired constants were removed with them. `openAiCompatibleComplete/Stream`,
+`grokComplete`, `grokResponsesStream`, `resolveAiProviderPin` (legacy,
+exported, non-execution), the vault/env machinery, and the commissioned
+registration/selector code are preserved.
+
+Scripts: `scripts/probe-runbios-pipeline.ts` converted to a fail-closed
+tombstone (exits 1, no provider contact; kept because the boundary test's
+dead-code inventory pins its path). `scripts/bench-runbios-draft.ts` and
+`scripts/probe-baseten-rescue.mts` deleted (standalone retired-provider
+execution utilities; no package/workflow/runtime consumer).
+
+### Executable vs inert (correction round 1 precision)
+
+It is not accurate to say "all retired-provider/cascade logic is gone." P3
+removed executable/registrable transport code; it did not remove every
+retired-label reference.
+
+**Removed — was executable/registrable transport code:**
+
+- All retired provider getters/completers/constants and their model
+  canonicalizers (`getNvidia*`, `getBaseten*`, `getRunbios*`,
+  `getAihubmix*`, `getParasail*`, `getEntrim*`, `getCloudflare*`,
+  `resolveNvidiaApiKey`, the retired base-URL resolvers, etc.), plus the
+  retired cascade remnants listed above.
+- Retired entries in `listOpenAiFallbackProviders` (the Grok record is now the
+  only entry).
+
+**Retained inert — cannot register or execute a provider:**
+
+- **Generic OpenAI-compatible branches keyed on retired labels** inside the
+  preserved `openAiCompatibleComplete`/`openAiCompatibleStream` (and their
+  shared fetch helper): NVIDIA MiniMax/Nemotron temperature and `max_tokens`
+  handling, Run BiOS `isRunbiosPin` timeout/`reasoning_effort`/dispatcher
+  hooks, `reasoning_budget`/`extraBody` JSON passthrough, and
+  `isReasoningModelId` naming retired model families. These are request-shaping
+  branches in a generic transport, not retired transports.
+- **Legacy label-resolution compatibility**: `resolveAiProviderPin`,
+  `preferProvider`, `configuredProviderOrder`, their alias tables naming
+  retired pins (`nvidia-*`, `baseten-*`, `parasail-*`, `runbios-*`,
+  `entrim-*`, `zai-glm`, `aihubmix-*`, OpenAI/GPT aliases, …),
+  `ENTRIM_QWEN_LABEL`/`ENTRIM_QWEN_MODEL`, `looksLikeParasailKey`,
+  `deadlineForProvider`'s Run BiOS floor, and the `lib/runbiosCatalog.ts`
+  imports those helpers use.
+
+Why this stays safe: `adapterFor` remains the only transport factory and
+`COMMISSIONED_PROVIDERS` registers exactly `grok` and `deepseek-v41-flash`.
+The execution doors select through `resolveExecutionProvider`, which rejects
+every legacy pin with `ProviderSelectionRequiredError` before any outbound
+request, so no retained label map or generic branch can reach a retired host.
+The retained code resolves labels or shapes request JSON; it does not build a
+transport.
+
+### Test paths changed/deleted and why
+
+- Deleted the retired `describe.skip` NVIDIA suite that lived at `tests/content-ai-provider-stream.test.ts`, then restored that path (correction round 1) as a compact commissioned-path suite: 7 tests driving `generateContentTextStream` with the `deepseek-v41-flash` pin, covering abandoned-consumer body cancel, caller-AbortSignal fetch abort, continuation restart rejection (new frontmatter and new H1), genuine continuation append, split-delta and single-delta opening frontmatter, and a later frontmatter restart after real prose. No NVIDIA/Baseten/Run BiOS/Entrim/OpenAI cascade test or transport was resurrected, and the test still runs through the public commission door (no selector/gate mock).
+- Deleted `tests/baseten-deepseek-hardening.test.ts` — `describe.skip` suite for the retired Baseten transport.
+- Deleted `tests/content-ai-openai-no-thinking.test.ts` — `describe.skip` suite for the retired OpenAI payload path.
+- Deleted `tests/content-ai-base-url-guard.test.ts` — Baseten-only base-URL guard for deleted getters.
+- Trimmed `tests/content-ai-parasail.test.ts` to the `looksLikeParasailKey` case (retained as a commissioned DeepSeek-slot safeguard); the deleted transport assertions went with the code.
+- Trimmed `tests/content-ai-auto-provider.test.ts` — removed the two AIHubmix getter cases; the legacy `resolveAiProviderPin` cases are unchanged.
+- Trimmed `tests/content-ai-provider.test.ts` — removed the NVIDIA provider/canonicalization and retired cascade describes (cascade behavior no longer exists by commission), and migrated the two continuation-restart guard tests from the deleted `entrim-qwen-27b` pin to the commissioned `deepseek-v41-flash` pin with identical assertions (they were red at the starting SHA because P2 correctly rejects the legacy pin).
+- Updated `tests/runbios-catalog.test.ts` — stale live-vault expectation (`entrim-*` rows) corrected to the commissioned `grok` + `deepseek-v41-flash` set; Run BiOS retirement assertions unchanged.
+- Not touched: every commissioned boundary/registration/parity/DeepSeek-first-party/no-cross-fallback/catalog/selector/route/vault/persistence suite.
+
+### Exact commands and results
+
+```text
+# Pre-cleanup P2 proof (starting SHA)
+TZ=UTC npx jest tests/provider-registry-boundary.test.ts tests/provider-registration-proof.test.ts --runInBand
+→ 2 suites passed, 15 tests passed
+
+# Post-cleanup proof
+TZ=UTC npx jest tests/provider-registry-boundary.test.ts tests/provider-registration-proof.test.ts --runInBand
+→ 2 suites passed, 15 tests passed (invariant preserved)
+
+# Task-8 focused suite
+TZ=UTC npx jest tests/content-studio-provider-parity.test.ts tests/deepseek-first-party-transport.test.ts tests/provider-registry-boundary.test.ts tests/provider-registration-proof.test.ts tests/grok-deepseek-no-cross-fallback.test.ts tests/content-studio-provider-legacy-rejection.test.ts tests/content-ai-catalog.test.ts tests/brief-model-policy.test.ts tests/live-provider-policy.test.ts tests/entrim-provider.test.ts --runInBand
+→ 10 suites passed, 83 tests passed
+
+# Correction round 1 focused suites (2026-09-16, restored stream suite active)
+TZ=UTC npx jest tests/content-ai-provider-stream.test.ts tests/content-ai-provider.test.ts tests/deepseek-first-party-transport.test.ts tests/grok-deepseek-no-cross-fallback.test.ts --runInBand
+→ 4 suites passed, 25 tests passed (restored suite alone: 7 tests)
+
+TZ=UTC npx jest tests/content-studio-provider-parity.test.ts tests/provider-registry-boundary.test.ts tests/provider-registration-proof.test.ts tests/content-studio-provider-legacy-rejection.test.ts tests/content-ai-catalog.test.ts tests/brief-model-policy.test.ts tests/live-provider-policy.test.ts tests/entrim-provider.test.ts --runInBand
+→ 8 suites passed, 71 tests passed
+
+# TypeScript
+NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit -p tsconfig.json
+→ exit 0, no errors (re-verified in correction round 1)
+
+# Full Jest (after correction round 1; the restored suite adds 1 suite / 7 tests)
+TZ=UTC NODE_OPTIONS=--max-old-space-size=8192 npx jest --ci --runInBand
+→ 380 passed / 2 failed / 2 skipped suites (382 of 384)
+→ 3950 passed / 8 failed / 4 skipped tests (3962 total)
+→ remaining failures: tests/migration-ledger-policy.test.ts (6) and
+  tests/migration-transaction-safety.test.ts (2) — pre-existing frozen
+  69-file migration-count expectations vs the 70th migration added by P2
+  (20260915_content_studio_provider_parity.sql). No provider test fails.
+→ cleanup-only run before the restored suite was 379 passed / 2 failed /
+  2 skipped suites and 3943 passed / 8 failed / 4 skipped tests; the delta is
+  exactly tests/content-ai-provider-stream.test.ts.
+→ pre-P3 baseline was 5 failed suites / 18 failed tests; the other 10
+  failures were retired-provider tests (retired cascade / legacy pins /
+  stale legacy-catalog expectations) removed or migrated above.
+
+# Build
+npm run build
+→ FAILS. Five webpack UnhandledSchemeError entries (`node:assert`,
+  `node:async_hooks`, `node:buffer`, `node:console`, `node:crypto`) from
+  undici reached via components/design/admin-content-studio.tsx →
+  lib/contentAiCatalog.ts → lib/contentAiRegistry.ts →
+  lib/contentAiProviderCore.ts (`require('undici')`). Reproduced identically
+  on a clean `git archive` copy of the starting SHA b54e86c7 built in
+  /tmp/opencode — a pre-existing P2 client-bundle defect, not a P3
+  regression. It is a release blocker and was NOT fixed here (P3 must not
+  redesign the core or client-boundary wiring).
+
+# Lint
+npm run lint
+→ non-operational (Next 16 removed `next lint`): exit 1 with
+  "Invalid project directory provided, no such directory: .../lint".
+  Not claimed as passing.
+
+# Hygiene
+git diff --check → exit 0 (no whitespace errors)
+git status --porcelain → only the P3 paths listed above plus the new
+  docs/CONTENT_STUDIO_HANDOFF.md
+```
+
+### Remaining external/runtime risks
+
+- `npm run build` is red at the starting SHA and after P3 (see above); it must be fixed before any deploy attempt and is outside the P3 mandate.
+- Both migrations remain **UNAPPLIED** (`20260915_content_studio_execution_lease.sql` and `20260915_content_studio_provider_parity.sql`); the provider-parity columns are tolerated as absent.
+- No live provider canary was performed with real credentials; DeepSeek first-party behavior is proven by mocked transport tests only.
+- The exported legacy `resolveAiProviderPin`/`preferProvider` chain, the `ENTRIM_QWEN_*` aliases, and the generic OpenAI-compatible branches keyed on retired labels (see "Executable vs inert") remain inert for compatibility with retained legacy tests; they resolve labels or shape generic request JSON only, are not registrable transports, are not reachable through the execution doors, and can be removed in a later cleanup with those tests.
+- `lib/runbiosCatalog.ts` and the tombstoned `scripts/probe-runbios-pipeline.ts` remain by design (boundary-test inventory); neither can execute a provider.
+- The repository-root `CONTENT_STUDIO_HANDOFF.md` still contains stale Entrim-fallback runtime claims; it was out of scope and is superseded by `docs/CONTENT_STUDIO_HANDOFF.md`.
+- No canary/deploy claim is made. Merge, migration application, and production verification require GPT-5.6 Sol.
