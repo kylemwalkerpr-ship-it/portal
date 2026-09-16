@@ -67,11 +67,14 @@ export async function GET() {
       .from('seo_interlinks')
       .select('*', { count: 'exact', head: true })
 
-    // Active interlinks (status = 'active' or 'live')
-    const { count: activeInterlinks, error: activeError } = await supabase
+    // Executed/applied interlinks. Under today's schema `applied` is the only
+    // executed state (the current ship loop found the exact target URL in the
+    // shipped body); there is no 'active' status in seo_interlinks. The
+    // response field stays `interlinkActive` for UI compatibility.
+    const { count: appliedInterlinks, error: activeError } = await supabase
       .from('seo_interlinks')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'active')
+      .eq('status', 'applied')
 
     // ── Site scan last-run ──
     // Track the most recent job audit or site health activity as a proxy
@@ -104,7 +107,7 @@ export async function GET() {
       gscExpiresAt,
       gscConnectedSince,
       interlinkTotal: (!interlinkError ? interlinkCount : null) ?? 0,
-      interlinkActive: (!activeError ? activeInterlinks : null) ?? 0,
+      interlinkActive: (!activeError ? appliedInterlinks : null) ?? 0,
       lastSiteScan,
       totalShipped: (!shippedError ? shippedCount : null) ?? 0,
     })

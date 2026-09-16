@@ -101,17 +101,22 @@ export async function GET() {
     }
 
     // Master Engine graph — the planner's seo_interlinks edges, read-only.
+    // Plan-eligible only (planned/applied): rejected/manual/paused/awaiting_gate
+    // are lifecycle decisions and must not surface as studio suggestions.
     let engineGraphCount = 0
     try {
       const supabase = createSupabaseAdminClient()
       const { data } = await supabase
         .from('seo_interlinks')
         .select('target_url,target_host,anchor_text,status,reason')
+        .in('status', ['planned', 'applied'])
         .order('score', { ascending: false })
         .limit(200)
       for (const row of (data as Array<Record<string, unknown>> | null) || []) {
         const url = String(row.target_url || '').trim()
         if (!url) continue
+        const status = String(row.status || 'planned')
+        if (status !== 'planned' && status !== 'applied') continue
         const key = normalize(url)
         if (seen.has(key)) continue
         seen.add(key)
@@ -122,7 +127,7 @@ export async function GET() {
           url,
           label,
           site: site || undefined,
-          status: String(row.status || 'planned'),
+          status,
           reason: String(row.reason || 'engine_interlink'),
           source: 'engine_graph',
         })
