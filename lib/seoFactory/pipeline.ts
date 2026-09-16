@@ -5,6 +5,7 @@
 import { validateRevisionQuality } from './revisionQuality'
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
+import { assertBroadCreateAllowed } from './broadCreateFreeze'
 import { auditContent, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
@@ -325,6 +326,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     slug: input.slug,
     ownerUrlHint,
   })
+  // P0 broad-CREATE freeze: unowned fallback routing is not permission to
+  // author a net-new public page while cleanup-to-expansion parity is red.
+  assertBroadCreateAllowed(plan, { primaryKeyword })
   contentType = finalizePipelineContentType(input.contentType, plan)
   assertPlanRepoConsistency(plan)
   // Word window: honor brief/operator minWords/maxWords when present,
