@@ -2,8 +2,10 @@
  * Studio model × host catalog — COMMISSIONED (P2, 2026-09-15).
  *
  * Exactly two commissioned providers exist (design §3.1/§3.7), derived from
- * `lib/contentAiRegistry` so the pickers can never diverge from the server
- * registry:
+ * the client-safe `lib/contentAiRegistryContract` — the same single metadata
+ * table the runtime registry derives from — so the pickers can never diverge
+ * from the server registry and never pull server execution code into the
+ * client bundle:
  *
  *   1. Grok 4.6        — model `grok-4.6`,    host `xai`,      pin `grok`.
  *   2. DeepSeek V4.1 Flash — model `deepseek-v41-flash`, host `deepseek`,
@@ -20,14 +22,14 @@
  */
 
 import {
-  COMMISSIONED_PROVIDERS,
+  COMMISSIONED_PROVIDER_DEFINITIONS,
   LANE_DEFAULT_PIN,
   canonicalCommissionedPin,
-  type CommissionedProvider,
+  type CommissionedProviderDefinition,
   type CommissionedProviderHost,
   type CommissionedProviderPin,
   type StudioLane,
-} from '@/lib/contentAiRegistry'
+} from '@/lib/contentAiRegistryContract'
 
 export type { StudioLane }
 
@@ -69,12 +71,12 @@ const MODEL_ID_BY_PIN: Record<CommissionedProviderPin, StudioModelId> = {
   'deepseek-v41-flash': 'deepseek-v41-flash',
 }
 
-function hostLabelFor(provider: CommissionedProvider): string {
+function hostLabelFor(provider: CommissionedProviderDefinition): string {
   return provider.hostId === 'xai' ? 'xAI / Grok' : 'DeepSeek (first-party)'
 }
 
-/** Picker rows derived directly from the canonical registry. */
-export const STUDIO_MODELS: StudioModelOption[] = COMMISSIONED_PROVIDERS.map((provider) => ({
+/** Picker rows derived directly from the canonical contract table. */
+export const STUDIO_MODELS: StudioModelOption[] = COMMISSIONED_PROVIDER_DEFINITIONS.map((provider) => ({
   id: MODEL_ID_BY_PIN[provider.pin],
   label: provider.label,
   apiModel: provider.apiModel,
@@ -87,8 +89,8 @@ const MODEL_BY_PIN = new Map<string, StudioModelOption>(
   STUDIO_MODELS.flatMap((model) => model.hosts.map((host) => [host.pin, model] as const)),
 )
 
-/** All four lanes allow exactly the two commissioned hosts (registry-derived). */
-const COMMISSIONED_HOSTS: StudioHostId[] = COMMISSIONED_PROVIDERS.map((provider) => provider.hostId)
+/** All four lanes allow exactly the two commissioned hosts (contract-derived). */
+const COMMISSIONED_HOSTS: StudioHostId[] = COMMISSIONED_PROVIDER_DEFINITIONS.map((provider) => provider.hostId)
 
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
   draft: [...COMMISSIONED_HOSTS],

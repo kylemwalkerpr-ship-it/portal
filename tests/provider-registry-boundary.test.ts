@@ -177,12 +177,22 @@ function findQuotedLiteral(source: string, literal: string): boolean {
 describe('provider registry boundary — static execution-path scan', () => {
   it('ships the canonical registry as the single provider identity source', () => {
     const registryPath = path.join(root, 'lib/contentAiRegistry.ts')
+    const contractPath = path.join(root, 'lib/contentAiRegistryContract.ts')
     expect(fs.existsSync(registryPath)).toBe(true)
+    expect(fs.existsSync(contractPath)).toBe(true)
+    // The client-safe contract owns the ONLY identity/metadata literals.
+    const contract = read('lib/contentAiRegistryContract.ts')
+    expect(contract).toContain('COMMISSIONED_PROVIDER_DEFINITIONS')
+    expect(contract).toContain('COMMISSIONED_PINS')
+    expect(contract).toContain('deepseek-v41-flash')
+    expect(contract).toContain('deepseek-flash')
+    expect(contract).toContain('https://api.deepseek.com/v1')
+    expect(contract).toContain('https://api.x.ai/v1')
+    // The runtime registry derives from that same table and re-exports it.
     const registry = read('lib/contentAiRegistry.ts')
-    expect(registry).toContain('COMMISSIONED_PINS')
-    expect(registry).toContain('deepseek-v41-flash')
-    // The registry owns the ONLY literal upstream DeepSeek model id.
-    expect(registry).toContain('deepseek-flash')
+    expect(registry).toContain("from './contentAiRegistryContract'")
+    expect(registry).toMatch(/COMMISSIONED_PROVIDER_DEFINITIONS\s*\.map/)
+    expect(registry).toContain('COMMISSIONED_PROVIDERS')
   })
 
   it('every execution surface in the inventory exists', () => {

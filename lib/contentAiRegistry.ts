@@ -1,5 +1,12 @@
 /**
- * Canonical Content Studio provider registry.
+ * Canonical Content Studio provider registry — runtime half.
+ *
+ * Provider identity metadata (types, pins, labels, models, hosts, lanes,
+ * transports, literal destinations, credential env NAMES and pin
+ * canonicalization) lives in the client-safe
+ * `lib/contentAiRegistryContract.ts` and is re-exported here, so every
+ * existing runtime consumer keeps one import site while client components
+ * consume only the pure contract.
  *
  * Exactly two provider identities exist (design §3.1):
  *
@@ -22,10 +29,8 @@
  *     `base_url` overrides and asserts the literal host before every fetch.
  *   - Nothing outside this module may register or construct a provider
  *     transport; `adapterFor` is the only factory.
- *
- * P1 status: this module is intentionally dark — no production module imports
- * it yet. Provider registration, routes, catalog/UI, vault and deployment
- * declarations activate together in the P2 commission flip.
+ *   - `COMMISSIONED_PROVIDERS` is derived from `COMMISSIONED_PROVIDER_DEFINITIONS`;
+ *     no second provider table may exist.
  */
 import {
   contentAiEnv,
@@ -38,46 +43,28 @@ import {
   type ContentAiResult,
   type ContentAiStreamEvent,
 } from './contentAiProviderCore'
+import {
+  COMMISSIONED_PROVIDER_DEFINITIONS,
+  DEEPSEEK_FIRST_PARTY_MAX_TOKENS,
+  DEEPSEEK_V41_FLASH_PIN,
+  LANE_DEFAULT_PIN,
+  canonicalCommissionedPin,
+  isCommissionedPin,
+  type CommissionedProviderDefinition,
+  type CommissionedProviderPin,
+  type CommissionedProviderTransport,
+  type StudioLane,
+} from './contentAiRegistryContract'
 
-export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
+export * from './contentAiRegistryContract'
 
-export type CommissionedProviderPin = 'grok' | 'deepseek-v41-flash'
-
-export type CommissionedProviderHost = 'xai' | 'deepseek'
-
-export type CommissionedProviderTransport = 'xai-responses' | 'openai-compatible'
-
-export interface CommissionedProvider {
-  pin: CommissionedProviderPin
-  label: string
-  hostId: CommissionedProviderHost
-  /** Upstream API model id sent on the wire — distinct from the pin. */
-  apiModel: string
-  lanes: StudioLane[]
-  streaming: boolean
-  transport: CommissionedProviderTransport
-  /** Literal destination; asserted before every fetch. */
-  baseUrl: string
-  baseUrlHost: string
-  keyEnvs: string[]
+/**
+ * Runtime configuration surface for a commissioned provider: immutable
+ * contract metadata plus server-side credential resolution.
+ */
+export interface CommissionedProvider extends CommissionedProviderDefinition {
   isConfigured(): boolean
 }
-
-export const GROK_PIN: CommissionedProviderPin = 'grok'
-export const DEEPSEEK_V41_FLASH_PIN: CommissionedProviderPin = 'deepseek-v41-flash'
-
-export const GROK_API_MODEL = 'grok-4.6'
-export const DEEPSEEK_V41_FLASH_API_MODEL = 'deepseek-flash'
-export const DEEPSEEK_FIRST_PARTY_BASE_URL = 'https://api.deepseek.com/v1'
-export const DEEPSEEK_FIRST_PARTY_HOST = 'api.deepseek.com'
-export const GROK_XAI_BASE_URL = 'https://api.x.ai/v1'
-export const GROK_XAI_HOST = 'api.x.ai'
-export const DEEPSEEK_FIRST_PARTY_MAX_TOKENS = 16384
-
-/** The lane default is Grok 4.6 — only for a job with NO requested provider. */
-export const LANE_DEFAULT_PIN: CommissionedProviderPin = GROK_PIN
-
-const ALL_LANES: StudioLane[] = ['draft', 'brief', 'review', 'command']
 
 /**
  * First-party DeepSeek credential. Vault overlay wins over Worker secrets
@@ -91,56 +78,23 @@ export function resolveDeepseekFirstPartyApiKey(): string {
   return key
 }
 
-export const COMMISSIONED_PROVIDERS: readonly CommissionedProvider[] = [
-  {
-    pin: GROK_PIN,
-    label: 'Grok 4.6',
-    hostId: 'xai',
-    apiModel: GROK_API_MODEL,
-    lanes: ALL_LANES,
-    streaming: true,
-    transport: 'xai-responses',
-    baseUrl: GROK_XAI_BASE_URL,
-    baseUrlHost: GROK_XAI_HOST,
-    keyEnvs: ['XAI_API_KEY'],
-    isConfigured: () => Boolean(contentAiEnv('XAI_API_KEY')),
-  },
-  {
-    pin: DEEPSEEK_V41_FLASH_PIN,
-    label: 'DeepSeek V4.1 Flash',
-    hostId: 'deepseek',
-    apiModel: DEEPSEEK_V41_FLASH_API_MODEL,
-    lanes: ALL_LANES,
-    streaming: true,
-    transport: 'openai-compatible',
-    baseUrl: DEEPSEEK_FIRST_PARTY_BASE_URL,
-    baseUrlHost: DEEPSEEK_FIRST_PARTY_HOST,
-    keyEnvs: ['DEEPSEEK_API_KEY'],
-    isConfigured: () => Boolean(resolveDeepseekFirstPartyApiKey()),
-  },
-]
-
-export const COMMISSIONED_PINS: readonly CommissionedProviderPin[] = [GROK_PIN, DEEPSEEK_V41_FLASH_PIN]
-
-const GROK_ALIASES = new Set(['grok', 'grok-4.6', 'grok-latest', 'grok-4', 'xai', 'supergrok', 'super-grok'])
+/** Server-side credential resolution per commissioned pin — never client code. */
+function commissionedDefinitionIsConfigured(definition: CommissionedProviderDefinition): boolean {
+  if (definition.pin === DEEPSEEK_V41_FLASH_PIN) return Boolean(resolveDeepseekFirstPartyApiKey())
+  return Boolean(contentAiEnv('XAI_API_KEY'))
+}
 
 /**
- * Canonicalize a commissioned pin value, including the commissioned Grok
- * aliases (design §7). Returns null for every legacy/retired/unknown value —
- * never a default.
+ * Runtime providers derived from the single contract table
+ * (`COMMISSIONED_PROVIDER_DEFINITIONS`). Identity metadata is never
+ * duplicated here; only credential resolution is added.
  */
-export function canonicalCommissionedPin(value: unknown): CommissionedProviderPin | null {
-  const raw = String(value ?? '').trim().toLowerCase()
-  if (!raw) return null
-  if (raw === DEEPSEEK_V41_FLASH_PIN) return DEEPSEEK_V41_FLASH_PIN
-  if (GROK_ALIASES.has(raw)) return GROK_PIN
-  return null
-}
-
-export function isCommissionedPin(value: unknown): value is CommissionedProviderPin {
-  const raw = String(value ?? '').trim().toLowerCase()
-  return (COMMISSIONED_PINS as readonly string[]).includes(raw)
-}
+export const COMMISSIONED_PROVIDERS: readonly CommissionedProvider[] = COMMISSIONED_PROVIDER_DEFINITIONS.map(
+  (definition) => ({
+    ...definition,
+    isConfigured: () => commissionedDefinitionIsConfigured(definition),
+  }),
+)
 
 export function assertCommissionedPin(value: unknown): CommissionedProviderPin {
   const pin = canonicalCommissionedPin(value)
