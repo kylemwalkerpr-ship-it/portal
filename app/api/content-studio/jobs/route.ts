@@ -23,6 +23,10 @@ import {
   runWithPublicationIdentity,
   withPublicationManifest,
 } from '@/lib/seoFactory/publicationProof'
+import {
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+} from '@/lib/contentAiRegistry'
 import { GET as legacyGET, POST as legacyPOST, PATCH as legacyPATCH } from './legacy'
 
 function db() { return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!) }
@@ -132,6 +136,20 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (action === 'regenerate') {
+    // Provider boundary: a stored legacy/retired ai_provider fails closed
+    // with the typed selection-required payload BEFORE any stored-job
+    // execution or provider/network work. Missing/empty/'auto' take the lane
+    // default; a commissioned stored pin remains the execution owner.
+    const providerResolution = resolveExecutionProvider({
+      lane: 'draft',
+      existingJob: { ai_provider: job.ai_provider },
+    })
+    if (providerResolution.kind === 'needs_selection') {
+      return NextResponse.json(
+        new ProviderSelectionRequiredError(providerResolution.legacyValue).toPayload(),
+        { status: 409 },
+      )
+    }
     try {
       const result = await runStoredContentJob(job as unknown as StoredContentJob, {
         dryRun: Boolean(body.dryRun),
@@ -141,6 +159,9 @@ export async function PATCH(request: NextRequest) {
       })
       return NextResponse.json({ ok: result.ok, previousJobId: id, result }, { status: result.shipError ? 422 : 200 })
     } catch (error) {
+      if (error instanceof ProviderSelectionRequiredError) {
+        return NextResponse.json(error.toPayload(), { status: error.status })
+      }
       return NextResponse.json({ ok:false, error: error instanceof Error ? error.message : 'regenerate failed' }, { status: 422 })
     }
   }

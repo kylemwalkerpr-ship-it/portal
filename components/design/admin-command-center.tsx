@@ -519,9 +519,9 @@ export default function AdminCommandCenter({
   const [shipMode, setShipMode] = React.useState<ShipMode>('merge')
   const [minAudit, setMinAudit] = React.useState(65)
   const [maxRefine, setMaxRefine] = React.useState(2)
-  // Drafting leads with NVIDIA MiniMax M3; other providers remain
-  // selectable here as explicit alternatives or fallbacks.
-  const [aiProvider, setAiProvider] = React.useState(DEFAULT_DRAFT_PIN)
+  // Drafting follows the commissioned registry: Grok 4.6 lane default or
+  // first-party DeepSeek V4.1 Flash — the picker offers only those two.
+  const [aiProvider, setAiProvider] = React.useState<string>(DEFAULT_DRAFT_PIN)
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])

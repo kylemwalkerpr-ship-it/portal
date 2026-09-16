@@ -3,8 +3,11 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import {
   AI_PROVIDERS,
   getAiSettings,
+  listLegacyVaultRows,
   listVaultStatus,
+  providerDef,
   upsertVaultKey,
+  vaultProviderInputError,
   deleteVaultKey,
   purgeAllVaultKeys,
   purgeGroupVaultKeys,
@@ -29,6 +32,8 @@ export async function GET() {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
     const providers = await listVaultStatus()
+    // Historical rows: read-only audit visibility, never selectable/testable.
+    const legacyProviders = await listLegacyVaultRows()
     const settings = await getAiSettings(true)
     // Runtime hydration truth — not "did the panel save" but "will the
     // generation runtime see vault keys". The Worker overlay fails when the
@@ -45,7 +50,12 @@ export async function GET() {
       overlayOk = false
     }
     const grokOAuth = await getSuperGrokStatus()
-    return NextResponse.json({ providers, settings, grokOAuth, overlayOk, overlayNames })
+    // Editable default-model identity for the settings editor: only the
+    // override-capable commissioned providers contribute selectable ids
+    // (currently Grok's `grok-4.6`). A hard-pinned provider's upstream model
+    // id (DeepSeek `deepseek-flash`) is never exposed as an editable choice.
+    const defaultModelOptions = [...new Set(AI_PROVIDERS.flatMap((provider) => provider.modelOptions || []))]
+    return NextResponse.json({ providers, legacyProviders, settings, grokOAuth, overlayOk, overlayNames, defaultModelOptions })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'ai keys load failed' },
@@ -61,14 +71,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
     const body = await request.json().catch(() => ({}))
+    // Exact commissioned stable pin only — a retired/unknown id, an alias, or
+    // an upstream model id is rejected before any vault write.
     const provider = String(body.provider || '').trim()
-    if (!AI_PROVIDERS.some((p) => p.id === provider)) {
+    const def = providerDef(provider)
+    if (!def) {
       return NextResponse.json({ error: 'Unknown provider' }, { status: 400 })
+    }
+    const baseUrl = body.baseUrl != null ? String(body.baseUrl) : null
+    const model = body.model != null ? String(body.model) : null
+    const inputError = vaultProviderInputError(def, { baseUrl, model })
+    if (inputError) {
+      return NextResponse.json({ error: inputError }, { status: 400 })
     }
     const row = await upsertVaultKey(provider, {
       apiKey: body.apiKey != null ? String(body.apiKey) : undefined,
-      baseUrl: body.baseUrl != null ? String(body.baseUrl) : null,
-      model: body.model != null ? String(body.model) : null,
+      baseUrl,
+      model,
       enabled: body.enabled !== false,
     })
     return NextResponse.json({
@@ -110,6 +129,10 @@ export async function DELETE(request: NextRequest) {
     const provider = request.nextUrl.searchParams.get('provider')
     if (!provider) {
       return NextResponse.json({ error: 'provider query param required' }, { status: 400 })
+    }
+    // Historical rows are audit-only and are never deleted through this door.
+    if (!providerDef(provider)) {
+      return NextResponse.json({ error: 'Unknown provider' }, { status: 400 })
     }
     await deleteVaultKey(provider)
     return NextResponse.json({ ok: true, provider })

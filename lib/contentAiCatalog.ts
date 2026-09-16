@@ -1,28 +1,47 @@
 /**
- * Studio model × host catalog.
+ * Studio model × host catalog — COMMISSIONED (P2, 2026-09-15).
  *
- * The factory still wires a single pin (`entrim-qwen-27b`, `entrim-deepseek`,
- * `grok`). The UI splits that into two choices: which model family, then which
- * host serves it. One catalog keeps drafting, brief, review, and Command Center
- * in agreement.
+ * Exactly two commissioned providers exist (design §3.1/§3.7), derived from
+ * the client-safe `lib/contentAiRegistryContract` — the same single metadata
+ * table the runtime registry derives from — so the pickers can never diverge
+ * from the server registry and never pull server execution code into the
+ * client bundle:
  *
- * Lane policy (single source of truth for UI pickers AND server defaults),
- * mirroring the live provider policy in contentAiProvider.ts:
- *   Draft  — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
- *   Brief  — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
- *   Review — Grok 4.6 (default) + Entrim Qwen3.6 27B + Entrim DeepSeek V4 Flash.
- *   Command — the same three models (no Auto).
- * Retired families (Claude, GLM, MiniMax, Nemotron, GPT-5.6, Run BiOS,
- * NVIDIA, Baseten, Parasail, OpenAI, Groq, Gemini, …) are no longer
- * selectable — a saved legacy pin parses to the Grok default and the
- * server gate routes it to `grok`.
+ *   1. Grok 4.6        — model `grok-4.6`,    host `xai`,      pin `grok`.
+ *   2. DeepSeek V4.1 Flash — model `deepseek-v41-flash`, host `deepseek`,
+ *      upstream API model id `deepseek-flash` (first-party api.deepseek.com).
+ *
+ * Lane policy: all four lanes (draft, brief, review, command) offer exactly
+ * these two models; Grok 4.6 remains the lane default ONLY when a job has no
+ * requested provider (decision §13.2, `resolveExecutionProvider`).
+ *
+ * Retired families/hosts (Entrim, Qwen, Claude, GLM, GPT, Run BiOS, NVIDIA,
+ * Baseten, Parasail, OpenAI, Groq, Gemini, …) are historical, non-selectable
+ * and non-executable: `parseStudioPin` returns `{kind:'needs_selection'}` and
+ * the picker requires explicit reselection — never a silent Grok coercion.
  */
 
-export type StudioLane = 'draft' | 'brief' | 'review' | 'command'
+import {
+  COMMISSIONED_PROVIDER_DEFINITIONS,
+  LANE_DEFAULT_PIN,
+  canonicalCommissionedPin,
+  type CommissionedProviderDefinition,
+  type CommissionedProviderHost,
+  type CommissionedProviderPin,
+  type StudioLane,
+} from '@/lib/contentAiRegistryContract'
 
-export type StudioModelId = 'qwen3.6-27b' | 'deepseek-v4-flash' | 'grok-4.6'
+export type { StudioLane }
 
-export type StudioHostId = 'entrim' | 'xai'
+/** Stable model ids shown in the pickers. Grok is not the raw pin (`grok`). */
+export type StudioModelId = 'grok-4.6' | 'deepseek-v41-flash'
+
+/**
+ * Commissioned hosts: xAI (Grok) and first-party DeepSeek. Historical host
+ * names stay representable as plain strings for read-only display, but the
+ * catalog only ever produces commissioned hosts.
+ */
+export type StudioHostId = CommissionedProviderHost | (string & {})
 
 export interface StudioHostOption {
   id: StudioHostId
@@ -39,102 +58,62 @@ export interface StudioModelOption {
   hosts: StudioHostOption[]
 }
 
-export const DEEPSEEK_V4_FLASH_ID = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-export const DEEPSEEK_V4_PRO_ID = 'deepseek-ai/DeepSeek-V4-Pro-0813'
-/** Entrim-hosted DeepSeek V4 Flash — the catalog model id is the EXACT
- *  upstream id Entrim serves (no -0731 suffix); never canonicalize it. */
-export const ENTRIM_DEEPSEEK_FLASH_PIN = 'entrim-deepseek'
-export const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
-
-/** Entrim-hosted Qwen3.6 27B — served verbatim as `Qwen/Qwen3.6-27B` on
- *  api.entrim.ai/v1 (same rule as the flash: upstream ids, never
- *  canonicalize). Usable in the Discover, Brief, and Reviewer lanes. */
-export const ENTRIM_QWEN_PIN = 'entrim-qwen-27b'
-export const ENTRIM_QWEN_MODEL = 'Qwen/Qwen3.6-27B'
-
-/** xAI Grok 4.6 — paid SuperGrok / XAI_API_KEY pin used across studio defaults. */
-export const GROK_PIN = 'grok'
-
-/** Draft lead: Grok 4.6 — paid SuperGrok subscription default
- *  (api.x.ai/v1). Falls back through Entrim in the auto cascade. */
-export const DEFAULT_DRAFT_PIN = GROK_PIN
+/** Commissioned draft lead: Grok 4.6 (SuperGrok subscription / XAI_API_KEY). */
+export const DEFAULT_DRAFT_PIN: CommissionedProviderPin = LANE_DEFAULT_PIN
 /** Research / Generate Full Brief lead: Grok 4.6. */
-export const DEFAULT_BRIEF_PIN = GROK_PIN
+export const DEFAULT_BRIEF_PIN: CommissionedProviderPin = LANE_DEFAULT_PIN
 /** Reviewer / Editor lead: Grok 4.6. */
-export const DEFAULT_REVIEW_PIN = GROK_PIN
+export const DEFAULT_REVIEW_PIN: CommissionedProviderPin = LANE_DEFAULT_PIN
 
-/**
- * Lane host allowlists — a lane can only select or execute a pin whose host
- * serves that lane. Every lane offers Entrim (Qwen + DeepSeek) and xAI
- * (Grok). No `auto` model exists in the catalog.
- */
+/** Model id per commissioned pin — the picker value for each provider. */
+const MODEL_ID_BY_PIN: Record<CommissionedProviderPin, StudioModelId> = {
+  grok: 'grok-4.6',
+  'deepseek-v41-flash': 'deepseek-v41-flash',
+}
+
+function hostLabelFor(provider: CommissionedProviderDefinition): string {
+  return provider.hostId === 'xai' ? 'xAI / Grok' : 'DeepSeek (first-party)'
+}
+
+/** Picker rows derived directly from the canonical contract table. */
+export const STUDIO_MODELS: StudioModelOption[] = COMMISSIONED_PROVIDER_DEFINITIONS.map((provider) => ({
+  id: MODEL_ID_BY_PIN[provider.pin],
+  label: provider.label,
+  apiModel: provider.apiModel,
+  lanes: [...provider.lanes],
+  hosts: [{ id: provider.hostId, label: hostLabelFor(provider), pin: provider.pin }],
+}))
+
+const MODEL_BY_ID = new Map<string, StudioModelOption>(STUDIO_MODELS.map((model) => [model.id, model]))
+const MODEL_BY_PIN = new Map<string, StudioModelOption>(
+  STUDIO_MODELS.flatMap((model) => model.hosts.map((host) => [host.pin, model] as const)),
+)
+
+/** All four lanes allow exactly the two commissioned hosts (contract-derived). */
+const COMMISSIONED_HOSTS: StudioHostId[] = COMMISSIONED_PROVIDER_DEFINITIONS.map((provider) => provider.hostId)
+
 export const LANE_HOSTS: Record<StudioLane, StudioHostId[]> = {
-  draft: ['xai', 'entrim'],
-  brief: ['xai', 'entrim'],
-  review: ['xai', 'entrim'],
-  command: ['xai', 'entrim'],
+  draft: [...COMMISSIONED_HOSTS],
+  brief: [...COMMISSIONED_HOSTS],
+  review: [...COMMISSIONED_HOSTS],
+  command: [...COMMISSIONED_HOSTS],
 }
 
 /** Host picker order — skip a host when that model is not served there. */
-export const STUDIO_HOST_ORDER: StudioHostId[] = ['xai', 'entrim']
+export const STUDIO_HOST_ORDER: StudioHostId[] = [...COMMISSIONED_HOSTS]
 
 const LANE_MODEL_ORDER: Record<StudioLane, StudioModelId[]> = {
-  // All lanes list the same three models (Grok lead, then Qwen, then DeepSeek).
-  draft: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
-  brief: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
-  review: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
-  command: ['grok-4.6', 'qwen3.6-27b', 'deepseek-v4-flash'],
-}
-
-export const STUDIO_MODELS: StudioModelOption[] = [
-  {
-    id: 'deepseek-v4-flash',
-    // Live-policy host: Entrim serves the EXACT upstream id (no -0731
-    // suffix) — the label names it so the wire payload is unambiguous.
-    label: ENTRIM_DEEPSEEK_MODEL,
-    apiModel: ENTRIM_DEEPSEEK_MODEL,
-    lanes: ['draft', 'brief', 'review', 'command'],
-    hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_DEEPSEEK_FLASH_PIN }],
-  },
-  {
-    id: 'qwen3.6-27b',
-    label: 'Qwen3.6 27B',
-    apiModel: ENTRIM_QWEN_MODEL,
-    lanes: ['draft', 'brief', 'review', 'command'],
-    hosts: [{ id: 'entrim', label: 'Entrim', pin: ENTRIM_QWEN_PIN }],
-  },
-  {
-    id: 'grok-4.6',
-    label: 'Grok 4.6',
-    apiModel: 'grok-4.6',
-    lanes: ['draft', 'brief', 'review', 'command'],
-    hosts: [{ id: 'xai', label: 'xAI / Grok', pin: 'grok' }],
-  },
-]
-
-const PIN_ALIASES: Record<string, string> = {
-  entrim: ENTRIM_DEEPSEEK_FLASH_PIN,
-  [ENTRIM_DEEPSEEK_FLASH_PIN]: ENTRIM_DEEPSEEK_FLASH_PIN,
-  'entrim-deepseek-v4-flash': ENTRIM_DEEPSEEK_FLASH_PIN,
-  'entrim-deepseek-v4-flash-0731': ENTRIM_DEEPSEEK_FLASH_PIN,
-  [ENTRIM_QWEN_PIN]: ENTRIM_QWEN_PIN,
-  'qwen3.6-27b': ENTRIM_QWEN_PIN,
-  qwen: ENTRIM_QWEN_PIN,
-  grok: 'grok',
-  'grok-4.6': 'grok',
-  xai: 'grok',
-  supergrok: 'grok',
-  'super-grok': 'grok',
+  // Grok leads every lane; first-party DeepSeek V4.1 Flash is the peer choice.
+  draft: ['grok-4.6', 'deepseek-v41-flash'],
+  brief: ['grok-4.6', 'deepseek-v41-flash'],
+  review: ['grok-4.6', 'deepseek-v41-flash'],
+  command: ['grok-4.6', 'deepseek-v41-flash'],
 }
 
 export function modelsForLane(lane: StudioLane): StudioModelOption[] {
   const list = STUDIO_MODELS.filter((m) =>
     m.lanes.includes(lane) && hostsForModel(m.id, lane).length > 0,
   )
-  if (lane === 'draft') {
-    // Draft lane sorts model families alphabetically by display label.
-    return [...list].sort((a, b) => a.label.localeCompare(b.label))
-  }
   const order = LANE_MODEL_ORDER[lane]
   if (!order?.length) return list
   return [...list].sort((a, b) => {
@@ -145,27 +124,24 @@ export function modelsForLane(lane: StudioLane): StudioModelOption[] {
 }
 
 export function findModel(modelId: string): StudioModelOption | undefined {
-  return STUDIO_MODELS.find((m) => m.id === modelId)
-}
-
-export function canonicalizePin(raw?: string | null): string {
-  const pin = String(raw || '').trim().toLowerCase()
-  if (!pin) return GROK_PIN
-  return PIN_ALIASES[pin] || GROK_PIN
+  return MODEL_BY_ID.get(modelId)
 }
 
 /**
- * Operator / brief pin wins over last-successful cascade/runtime provider.
- * `auto` and empty owner fall through to the runtime pin (then the draft default).
+ * Owner / brief pin wins over the last-successful runtime provider. A
+ * commissioned value canonicalizes (Grok aliases included); a legacy value is
+ * returned verbatim so it stays auditable and forces re-selection — it is
+ * never silently coerced to a default. `auto`/empty fall to the next source
+ * and finally the draft default.
  */
 export function resolveOwnerProviderPin(
   ownerProvider?: string | null,
   runtimeProvider?: string | null,
 ): string {
-  const owner = String(ownerProvider || '').trim().toLowerCase()
-  if (owner && owner !== 'auto') return canonicalizePin(owner)
-  const runtime = String(runtimeProvider || '').trim().toLowerCase()
-  if (runtime && runtime !== 'auto') return canonicalizePin(runtime)
+  const owner = String(ownerProvider || '').trim()
+  if (owner && owner.toLowerCase() !== 'auto') return canonicalCommissionedPin(owner) ?? owner
+  const runtime = String(runtimeProvider || '').trim()
+  if (runtime && runtime.toLowerCase() !== 'auto') return canonicalCommissionedPin(runtime) ?? runtime
   return DEFAULT_DRAFT_PIN
 }
 
@@ -191,21 +167,37 @@ export function resolveJobPickerPin(job: {
   return resolveOwnerProviderPin(owner || null, job.ai_provider)
 }
 
-export function parseStudioPin(raw?: string | null): { model: StudioModelOption; host: StudioHostOption } {
-  const pin = canonicalizePin(raw)
-  for (const model of STUDIO_MODELS) {
-    const host = model.hosts.find((h) => h.pin === pin)
-    if (host) return { model, host }
-  }
-  const grok = findModel('grok-4.6') || STUDIO_MODELS[0]
-  return { model: grok, host: grok.hosts[0] }
+export type StudioPinParse =
+  | { kind: 'commissioned'; pin: CommissionedProviderPin; model: StudioModelOption; host: StudioHostOption }
+  | { kind: 'needs_selection'; legacyValue: string }
+
+/**
+ * Parse a saved/selected pin for the pickers. Commissioned pins (Grok aliases
+ * included) resolve to the model × host row; missing/empty/`auto` use the lane
+ * default (Grok 4.6, decision §13.2); every legacy/unknown value is an
+ * explicit `needs_selection` state — never a hidden Grok coercion.
+ */
+export function parseStudioPin(raw?: string | null): StudioPinParse {
+  const trimmed = String(raw ?? '').trim()
+  const pin = trimmed && trimmed.toLowerCase() !== 'auto'
+    ? canonicalCommissionedPin(trimmed)
+    : LANE_DEFAULT_PIN
+  if (!pin) return { kind: 'needs_selection', legacyValue: trimmed }
+  const model = MODEL_BY_PIN.get(pin)
+  const host = model?.hosts.find((candidate) => candidate.pin === pin)
+  if (!model || !host) return { kind: 'needs_selection', legacyValue: trimmed }
+  return { kind: 'commissioned', pin, model, host }
 }
 
+/**
+ * Compose the commissioned pin for a model × host choice. A non-commissioned
+ * combination resolves to '' — it is never coerced onto Grok.
+ */
 export function pinFor(modelId: StudioModelId, hostId: StudioHostId): string {
   const model = findModel(modelId)
-  if (!model) return GROK_PIN
-  const host = model.hosts.find((h) => h.id === hostId) || model.hosts[0]
-  return host.pin
+  if (!model) return ''
+  const host = model.hosts.find((candidate) => candidate.id === hostId)
+  return host?.pin ?? ''
 }
 
 /** Hosts for a model, optionally narrowed to the hosts a lane may use. */
@@ -224,10 +216,10 @@ export function hostsForModel(modelId: StudioModelId, lane?: StudioLane): Studio
 
 export function defaultHostFor(modelId: StudioModelId): StudioHostOption {
   const hosts = hostsForModel(modelId)
-  return hosts[0] || { id: 'xai', label: 'xAI / Grok', pin: GROK_PIN }
+  return hosts[0] || { id: 'xai', label: 'xAI / Grok', pin: DEFAULT_DRAFT_PIN }
 }
 
-/** Every stage shows the dated checkpoint id so Flash-0731 vs Pro-0813 cannot be confused. */
+/** Every stage shows the upstream model id so pin vs wire model cannot be confused. */
 export function modelPickerLabel(model: StudioModelOption, _lane?: StudioLane): string {
   return model.apiModel || model.label
 }
@@ -240,7 +232,7 @@ export function catalogPins(): Array<{ id: string; label: string; model: string 
       out.push({
         id: host.pin,
         label: `${model.label} · ${host.label}`,
-        model: host.pin,
+        model: model.apiModel || model.label,
       })
     }
   }

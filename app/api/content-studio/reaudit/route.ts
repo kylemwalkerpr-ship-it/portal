@@ -2,9 +2,14 @@ import { applyEditorialHold } from '@/lib/seoFactory/editorialGate'
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { generateContentText, grokModelId } from '@/lib/contentAiProvider'
-import { DEFAULT_REVIEW_PIN, parseStudioPin } from '@/lib/contentAiCatalog'
-import { canonicalizeRunbiosPin, isRunbiosPin } from '@/lib/runbiosCatalog'
+import { generateContentText } from '@/lib/contentAiProvider'
+import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import {
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+  commissionedProvider,
+  type CommissionedProviderPin,
+} from '@/lib/contentAiRegistry'
 import { coherentRepairPolicyBlock, coherentBlockerFix } from '@/lib/seoFactory/shipBlockers'
 import { buildBlockersFixPrompt, buildWarningsFixPrompt, findingToAnnotations, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
@@ -341,130 +346,25 @@ function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promis
 }
 
 /**
- * Resolve the actual upstream API model id for a reviewer pin. The studio
- * picker stores a pin (`nvidia-deepseek`, `parasail-deepseek-pro`, …), which
- * is NOT a model id — sending the pin as the model would 404. Real API ids
- * (containing a host slash) pass through untouched; pins map through the
- * catalog to the model's canonical apiModel (e.g. nvidia-deepseek →
- * deepseek-ai/DeepSeek-V4-Flash-0731).
+ * Resolve the reviewer pin for Audit & Fix through the canonical registry.
+ * The contract/owner pin (or the recorded lane default) must be one of the
+ * two commissioned pins; a legacy/unknown value fails closed with a typed
+ * selection-required error BEFORE any fix call is made.
  */
-function reviewApiModel(pin: string): string | undefined {
-  const raw = String(pin || '').trim()
-  if (!raw) return undefined
-  if (raw.includes('/')) return raw
-  return parseStudioPin(raw).model.apiModel
+function resolveReviewPin(reviewModel?: string): CommissionedProviderPin {
+  const raw = String(reviewModel || DEFAULT_REVIEW_PIN).trim()
+  const pin = canonicalCommissionedPin(raw)
+  if (!pin) throw new ProviderSelectionRequiredError(raw)
+  return pin
 }
 
 async function callAiFix(sys: string, prompt: string, maxTokens = 16384, reviewModel?: string): Promise<string> {
-  // The reviewer is the job's contract OWNER: Entrim Qwen3.6 27B (default),
-  // Entrim DeepSeek V4 Flash, or Grok 4.6. Whichever the owner is, re-audits
-  // use the SAME backend — never coerced to Qwen when the owner is Grok or
-  // DeepSeek.
-  const requestedModel = String(reviewModel || DEFAULT_REVIEW_PIN).trim().toLowerCase()
-  const runbiosAlias = isRunbiosPin(requestedModel)
-    ? canonicalizeRunbiosPin(requestedModel)
-    : requestedModel === 'glm-5.3-flash'
-      ? 'runbios-glm-53-flash'
-      : requestedModel === 'claude-opus-5'
-        ? 'runbios-claude-opus'
-        : requestedModel === 'claude-sonnet-5'
-          ? 'runbios-claude-sonnet'
-          : ''
-  const effectiveModel = requestedModel === 'grok' || /^grok(?:-|$)/.test(requestedModel)
-    ? 'grok'
-    : requestedModel === 'entrim-deepseek' || /^deepseek-v4-flash/.test(requestedModel) || requestedModel === 'entrim-deepseek-v4-flash'
-      ? 'entrim-deepseek'
-      : requestedModel === 'entrim-qwen-27b' || requestedModel === 'qwen3.6-27b' || requestedModel === 'qwen3.8-27b' || /^qwen3\.[68]/.test(requestedModel)
-        ? 'entrim-qwen-27b'
-        : ['runbios-glm-53-flash', 'runbios-claude-opus', 'runbios-claude-sonnet'].includes(runbiosAlias)
-          ? runbiosAlias
-          : DEFAULT_REVIEW_PIN
-  // Run BiOS pins (including the bare 'glm-5.3-flash' alias) execute through
-  // the Run BiOS provider with the exact selected slot.
-  if (isRunbiosPin(effectiveModel)) {
-    return callAiFixWithProvider(
-      sys,
-      prompt,
-      maxTokens,
-      canonicalizeRunbiosPin(effectiveModel),
-      effectiveModel,
-      false,
-    )
-  }
-  /* Legacy reviewer pins deliberately coerce to the lane default above. */
-  const isGpt = /^gpt-5\.6/i.test(effectiveModel)
-  const isEntrimQwen = effectiveModel === 'entrim-qwen-27b'
-  const isEntrimDeepseek = effectiveModel === 'entrim-deepseek'
-  const isGrok = effectiveModel === 'grok' || /^grok/i.test(effectiveModel)
-  const isGlmFast =
-    effectiveModel === 'baseten-glm-fast' || effectiveModel === 'glm-5.2-fast'
-  const isAihubmixGlmFast =
-    effectiveModel === 'aihubmix-glm-fast' || effectiveModel === 'aihubmix-glm' || effectiveModel === 'glm-fast-aihubmix'
-  // The NVIDIA catalog id is the LOWERCASE form; the mixed-case form is the
-  // Parasail/Baseten id of the same checkpoint. Either case of the Flash id
-  // means NVIDIA (resolveAiProviderPin lowercases it to the NVIDIA pin) —
-  // only bare legacy pins mean Baseten.
-  const isNvidiaDeepseekModel =
-    effectiveModel === 'deepseek-ai/deepseek-v4-flash-0731' ||
-    effectiveModel === 'deepseek-ai/DeepSeek-V4-Flash-0731'
-  const isDeepseekFlash =
-    effectiveModel === 'baseten-deepseek' ||
-    effectiveModel === 'deepseek-v4-flash'
-  const isParasailDeepseekPro =
-    effectiveModel === 'parasail' ||
-    effectiveModel === 'parasail-deepseek-pro' ||
-    effectiveModel === 'parasail-pro' ||
-    effectiveModel === 'deepseek-v4-pro' ||
-    effectiveModel === 'deepseek-ai/deepseek-v4-pro-0813' ||
-    effectiveModel === 'deepseek-ai/DeepSeek-V4-Pro-0813'
-  const isParasailDeepseek =
-    effectiveModel === 'parasail-deepseek' ||
-    effectiveModel === 'parasail-deepseek-v4-flash'
-  const isParasailGlm =
-    effectiveModel === 'parasail-glm' ||
-    effectiveModel === 'parasail-glm-52' ||
-    effectiveModel === 'parasail-glm-5.2' ||
-    effectiveModel === 'nvidia/GLM-5.2-NVFP4'
-  const isBasetenPro = effectiveModel === 'baseten-deepseek-pro'
-  const isNvidiaGlm = effectiveModel === 'nvidia-glm'
-  const isNvidiaDeepseek = effectiveModel === 'nvidia-deepseek' || isNvidiaDeepseekModel
-  const isDeepseekOfficialPro = effectiveModel === 'deepseek-pro'
-  const isDeepseekOfficialFlash = effectiveModel === 'deepseek-flash'
-  const isZaiGlm = effectiveModel === 'zai-glm' || effectiveModel === 'zai'
-  const aiProvider = isGpt
-    ? 'openai'
-    : isEntrimQwen
-      ? 'entrim-qwen-27b'
-      : isEntrimDeepseek
-        ? 'entrim-deepseek'
-        : isGrok
-          ? 'grok'
-      : isGlmFast
-        ? 'baseten-glm-fast'
-        : isAihubmixGlmFast
-          ? 'aihubmix-glm-fast'
-          : isParasailDeepseekPro
-            ? 'parasail-deepseek-pro'
-            : isParasailDeepseek
-            ? 'parasail-deepseek'
-            : isParasailGlm
-              ? 'parasail-glm'
-              : isBasetenPro
-                ? 'baseten-deepseek-pro'
-                : isNvidiaGlm
-                  ? 'nvidia-glm'
-                  : isNvidiaDeepseek
-                    ? 'nvidia-deepseek'
-                    : isDeepseekOfficialPro
-                      ? 'deepseek-pro'
-                      : isDeepseekOfficialFlash
-                        ? 'deepseek-flash'
-                        : isZaiGlm
-                          ? 'zai-glm'
-                          : isDeepseekFlash
-                            ? 'baseten-deepseek'
-                            : undefined
-  return callAiFixWithProvider(sys, prompt, maxTokens, aiProvider, effectiveModel, isGrok)
+  // The reviewer is the job's contract OWNER: Grok 4.6 or DeepSeek V4.1
+  // Flash (lane default Grok). Whichever the owner is, re-audits use the SAME
+  // commissioned provider — never a retired pin, never a cross-provider
+  // fallback.
+  const pin = resolveReviewPin(reviewModel)
+  return callAiFixWithProvider(sys, prompt, maxTokens, pin)
 }
 
 async function generateOutlineSection(
@@ -489,36 +389,31 @@ async function callAiFixWithProvider(
   sys: string,
   prompt: string,
   maxTokens: number,
-  aiProvider: string | undefined,
-  effectiveModel: string,
-  isGrok: boolean,
+  pin: CommissionedProviderPin,
 ): Promise<string> {
+  const provider = commissionedProvider(pin)
   const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
     maxTokens,
     temperature: 0.2,
-    aiProvider: aiProvider || DEFAULT_REVIEW_PIN,
+    aiProvider: pin,
     exclusive: true,
-    // Harper / Audit & Fix must stay on the operator's selected reviewer
-    // (Grok by default). Capacity cascade was falling through to Entrim
-    // Qwen/DeepSeek after a Grok abort and surfacing 401 proxy-token errors
-    // for models nobody selected. Never fall through, even if the pin is
-    // missing — generateContentText then stays on LIVE_DEFAULT_PROVIDER (Grok).
+    // Harper / Audit & Fix must stay on the operator's selected reviewer.
+    // Capacity cascade is disabled: a provider abort never falls through to
+    // a provider the operator did not select.
     cascadeOnCapacity: false,
     // Per-candidate fetch/complete headroom (overrides the 120s global).
     timeoutMs: FIX_CANDIDATE_TIMEOUT_MS,
     // Reviewer is not a first-pass drafter. The universal quality contract
-    // ("Every article you write…") makes Pro-0813 rewrite the whole guide
+    // ("Every article you write…") makes the reviewer rewrite the whole guide
     // as schema/YAML or a fenced stub — countBodyWords then reads 0 and
     // the shrink guard discards it. Lane-2 scorers already skip this.
     skipQualityContract: true,
     reasoningEffort: 'low',
-    // Send the real API model id, never the pin. Pins like 'nvidia-deepseek'
-    // map through the catalog to the Flash checkpoint the user selected;
-    // otherwise the provider default (deployed NVIDIA_DEEPSEEK_MODEL secret)
-    // would be used — that is what sent EOL'd deepseek-v4-pro (410 Gone).
-    model: isGrok ? grokModelId({ model: effectiveModel }) : reviewApiModel(effectiveModel) || effectiveModel,
+    // The registry owns the upstream API model id for each commissioned pin
+    // (the adapters also assert it). A pin must never be sent as a model id.
+    model: provider.apiModel,
   }))
   const normalized = normalizeEditorDocument(unwrapWholeDocumentFence((result?.text || '').trim()))
   const text = normalized.content
@@ -910,6 +805,15 @@ export async function PATCH(request: NextRequest) {
     const { action, content, annotations, annotation, warnings, blockers, competingSnippets, competingUrls, reviewModel, jobId } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
+    }
+    // Reviewer gate: a non-commissioned reviewModel fails closed BEFORE any
+    // fix pass or provider call (typed selection-required payload).
+    const requestedReviewModel = String(reviewModel || '').trim()
+    if (requestedReviewModel && !canonicalCommissionedPin(requestedReviewModel)) {
+      return NextResponse.json(
+        new ProviderSelectionRequiredError(requestedReviewModel).toPayload(),
+        { status: 409 },
+      )
     }
     if (countBodyWords(content) < 40) {
       return NextResponse.json({
@@ -2383,6 +2287,9 @@ ${enginePlan.promptBlock}` + editorResponseContract()
     }
     return NextResponse.json(finalResponse)
   } catch (error) {
+    if (error instanceof ProviderSelectionRequiredError) {
+      return NextResponse.json(error.toPayload(), { status: error.status })
+    }
     const message = error instanceof Error ? error.message : 'AI fix failed'
     const timedOut = /timed out/i.test(message)
     return NextResponse.json({ error: message, timedOut }, { status: timedOut ? 504 : 500 })

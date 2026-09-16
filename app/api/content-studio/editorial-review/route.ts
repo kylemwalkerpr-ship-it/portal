@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import {
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+} from '@/lib/contentAiRegistry'
 import { buildHarperSupervisionPacket, measureEditorial } from '@/lib/editorialSupervisor'
 import { applyEditorialReviewPatch } from '@/lib/seoFactory/editorialReviewPatch'
 import { applyEditorialRevision, parseEditorialRevision } from '@/lib/seoFactory/editorialRevision'
@@ -45,9 +49,14 @@ export async function POST(request: NextRequest) {
     const supervision = buildHarperSupervisionPacket(snapshot)
     const mustApplyIds = supervision.directives.filter((d) => d.mustApply).map((d) => d.id)
     const pendingIds = (supervision.pending || supervision.directives).map((d) => d.id)
-    const reviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
+    // The reviewer is the contract/owner pin (or the recorded lane default).
+    // It must be one of the two commissioned pins; a legacy review model
+    // fails closed with a typed selection-required payload.
+    const requestedReviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
       ? body.reviewModel.trim()
       : DEFAULT_REVIEW_PIN
+    const reviewPin = canonicalCommissionedPin(requestedReviewPin)
+    if (!reviewPin) throw new ProviderSelectionRequiredError(requestedReviewPin)
     const response = await generateContentText({
       aiProvider: reviewPin,
       exclusive: true,
@@ -122,6 +131,9 @@ EXECUTION RULES — NON-NEGOTIABLE:
       deferred: supervision.deferred,
     })
   } catch (error) {
+    if (error instanceof ProviderSelectionRequiredError) {
+      return NextResponse.json(error.toPayload(), { status: error.status })
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Editorial review failed' }, { status: 502 })
   }
 }

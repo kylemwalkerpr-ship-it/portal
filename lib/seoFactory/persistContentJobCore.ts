@@ -10,6 +10,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwnerProviderPin } from '@/lib/contentAiCatalog'
+import { canonicalCommissionedPin, commissionedProvider } from '@/lib/contentAiRegistry'
+import { currentContentStudioExecution } from './contentStudioExecutionContext'
 import { normalizeJobContentType } from './jobContentType'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import type { OwnerPlan } from './ownership'
@@ -30,6 +32,144 @@ export interface RescueStats {
   stallCount: number
   timeMs: number
   budgetMs: number
+}
+
+/**
+ * PR #200 absent-column compatibility. Additive migrations may be merged but
+ * intentionally unapplied; a write that names a column their migration owns
+ * retries once without those columns so the application works identically
+ * before and after the migration is applied.
+ */
+export const UNAPPLIED_COLUMN_ERROR_RE = /event_log|lineage|regeneration_reason|regeneration_mode|column/i
+
+/** Strip every column owned by an additive, not-yet-applied migration. */
+export function stripUnappliedColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const {
+    source_job_id: _sourceJobId,
+    lineage: _lineage,
+    regeneration_reason: _reason,
+    regeneration_mode: _mode,
+    event_log: _eventLog,
+    actual_provider: _actualProvider,
+    provider_error_class: _providerErrorClass,
+    ...legacyRow
+  } = row
+  return legacyRow
+}
+
+/** Bounded provider-attempt window persisted in audit_json.provider.attempts. */
+export const PROVIDER_ATTEMPT_LIMIT = 20
+export const PROVIDER_ATTEMPT_FIELD_MAX = 32
+const PROVIDER_ATTEMPT_VALUE_MAX = 80
+
+export interface ProviderAttemptInput {
+  stage?: string | null
+  attempt?: number | null
+  outcome?: string | null
+  failureClass?: string | null
+  at?: string | null
+}
+
+export interface ProviderAttemptRecord {
+  stage: string
+  attempt: number | null
+  outcome: 'ok' | 'error'
+  failureClass: string | null
+  at: string
+}
+
+/** Trim, truncate, and drop empty values — safe metadata only (design §4.3). */
+function providerAuditValue(value: unknown, max = PROVIDER_ATTEMPT_VALUE_MAX): string | null {
+  const raw = String(value ?? '').trim()
+  return raw ? raw.slice(0, max) : null
+}
+
+/**
+ * Build one allowlisted provider attempt record. Only the five design-§4.3
+ * fields survive; prompts, keys, tokens, and request bodies are structurally
+ * impossible to persist because no other field is copied.
+ */
+export function providerAttemptRecord(input: ProviderAttemptInput | null | undefined): ProviderAttemptRecord | null {
+  if (!input || typeof input !== 'object') return null
+  const stage = providerAuditValue(input.stage, PROVIDER_ATTEMPT_FIELD_MAX)
+  if (!stage) return null
+  const rawAttempt = Number(input.attempt)
+  const attempt = Number.isInteger(rawAttempt) && rawAttempt > 0 && rawAttempt < 1_000_000 ? rawAttempt : null
+  const outcome: ProviderAttemptRecord['outcome'] = input.outcome === 'error' ? 'error' : 'ok'
+  const failureClass = outcome === 'error' ? providerAuditValue(input.failureClass, PROVIDER_ATTEMPT_FIELD_MAX) : null
+  const rawAt = String(input.at ?? '').trim()
+  const at = rawAt && !Number.isNaN(Date.parse(rawAt)) ? rawAt.slice(0, PROVIDER_ATTEMPT_FIELD_MAX) : new Date().toISOString()
+  return { stage, attempt, outcome, failureClass, at }
+}
+
+/** Sanitize a prior attempts list: allowlisted records only, bounded window. */
+export function sanitizeProviderAttempts(value: unknown): ProviderAttemptRecord[] {
+  if (!Array.isArray(value)) return []
+  const out: ProviderAttemptRecord[] = []
+  for (const entry of value) {
+    const record = providerAttemptRecord(entry as ProviderAttemptInput)
+    if (record) out.push(record)
+  }
+  return out.slice(-PROVIDER_ATTEMPT_LIMIT)
+}
+
+/** Append one attempt and keep only the bounded most-recent window. */
+export function appendProviderAttempt(prior: unknown, entry: ProviderAttemptInput): ProviderAttemptRecord[] {
+  const list = sanitizeProviderAttempts(prior)
+  const record = providerAttemptRecord(entry)
+  if (!record) return list
+  return [...list, record].slice(-PROVIDER_ATTEMPT_LIMIT)
+}
+
+export interface ProviderAuditFields {
+  requested?: string | null
+  actual?: string | null
+  requestedModel?: string | null
+  actualModel?: string | null
+  pinSource?: string | null
+  attempts?: unknown
+}
+
+/**
+ * Bounded, truncated provider lineage block for audit_json.provider (design
+ * §4.3). `actual`/`actualModel`/`pinSource` are omitted — never written as
+ * null — when this invocation has no new provider completion, so a resumed
+ * artifact cannot erase its previously known producer.
+ */
+export function providerAuditBlock(fields: ProviderAuditFields): Record<string, unknown> {
+  const block: Record<string, unknown> = {
+    requested: providerAuditValue(fields.requested),
+    requestedModel: providerAuditValue(fields.requestedModel),
+    attempts: sanitizeProviderAttempts(fields.attempts),
+  }
+  const actual = providerAuditValue(fields.actual)
+  if (actual) block.actual = actual
+  const actualModel = providerAuditValue(fields.actualModel)
+  if (actualModel) block.actualModel = actualModel
+  const pinSource = providerAuditValue(fields.pinSource, PROVIDER_ATTEMPT_FIELD_MAX)
+  if (pinSource) block.pinSource = pinSource
+  return block
+}
+
+/** Merge (never wipe) the provider block onto an existing audit_json blob. */
+export function mergeProviderAudit(auditJson: unknown, fields: ProviderAuditFields): Record<string, unknown> {
+  const base = auditJson && typeof auditJson === 'object' && !Array.isArray(auditJson)
+    ? { ...(auditJson as Record<string, unknown>) }
+    : {}
+  const prior = base.provider && typeof base.provider === 'object' && !Array.isArray(base.provider)
+    ? base.provider as Record<string, unknown>
+    : {}
+  return {
+    ...base,
+    provider: providerAuditBlock({
+      requested: fields.requested ?? (prior.requested as string | null | undefined),
+      actual: fields.actual ?? (prior.actual as string | null | undefined),
+      requestedModel: fields.requestedModel ?? (prior.requestedModel as string | null | undefined),
+      actualModel: fields.actualModel ?? (prior.actualModel as string | null | undefined),
+      pinSource: fields.pinSource ?? (prior.pinSource as string | null | undefined),
+      attempts: fields.attempts ?? prior.attempts,
+    }),
+  }
 }
 
 export interface PipelineJobPersistInput {
@@ -57,6 +197,17 @@ export interface PipelineJobPersistInput {
   provider: string
   model: string
   attempts: number
+  /** Explicit actual provider override; omitted derives it from `provider`. */
+  actualProvider?: string | null
+  /** Granular provider failure class when this write persists a provider failure. */
+  providerErrorClass?: string | null
+  /**
+   * Prior audit_json read under the same fence. Provider lineage
+   * (`provider.actual` / `actualModel` / `attempts`) is preserved from it so a
+   * resume that produced no new provider completion never erases the known
+   * producer or the bounded attempt window.
+   */
+  priorAuditJson?: unknown
   minAudit: number
   audit: SeoFactoryAudit
   contentSpec?: ContentSpec | null
@@ -195,6 +346,39 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
   })
   const shipped = shippedMain
   const ownerPin = resolveOwnerProviderPin(input.ownerProvider, input.provider)
+  // Requested pin vs actual commissioned pin are deliberately distinct: the
+  // owner pin stays the requested/commissioned identity, and only a
+  // commissioned runtime pin may be recorded as the provider that produced
+  // the artifact. A retired runtime value is never promoted to `actual`.
+  const requestedPin = canonicalCommissionedPin(ownerPin)
+  const requestedModel = requestedPin ? commissionedProvider(requestedPin).apiModel : null
+  const explicitActual = input.actualProvider !== undefined ? input.actualProvider : input.provider
+  const actualPin = explicitActual != null ? canonicalCommissionedPin(explicitActual) : null
+  const actualModel = actualPin ? String(input.model || '').trim() || null : null
+  const execution = currentContentStudioExecution()
+  // The strict fenced claim attempt is the only real execution attempt. The
+  // pipeline refinement count (`input.attempts`) is never one: a non-strict
+  // legacy persist records `null` instead of inventing a strict number.
+  const executionAttempt = execution?.strict && Number.isInteger(execution.executionAttempt)
+    ? Number(execution.executionAttempt)
+    : null
+  const pinSource = execution?.providerPinSource ?? null
+  const priorProvider = input.priorAuditJson && typeof input.priorAuditJson === 'object' && !Array.isArray(input.priorAuditJson)
+    ? (input.priorAuditJson as { provider?: unknown }).provider
+    : null
+  const priorAttempts = priorProvider && typeof priorProvider === 'object' && !Array.isArray(priorProvider)
+    ? (priorProvider as { attempts?: unknown }).attempts
+    : undefined
+  // A commissioned completion appends exactly one bounded `draft` ok record.
+  // With no new completion the prior bounded window is preserved untouched.
+  const providerAttempts = actualPin
+    ? appendProviderAttempt(priorAttempts, {
+        stage: 'draft',
+        attempt: executionAttempt,
+        outcome: 'ok',
+        at: new Date().toISOString(),
+      })
+    : sanitizeProviderAttempts(priorAttempts)
   const baseRow: Record<string, unknown> = {
     user_id: input.userId || 'admin',
     source_job_id: input.sourceJobId || null,
@@ -221,6 +405,14 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     pr_url: prUrl || input.shipResult?.prUrl || null,
     pr_number: input.shipResult?.prNumber || null,
     ai_provider: ownerPin,
+    // `actual_provider` is omitted — never null — until a commissioned runtime
+    // provider completion is known, so a resume cannot erase the prior producer.
+    ...(actualPin ? { actual_provider: actualPin } : {}),
+    // Column semantics (design §4.2): `requested_model` is the upstream API
+    // model, never the stable pin. Omitted for non-commissioned history so a
+    // legacy value is preserved rather than overwritten.
+    ...(requestedModel ? { requested_model: requestedModel } : {}),
+    provider_error_class: input.providerErrorClass ?? null,
     word_count: input.audit.wordCount,
     seo_score: input.audit.score,
     ship_mode: mapPipelineShipMode(input.shipMode),
@@ -238,6 +430,18 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
       minAudit: input.minAudit,
       ownerProvider: ownerPin,
       runtimeProvider: input.provider || null,
+      // Durable requested/actual provider+model lineage (design §4.3): bounded
+      // attempt records only — never prompts, keys, tokens, or bodies. Merged
+      // over the prior audited block so an invocation with no new completion
+      // preserves the known actual provider/model and bounded attempts.
+      provider: mergeProviderAudit(input.priorAuditJson, {
+        requested: ownerPin,
+        actual: actualPin,
+        requestedModel,
+        actualModel,
+        pinSource,
+        attempts: providerAttempts,
+      }).provider,
       ...(gateHoldReason ? { gateHoldReason } : {}),
       ...(shipError ? { shipError } : {}),
       // Immutable ContentSpec snapshot (brief §3.2) — briefing, writer,
@@ -303,18 +507,23 @@ export async function persistPipelineJob(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     )
-    const baseRow = mapPipelineJobRow(input)
     const existingId = String(input.existingJobId || '').trim()
 
     let jobId: string | null = null
     if (existingId) {
+      let baseRow: Record<string, unknown>
       try {
         const prior = await supabase
           .from('content_jobs')
-          .select('content,word_count')
+          .select('content,word_count,audit_json')
           .eq('id', existingId)
           .maybeSingle()
-        const prev = (prior as { data?: { content?: string | null; word_count?: number | null } | null })?.data
+        const prev = (prior as {
+          data?: { content?: string | null; word_count?: number | null; audit_json?: unknown } | null
+        })?.data
+        // Provider lineage is merged over the prior audited block so a resume
+        // that produced no new provider completion preserves its producer.
+        baseRow = mapPipelineJobRow({ ...input, priorAuditJson: prev?.audit_json })
         if (
           prev
           && shouldRefuseThinOverwrite({
@@ -329,36 +538,23 @@ export async function persistPipelineJob(
           const prevWc = Number(prev.word_count) || 0
           baseRow.error_message = `Refused thin overwrite (${input.audit.wordCount} words) of a ${prevWc}-word draft`
         }
-      } catch { /* fail open — never block persist on the guard read */ }
+      } catch {
+        /* fail open — never block persist on the guard read */
+        baseRow = mapPipelineJobRow(input)
+      }
       const { error: upErr } = await supabase
         .from('content_jobs')
         .update(baseRow)
         .eq('id', existingId)
-      if (upErr && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(upErr.message || '')) {
-        const {
-          source_job_id: _sourceJobId,
-          lineage: _lineage,
-          regeneration_reason: _reason,
-          regeneration_mode: _mode,
-          event_log: _event_log,
-          ...legacyRow
-        } = baseRow
-        await supabase.from('content_jobs').update(legacyRow).eq('id', existingId)
+      if (upErr && UNAPPLIED_COLUMN_ERROR_RE.test(upErr.message || '')) {
+        await supabase.from('content_jobs').update(stripUnappliedColumns(baseRow)).eq('id', existingId)
       }
       jobId = existingId
     } else {
-      let insertRow = baseRow
+      let insertRow = mapPipelineJobRow(input)
       let jobInsert = await supabase.from('content_jobs').insert(insertRow).select('id').single()
-      if (jobInsert.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
-        const {
-          source_job_id: _sourceJobId,
-          lineage: _lineage,
-          regeneration_reason: _reason,
-          regeneration_mode: _mode,
-          event_log: _event_log,
-          ...legacyRow
-        } = baseRow
-        insertRow = legacyRow
+      if (jobInsert.error && UNAPPLIED_COLUMN_ERROR_RE.test(jobInsert.error.message || '')) {
+        insertRow = stripUnappliedColumns(insertRow)
         jobInsert = await supabase.from('content_jobs').insert(insertRow).select('id').single()
       }
       if (jobInsert.error || !jobInsert.data?.id) {

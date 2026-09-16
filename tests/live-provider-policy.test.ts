@@ -1,238 +1,157 @@
 /**
- * LIVE PROVIDER POLICY (2026-09-02): Entrim Qwen3.6 27B + Entrim DeepSeek
- * V4 Flash + Grok 4.6 are the ONLY commissioned content backends for every
- * pipeline stage. These tests lock the gate:
+ * Commissioned provider policy (P2, 2026-09-15) — replaces the 2026-09-02
+ * "Entrim + Grok" live-policy gate.
  *
- *  1. isLiveProviderLabel admits exactly those three labels (plus the
- *     CONTENT_AI_ALL_PROVIDERS=1 break-glass).
- *  2. A retired pin is REDIRECTED to the Grok default with its model
- *     override stripped — a decommissioned host's model id must never reach
- *     an Entrim request.
- *  3. The cascade filter runs BEFORE the candidate cap, so a stale admin
- *     provider order crowded with retired hosts can never push all three
- *     live backends out of the bounded cascade.
+ * The ONLY commissioned content backends are `grok` (Grok 4.6 via xAI) and
+ * `deepseek-v41-flash` (DeepSeek V4.1 Flash, first-party api.deepseek.com).
+ * There is no break-glass that restores a retired host: retired provider
+ * values are legacy pins that fail closed with a typed selection-required
+ * error and zero outbound requests, in every environment.
  */
 jest.mock('@/lib/aiKeyVault', () => ({
   buildVaultEnvOverrides: jest.fn(async () => ({})),
   getAiSettings: jest.fn(async () => ({})),
   setAiSetting: jest.fn(async () => undefined),
   deleteAiSetting: jest.fn(async () => undefined),
+  ensureDraftDefaultSettings: jest.fn(async () => undefined),
+  ensureParasailDefaultSettings: jest.fn(async () => undefined),
 }))
 
 import {
   generateContentText,
-  isLiveProviderLabel,
-  LIVE_DEFAULT_PROVIDER,
-  LIVE_PROVIDER_LABELS,
+  listConfiguredContentProviders,
 } from '@/lib/contentAiProvider'
+import {
+  COMMISSIONED_PINS,
+  ProviderSelectionRequiredError,
+  isCommissionedPin,
+} from '@/lib/contentAiRegistry'
 
-describe('live provider policy — Entrim + Grok gate', () => {
-  const envKeys = [
-    'ENTRIM_API_KEY', 'XAI_API_KEY', 'OPENAI_API_KEY', 'BASETEN_API_KEY',
-    'NVIDIA_API_KEY', 'CONTENT_AI_RETRY', 'CONTENT_AI_ALL_PROVIDERS',
-    'CONTENT_AI_PROVIDER_ORDER', 'CONTENT_AI_MAX_PROVIDERS',
-  ] as const
-  const saved: Record<string, string | undefined> = {}
-  const originalFetch = global.fetch
+const RETIRED_PINS = [
+  'entrim-qwen-27b',
+  'entrim-deepseek',
+  'nvidia-minimax',
+  'nvidia-nemotron',
+  'nvidia-deepseek',
+  'openai',
+  'baseten-deepseek',
+  'parasail-deepseek',
+  'runbios-glm-53-flash',
+  'cloudflare-ai',
+  'groq',
+  'zai-glm',
+  'aihubmix-glm-fast',
+  'openrouter',
+  'gemini',
+  'custom',
+] as const
 
-  beforeAll(() => {
-    for (const k of envKeys) saved[k] = process.env[k]
-  })
+const ENV_KEYS = [
+  'ENTRIM_API_KEY', 'XAI_API_KEY', 'DEEPSEEK_API_KEY', 'OPENAI_API_KEY',
+  'BASETEN_API_KEY', 'NVIDIA_API_KEY', 'PARASAIL_API_KEY', 'RUNBIOS_API_KEY',
+  'AIHUBMIX_API_KEY', 'GROQ_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY',
+  'CONTENT_AI_RETRY', 'CONTENT_AI_ALL_PROVIDERS', 'CONTENT_AI_PROVIDER_ORDER',
+  'CONTENT_AI_MAX_PROVIDERS',
+] as const
+const savedEnv: Record<string, string | undefined> = {}
+const originalFetch = global.fetch
 
-  beforeEach(() => {
-    for (const k of envKeys) delete process.env[k]
-    process.env.ENTRIM_API_KEY = 'test-entrim-key'
-    process.env.CONTENT_AI_RETRY = '1'
-  })
+beforeAll(() => {
+  for (const key of ENV_KEYS) savedEnv[key] = process.env[key]
+})
 
-  afterEach(() => {
-    global.fetch = originalFetch
-    for (const k of envKeys) {
-      if (saved[k] == null) delete process.env[k]
-      else process.env[k] = saved[k]
+beforeEach(() => {
+  for (const key of ENV_KEYS) delete process.env[key]
+  process.env.CONTENT_AI_RETRY = '1'
+})
+
+afterEach(() => {
+  global.fetch = originalFetch
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] == null) delete process.env[key]
+    else process.env[key] = savedEnv[key]
+  }
+})
+
+describe('commissioned provider policy — Grok + first-party DeepSeek only', () => {
+  it('admits exactly the two commissioned pins', () => {
+    expect(COMMISSIONED_PINS).toEqual(['grok', 'deepseek-v41-flash'])
+    expect(isCommissionedPin('grok')).toBe(true)
+    expect(isCommissionedPin('deepseek-v41-flash')).toBe(true)
+    for (const retired of RETIRED_PINS) {
+      expect({ retired, commissioned: isCommissionedPin(retired) }).toEqual({ retired, commissioned: false })
     }
   })
 
-  it('admits exactly the three live labels', () => {
-    expect(LIVE_PROVIDER_LABELS).toEqual(expect.arrayContaining(['entrim-qwen-27b', 'entrim-deepseek', 'grok']))
-    expect(LIVE_DEFAULT_PROVIDER).toBe('grok')
-    expect(isLiveProviderLabel('entrim-qwen-27b')).toBe(true)
-    expect(isLiveProviderLabel('entrim-deepseek')).toBe(true)
-    expect(isLiveProviderLabel('grok')).toBe(true)
-    // Every decommissioned host is refused.
-    for (const retired of ['nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek', 'openai', 'baseten-deepseek', 'baseten-glm-fast', 'parasail-deepseek', 'runbios-glm-53-flash', 'cloudflare-ai', 'groq', 'zai-glm', 'aihubmix-glm-fast', 'openrouter', 'gemini', 'chatProvider-bridge', 'custom']) {
-      expect({ retired, live: isLiveProviderLabel(retired) }).toEqual({ retired, live: false })
-    }
-  })
-
-  it('CONTENT_AI_ALL_PROVIDERS=1 admits retired labels (break-glass, diagnostics only)', () => {
+  it('CONTENT_AI_ALL_PROVIDERS=1 break-glass does NOT restore retired hosts', () => {
     process.env.CONTENT_AI_ALL_PROVIDERS = '1'
-    expect(isLiveProviderLabel('nvidia-minimax')).toBe(true)
-    expect(isLiveProviderLabel('grok')).toBe(true)
-    expect(isLiveProviderLabel('entrim-qwen-27b')).toBe(true)
+    for (const retired of RETIRED_PINS) {
+      expect({ retired, commissioned: isCommissionedPin(retired) }).toEqual({ retired, commissioned: false })
+    }
   })
 
-  it('a retired pin redirects to the Grok default with the model override stripped', async () => {
-    process.env.XAI_API_KEY = 'test-xai-key' // retired host with a local key
-    const bodies: Array<Record<string, unknown>> = []
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input, init) => {
-      urls.push(String(input))
-      try { bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>) } catch { /* ignore */ }
-      return new Response(
-        JSON.stringify({ output_text: 'GROK-DRAFT', status: 'completed' }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-
-    const result = await generateContentText({
-      aiProvider: 'openai',
-      model: 'gpt-5.6-terra',
-      system: 'Write an article.',
-      prompt: 'Draft the article.',
-      skipQualityContract: true,
-    })
-
-    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
-    expect(result.provider).toBe(LIVE_DEFAULT_PROVIDER)
-    expect(bodies.every((b) => b.model !== 'gpt-5.6-terra')).toBe(true)
-  })
-
-  it('the cascade contains only live providers even when retired hosts have keys', async () => {
+  it('a retired pin fails closed with a typed selection-required error and zero outbound calls — even at break-glass', async () => {
+    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
     process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
     process.env.OPENAI_API_KEY = 'test-openai-key'
-    process.env.BASETEN_API_KEY = 'test-baseten-key'
     process.env.NVIDIA_API_KEY = 'test-nvidia-key'
+    const fetchSpy = jest.fn(async () => {
+      throw new Error('outbound provider request is forbidden for a retired pin')
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
 
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      urls.push(url)
-      // Every LIVE backend fails too, so a retired host would only surface if
-      // the cascade leaked past Entrim + Grok.
-      if (url.includes('api.entrim.ai') || url.includes('api.x.ai')) {
-        return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
-          status: 524, headers: { 'content-type': 'application/json' },
+    for (const retired of ['openai', 'entrim-qwen-27b', 'nvidia-deepseek'] as const) {
+      let caught: unknown
+      try {
+        await generateContentText({
+          aiProvider: retired,
+          system: 'Write an article.',
+          prompt: 'Draft the article.',
+          skipQualityContract: true,
         })
+      } catch (error) {
+        caught = error
       }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'RETIRED-HOST-REACHED' }, finish_reason: 'stop' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-
-    await expect(
-      generateContentText({
-        aiProvider: 'entrim-qwen-27b',
-        system: 'Write an article.',
-        prompt: 'Draft the article.',
-        skipQualityContract: true,
-      }),
-    ).rejects.toThrow(/All content AI providers failed/)
-
-    // Only Entrim + Grok (api.x.ai) were attempted — no retired host was contacted.
-    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai')).length).toBe(0)
+      expect(caught).toBeInstanceOf(ProviderSelectionRequiredError)
+      expect(caught as ProviderSelectionRequiredError).toMatchObject({ code: 'selection_required', status: 409 })
+    }
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('a stale crowded admin order cannot crowd the live set out of the bounded cascade', async () => {
-    // Retired hosts lead the saved order; the live labels trail. With a cap of
-    // 4 candidates, the pre-cap filter is what keeps the live set in the cascade.
+  it('a stale crowded admin order can never restore a retired host to the cascade', async () => {
     process.env.CONTENT_AI_MAX_PROVIDERS = '4'
     process.env.CONTENT_AI_PROVIDER_ORDER = JSON.stringify([
       'grok', 'openai', 'baseten-deepseek', 'nvidia-minimax', 'nvidia-glm',
       'entrim-qwen-27b', 'entrim-deepseek',
     ])
-
     const urls: string[] = []
     global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      urls.push(url)
-      if (url.includes('api.entrim.ai') || url.includes('api.x.ai')) {
-        return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
-          status: 524, headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'RETIRED-HOST-REACHED' }, finish_reason: 'stop' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
+      urls.push(String(input))
+      return new Response(JSON.stringify({ error: 'upstream gateway timeout' }), {
+        status: 524,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
 
-    await expect(
-      generateContentText({
-        aiProvider: 'entrim-qwen-27b',
-        system: 'Write an article.',
-        prompt: 'Draft the article.',
-        skipQualityContract: true,
-      }),
-    ).rejects.toThrow(/All content AI providers failed/)
-
-    // Only the three live backends were attempted — no retired host was contacted.
-    expect(urls.filter((u) => !u.includes('api.entrim.ai') && !u.includes('api.x.ai')).length).toBe(0)
-    expect(urls.some((u) => u.includes('api.entrim.ai')) || urls.some((u) => u.includes('api.x.ai'))).toBe(true)
-  })
-
-  it('an Entrim payment/quota failure never calls the Grok sidecar under the live policy', async () => {
-    // Grok IS configured — but the payment/quota sidecar is break-glass only.
-    // An Entrim quota failure must fail loudly, not bounce to grokComplete.
-    process.env.XAI_API_KEY = 'test-xai-key'
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      urls.push(url)
-      if (url.includes('api.entrim.ai')) {
-        return new Response(JSON.stringify({ error: 'you exceeded your current quota' }), {
-          status: 429, headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(
-        JSON.stringify({ output_text: 'GROK-SIDECAR-REACHED', status: 'completed' }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-
-    await expect(
-      generateContentText({
-        aiProvider: 'entrim-qwen-27b',
-        exclusive: true,
-        system: 'Write an article.',
-        prompt: 'Draft the article.',
-        skipQualityContract: true,
-      }),
-    ).rejects.toThrow(/Explicit AI provider "entrim-qwen-27b" failed/)
-
-    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
-    expect(urls.filter((u) => u.includes('api.x.ai')).length).toBe(0)
-  })
-
-  it('CONTENT_AI_ALL_PROVIDERS=1 restores the Grok payment/quota sidecar (break-glass)', async () => {
-    process.env.XAI_API_KEY = 'test-xai-key'
-    process.env.CONTENT_AI_ALL_PROVIDERS = '1'
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      urls.push(url)
-      if (url.includes('api.entrim.ai')) {
-        return new Response(JSON.stringify({ error: 'you exceeded your current quota' }), {
-          status: 429, headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(
-        JSON.stringify({ output_text: 'GROK-SIDECAR-REACHED', status: 'completed' }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
-
-    const result = await generateContentText({
+    await expect(generateContentText({
       aiProvider: 'entrim-qwen-27b',
-      exclusive: true,
       system: 'Write an article.',
       prompt: 'Draft the article.',
       skipQualityContract: true,
-    })
-    expect(result.provider).toBe('grok')
-    expect(result.text).toBe('GROK-SIDECAR-REACHED')
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(true)
+    })).rejects.toBeInstanceOf(ProviderSelectionRequiredError)
+
+    expect(urls).toEqual([])
+  })
+
+  it('listConfiguredContentProviders exposes exactly the two registry providers with no Entrim labels', () => {
+    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+    process.env.XAI_API_KEY = 'test-xai-key'
+    const rows = listConfiguredContentProviders()
+    expect(rows.map((row) => row.id).sort()).toEqual([...COMMISSIONED_PINS].sort())
+    for (const row of rows) {
+      expect(row.label).not.toMatch(/entrim/i)
+    }
   })
 })

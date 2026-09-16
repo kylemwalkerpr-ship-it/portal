@@ -191,6 +191,11 @@ function baseJob(overrides: Record<string, unknown> = {}): Record<string, any> {
     content_path: 'app/ca/study-permit/page.tsx',
     content: mkContent(),
     audit_json: { score: 96, blockers: [] },
+    ai_provider: 'grok',
+    actual_provider: 'grok',
+    requested_model: 'grok-4.6',
+    actual_model: 'grok-4.6',
+    provider_error_class: null,
     ...overrides,
   }
 }

@@ -7,13 +7,13 @@ import {
 import {
   ENGINE_PAIR_BREAKER_THRESHOLD,
   engineLegBreakerLabel,
+  enginePairBreakerStatus,
   isEngineLegOpen,
   recordEngineLegFailure,
   recordEngineLegSuccess,
   resetEnginePairBreaker,
 } from '@/lib/seoEngine/enginePairBreaker'
 import { formatEngineRunSummary } from '@/lib/seoEngine/engineRunSummary'
-import { nemotronFirstProviderOrder, parasailFirstProviderOrder } from '@/lib/aiKeyVault'
 
 describe('harvestComplementExtras', () => {
   it('keeps statutes and URLs GLM found that Grok omitted', () => {
@@ -37,6 +37,10 @@ describe('harvestComplementExtras', () => {
 
 describe('engine pair circuit breaker', () => {
   afterEach(() => resetEnginePairBreaker())
+
+  it('reports the current commissioned pair (grok, deepseek-v41-flash)', () => {
+    expect(enginePairBreakerStatus().map((slot) => slot.leg)).toEqual(['grok', 'deepseek-v41-flash'])
+  })
 
   it('opens after two failures and stays closed after a success', () => {
     expect(isEngineLegOpen('parasail-glm')).toBe(false)
@@ -68,21 +72,5 @@ describe('pair tape on engine runs', () => {
       plans: 10,
       pair: formatEnginePairTape(rollup),
     })).toContain('pair=grok-4.6 + z-ai/glm-5.2 complement, disagreed, merged, extras:1')
-  })
-})
-
-describe('provider order defaults', () => {
-  it('moves NVIDIA Nemotron to the front of a saved drafting order', () => {
-    const next = nemotronFirstProviderOrder(JSON.stringify([
-      'baseten-deepseek', 'nvidia-nemotron', 'grok', 'parasail-deepseek',
-    ]))
-    expect(JSON.parse(next)[0]).toBe('nvidia-nemotron')
-  })
-
-  it('keeps the legacy Parasail order helper available for explicit callers', () => {
-    const next = parasailFirstProviderOrder(JSON.stringify([
-      'baseten-deepseek', 'nvidia-nemotron', 'grok', 'parasail-deepseek',
-    ]))
-    expect(JSON.parse(next)[0]).toBe('parasail-deepseek')
   })
 })

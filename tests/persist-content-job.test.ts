@@ -48,6 +48,10 @@ import {
   SHIP_READY_BUT_NO_PR,
   type PipelineJobPersistInput,
 } from '@/lib/seoFactory/persistContentJob'
+import {
+  createContentStudioExecutionState,
+  runInContentStudioExecution,
+} from '@/lib/seoFactory/contentStudioExecutionContext'
 import type { SeoFactoryAudit } from '@/lib/seoFactory/audit'
 import type { OwnerPlan } from '@/lib/seoFactory/ownership'
 import type { ShipResult } from '@/lib/seoFactory/ship'
@@ -324,6 +328,79 @@ describe('mapPipelineJobRow — pure row builder', () => {
     const row = mapPipelineJobRow(baseInput({ ownerProvider: null, provider: 'entrim-deepseek' }))
     expect(row.ai_provider).toBe('entrim-deepseek')
     expect((row.lineage as Record<string, unknown>).ownerProvider).toBe('entrim-deepseek')
+  })
+
+  it('persists requested vs actual provider, the requested model column, and the provider audit block', () => {
+    const row = mapPipelineJobRow(
+      baseInput({ ownerProvider: 'deepseek-v41-flash', provider: 'deepseek-v41-flash', model: 'deepseek-flash', attempts: 3 }),
+    )
+    expect(row.ai_provider).toBe('deepseek-v41-flash')
+    expect(row.actual_provider).toBe('deepseek-v41-flash')
+    expect(row.requested_model).toBe('deepseek-flash')
+    expect(row.provider_error_class).toBeNull()
+    const provider = (row.audit_json as Record<string, unknown>).provider as Record<string, unknown>
+    expect(provider.requested).toBe('deepseek-v41-flash')
+    expect(provider.actual).toBe('deepseek-v41-flash')
+    expect(provider.requestedModel).toBe('deepseek-flash')
+    expect(provider.actualModel).toBe('deepseek-flash')
+    // Non-strict legacy persistence must not invent a strict attempt number.
+    expect(provider.attempts).toEqual([
+      expect.objectContaining({ stage: 'draft', attempt: null, outcome: 'ok' }),
+    ])
+  })
+
+  it('keeps a retired runtime out of actual_provider while preserving the historical requested pin', () => {
+    const row = mapPipelineJobRow(
+      baseInput({ ownerProvider: 'entrim-deepseek', provider: 'entrim-deepseek', model: 'deepseek-ai/DeepSeek-V4-Flash' }),
+    )
+    expect(row.ai_provider).toBe('entrim-deepseek')
+    expect(row).not.toHaveProperty('actual_provider')
+    expect(row).not.toHaveProperty('requested_model')
+    const provider = (row.audit_json as Record<string, unknown>).provider as Record<string, unknown>
+    expect(provider.requested).toBe('entrim-deepseek')
+    expect(provider).not.toHaveProperty('actual')
+    expect(provider.attempts).toEqual([])
+  })
+
+  it('records the exact fenced execution attempt for a strict success, never the refinement count', async () => {
+    const state = createContentStudioExecutionState(true, {
+      executionJobId: 'job-strict',
+      executionOwner: 'owner-strict',
+      executionAttempt: 7,
+      executionLeaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+    const row = await runInContentStudioExecution(state, async () =>
+      mapPipelineJobRow(baseInput({ ownerProvider: 'grok', provider: 'grok', model: 'grok-4.6', attempts: 9 })),
+    )
+    const provider = (row.audit_json as Record<string, unknown>).provider as Record<string, unknown>
+    expect(provider.attempts).toEqual([
+      { stage: 'draft', attempt: 7, outcome: 'ok', failureClass: null, at: expect.any(String) },
+    ])
+  })
+
+  it('preserves prior actual provider/model and bounded attempts when a resume has no new completion', () => {
+    const priorAttempts = [
+      { stage: 'draft', attempt: 4, outcome: 'ok', failureClass: null, at: '2026-09-15T00:00:00.000Z' },
+      { stage: 'revision_required', attempt: 4, outcome: 'error', failureClass: 'timeout', at: '2026-09-15T00:05:00.000Z' },
+    ]
+    const row = mapPipelineJobRow(baseInput({
+      ownerProvider: 'grok',
+      provider: 'nvidia-deepseek',
+      model: 'deepseek-ai/x',
+      priorAuditJson: {
+        score: 70,
+        provider: {
+          requested: 'grok', actual: 'grok', requestedModel: 'grok-4.6', actualModel: 'grok-4.6',
+          pinSource: 'contract', attempts: priorAttempts,
+        },
+      },
+    }))
+    expect(row).not.toHaveProperty('actual_provider')
+    const provider = (row.audit_json as Record<string, unknown>).provider as Record<string, unknown>
+    expect(provider.actual).toBe('grok')
+    expect(provider.actualModel).toBe('grok-4.6')
+    expect(provider.pinSource).toBe('contract')
+    expect(provider.attempts).toEqual(priorAttempts)
   })
 
   it('persists shipReady=false when ownership is blocked even on a clean audit', () => {

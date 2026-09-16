@@ -13,18 +13,16 @@ minify = true
 # per invocation. If your Workers plan is upgraded to Paid, uncomment the
 # [limits] block below and set an appropriate cpu_ms value.
 #
-# Content Studio AI generation calls multiple providers as fallbacks.
-# Each provider call counts as subrequests. The default limit is 1,000,
-# which the fallback chain easily exhausts. Increase to 5,000 so that
-# DeepSeek (primary) plus Cloudflare + Groq + Gemini + OpenRouter
-# (fallbacks) all have room without hitting the wall.
+# Content Studio AI generation runs one exclusive commissioned provider per
+# job (Grok 4.6 or DeepSeek V4.1 Flash) with same-provider retries only —
+# there is no cross-provider fallback chain. Each provider call counts as a
+# subrequest; the default cap is 1,000, which long generation + retry
+# sequences can exhaust, so raise it to 5,000.
 #
-# Paid Workers plan: allow long-running AI generation chains (the
-# fallback chain waits on network I/O which does not consume CPU, but the
-# Next.js SSR handler + quality-gate scanning are CPU-heavy) and the
-# 1,000-subrequest default cap, which the 8-provider fallback chain with
-# retries can exhaust. cpu_ms requires a Paid Workers plan (Free caps at
-# 10ms and ignores this block).
+# Paid Workers plan: allow long-running AI generation (network I/O does not
+# consume CPU, but the Next.js SSR handler + quality-gate scanning are
+# CPU-heavy) and the 1,000-subrequest default cap. cpu_ms requires a Paid
+# Workers plan (Free caps at 10ms and ignores this block).
 [limits]
   cpu_ms = 300000  # 5 minutes
   subrequests = 5000
@@ -101,23 +99,23 @@ AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
 # ── Required Secrets (set with `npx wrangler secret put <NAME>`) ────────
 # These are NOT in wrangler.toml — set them individually:
 #
-#   ENTRIM_API_KEY   — REQUIRED content AI provider (api.entrim.ai/v1). Serves
-#                     deepseek-ai/DeepSeek-V4-Flash + Qwen/Qwen3.6-27B under
-#                     the live Entrim-only policy.
+#   XAI_API_KEY      — Content Studio commissioned provider: Grok 4.6 via the
+#                      retained xAI transport (api.x.ai/v1).
+#   DEEPSEEK_API_KEY — Content Studio commissioned provider: DeepSeek V4.1 Flash
+#                      (first-party api.deepseek.com/v1 only; no base-url/model
+#                      override for this pin).
 #   GITHUB_TOKEN     — GitHub PAT for shipContent (PRs, merges, deploys)
 #   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)
-#   PARASAIL_API_KEY — Parasail serverless (psk-…) — out of commission, kept
-#                     for break-glass diagnostics only
-#   NVIDIA_API_KEY   — NVIDIA NIM — out of commission, kept for break-glass
-#                     diagnostics only
-#   CLOUDFLARE_AI_TOKEN      — Fallback AI (out of commission under live policy)
+#   CLOUDFLARE_AI_TOKEN      — General chat fallback AI (lib/chatProvider.ts)
 #   RESEND_API_KEY   — Transactional email (attorney decision notifications)
 #   AHREFS_API_KEY   — Site Audit ingest (project 9902912) for CS-introduced issues
 #   AHREFS_PROJECT_ID — optional override (defaults to 9902912)
 #
-# Without ENTRIM_API_KEY, the Auto-Pilot and Content Studio cannot generate
-# content — they fall through all providers because none are configured.
-# Without GITHUB_TOKEN, shipContent returns 503 on PR/merge operations.
+# Content Studio has exactly two commissioned providers and no cross-provider
+# fallback: a job resolved to one provider never calls the other host. An
+# unset provider key makes that provider's lanes fail closed; it does not block
+# the deploy. Without GITHUB_TOKEN, shipContent returns 503 on PR/merge
+# operations.
 
 # Resend transactional email key. Used for attorney application decision emails.
 # Set with: npx wrangler secret put RESEND_API_KEY

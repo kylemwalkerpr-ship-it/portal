@@ -11,7 +11,7 @@ import {
 } from './contentStudioExecutionContext'
 import { meetsShipQuality } from './audit'
 
-const COMPAT_COLUMNS = /event_log|lineage|regeneration_reason|regeneration_mode|column/i
+const COMPAT_COLUMNS = core.UNAPPLIED_COLUMN_ERROR_RE
 
 function strictFence(query: any, input: {
   jobId: string
@@ -63,15 +63,17 @@ export async function persistPipelineJob(input: core.PipelineJobPersistInput): P
   // Fence the guard read too: a stale worker must not inspect an unrelated/newer
   // attempt and then use that data to decide a write.
   const prior = await strictFence(
-    supabase.from('content_jobs').select('id,content,word_count'),
+    supabase.from('content_jobs').select('id,content,word_count,audit_json'),
     fence,
   ).maybeSingle()
   if (prior.error || !prior.data?.id) {
     throw new Error(`strict Content Studio persistence refused stale execution: ${prior.error?.message || 'owner/attempt/lease changed'}`)
   }
 
-  const baseRow = core.mapPipelineJobRow(input)
-  const prev = prior.data as { content?: string | null; word_count?: number | null }
+  const prev = prior.data as { content?: string | null; word_count?: number | null; audit_json?: unknown }
+  // The exact fenced claim attempt (never the refinement count) is recorded,
+  // and prior bounded provider attempts/actual are preserved under this fence.
+  const baseRow = core.mapPipelineJobRow({ ...input, priorAuditJson: prev.audit_json })
   if (core.shouldRefuseThinOverwrite({
     previousContent: prev.content,
     previousWordCount: prev.word_count,
@@ -90,14 +92,7 @@ export async function persistPipelineJob(input: core.PipelineJobPersistInput): P
   ).select('id').maybeSingle()
 
   if (updated.error && COMPAT_COLUMNS.test(updated.error.message || '')) {
-    const {
-      source_job_id: _sourceJobId,
-      lineage: _lineage,
-      regeneration_reason: _reason,
-      regeneration_mode: _mode,
-      event_log: _eventLog,
-      ...legacyRow
-    } = baseRow
+    const legacyRow = core.stripUnappliedColumns(baseRow)
     updated = await strictFence(
       supabase.from('content_jobs').update(legacyRow),
       fence,

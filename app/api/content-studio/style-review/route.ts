@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { GROK_PIN } from '@/lib/contentAiCatalog'
+import {
+  LANE_DEFAULT_PIN,
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+} from '@/lib/contentAiRegistry'
 import { extractProse } from '@/lib/editorMetrics'
 import { anchorHash, applyEditorPatch, parseEditorPatch, type EditorPatch } from '@/lib/seoFactory/editorPatch'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
@@ -12,11 +16,12 @@ import { parseStyleJson, type StyleItem } from '@/lib/seoFactory/styleReviewPars
 export const maxDuration = 90
 
 /**
- * Style critique is latency-sensitive (client aborts ~55s). Force Grok
- * exclusive — paid SuperGrok is the studio default; never cascade into
- * Entrim Qwen/Flash (those burned prior 65–75s budgets on large critiques).
+ * Style critique is latency-sensitive (client aborts ~55s). The reviewer is
+ * the job/contract pin when supplied; otherwise the recorded lane default
+ * (Grok 4.6). Both commissioned providers are selectable — the review is
+ * always exclusive, single-provider, with no capacity cascade.
  */
-const STYLE_REVIEW_DEFAULT_PIN = GROK_PIN
+const STYLE_REVIEW_DEFAULT_PIN = LANE_DEFAULT_PIN
 
 /** Per-provider deadline — single Grok attempt (strictTimeout bypasses the
  *  180s Grok drafting floor). Slightly above prior Flash 35s so low-effort
@@ -53,8 +58,9 @@ async function withRouteBudget<T>(label: string, ms: number, promise: Promise<T>
  * POST /api/content-studio/style-review
  *
  * AI Style Review layer for the Article Editor ("Your AI model rewriting /
- * style / SEO / humanization"). One exclusive Grok call (paid SuperGrok
- * default — no Entrim cascade) that critiques the estate voice
+ * style / SEO / humanization"). One exclusive call on the selected
+ * commissioned provider (Grok 4.6 lane default — no capacity cascade) that
+ * critiques the estate voice
  * contract — clichés, wordy phrasing, weak/passive construction, forced
  * keywords, AI-tell rhythms, hedging, outcome-promise risk — and returns a
  * structured findings list. With `apply: true` a second pass executes the
@@ -109,6 +115,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as StyleReviewBody
+    // Reviewer pin: contract/owner pin or the lane default. A legacy
+    // reviewModel fails closed with a typed selection-required payload and
+    // makes ZERO provider calls.
+    const requestedReviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
+      ? body.reviewModel.trim()
+      : STYLE_REVIEW_DEFAULT_PIN
+    const pin = canonicalCommissionedPin(requestedReviewPin)
+    if (!pin) {
+      return NextResponse.json(
+        new ProviderSelectionRequiredError(requestedReviewPin).toPayload(),
+        { status: 409 },
+      )
+    }
     const raw = String(body.content || '')
     if (countBodyWords(raw) < 40) {
       return NextResponse.json({ error: 'content must contain at least 40 words' }, { status: 400 })
@@ -152,10 +171,8 @@ Content type: ${body.contentType || 'unknown'}
 
 Critique the voice and readability of the article body only. Ignore YAML, KEEP--- blocks, frontmatter keys, and leaked markup. \`quote\` must be an exact short substring of a body sentence (not a YAML key). Return ONLY the JSON.`
 
-    // Latency lane: always Grok, exclusive, no capacity cascade into Entrim
-    // (Qwen/Flash ate the prior 65s budget on I-129).
-    const pin = STYLE_REVIEW_DEFAULT_PIN
-
+    // Latency lane: the selected commissioned reviewer only — exclusive, no
+    // capacity cascade into another provider.
     const review = await withRouteBudget(
       'Style review',
       STYLE_ROUTE_BUDGET_MS,

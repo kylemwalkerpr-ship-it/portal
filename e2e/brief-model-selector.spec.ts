@@ -1,16 +1,18 @@
 /**
  * brief-model-selector.spec.ts
  *
- * E2E for the Research-stage brief model dropdown (Entrim Qwen3.6 27B /
- * Entrim DeepSeek V4 Flash). Asserts that selecting **Qwen3.6 27B** in the
- * Brief Assembly panel causes the Generate Full Brief request to
- * `/api/content-studio/suggest-brief` to carry
- * `aiProvider: 'entrim-qwen-27b'` — proving the selectable choice actually
- * reaches the brief endpoint's policy (lib/seoFactory/briefModel), which only
- * honors the two live Entrim pins (Qwen lead, DeepSeek complement).
+ * E2E for the Research-stage brief model dropdown — the two commissioned
+ * providers: Grok 4.6 (`grok-4.6` → pin `grok`) and first-party DeepSeek
+ * V4.1 Flash (`deepseek-v41-flash`). Retired families (Entrim Qwen, Entrim
+ * DeepSeek, GPT, …) are not selectable.
+ *
+ * Asserts that the selected model causes the Generate Full Brief request to
+ * `/api/content-studio/suggest-brief` to carry the commissioned pin
+ * (`aiProvider: 'grok'` / `'deepseek-v41-flash'`) — proving the selectable
+ * choice actually reaches the brief endpoint's registry policy.
  *
  * The suggest-brief route is mocked so the test asserts the REQUEST payload
- * without depending on Entrim credits/billing state.
+ * without depending on provider credits/billing state.
  *
  * ── Auth setup ──────────────────────────────────────────────────────────────
  *     CLERK_TEST_EMAIL=admin@example.com
@@ -119,7 +121,7 @@ function makeBriefResponse() {
 }
 
 test.describe('Research-stage brief model selector (admin)', () => {
-  test('the brief model dropdown offers the three live models — Qwen, DeepSeek Flash, Grok — and nothing else', async ({ browser }) => {
+  test('the brief model dropdown offers exactly the two commissioned models — Grok 4.6 and DeepSeek V4.1 Flash', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -145,18 +147,17 @@ test.describe('Research-stage brief model selector (admin)', () => {
     const panel = page.getByTestId('studio-brief-assembly')
     await panel.waitFor({ state: 'visible', timeout: 30000 })
 
-    const modelSelect = page.locator('select:has(option[value="qwen3.6-27b"])').first()
+    const modelSelect = page.locator('select:has(option[value="grok-4.6"])').first()
     await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
     const optionValues = await modelSelect.locator('option').allTextContents()
-    // The three live models are selectable; no retired/gpt option leaks in.
-    await expect(modelSelect.locator('option[value="qwen3.6-27b"]')).toBeVisible()
-    await expect(modelSelect.locator('option[value="deepseek-v4-flash"]')).toBeVisible()
+    // The two commissioned models are selectable; no retired option leaks in.
     await expect(modelSelect.locator('option[value="grok-4.6"]')).toBeVisible()
-    await expect(modelSelect.locator('option[value="gpt-5.6-sol"], option[value="gpt-5.6-terra"], option[value="gpt-5.6-luna"]')).toHaveCount(0)
-    expect(optionValues.length).toBeGreaterThanOrEqual(3)
+    await expect(modelSelect.locator('option[value="deepseek-v41-flash"]')).toBeVisible()
+    await expect(modelSelect.locator('option[value="qwen3.6-27b"], option[value="deepseek-v4-flash"], option[value="gpt-5.6-sol"], option[value="gpt-5.6-terra"], option[value="gpt-5.6-luna"]')).toHaveCount(0)
+    expect(optionValues.length).toBe(2)
   })
 
-  test('selecting Qwen3.6 27B sends aiProvider entrim-qwen-27b on Generate Full Brief', async ({ browser }) => {
+  test('selecting Grok 4.6 sends aiProvider grok on Generate Full Brief', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -206,23 +207,23 @@ test.describe('Research-stage brief model selector (admin)', () => {
     // not htmlFor-associated in this panel — match on the placeholder.)
     await page.getByPlaceholder('What users search for').fill('uk dependent visa')
 
-    // The brief model dropdown (Qwen lead default) — select Qwen3.6 27B.
-    const modelSelect = page.locator('select:has(option[value="qwen3.6-27b"])').first()
+    // The brief model dropdown — select the commissioned Grok 4.6 model.
+    const modelSelect = page.locator('select:has(option[value="grok-4.6"])').first()
     await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
-    await modelSelect.selectOption('qwen3.6-27b')
-    await expect(modelSelect).toHaveValue('qwen3.6-27b')
+    await modelSelect.selectOption('grok-4.6')
+    await expect(modelSelect).toHaveValue('grok-4.6')
 
     // Click Generate Full Brief.
     await page.getByRole('button', { name: /Generate Full Brief/i }).click()
 
-    // ── The request must carry the selected model ──────────────────────────
+    // ── The request must carry the selected commissioned pin ───────────────
     await expect.poll(() => capturedBody, { timeout: 10000 }).not.toBeNull()
-    expect(capturedBody!.aiProvider).toBe('entrim-qwen-27b')
+    expect(capturedBody!.aiProvider).toBe('grok')
     // Sanity: the brief still flows into the form (title updated).
     await expect(page.getByPlaceholder('e.g. Complete Guide to the UK Spouse Visa 2026')).toHaveValue('UK Dependent Visa Guide 2026', { timeout: 10000 })
   })
 
-  test('selecting DeepSeek V4 Flash sends aiProvider entrim-deepseek', async ({ browser }) => {
+  test('selecting DeepSeek V4.1 Flash sends aiProvider deepseek-v41-flash', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -256,15 +257,15 @@ test.describe('Research-stage brief model selector (admin)', () => {
     const panel = page.getByTestId('studio-brief-assembly')
     await panel.waitFor({ state: 'visible', timeout: 30000 })
 
-    const modelSelect = page.locator('select:has(option[value="deepseek-v4-flash"])').first()
+    const modelSelect = page.locator('select:has(option[value="deepseek-v41-flash"])').first()
     await modelSelect.waitFor({ state: 'visible', timeout: 10000 })
-    await modelSelect.selectOption('deepseek-v4-flash')
-    await expect(modelSelect).toHaveValue('deepseek-v4-flash')
+    await modelSelect.selectOption('deepseek-v41-flash')
+    await expect(modelSelect).toHaveValue('deepseek-v41-flash')
 
     await page.getByPlaceholder('What users search for').fill('uk dependent visa')
     await page.getByRole('button', { name: /Generate Full Brief/i }).click()
 
     await expect.poll(() => capturedBody, { timeout: 10000 }).not.toBeNull()
-    expect(capturedBody!.aiProvider).toBe('entrim-deepseek')
+    expect(capturedBody!.aiProvider).toBe('deepseek-v41-flash')
   })
 })

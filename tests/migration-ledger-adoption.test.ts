@@ -8,7 +8,7 @@
  * scripts/migration-ledger-adoption.mjs consumes.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,6 +25,16 @@ const manifestJson = JSON.parse(readFileSync(MANIFEST, 'utf8')) as {
   files: Array<{ filename: string; sha256: string }>
 }
 const BASELINE_SHA = manifestJson.generatedFrom.gitSha
+
+// Adoption is dispatched against a checkout pinned to expected_main_sha and
+// requires an estate of exactly the frozen 69 baseline files; the live branch
+// may already carry valid future 14-digit migrations, so the tests run against
+// a baseline-only copy (production policy stays exact-estate).
+const BASELINE_ESTATE_DIR = mkdtempSync(join(tmpdir(), 'ledger-adoption-baseline-'))
+for (const file of manifestJson.files) {
+  copyFileSync(join(MIGRATIONS, file.filename), join(BASELINE_ESTATE_DIR, file.filename))
+}
+afterAll(() => rmSync(BASELINE_ESTATE_DIR, { recursive: true, force: true }))
 
 function evalAdoption<T>(body: string): T {
   const code = `
@@ -85,7 +95,7 @@ const FIXTURES = `
       const result = await adoption.runAdoption({
         client: overrides.client,
         manifestPath: overrides.manifestPath,
-        migrationsDir: overrides.migrationsDir,
+        migrationsDir: overrides.migrationsDir ?? ${JSON.stringify(BASELINE_ESTATE_DIR)},
         expectedMainSha: overrides.expectedMainSha ?? manifest.generatedFrom.gitSha,
         assertAncestor: overrides.assertAncestor ?? (async () => true),
         log: overrides.log,
@@ -539,9 +549,15 @@ describe('migration ledger adoption core', () => {
         estateRules: string[]
       }>(`
         ${FIXTURES}
-        const { cpSync, writeFileSync } = await import('node:fs')
+        const { copyFileSync, mkdirSync, writeFileSync } = await import('node:fs')
         const { join: joinPath } = await import('node:path')
-        cpSync(${JSON.stringify(MIGRATIONS)}, ${JSON.stringify(estateDir)}, { recursive: true })
+        mkdirSync(${JSON.stringify(estateDir)}, { recursive: true })
+        for (const file of manifest.files) {
+          copyFileSync(
+            joinPath(${JSON.stringify(MIGRATIONS)}, file.filename),
+            joinPath(${JSON.stringify(estateDir)}, file.filename),
+          )
+        }
         writeFileSync(joinPath(${JSON.stringify(estateDir)}, '20270101120000_brand_new_thing.sql'), 'SELECT 1;')
         const { client, queries, executes, inserts } = fakeClient()
         const outcome = await run({ client, migrationsDir: ${JSON.stringify(estateDir)} })

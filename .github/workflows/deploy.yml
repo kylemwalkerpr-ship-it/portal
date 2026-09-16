@@ -93,48 +93,29 @@ jobs:
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
-          # Content Studio AI — primary: Entrim (api.entrim.ai/v1), live
-          # Entrim-only policy; NVIDIA/CF/rest are out of commission.
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NVIDIA_DEEPSEEK_MODEL: ${{ secrets.NVIDIA_DEEPSEEK_MODEL }}
-          NVAPI_KEY: ${{ secrets.NVAPI_KEY }}
+          # Content Studio AI — exactly two commissioned providers with no
+          # cross-provider fallback: Grok 4.6 (retained xAI transport) and
+          # DeepSeek V4.1 Flash (first-party api.deepseek.com/v1 only).
+          # Retired hosts (Entrim/NVIDIA/Baseten/AIHubmix/OpenAI/CUSTOM_AI) are
+          # no longer injected here.
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           XAI_MODEL: ${{ secrets.XAI_MODEL }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
-          BASETEN_MODEL: ${{ secrets.BASETEN_MODEL }}
-          BASETEN_GLM_MODEL: ${{ secrets.BASETEN_GLM_MODEL }}
           # DataForSEO Backlinks API — Master SEO Engine links subsystem
           # (lib/seoFactory/backlinkProvider.ts). Basic auth login + password.
           DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
-          # AIHubmix OpenAI-compatible aggregator — GLM 5.2 Fast route
-          # (lib/contentAiProvider.ts getAihubmixGlmFastProvider).
-          AIHUBMIX_API_KEY: ${{ secrets.AIHUBMIX_API_KEY }}
-          AIHUBMIX_BASE_URL: ${{ secrets.AIHUBMIX_BASE_URL }}
-          AIHUBMIX_GLM_MODEL: ${{ secrets.AIHUBMIX_GLM_MODEL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-          CUSTOM_AI_BASE_URL: ${{ secrets.CUSTOM_AI_BASE_URL }}
-          CUSTOM_AI_API_KEY: ${{ secrets.CUSTOM_AI_API_KEY }}
-          CUSTOM_AI_MODEL: ${{ secrets.CUSTOM_AI_MODEL }}
           # Content Studio GSC OAuth — accept every historical secret name
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-          # Entrim (api.entrim.ai/v1) — graduated default model host. Pushed to
-          # the Worker as a first-class secret so Draft/Brief/Reviewer/Discover
-          # keep running even while the vault overlay is unreachable.
-          ENTRIM_API_KEY: ${{ secrets.ENTRIM_API_KEY }}
-          ENTRIM_BASE_URL: ${{ secrets.ENTRIM_BASE_URL }}
           # GitHub PAT for Content Studio PR creation (repo scope)
           CONTENT_STUDIO_GITHUB_TOKEN: ${{ secrets.CONTENT_STUDIO_GITHUB_TOKEN }}
           GITHUB_TOKEN_CONTENT: ${{ secrets.GITHUB_TOKEN_CONTENT }}
           # Shared secret the weekly-payouts cron route checks (Bearer). Same
           # value as the CRON_SECRET repo secret used by weekly-payouts.yml.
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          CONTENT_AI_PROVIDER: ${{ secrets.CONTENT_AI_PROVIDER }}
           # Core auth/database secrets — historically set once manually and
           # silently lost when the Worker is recreated or secrets expire,
           # which made EVERY existing profile look like a brand-new user
@@ -228,46 +209,27 @@ jobs:
           # Service account JSON (gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com).
           # Must be added as Full user on each Search Console property for live queries.
           put_secret GSC_SERVICE_ACCOUNT_JSON  "$GSC_SERVICE_ACCOUNT_JSON"
-          # Content Studio AI chain (lib/contentAiProvider.ts) — LIVE POLICY
-          # (2026-09-02): the ONLY commissioned backends are the two Entrim
-          # families — Entrim Qwen3.6 27B (default) then Entrim DeepSeek V4
-          # Flash. Every other host (NVIDIA, Cloudflare, Groq, Gemini,
-          # OpenRouter, xAI, OpenAI, DeepSeek.com, Baseten, Parasail, Run
-          # BiOS, AIHubmix, Zai) is OUT OF COMMISSION and filtered out of
-          # the cascade at runtime. The worker always pins
-          # CONTENT_AI_PROVIDER so a stale Worker secret cannot force a
-          # retired host first after a code deploy. Values are fixed
-          # (not from secrets) so put_secret always has a non-empty value.
-          # NOTE: deepseek-v4-pro is EOL on NVIDIA (410 Gone since 2026-08-07).
-          # CONTENT_AI_PROVIDER is pinned LITERALLY — never interpolate the
-          # CONTENT_AI_PROVIDER GitHub secret here, a leftover/rotated value
-          # must not re-pin a retired host ahead of a code deploy.
-          put_secret CONTENT_AI_PROVIDER       "entrim-qwen-27b"
-          put_secret NVIDIA_DEEPSEEK_MODEL     "${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-flash-0731}"
-          # NVIDIA key aliases — any one unlocks the primary path
-          put_secret NVIDIA_API_KEY            "${NVIDIA_API_KEY:-$NVAPI_KEY}"
-          put_secret NVAPI_KEY                 "${NVAPI_KEY:-$NVIDIA_API_KEY}"
+          # Content Studio AI chain (lib/contentAiProvider.ts) — exactly two
+          # commissioned providers with NO cross-provider fallback:
+          #   grok               — Grok 4.6 via the retained xAI transport (api.x.ai/v1)
+          #   deepseek-v41-flash — DeepSeek V4.1 Flash, first-party
+          #                        api.deepseek.com/v1 only
+          # A job resolved to one provider never calls the other host and never
+          # calls an intermediary. Retired Content Studio hosts (Entrim, NVIDIA,
+          # Baseten, AIHubmix, OpenAI, CUSTOM_AI) are no longer injected here.
+          # CONTENT_AI_PROVIDER is pinned LITERALLY to the commissioned registry
+          # default — never interpolate the CONTENT_AI_PROVIDER GitHub secret;
+          # a leftover/rotated value must not re-pin a retired host ahead of a
+          # code deploy.
+          put_secret CONTENT_AI_PROVIDER       "grok"
           put_secret XAI_API_KEY               "$XAI_API_KEY"
-          put_secret XAI_MODEL                  "$XAI_MODEL"
+          put_secret XAI_MODEL                 "$XAI_MODEL"
           put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
-          put_secret BASETEN_API_KEY           "$BASETEN_API_KEY"
-          put_secret BASETEN_MODEL             "${BASETEN_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
-          put_secret BASETEN_GLM_MODEL         "${BASETEN_GLM_MODEL:-zai-org/GLM-5.2-Fast}"
           # DataForSEO Backlinks API — Master SEO Engine links subsystem.
           # Basic-auth login + password; put_secret no-ops when unset so a
           # deploy stays green until the credentials are provisioned.
           put_secret DATAFORSEO_LOGIN          "$DATAFORSEO_LOGIN"
           put_secret DATAFORSEO_PASSWORD       "$DATAFORSEO_PASSWORD"
-          # AIHubmix GLM 5.2 Fast (OpenAI-compatible aggregator) — drafting /
-          # brief / review route. put_secret no-ops when unset.
-          put_secret AIHUBMIX_API_KEY          "$AIHUBMIX_API_KEY"
-          put_secret AIHUBMIX_BASE_URL         "${AIHUBMIX_BASE_URL:-https://aihubmix.com/v1}"
-          put_secret AIHUBMIX_GLM_MODEL        "${AIHUBMIX_GLM_MODEL:-glm-5.2-fast-preview}"
-          put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
-          put_secret OPENAI_MODEL              "${OPENAI_MODEL:-gpt-5.6-luna}"
-          put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"
-          put_secret CUSTOM_AI_API_KEY         "$CUSTOM_AI_API_KEY"
-          put_secret CUSTOM_AI_MODEL           "$CUSTOM_AI_MODEL"
           # Content Studio GSC OAuth (routes accept GOOGLE_* / GSC_OAUTH_* / GOOGLE_OAUTH_*)
           put_secret GOOGLE_CLIENT_ID          "${GOOGLE_CLIENT_ID:-${GSC_OAUTH_CLIENT_ID:-$GOOGLE_OAUTH_CLIENT_ID}}"
           put_secret GOOGLE_CLIENT_SECRET      "${GOOGLE_CLIENT_SECRET:-${GSC_OAUTH_CLIENT_SECRET:-$GOOGLE_OAUTH_CLIENT_SECRET}}"
@@ -275,13 +237,6 @@ jobs:
           put_secret GSC_OAUTH_CLIENT_SECRET   "${GSC_OAUTH_CLIENT_SECRET:-${GOOGLE_CLIENT_SECRET:-$GOOGLE_OAUTH_CLIENT_SECRET}}"
           # Prefer dedicated Content Studio GitHub token; fall back to GITHUB_TOKEN_CONTENT
           put_secret GITHUB_TOKEN              "${CONTENT_STUDIO_GITHUB_TOKEN:-$GITHUB_TOKEN_CONTENT}"
-          # Entrim (api.entrim.ai/v1) — graduated default model host for
-          # Draft / Brief / Reviewer / Discover. Kept as a FIRST-CLASS
-          # Worker secret so generation works even while the vault overlay
-          # is unreachable (supabase-js v2 rejects sb_secret_ service keys,
-          # and ai_provider_keys denies the anon fallback).
-          put_secret ENTRIM_API_KEY            "$ENTRIM_API_KEY"
-          put_secret ENTRIM_BASE_URL           "$ENTRIM_BASE_URL"
           # Weekly payout cron auth — POST /api/cron/weekly-payouts checks this.
           put_secret CRON_SECRET               "$CRON_SECRET"
           # Core auth/database secrets (see env block above). Keeping these
@@ -296,11 +251,12 @@ jobs:
       # Mirror the just-synced Worker secrets into the Supabase AI Key Vault
       # (ai_provider_keys). The runtime reads the vault overlay BEFORE Worker
       # secrets, so a stale vault row would otherwise shadow a freshly-rotated
-      # key (e.g. Baseten 402 "check your current payment status" after a key
-      # rotation that the Worker secret already picked up). Uses the Supabase
-      # Management API so it works with both legacy eyJ and sb_secret_ service
-      # keys. Run before deploy so the new Worker is live against a matching
-      # vault. Script retries transient SQL failures (e.g. HTTP 544); this step
+      # key after a rotation that the Worker secret already picked up. Uses the
+      # Supabase Management API so it works with both legacy eyJ and sb_secret_
+      # service keys. Run before deploy so the new Worker is live against a
+      # matching vault. Only the two commissioned Content Studio rows
+      # (grok, deepseek-v41-flash) are written; historical rows are retained.
+      # Script retries transient SQL failures (e.g. HTTP 544); this step
       # is continue-on-error so Deploy is not blocked if Supabase is briefly
       # unreachable — vault may stay stale until the next successful sync.
       # SUPABASE_ACCESS_TOKEN unset skips cleanly inside the script.
@@ -310,17 +266,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          AIHUBMIX_API_KEY: ${{ secrets.AIHUBMIX_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
-          CUSTOM_AI_API_KEY: ${{ secrets.CUSTOM_AI_API_KEY }}
         run: |
           set +e
           for i in 1 2 3; do
