@@ -25,6 +25,21 @@ create table public.content_jobs (
 insert into public.content_jobs(id, status, execution_stage, ai_provider, execution_attempt)
 values ('00000000-0000-0000-0000-000000000001', 'drafting', 'drafting', 'entrim-deepseek', 0);
 
+-- Grant baseline for the ACL invariant. A freshly created table already exposes
+-- the owner's implicit privileges through information_schema (one row per
+-- privilege_type, seven for a table), so the no-grants guarantee is a zero
+-- delta against this snapshot, not an absolute row count. The temp table lives
+-- only inside this transaction and is never a public relation.
+create temp table provider_parity_grants_before on commit drop as
+select grantor::text as grantor,
+       grantee::text as grantee,
+       privilege_type::text as privilege_type,
+       is_grantable::text as is_grantable,
+       with_hierarchy::text as with_hierarchy
+  from information_schema.role_table_grants
+ where table_schema = 'public'
+   and table_name = 'content_jobs';
+
 \ir ../../supabase/migrations/20260916122441_content_studio_provider_parity.sql
 -- Additive + if-not-exists: re-applying the review candidate is a no-op.
 \ir ../../supabase/migrations/20260916122441_content_studio_provider_parity.sql
@@ -101,11 +116,41 @@ begin
     raise exception 'provider-parity migration created % unexpected relation(s)', unexpected;
   end if;
 
+  -- No ACL mutation: the migration is columns + comments only. The live grants
+  -- are diffed field-by-field against the pre-migration snapshot so any real
+  -- GRANT or REVOKE is caught regardless of the owner's default privileges.
   select count(*) into unexpected
-    from information_schema.role_table_grants
-   where table_schema = 'public' and table_name = 'content_jobs';
+    from (
+      select grantor::text as grantor,
+             grantee::text as grantee,
+             privilege_type::text as privilege_type,
+             is_grantable::text as is_grantable,
+             with_hierarchy::text as with_hierarchy
+        from information_schema.role_table_grants
+       where table_schema = 'public' and table_name = 'content_jobs'
+      except
+      select grantor, grantee, privilege_type, is_grantable, with_hierarchy
+        from pg_temp.provider_parity_grants_before
+    ) as added_grants;
   if unexpected <> 0 then
     raise exception 'provider-parity migration added % table grant(s)', unexpected;
+  end if;
+
+  select count(*) into unexpected
+    from (
+      select grantor, grantee, privilege_type, is_grantable, with_hierarchy
+        from pg_temp.provider_parity_grants_before
+      except
+      select grantor::text as grantor,
+             grantee::text as grantee,
+             privilege_type::text as privilege_type,
+             is_grantable::text as is_grantable,
+             with_hierarchy::text as with_hierarchy
+        from information_schema.role_table_grants
+       where table_schema = 'public' and table_name = 'content_jobs'
+    ) as removed_grants;
+  if unexpected <> 0 then
+    raise exception 'provider-parity migration removed % table grant(s)', unexpected;
   end if;
 
   -- Existing historical data is never rewritten by the migration.
