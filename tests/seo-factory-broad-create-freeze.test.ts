@@ -175,6 +175,39 @@ describe('broad-create freeze · real ownership routing stays untouched', () => 
   })
 })
 
+describe('broad-create freeze · matched legal pillar routed to a net-new destination', () => {
+  // `resolveOwner` can match a legal registry pillar yet deliberately keep an
+  // explicit non-legal destination on its own net-new URL (stealLegalPillar).
+  // `matched` then describes the keyword match, not the final destination's
+  // existence — the freeze must classify the destination and stay closed.
+  const STOLEN_PILLAR_TYPES = [
+    'blog_summary',
+    'regional_page',
+    'regional_from',
+    'regional_university',
+  ] as const
+
+  it.each(STOLEN_PILLAR_TYPES)(
+    'freezes %s: matched legal pillar re-routed to a fresh standing-rules build',
+    async (contentType) => {
+      const resolved = await resolveOwner({
+        primaryKeyword: REGISTRY_KEYWORD,
+        contentType,
+        region: 'UK',
+      })
+      // The keyword matched the legal registry pillar (action=expand)…
+      expect(resolved.matched).not.toBeNull()
+      // …but the final destination is a fresh standing-rules build, not that pillar.
+      expect(resolved.action).toBe('build')
+      expect(resolved.routingSource).toBe('standing_rules')
+      // The gate must classify the final destination, so this is frozen even
+      // though `matched` is non-null (the old shortcut wrongly allowed it).
+      expect(isBroadNetNewCreate(resolved)).toBe(true)
+      expect(() => assertBroadCreateAllowed(resolved, { env: {} })).toThrow(/broad net-new CREATE/i)
+    },
+  )
+})
+
 describe('broad-create freeze · non-stream pipeline boundary', () => {
   const originalUnlock = process.env[BROAD_CREATE_UNLOCK_ENV]
 

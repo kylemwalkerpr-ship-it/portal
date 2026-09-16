@@ -8,8 +8,14 @@
  * `resolveOwner` keeps emitting standing_rules plans unchanged, and the
  * manual ownership-routing contract is untouched.
  *
+ * The gate classifies the FINAL DESTINATION, not the keyword match: a keyword
+ * may match an existing Legal registry row while `resolveOwner` intentionally
+ * routes an explicit non-Legal destination to a different, net-new URL
+ * (stealLegalPillar). There `matched` is non-null but the destination is still
+ * unowned, so it stays frozen.
+ *
  * Existing authoritative destinations keep working:
- *   - exact registry owner URLs / registry hosts (matched row),
+ *   - exact registry owner URLs / registry hosts (authoritative routing),
  *   - strike-seed existing owners (keep / expand),
  *   - explicit existing cluster `ownerUrlHint` destinations (registry_owner_url),
  *   - any normal refresh / expand / keep flow.
@@ -26,7 +32,11 @@ import type { OwnerPlan } from './ownership'
 
 export const BROAD_CREATE_UNLOCK_ENV = 'SEO_FACTORY_UNLOCK_BROAD_CREATE'
 
-/** The minimum OwnerPlan shape the gate needs. */
+/**
+ * The OwnerPlan fields accepted by the gate. `matched` is accepted for call-site
+ * compatibility but deliberately NOT consulted: a keyword match is not proof
+ * that the final destination exists.
+ */
 export type BroadCreatePlan = Pick<OwnerPlan, 'matched' | 'action' | 'routingSource'>
 
 /**
@@ -42,13 +52,18 @@ const AUTHORITATIVE_EXISTING_ROUTING: ReadonlySet<OwnerPlan['routingSource']> = 
 ])
 
 /**
- * True when the plan is a genuinely net-new / unowned broad CREATE:
- * no registry owner matched, the action is `build` (not keep/expand), and the
- * destination came from a fallback route rather than an authoritative owner.
+ * True when the plan's FINAL DESTINATION is a genuinely net-new broad CREATE:
+ * the action is `build` (not keep/expand) and the destination came from a
+ * fallback route rather than an authoritative existing owner.
+ *
+ * A non-null `matched` row is NOT proof the destination exists: `resolveOwner`
+ * can match a registry keyword yet deliberately route an explicit non-legal
+ * destination to a different, net-new standing-rules URL (stealLegalPillar).
+ * There `matched` describes the keyword match, not the final destination, so
+ * only the authoritative routing sources prove an existing owner.
  */
 export function isBroadNetNewCreate(plan: BroadCreatePlan): boolean {
   if (plan.action !== 'build') return false
-  if (plan.matched) return false
   return !AUTHORITATIVE_EXISTING_ROUTING.has(plan.routingSource)
 }
 
