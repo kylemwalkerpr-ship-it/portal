@@ -142,42 +142,12 @@ const TYPE = {
   metric:    { fontFamily: E.mono,  fontSize: 11, color: E.ink, fontWeight: 600 },
 } as const
 
-// ── Provider → default model (mirrors contentAiProvider defaults) ──
-const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
-  'runbios-glm-53-flash': 'glm-5.3-flash',
-  'runbios-glm-52': 'glm-5.2',
-  'runbios-deepseek-flash': 'deepseek-v4-flash',
-  'runbios-deepseek-pro': 'deepseek-v4-pro',
-  'runbios-minimax': 'minimax-m3',
-  'runbios-kimi': 'kimi-k2.7-code',
-  'runbios-qwen': 'qwen3.5-397b-a17b',
-  'runbios-adaptive': 'bios-adaptive',
-  'runbios-claude-sonnet': 'claude-sonnet-5',
-  'runbios-claude-opus': 'claude-opus-5',
-  openai: 'gpt-5.6-terra',
-  custom: 'gpt-5.6-terra',
-  'gpt-5.6-sol': 'gpt-5.6-sol',
-  'gpt-5.6-terra': 'gpt-5.6-terra',
-  grok: 'grok-4.6',
-  deepseek: 'deepseek-chat',
-  'nvidia-minimax': 'minimaxai/minimax-m3',
-  'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
-  'nvidia-glm': 'z-ai/glm-5.2',
-  'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'baseten-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
-  'parasail-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'parasail-deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
-  'parasail-glm': 'z-ai/glm-5.2',
-  'nvidia-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'deepseek-flash': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'deepseek-pro': 'deepseek-ai/DeepSeek-V4-Pro-0813',
-  'entrim-deepseek': 'deepseek-ai/DeepSeek-V4-Flash',
-  'entrim-qwen-27b': 'Qwen/Qwen3.6-27B',
-  'zai-glm': 'glm-5.2',
-  'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  groq: 'llama-3.3-70b-versatile',
-  gemini: 'gemini-2.5-flash',
-  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
+// ── Recorded provider pin → upstream model (commissioned pins only) ──
+// Legacy/historical pins stay readable as their raw pin; they are never
+// mapped onto an executable provider or model.
+function recordedProviderModel(pin?: string | null): string | null {
+  const parsed = parseStudioPin(pin)
+  return parsed.kind === 'commissioned' ? parsed.model.apiModel || parsed.model.label : null
 }
 type StudioTab = StudioStage
 
@@ -2565,11 +2535,13 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   // Strict per-section word budgets from the brief — carried into drafting so
   // the one-run contract is hardlined (never a three-copy echo).
   const [sectionBudgets, setSectionBudgets] = React.useState<Array<{ heading: string; minWords: number; maxWords: number }> | null>(null)
-  // Brief engine is MANUAL: Entrim Qwen / Entrim DeepSeek / Grok. Nothing
-  // runs until Generate Full Brief is clicked with the selected pin.
-  const [briefModel, setBriefModel] = React.useState(DEFAULT_BRIEF_PIN)
+  // Brief engine is MANUAL: Grok 4.6 or first-party DeepSeek V4.1 Flash.
+  // Nothing runs until Generate Full Brief is clicked with the selected pin.
+  const [briefModel, setBriefModel] = React.useState<string>(DEFAULT_BRIEF_PIN)
   const briefParsed = parseStudioPin(briefModel)
-  const briefModelName = `${briefParsed.model.label} · ${briefParsed.host.label}`
+  const briefModelName = briefParsed.kind === 'commissioned'
+    ? `${briefParsed.model.label} · ${briefParsed.host.label}`
+    : `⚠ reselect provider (saved pin: ${briefParsed.legacyValue})`
   const handleGenerateBrief = async () => {
     if (!topic.trim()) { setActionNotice?.('Enter a topic first'); return }
     setBriefGenerating(true)
@@ -2582,10 +2554,10 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
         signal: briefAbort.signal,
         body: JSON.stringify({
           topic, region, contentType, primaryKeyword: selectedBrief?.primaryKeyword || topic, audience,
-          // Brief model selected above (Entrim Qwen / Claude Opus 5 / Grok /
-          // DeepSeek V4 Flash …). We pass the explicit choice; the brief
-          // endpoint's policy coerces unknown values to the Entrim Qwen
-          // default. The same pin is carried into the Draft stage below.
+          // Brief model selected above (Grok 4.6 or DeepSeek V4.1 Flash). We
+          // pass the explicit commissioned choice; a legacy saved pin fails
+          // closed server-side and must be reselected. The same pin is carried
+          // into the Draft stage below.
           aiProvider: briefModel,
           // P1-A2: radarMeta never stores gapOpportunities / llmVisibility /
           // backlinkGaps (gsc/suggestions does not return them). Opportunity
@@ -2978,7 +2950,7 @@ const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
           </button>
         </div>
         <div style={{ marginTop: 6, fontSize: 10, color: E.inkMuted, fontFamily: C.serif }}>
-          Choose Qwen, DeepSeek, or Grok, then click generate. Discover does not auto-run this engine.
+          Choose Grok 4.6 or DeepSeek V4.1 Flash, then click generate. Discover does not auto-run this engine.
         </div>
       </div>
 
@@ -3683,7 +3655,7 @@ function DraftWorkspace({
 }) {   const [draftContent, setDraftContent] = React.useState('')
   const [generationText, setGenerationText] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
-  const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
+  const [reviewModel, setReviewModel] = React.useState<string>(DEFAULT_REVIEW_PIN)
   const [streamView, setStreamView] = React.useState<'document' | 'source'>('document')
   const lastEventRef = React.useRef<string>('')
   const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -4893,8 +4865,10 @@ function JobDetail({
   const resolvedModel =
     detail.ai_model ||
     detail.audit_json?.model ||
-    (detail.ai_provider ? DEFAULT_MODEL_BY_PROVIDER[detail.ai_provider] : null) ||
+    recordedProviderModel(detail.ai_provider) ||
     null
+  const providerParse = parseStudioPin(aiProvider)
+  const providerNeedsSelection = providerParse.kind === 'needs_selection'
   const aiProviderCard = resolvedModel
     ? `${detail.ai_provider || '—'} · ${resolvedModel}`
     : detail.ai_provider || '—'
@@ -4960,9 +4934,13 @@ function JobDetail({
               selectStyle={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}
             />
           </label>
-          {aiProvider !== 'auto' && (
+          {providerNeedsSelection ? (
+            <span data-testid="studio-provider-reselect" style={{ fontSize: 10, color: C.red, fontFamily: C.mono, fontWeight: 700 }}>
+              saved pin “{providerNeedsSelection ? providerParse.legacyValue : ''}” is retired — reselect Grok 4.6 or DeepSeek V4.1 Flash before regenerating
+            </span>
+          ) : aiProvider && aiProvider !== 'auto' ? (
             <span style={{ fontSize: 10, color: C.blue, fontFamily: C.mono }}>regeneration will use: {aiProvider}</span>
-          )}
+          ) : null}
         </div>
 
         {(detail.branch_name || detail.content_path || detail.pr_url) && (
@@ -5003,8 +4981,8 @@ function JobDetail({
           <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>
           <div style={{ fontSize: 11, lineHeight: 1.5, color: '#7C2D12' }}>Edit the draft to remove the blocker, save it, re-audit it, then ship. Regenerate rewrites the full piece using the gate guidance.</div>
           <div style={{ display: 'flex', gap: 7, marginTop: 8, flexWrap: 'wrap' }}>
-            {canResume && <button type="button" disabled={busy || loading} onClick={() => void runRegenerateStream(true)} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: `1px solid ${C.blue}`, background: '#EFF6FF', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↻ Continue saved draft</button>}
-            <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
+            {canResume && <button type="button" disabled={busy || loading || providerNeedsSelection} onClick={() => void runRegenerateStream(true)} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: `1px solid ${C.blue}`, background: '#EFF6FF', color: C.blue, cursor: providerNeedsSelection ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>↻ Continue saved draft</button>}
+            <button type="button" disabled={busy || loading || providerNeedsSelection} onClick={() => void runAction('regenerate')} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: 'none', background: C.red, color: '#FFF', cursor: providerNeedsSelection ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
           </div>
           {actionEvents.length > 0 && <div style={{ marginTop: 10, background: '#1F2937', color: '#E5E7EB', borderRadius: C.radiusXs, padding: 10, fontFamily: C.mono, fontSize: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: activeAction ? '#FCD34D' : '#86EFAC', fontWeight: 700 }}>
@@ -5057,7 +5035,7 @@ function JobDetail({
         <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>✏️ Editing the draft</div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
           {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
-          {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
+          {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy || providerNeedsSelection, onClick: () => void runAction('regenerate'), title: providerNeedsSelection ? 'Reselect a commissioned provider before regenerating' : 'Rewrite the full piece with AI (creates a replacement job)' })}
           {generationFailed && storedDraftLikely && actionBtn(loading ? '↻ Loading draft…' : '↻ Load saved draft', { border: C.navy, fg: C.navy, disabled: busy || loading, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft body so you can edit it' })}
           {generationFailed && !storedDraftLikely && actionBtn('↻ Retry load', { border: C.navy, fg: C.navy, disabled: busy, onClick: () => void loadDetail({ body: true }), title: 'Fetch the stored draft again' })}
         </div>
@@ -6040,8 +6018,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [region, setRegion] = React.useState<Region>('US')
   const [discoverRegion, setDiscoverRegion] = React.useState<DiscoverScanRegion>('ALL')
   const [tone, setTone] = React.useState<Tone>('educational')
-  const [aiProvider, setAiProvider] = React.useState(DEFAULT_DRAFT_PIN)
-  const [reviewModel, setReviewModel] = React.useState(DEFAULT_REVIEW_PIN)
+  const [aiProvider, setAiProvider] = React.useState<string>(DEFAULT_DRAFT_PIN)
+  const [reviewModel, setReviewModel] = React.useState<string>(DEFAULT_REVIEW_PIN)
   const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')
@@ -8727,7 +8705,7 @@ const controller = new AbortController()
             subtitle="System configurator: manage AI provider keys, connect Google Search Console, audit site health, and maintain the deep interlink registry — all from one place."
             chapterKey="configure"
             scope={[
-              { chip: '🔑 AI keys', text: 'Manage API keys for every content provider (OpenAI, Nemotron, Grok, DeepSeek, GLM, Gemini, and more).' },
+              { chip: '🔑 AI keys', text: 'Manage API keys for the two commissioned providers: Grok 4.6 and DeepSeek V4.1 Flash.' },
               { chip: '🔗 GSC', text: 'Connect Search Console via OAuth or service-account JSON. Live status with green / amber / red indicator.' },
               { chip: '📈 GA4', text: 'Wire Google Analytics 4 (same service account as GSC) so the engine consumes landing-page sessions.' },
               { chip: '◇ Ubersuggest', text: 'Authorize the official Ubersuggest MCP over OAuth from this tab — connect or disconnect at will.' },

@@ -17,6 +17,7 @@
 import React from 'react'
 import AdminRankingModel from './admin-ranking-model'
 import { StudioModelHostSelect } from './studio-model-host-select'
+import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
 import { FUNNEL_ACTION_LABELS } from '@/lib/seoEngine/rankingModel'
 
 const C = {
@@ -129,10 +130,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const [expandedPlan, setExpandedPlan] = React.useState<string | null>(null)
   const [stageFilter, setStageFilter] = React.useState<string>('all')
   const [countryFilter, setCountryFilter] = React.useState<string>('all')
-  // Discover-stage engine pin for the planner narrative briefs — the engine
-  // pair (Claude Opus 5 lead + Grok complement) is the default; Qwen3.6 27B
-  // via Entrim and other command-host pins are selectable.
-  const [engineModelPin, setEngineModelPin] = React.useState<string>('')
+  // Discover-stage engine pin for the planner narrative briefs — Grok 4.6 is
+  // the lane default and first-party DeepSeek V4.1 Flash is the peer choice.
+  const [engineModelPin, setEngineModelPin] = React.useState<string>(DEFAULT_DRAFT_PIN)
   const [ilStage, setIlStage] = React.useState<string>('visa')
   const [ilCountry, setIlCountry] = React.useState<string>('CA')
   const [gateDraft, setGateDraft] = React.useState<string>('')
@@ -654,7 +654,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
               </select>
               <StudioModelHostSelect
                 lane="command"
-                pin={engineModelPin || 'runbios-claude-opus'}
+                pin={engineModelPin}
                 onPinChange={setEngineModelPin}
                 modelAriaLabel="Discover planner AI model"
                 hostAriaLabel="Discover planner AI provider"

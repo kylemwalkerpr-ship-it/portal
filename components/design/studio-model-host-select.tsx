@@ -12,6 +12,14 @@ import {
   type StudioHostId,
 } from '@/lib/contentAiCatalog'
 
+/**
+ * The single Content Studio model × host picker.
+ *
+ * Exactly two commissioned choices are offered in every lane. A saved legacy
+ * pin is an explicit "Reselect provider" state — no preselected Grok and no
+ * hidden default; the two commissioned choices stay available until one is
+ * picked.
+ */
 export function StudioModelHostSelect(props: {
   lane: StudioLane
   pin: string
@@ -25,9 +33,14 @@ export function StudioModelHostSelect(props: {
 }) {
   const models = modelsForLane(props.lane)
   const parsed = parseStudioPin(props.pin)
-  const modelId = (models.some((m) => m.id === parsed.model.id) ? parsed.model.id : models[0]?.id) as StudioModelId
-  const hosts = hostsForModel(modelId, props.lane)
-  const hostId = (hosts.some((h) => h.id === parsed.host.id) ? parsed.host.id : hosts[0]?.id) as StudioHostId
+  const legacyValue = parsed.kind === 'needs_selection' ? parsed.legacyValue : ''
+  const selectedModel = parsed.kind === 'commissioned' && models.some((m) => m.id === parsed.model.id)
+    ? parsed.model.id
+    : models[0]?.id
+  const hosts = selectedModel ? hostsForModel(selectedModel, props.lane) : []
+  const hostId = parsed.kind === 'commissioned' && hosts.some((h) => h.id === parsed.host.id)
+    ? parsed.host.id
+    : hosts[0]?.id
   const showHost = hosts.length > 1
 
   const mark = (pin: string, label: string) => {
@@ -44,17 +57,22 @@ export function StudioModelHostSelect(props: {
   return (
     <div style={wrap}>
       <select
-        value={modelId}
+        value={legacyValue ? '' : (selectedModel as StudioModelId | undefined) || ''}
         disabled={props.disabled}
         aria-label={props.modelAriaLabel || 'AI model'}
         onChange={(e) => {
           const nextModel = e.target.value as StudioModelId
           const nextHosts = hostsForModel(nextModel, props.lane)
           const keep = nextHosts.some((h) => h.id === hostId) ? hostId : nextHosts[0]?.id
-          props.onPinChange(pinFor(nextModel, keep || nextHosts[0]?.id || 'entrim'))
+          if (nextModel && keep) props.onPinChange(pinFor(nextModel, keep))
         }}
         style={props.selectStyle}
       >
+        {legacyValue ? (
+          <option value="" disabled>
+            {`⚠ Reselect provider — saved pin "${legacyValue}" is retired`}
+          </option>
+        ) : null}
         {models.map((m) => (
           <option key={m.id} value={m.id}>
             {modelPickerLabel(m, props.lane)}
@@ -66,7 +84,9 @@ export function StudioModelHostSelect(props: {
           value={hostId}
           disabled={props.disabled}
           aria-label={props.hostAriaLabel || 'AI provider'}
-          onChange={(e) => props.onPinChange(pinFor(modelId, e.target.value as StudioHostId))}
+          onChange={(e) => {
+            if (selectedModel) props.onPinChange(pinFor(selectedModel as StudioModelId, e.target.value as StudioHostId))
+          }}
           style={props.selectStyle}
         >
           {hosts.map((h) => (
@@ -75,7 +95,7 @@ export function StudioModelHostSelect(props: {
             </option>
           ))}
         </select>
-      ) : hosts[0] ? (
+      ) : !legacyValue && hosts[0] ? (
         <span style={{ fontSize: 10, opacity: 0.7, whiteSpace: 'nowrap' }}>{hosts[0].label}</span>
       ) : null}
     </div>

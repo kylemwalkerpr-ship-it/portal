@@ -1,5 +1,5 @@
 import { canonicalizeRunbiosPin, isRunbiosPin, RUNBIOS_SLOTS } from '@/lib/runbiosCatalog'
-import { pinFor, parseStudioPin } from '@/lib/contentAiCatalog'
+import { parseStudioPin } from '@/lib/contentAiCatalog'
 import { providerDef, AI_PROVIDERS, DEFAULT_PROVIDER_ORDER } from '@/lib/aiKeyVault'
 
 describe('Run BiOS configurator catalog (retired)', () => {
@@ -29,8 +29,8 @@ describe('Run BiOS configurator catalog (retired)', () => {
     // Run BiOS slots are gone from both the vault and the studio pickers.
     expect(providerDef('runbios-deepseek-pro')).toBeUndefined()
     expect(parseStudioPin('runbios-adaptive')).toMatchObject({
-      model: { id: 'grok-4.6' },
-      host: { id: 'xai' },
+      kind: 'needs_selection',
+      legacyValue: 'runbios-adaptive',
     })
     expect(canonicalizeRunbiosPin('runbios')).toBe('runbios-glm-53-flash')
     expect(isRunbiosPin('runbios-qwen')).toBe(true)
