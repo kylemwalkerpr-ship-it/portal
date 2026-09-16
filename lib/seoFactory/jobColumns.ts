@@ -26,8 +26,10 @@ export const JOB_LIST_COLUMNS = [
   'pr_url',
   'pr_number',
   'ai_provider',
+  'actual_provider',
   'requested_model',
   'actual_model',
+  'provider_error_class',
   'word_count',
   'seo_score',
   'primary_keyword',
@@ -186,6 +188,9 @@ export const JOB_LINEAGE_COLUMNS = [
   'topic',
   'status',
   'execution_stage',
+  'ai_provider',
+  'actual_provider',
+  'provider_error_class',
   'contract_id',
   'contract_version',
   'contract_hash',
@@ -193,3 +198,55 @@ export const JOB_LINEAGE_COLUMNS = [
   'regeneration_mode',
   'regeneration_reason',
 ].join(',')
+
+/**
+ * Provider-parity additive columns
+ * (`supabase/migrations/20260915_content_studio_provider_parity.sql`, which is
+ * INTENTIONALLY UNAPPLIED). Until it is applied, a SELECT projection naming
+ * either column fails with a missing-column/schema-cache error, so jobs reads
+ * retry once without ONLY these two columns.
+ */
+export const JOB_PROVIDER_PARITY_COLUMNS = ['actual_provider', 'provider_error_class'] as const
+
+/**
+ * True only for a missing-column / stale-schema-cache error whose message
+ * names one of the provider-parity columns. Unrelated database errors must
+ * never be hidden by the read-compatibility retry.
+ */
+export function isProviderParityColumnError(message: unknown): boolean {
+  const text = String(message ?? '')
+  if (!text) return false
+  if (!/(?:^|[^a-z_])(?:actual_provider|provider_error_class)(?:[^a-z_]|$)/i.test(text)) return false
+  return /does not exist|doesn't exist|schema cache|could not find|unknown column|not found|missing/i.test(text)
+}
+
+/**
+ * Drop ONLY the provider-parity columns from a PostgREST select projection,
+ * preserving every other column and JSON-path alias. Never returns an empty
+ * projection.
+ */
+export function stripProviderParityColumns(projection: string): string {
+  const kept = String(projection ?? '')
+    .split(',')
+    .map((column) => column.trim())
+    .filter((column) => (
+      column
+      && !(JOB_PROVIDER_PARITY_COLUMNS as readonly string[]).includes(column)
+    ))
+  return (kept.length ? kept : ['id']).join(',')
+}
+
+/**
+ * Pre-migration-safe RETURNING projections for content_jobs mutations.
+ *
+ * A mutation's select list is part of the SAME single PostgREST statement, so
+ * naming an additive, intentionally-unapplied provider-parity column fails the
+ * entire write. Replaying the builder after that error would execute the
+ * mutation a second time, so mutations must request the stripped form on the
+ * FIRST and ONLY call — never through `runWithProviderParityCompat` (read-only)
+ * and never retried. Mutation responses omit `actual_provider` /
+ * `provider_error_class` until a subsequent GET/list read (whose fallback is
+ * pure read-only) refreshes them.
+ */
+export const JOB_OPEN_MUTATION_COLUMNS = stripProviderParityColumns(JOB_OPEN_COLUMNS)
+export const JOB_MUTATE_MUTATION_COLUMNS = stripProviderParityColumns(JOB_MUTATE_COLUMNS)

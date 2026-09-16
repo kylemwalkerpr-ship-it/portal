@@ -18,6 +18,7 @@ import {
 } from './writingContractStore'
 import type { SealedBrief } from './sealedBrief'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import { canonicalCommissionedPin, commissionedProvider } from '@/lib/contentAiRegistry'
 
 export class OpportunityAlreadyReservedError extends Error {
   readonly jobId: string
@@ -309,13 +310,32 @@ export async function finalizeSuggestBriefContract(input: {
 
   const contract = await persistWritingContract(db, built.contract, input.session.reservation.jobId)
   await attachWritingContractToJob(db, input.session.reservation.jobId, contract)
-  if (input.actualModel) {
-    await db
+  // Attach the requested provider/model to the durable job identity alongside
+  // the immutable contract. ai_provider stays the requested/owner pin
+  // (canonicalized when commissioned, verbatim when legacy/historical).
+  // requested_model is the commissioned registry API model (`grok-4.6` /
+  // `deepseek-flash`) derived from that pin — the stable pin is never
+  // written to a model column. A contract with no commissioned pin writes no
+  // model (nothing is invented, no legacy pin is conflated with a model id).
+  const requestedRaw = String(contract.requestedModel || '').trim()
+  const requestedPin = canonicalCommissionedPin(requestedRaw)
+  const requestedApiModel = requestedPin ? commissionedProvider(requestedPin).apiModel : null
+  const identityPatch: Record<string, unknown> = {}
+  if (requestedRaw) {
+    identityPatch.ai_provider = requestedPin ?? requestedRaw
+    if (requestedApiModel) identityPatch.requested_model = requestedApiModel
+  }
+  if (input.actualModel) identityPatch.actual_model = input.actualModel
+  if (Object.keys(identityPatch).length) {
+    const identityResult = await db
       .from('content_jobs')
-      .update({ actual_model: input.actualModel })
+      .update(identityPatch)
       .eq('id', input.session.reservation.jobId)
       .eq('contract_id', contract.contractId)
       .eq('contract_hash', contract.contractHash)
+    if ((identityResult as { error?: { message?: string } } | null)?.error) {
+      throw new Error(`failed to attach requested provider/model to job: ${(identityResult as { error: { message?: string } }).error.message}`)
+    }
   }
   return contract
 }

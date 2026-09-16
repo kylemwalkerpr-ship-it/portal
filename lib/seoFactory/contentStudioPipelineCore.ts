@@ -24,6 +24,18 @@ import type { WritingContractV2 } from './writingContract'
 import { BriefInvalidError } from './sealedBrief'
 import { resolveOwner } from './ownership'
 import {
+  ProviderDestinationViolationError,
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+  commissionedProvider,
+} from '@/lib/contentAiRegistry'
+import {
+  UNAPPLIED_COLUMN_ERROR_RE,
+  appendProviderAttempt,
+  mergeProviderAudit,
+  stripUnappliedColumns,
+} from './persistContentJobCore'
+import {
   assertContentStudioExecution,
   claimContentStudioExecution,
   CONTENT_STUDIO_LEASE_RENEW_MS,
@@ -53,6 +65,41 @@ function failureStage(error: unknown, state: ContentStudioExecutionState): strin
   const message = error instanceof Error ? error.message : String(error || '')
   if (/evidence|source|research/i.test(message)) return 'needs_research'
   return 'brief_invalid'
+}
+
+/** Granular provider failure class persisted in `content_jobs.provider_error_class` (design §4.2). */
+export type ProviderErrorClass =
+  | 'auth'
+  | 'quota'
+  | 'rate_limit'
+  | 'timeout'
+  | 'malformed'
+  | 'empty'
+  | 'unavailable'
+  | 'destination_violation'
+  | 'unusable_generation'
+  | 'selection_required'
+
+/**
+ * Classify a provider failure into the migration's closed class set. Returns
+ * null for failures that are not provider failures (contract/ownership/
+ * evidence errors) so `provider_error_class` never mislabels them. The
+ * message is matched, never persisted.
+ */
+export function providerErrorClassFor(error: unknown): ProviderErrorClass | null {
+  if (error instanceof ProviderSelectionRequiredError) return 'selection_required'
+  if (error instanceof ProviderDestinationViolationError) return 'destination_violation'
+  const message = error instanceof Error ? error.message : String(error || '')
+  if (!message) return null
+  if (/\b401\b|\b403\b|unauthori[sz]ed|forbidden|invalid[ ._-]*(api[ ._-]*)?key|authentication|oauth|credentials?/i.test(message)) return 'auth'
+  if (/\b402\b|quota|billing|credit|payment required|insufficient|exhausted/i.test(message)) return 'quota'
+  if (/\b429\b|rate[ ._-]*limit|too many requests|resource.?exhausted|overload|high[ ._-]*demand/i.test(message)) return 'rate_limit'
+  if (/\b504\b|\b524\b|gateway timeout|timeout|timed out|deadline|abort(ed)?|ETIMEDOUT/i.test(message)) return 'timeout'
+  if (/empty content|empty response|returned empty|stream returned empty|empty sse/i.test(message)) return 'empty'
+  if (/unusable|truncated \(token limit\)|reasoning|finish_reason/i.test(message)) return 'unusable_generation'
+  if (/malformed|invalid json|json parse|unexpected token|schema/i.test(message)) return 'malformed'
+  if (/\b500\b|\b502\b|\b503\b|\b522\b|\b529\b|unavailable|fetch failed|network error|econnreset|etimedout|socket hang up|not configured|not found|connection/i.test(message)) return 'unavailable'
+  return null
 }
 
 function createStrictState(
@@ -176,27 +223,72 @@ async function persistExecutionFailure(input: {
     })
     const db = createSupabaseAdminClient()
     const message = input.error instanceof Error ? input.error.message : String(input.error || 'Content Studio execution failed')
+    const stage = failureStage(input.error, input.state)
+    const errorClass = providerErrorClassFor(input.error)
+    const requestedPin = canonicalCommissionedPin(input.contract.requestedModel)
+      ?? canonicalCommissionedPin(input.request.aiProvider)
     const patch: Record<string, unknown> = {
       status: 'failed',
-      execution_stage: failureStage(input.error, input.state),
+      execution_stage: stage,
       error_message: message.slice(0, 1000),
       execution_owner: null,
       execution_lease_expires_at: null,
     }
+    if (errorClass) patch.provider_error_class = errorClass
     if (input.state.acceptedContent) {
       patch.content = input.state.acceptedContent
       patch.word_count = input.state.acceptedContent.trim().split(/\s+/).filter(Boolean).length
+      // Only an execution that produced an accepted artifact may name the
+      // provider/model that produced it (design §3.3 invariant 1).
+      if (requestedPin) {
+        patch.actual_provider = requestedPin
+        patch.actual_model = commissionedProvider(requestedPin).apiModel
+      }
     }
-    let query = db
-      .from('content_jobs')
-      .update(patch)
-      .eq('id', jobId)
-      .eq('opportunity_id', input.contract.opportunity.id)
-      .eq('contract_id', input.contract.contractId)
-      .eq('contract_hash', input.contract.contractHash)
-      .in('status', ['pending', 'drafting', 'processing', 'publishing', 'pr_created'])
-    query = ownerCondition(query, input.claim)
-    const result = await query.select('id').maybeSingle()
+    // Merge the bounded provider attempt under the same fence. Read first so
+    // the audited body/score is preserved; lineage never blocks the failure.
+    try {
+      let auditQuery = db
+        .from('content_jobs')
+        .select('audit_json')
+        .eq('id', jobId)
+        .eq('opportunity_id', input.contract.opportunity.id)
+        .eq('contract_id', input.contract.contractId)
+        .eq('contract_hash', input.contract.contractHash)
+      auditQuery = ownerCondition(auditQuery, input.claim)
+      const current = await auditQuery.maybeSingle()
+      const priorAudit = (current as { data?: { audit_json?: unknown } } | null)?.data?.audit_json
+      const attributedPin = input.state.acceptedContent ? requestedPin : null
+      const attributedModel = attributedPin ? commissionedProvider(attributedPin).apiModel : null
+      patch.audit_json = mergeProviderAudit(priorAudit, {
+        requested: requestedPin ?? input.contract.requestedModel ?? null,
+        actual: attributedPin,
+        requestedModel: attributedModel,
+        actualModel: attributedModel,
+        pinSource: input.state.providerPinSource,
+        attempts: appendProviderAttempt(
+          (priorAudit as { provider?: { attempts?: unknown } } | null | undefined)?.provider?.attempts,
+          { stage, attempt: input.claim.attempt, outcome: 'error', failureClass: errorClass, at: new Date().toISOString() },
+        ),
+      })
+    } catch { /* provider lineage must never block the fenced failure write */ }
+
+    const failureWrite = async (target: Record<string, unknown>) => {
+      let writeQuery = db
+        .from('content_jobs')
+        .update(target)
+        .eq('id', jobId)
+        .eq('opportunity_id', input.contract.opportunity.id)
+        .eq('contract_id', input.contract.contractId)
+        .eq('contract_hash', input.contract.contractHash)
+        .in('status', ['pending', 'drafting', 'processing', 'publishing', 'pr_created'])
+      writeQuery = ownerCondition(writeQuery, input.claim)
+      return writeQuery.select('id').maybeSingle()
+    }
+    let result = await failureWrite(patch)
+    if (result.error && UNAPPLIED_COLUMN_ERROR_RE.test(result.error.message || '')) {
+      result = await failureWrite(stripUnappliedColumns(patch))
+    }
     if (result.error) {
       console.warn('[contentStudioPipeline] failure persistence skipped:', result.error.message)
       return false
@@ -246,6 +338,11 @@ async function persistExecutionStage(input: {
     execution_owner: null,
     execution_lease_expires_at: null,
   }
+  // The commissioned provider that produced this result owns the artifact; a
+  // successful stage clears any prior provider failure class.
+  const actualPin = canonicalCommissionedPin(input.result.provider)
+  if (actualPin) patch.actual_provider = actualPin
+  patch.provider_error_class = null
   if (publicationPhase) patch.publication_phase = publicationPhase
 
   const db = createSupabaseAdminClient()
@@ -286,15 +383,21 @@ async function persistExecutionStage(input: {
     patch.audit_json = withPublicationManifest(current.data.audit_json, manifest)
   }
 
-  let updatedQuery = db
-    .from('content_jobs')
-    .update(patch)
-    .eq('id', jobId)
-    .eq('opportunity_id', input.contract.opportunity.id)
-    .eq('contract_id', input.contract.contractId)
-    .eq('contract_hash', input.contract.contractHash)
-  updatedQuery = ownerCondition(updatedQuery, input.claim)
-  const updated = await updatedQuery.select('id').maybeSingle()
+  const stageWrite = async (target: Record<string, unknown>) => {
+    let updatedQuery = db
+      .from('content_jobs')
+      .update(target)
+      .eq('id', jobId)
+      .eq('opportunity_id', input.contract.opportunity.id)
+      .eq('contract_id', input.contract.contractId)
+      .eq('contract_hash', input.contract.contractHash)
+    updatedQuery = ownerCondition(updatedQuery, input.claim)
+    return updatedQuery.select('id').maybeSingle()
+  }
+  let updated = await stageWrite(patch)
+  if (updated.error && UNAPPLIED_COLUMN_ERROR_RE.test(updated.error.message || '')) {
+    updated = await stageWrite(stripUnappliedColumns(patch))
+  }
   if (updated.error || !updated.data?.id) {
     throw new Error(`contracted execution stage persistence failed: ${updated.error?.message || 'execution ownership changed or lease expired'}`)
   }

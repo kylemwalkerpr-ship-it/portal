@@ -18,14 +18,16 @@ import { jobPassesShipGate, mergeAuditJsonPreservingGate, withSlimAuditJson } fr
 import {
   JOB_BODY_COLUMNS,
   JOB_LINEAGE_COLUMNS,
-  JOB_LIST_COLUMNS,
   JOB_LIST_WITH_GATE_COLUMNS,
   JOB_MUTATE_COLUMNS,
-  JOB_OPEN_COLUMNS,
+  JOB_MUTATE_MUTATION_COLUMNS,
+  JOB_OPEN_MUTATION_COLUMNS,
   JOB_OPEN_WITH_AUDIT_COLUMNS,
+  isProviderParityColumnError,
   jobCompetingPages,
   projectListJobGate,
   slimJobForClient,
+  stripProviderParityColumns,
 } from '@/lib/seoFactory/jobColumns'
 
 function sb() {
@@ -33,6 +35,36 @@ function sb() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
+}
+
+type ProviderParityQueryResponse = { data: unknown; error: { message?: string | null } | null }
+
+/**
+ * Pre-migration read compatibility (Task 5 P2-C). `actual_provider` /
+ * `provider_error_class` are additive columns whose migration
+ * (`20260915_content_studio_provider_parity.sql`) is intentionally unapplied,
+ * so a jobs projection naming them fails until it is applied. Retry the exact
+ * same read without ONLY those two columns — and only for that exact
+ * missing-column/schema-cache error — preserving every filter, fence,
+ * pagination, and response semantic. Unrelated DB errors are never retried or
+ * hidden, and after migration the first attempt returns the new fields
+ * normally.
+ *
+ * READS ONLY. Never pass an UPDATE/INSERT/DELETE/RPC or any other
+ * side-effecting builder through this helper: retrying one after an error
+ * would replay the mutation. Mutations use the pre-stripped
+ * `JOB_OPEN_MUTATION_COLUMNS` / `JOB_MUTATE_MUTATION_COLUMNS` projections on
+ * their first and only call.
+ */
+async function runWithProviderParityCompat<T extends ProviderParityQueryResponse>(
+  projection: string,
+  run: (columns: string) => PromiseLike<T>,
+): Promise<T> {
+  const result = await run(projection)
+  if (result?.error && isProviderParityColumnError(result.error.message)) {
+    return run(stripProviderParityColumns(projection))
+  }
+  return result
 }
 
 /**
@@ -125,7 +157,9 @@ export async function GET(request: NextRequest) {
       const wantLineage = searchParams.get('lineage') === '1'
       // P0-SHIP-3: open includes slimmed audit_json so Approve can see shipReady.
       const cols = bodyOnly ? JOB_BODY_COLUMNS : JOB_OPEN_WITH_AUDIT_COLUMNS
-      const { data, error } = await supabase.from('content_jobs').select(cols).eq('id', id).single()
+      const { data, error } = await runWithProviderParityCompat(cols, (columns) =>
+        supabase.from('content_jobs').select(columns).eq('id', id).single(),
+      )
       if (error) throw new Error(error.message)
       const job = data as unknown as Record<string, unknown>
       if (typeof job.content === 'string' && job.content.length > 400_000) {
@@ -150,7 +184,9 @@ export async function GET(request: NextRequest) {
           lineage.unshift(current)
           const sourceId = String(current.source_job_id || '')
           if (!sourceId) break
-          const { data: source } = await supabase.from('content_jobs').select(JOB_LINEAGE_COLUMNS).eq('id', sourceId).maybeSingle()
+          const { data: source } = await runWithProviderParityCompat(JOB_LINEAGE_COLUMNS, (columns) =>
+            supabase.from('content_jobs').select(columns).eq('id', sourceId).maybeSingle(),
+          )
           if (!source) break
           current = source as unknown as Record<string, unknown>
         }
@@ -162,10 +198,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (ids.length) {
-      const { data, error } = await supabase
-        .from('content_jobs')
-        .select(includeContent ? '*' : JOB_LIST_WITH_GATE_COLUMNS)
-        .in('id', ids.slice(0, 50))
+      const idsCols = includeContent ? '*' : JOB_LIST_WITH_GATE_COLUMNS
+      const { data, error } = await runWithProviderParityCompat(idsCols, (columns) =>
+        supabase
+          .from('content_jobs')
+          .select(columns)
+          .in('id', ids.slice(0, 50)),
+      )
       if (error) throw new Error(error.message)
       const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((j) =>
         includeContent ? withSlimAuditJson(slimJobForClient(j)) : projectListJobGate(j),
@@ -200,47 +239,50 @@ export async function GET(request: NextRequest) {
 
     // List without content/event_log/audit_json — those blow Worker CPU + payload size
     const selectCols = includeContent ? '*' : JOB_LIST_WITH_GATE_COLUMNS
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query: any = supabase
-      .from('content_jobs')
-      .select(selectCols)
-      .order('updated_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+    const buildListQuery = (columns: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query: any = supabase
+        .from('content_jobs')
+        .select(columns)
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + limit - 1)
 
-    if (status) {
-      if (status.includes(',')) {
-        query = query.in(
-          'status',
-          status
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean),
-        )
-      } else {
-        query = query.eq('status', status)
+      if (status) {
+        if (status.includes(',')) {
+          query = query.in(
+            'status',
+            status
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean),
+          )
+        } else {
+          query = query.eq('status', status)
+        }
       }
-    }
-    if (region) query = query.eq('region', region)
-    if (host) query = query.eq('owner_host', host)
-    if (repo) {
-      // Avoid leading-wildcard ilike which forces full scan on Free plan CPU
-      const safe = repo.replace(/[%_]/g, '').trim()
-      if (safe) query = query.ilike('target_repo', `${safe}%`)
-    }
-    if (q) {
-      // Avoid multi-column or() with leading-wildcards which is the #1 CPU hog.
-      // Use textSearch (full-text) on topic/title which has natural language.
-      // content_path contains file paths like 'landing-page/content/blog/foo.md'
-      // and is not suitable for full-text search.
-      const safe = q.replace(/[^a-zA-Z0-9\s-]/g, ' ').trim().slice(0, 60)
-      if (safe) {
-        // Single full-text search on topic (most relevant column for keyword matching)
-        const tsquery = safe.split(/\s+/).filter(Boolean).map((w: string) => `${w}:*`).join(' & ')
-        query = query.textSearch('topic', tsquery, { config: 'english' })
+      if (region) query = query.eq('region', region)
+      if (host) query = query.eq('owner_host', host)
+      if (repo) {
+        // Avoid leading-wildcard ilike which forces full scan on Free plan CPU
+        const safe = repo.replace(/[%_]/g, '').trim()
+        if (safe) query = query.ilike('target_repo', `${safe}%`)
       }
+      if (q) {
+        // Avoid multi-column or() with leading-wildcards which is the #1 CPU hog.
+        // Use textSearch (full-text) on topic/title which has natural language.
+        // content_path contains file paths like 'landing-page/content/blog/foo.md'
+        // and is not suitable for full-text search.
+        const safe = q.replace(/[^a-zA-Z0-9\s-]/g, ' ').trim().slice(0, 60)
+        if (safe) {
+          // Single full-text search on topic (most relevant column for keyword matching)
+          const tsquery = safe.split(/\s+/).filter(Boolean).map((w: string) => `${w}:*`).join(' & ')
+          query = query.textSearch('topic', tsquery, { config: 'english' })
+        }
+      }
+      return query
     }
 
-    const { data, error } = await query
+    const { data, error } = await runWithProviderParityCompat(selectCols, buildListQuery)
     if (error) throw new Error(`Supabase query failed: ${error.message}`)
 
     const jobs = (data ?? []) as unknown as Array<Record<string, unknown>>
@@ -854,7 +896,9 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = sb()
     const mutateCols = action === 'append_log' ? 'id,event_log' : JOB_MUTATE_COLUMNS
-    const { data: jobRow, error } = await supabase.from('content_jobs').select(mutateCols).eq('id', id).single()
+    const { data: jobRow, error } = await runWithProviderParityCompat(mutateCols, (columns) =>
+      supabase.from('content_jobs').select(columns).eq('id', id).single(),
+    )
     if (error || !jobRow) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
@@ -913,7 +957,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update({ status: 'closed', closed_at: new Date().toISOString() })
         .eq('id', id)
-        .select(JOB_OPEN_COLUMNS)
+        .select(JOB_OPEN_MUTATION_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
@@ -962,7 +1006,7 @@ export async function PATCH(request: NextRequest) {
           .from('content_jobs')
           .update(patch)
           .eq('id', id)
-          .select(JOB_OPEN_COLUMNS)
+          .select(JOB_OPEN_MUTATION_COLUMNS)
           .single()
         if (upErr) throw upErr
         // Audit event for the operator timeline.
@@ -1071,7 +1115,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select(JOB_OPEN_COLUMNS)
+        .select(JOB_OPEN_MUTATION_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated, audit, plan, appliedRepairs: repaired.applied })
@@ -1130,40 +1174,41 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select(JOB_OPEN_COLUMNS)
+        .select(JOB_OPEN_MUTATION_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
     }
 
     if (action === 'duplicate') {
+      const duplicateRow = {
+        user_id: userId,
+        title: `${job.title || job.topic} (copy)`,
+        topic: job.topic,
+        content_type: job.content_type,
+        tone: job.tone,
+        region: job.region,
+        target_repo: job.target_repo,
+        status: 'drafting',
+        slug: job.slug,
+        content: job.content,
+        content_path: job.content_path,
+        ai_provider: job.ai_provider,
+        word_count: job.word_count,
+        seo_score: job.seo_score,
+        ship_mode: job.ship_mode || 'pr',
+        indexable: job.indexable,
+        canonical_url: job.canonical_url,
+        owner_host: job.owner_host,
+        primary_keyword: job.primary_keyword,
+        audit_json: job.audit_json,
+        gsc_json: job.gsc_json,
+        error_message: null,
+      }
       const { data: created, error: insErr } = await supabase
         .from('content_jobs')
-        .insert({
-          user_id: userId,
-          title: `${job.title || job.topic} (copy)`,
-          topic: job.topic,
-          content_type: job.content_type,
-          tone: job.tone,
-          region: job.region,
-          target_repo: job.target_repo,
-          status: 'drafting',
-          slug: job.slug,
-          content: job.content,
-          content_path: job.content_path,
-          ai_provider: job.ai_provider,
-          word_count: job.word_count,
-          seo_score: job.seo_score,
-          ship_mode: job.ship_mode || 'pr',
-          indexable: job.indexable,
-          canonical_url: job.canonical_url,
-          owner_host: job.owner_host,
-          primary_keyword: job.primary_keyword,
-          audit_json: job.audit_json,
-          gsc_json: job.gsc_json,
-          error_message: null,
-        })
-        .select(JOB_OPEN_COLUMNS)
+        .insert(duplicateRow)
+        .select(JOB_OPEN_MUTATION_COLUMNS)
         .single()
       if (insErr) throw insErr
       return NextResponse.json({ ok: true, job: created, duplicatedFrom: id })
@@ -1223,32 +1268,33 @@ export async function PATCH(request: NextRequest) {
         })
       } catch { /* keep previous audit */ }
 
+      const savePatch = {
+        content: String(content),
+        title: title || job.title,
+        content_type: job.content_type,
+        word_count: words,
+        seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
+        audit_json: audit
+          ? await mergeAuditJsonFresh(supabase, id, job.audit_json, {
+              ...audit,
+              model: job.audit_json?.model,
+            })
+          : job.audit_json,
+        error_message: null,
+        // Keep terminal states; otherwise mark as drafting after manual edit
+        status:
+          job.status === 'merged' || job.status === 'closed'
+            ? job.status
+            : job.status === 'pr_created'
+              ? 'pr_created'
+              : 'drafting',
+      }
       const { data: updated, error: upErr } = await supabase
         .from('content_jobs')
-        .update({
-          content: String(content),
-          title: title || job.title,
-          content_type: job.content_type,
-          word_count: words,
-          seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
-          audit_json: audit
-            ? await mergeAuditJsonFresh(supabase, id, job.audit_json, {
-                ...audit,
-                model: job.audit_json?.model,
-              })
-            : job.audit_json,
-          error_message: null,
-          // Keep terminal states; otherwise mark as drafting after manual edit
-          status:
-            job.status === 'merged' || job.status === 'closed'
-              ? job.status
-              : job.status === 'pr_created'
-                ? 'pr_created'
-                : 'drafting',
-        })
+        .update(savePatch)
         .eq('id', id)
         // P0-SHIP-4: return slimmed audit_json so Save cannot wipe the client gate stamp.
-        .select(JOB_MUTATE_COLUMNS)
+        .select(JOB_MUTATE_MUTATION_COLUMNS)
         .single()
       if (upErr) throw upErr
       return NextResponse.json({
@@ -1437,7 +1483,7 @@ export async function PATCH(request: NextRequest) {
         .from('content_jobs')
         .update(patch)
         .eq('id', id)
-        .select(JOB_OPEN_COLUMNS)
+        .select(JOB_OPEN_MUTATION_COLUMNS)
         .single()
 
       return NextResponse.json({
@@ -1498,7 +1544,7 @@ export async function PATCH(request: NextRequest) {
             ship_mode: 'autodeploy',
           })
           .eq('id', id)
-          .select(JOB_OPEN_COLUMNS)
+          .select(JOB_OPEN_MUTATION_COLUMNS)
           .single()
 
         // Authority Multiplexer: approve-merge → enqueue repurpose pack.
@@ -1599,7 +1645,7 @@ export async function PATCH(request: NextRequest) {
           .from('content_jobs')
           .update(patch)
           .eq('id', id)
-          .select(JOB_OPEN_COLUMNS)
+          .select(JOB_OPEN_MUTATION_COLUMNS)
           .single()
         if (upErr) throw upErr
         // Append an audit event for the operator timeline.
@@ -1800,7 +1846,7 @@ export async function PATCH(request: NextRequest) {
                   audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
                 })
                 .eq('id', id)
-                .select(JOB_OPEN_COLUMNS)
+                .select(JOB_OPEN_MUTATION_COLUMNS)
                 .single()
               // Authority Multiplexer: shipped pillar → enqueue repurpose pack.
               await enqueueRepurposeHook(job.canonical_url || plan.canonicalUrl || '', id)
@@ -1875,7 +1921,7 @@ export async function PATCH(request: NextRequest) {
             audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
           })
           .eq('id', id)
-          .select(JOB_OPEN_COLUMNS)
+          .select(JOB_OPEN_MUTATION_COLUMNS)
           .single()
 
         let monitor = null
