@@ -161,9 +161,35 @@ export async function POST(req: NextRequest) {
     let onTrackRate = 0
     let llmFailed = 0
     let interlinksStored = 0
+    let gscPersistStatus: string | null = null
+    let gscRowsProcessed = 0
+    let gscWindowEnd: string | null = null
+    let gscSyncedAt: string | null = null
+    let gscAttemptedAt: string | null = null
     const topScores: string[] = []
     const allPhaseErrors: string[] = []
     if (phase === 'all') {
+      // Measurement first: persist the rolling GSC query×page window so the
+      // planner/ranking/reward consumers in this same run can read it. A
+      // missing/unavailable connection is measurement truth — record it and
+      // mark the run partial, never fake a healthy zero.
+      try {
+        const { persistGscQueryPageRows } = await import('@/lib/seoFactory/gscPersistence')
+        const { createSupabaseAdminClient } = await import('@/lib/supabase')
+        const gsc = await persistGscQueryPageRows(createSupabaseAdminClient())
+        gscPersistStatus = gsc.status
+        gscRowsProcessed = gsc.rowsProcessed
+        gscWindowEnd = gsc.range.endDate
+        gscSyncedAt = gsc.syncedAt
+        gscAttemptedAt = gsc.attemptedAt
+        if (!gsc.ok) {
+          allPhaseErrors.push(`gsc-persist: ${gsc.status} — ${gsc.error || gsc.warnings[0] || 'no GSC rows persisted'}`)
+        }
+      } catch (gscErr) {
+        gscPersistStatus = 'failed'
+        gscAttemptedAt = new Date().toISOString()
+        allPhaseErrors.push(`gsc-persist: ${gscErr instanceof Error ? gscErr.message : 'failed'}`)
+      }
       const planned = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
       plans = planned.plans.length
       if (planned.persistErrors?.length) {
@@ -249,6 +275,9 @@ export async function POST(req: NextRequest) {
     }
     await recordEngineRun('daily', status, {
       phase,
+      ...(gscPersistStatus
+        ? { gscPersistStatus, gscRowsProcessed, gscWindowEnd, gscSyncedAt, gscAttemptedAt }
+        : {}),
       ingested: ingest.itemsStored,
       fetched: ingest.itemsFetched,
       aiSummarized: ingest.aiSummarized,
@@ -275,6 +304,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       phase,
+      ...(gscPersistStatus
+        ? { gscPersistStatus, gscRowsProcessed, gscWindowEnd, gscSyncedAt, gscAttemptedAt }
+        : {}),
       ingest: {
         fetched: ingest.itemsFetched,
         stored: ingest.itemsStored,

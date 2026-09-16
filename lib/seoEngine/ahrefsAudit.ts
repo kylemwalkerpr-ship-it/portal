@@ -4,7 +4,12 @@
  *
  * Env:
  *   AHREFS_API_KEY      — Bearer token
- *   AHREFS_PROJECT_ID   — default 9902912 (estate Site Audit project)
+ *   AHREFS_PROJECT_ID   — default 10381179 (current full-domain Site Audit
+ *                         project, scope *.yousafeconsultancy.com/*)
+ *
+ * Historical evidence: the 2026-08-17 legal crawl (project 9902912) is kept as
+ * an explicitly-labeled fallback. It is never presented as current evidence
+ * for the expected project.
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -14,7 +19,12 @@ import {
   resolveAhrefsIssueId,
 } from '@/lib/seoFactory/ahrefsIssues'
 
-export const DEFAULT_AHREFS_PROJECT_ID = '9902912'
+export const DEFAULT_AHREFS_PROJECT_ID = '10381179'
+
+/** Current expected project for all new/live fetches — env override wins. */
+export function resolveAhrefsProjectId(override?: string | null): string {
+  return String(override || process.env.AHREFS_PROJECT_ID || DEFAULT_AHREFS_PROJECT_ID)
+}
 
 export interface AhrefsIssueRow {
   issueId: string
@@ -155,12 +165,15 @@ export function issueCount(snap: AhrefsSnapshot | null | undefined, id: string):
 }
 
 export function fallbackLegalAhrefsSnapshot(): AhrefsSnapshot {
-  return snapshotFromOverview(LEGAL_AHREFS_CRAWL_2026_08_17.issues, {
+  const snap = snapshotFromOverview(LEGAL_AHREFS_CRAWL_2026_08_17.issues, {
     projectId: LEGAL_AHREFS_CRAWL_2026_08_17.project_id,
     date: LEGAL_AHREFS_CRAWL_2026_08_17.date,
     dateCompared: LEGAL_AHREFS_CRAWL_2026_08_17.date_compared,
     source: 'fallback',
   })
+  // Never stamp a historical placeholder with "now" — fetchedAt must reflect
+  // the real crawl time so clients can tell it is not fresh measurement.
+  return { ...snap, fetchedAt: LEGAL_AHREFS_CRAWL_2026_08_17.date }
 }
 
 export async function fetchAhrefsSiteAudit(opts: {
@@ -170,7 +183,7 @@ export async function fetchAhrefsSiteAudit(opts: {
 } = {}): Promise<AhrefsSnapshot> {
   const key = process.env.AHREFS_API_KEY
   if (!key) throw new Error('AHREFS_API_KEY is not configured')
-  const projectId = String(opts.projectId || process.env.AHREFS_PROJECT_ID || DEFAULT_AHREFS_PROJECT_ID)
+  const projectId = resolveAhrefsProjectId(opts.projectId)
   // Ahrefs expects YYYY-MM-DD — a full ISO timestamp 400s against the API.
   const date = opts.date || new Date().toISOString().slice(0, 10)
   const dateCompared = opts.dateCompared || new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
@@ -216,14 +229,17 @@ export async function persistAhrefsSnapshot(snap: AhrefsSnapshot): Promise<{ ok:
   }
 }
 
-export async function loadLatestAhrefsSnapshot(): Promise<AhrefsSnapshot | null> {
+export async function loadLatestAhrefsSnapshot(opts: { projectId?: string } = {}): Promise<AhrefsSnapshot | null> {
+  const expectedProjectId = resolveAhrefsProjectId(opts.projectId)
   try {
     const supabase = createSupabaseAdminClient()
-    // Prefer real (api/manual) snapshots. Hardcoded fallback rows are never a
-    // source of truth: they bury the last real crawl with fetched_at=now.
+    // Real (api/manual) snapshots ONLY, and only for the expected project: a
+    // different project's crawl must never be presented as current evidence.
+    // Hardcoded fallback rows are never a source of truth either.
     const { data, error } = await supabase
       .from('seo_ahrefs_snapshots')
       .select('project_id,fetched_at,crawl_date,date_compared,health_score,health_score_compared,cs_open,total_open,issues,source')
+      .eq('project_id', expectedProjectId)
       .neq('source', 'fallback')
       .order('fetched_at', { ascending: false })
       .limit(1)

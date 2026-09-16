@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { fetchQueryPageRows } from '@/lib/gscAnalytics'
-import { upsertSeoGscRows } from '@/lib/seoFactory/gscRows'
-import { saveSnapshotVersion } from '@/lib/seoFactory/gscHistory'
+import { persistGscQueryPageRows } from '@/lib/seoFactory/gscPersistence'
 
 /**
  * POST /api/content-studio/gsc/sync
  * Fetch query×page Search Analytics and upsert into seo_gsc_rows.
  * Default window: 90 days. Presets: 28 | 90 | 180 | 365.
+ *
+ * Truthful measurement states:
+ *   live        → 200 ok:true, measured rows
+ *   empty       → 200 ok:true status:'empty' (a live query with zero rows is
+ *                 NOT unavailable and does not imply demand=0)
+ *   unavailable → 503 ok:false (never report a missing connection as a
+ *                 healthy zero)
+ *   failed      → 502 ok:false
  */
 export async function POST(request: NextRequest) {
   try {
@@ -21,46 +27,48 @@ export async function POST(request: NextRequest) {
     const days = [28, 90, 180, 365].includes(daysRaw) ? daysRaw : 90
     const siteUrlOverride = typeof body.siteUrl === 'string' ? body.siteUrl : undefined
 
-    const fetched = await fetchQueryPageRows({ days, siteUrl: siteUrlOverride })
-    if (!fetched.configured) {
+    const result = await persistGscQueryPageRows(auth.db, { days, siteUrl: siteUrlOverride })
+
+    if (result.status === 'unavailable') {
       return NextResponse.json({
-        ok: true,
+        ok: false,
+        status: result.status,
         rowsProcessed: 0,
-        range: fetched.range,
-        siteUrl: fetched.siteUrl,
+        range: result.range,
+        siteUrl: result.siteUrl,
         source: 'unconfigured',
-        warnings: fetched.warnings,
-      })
+        syncedAt: result.syncedAt,
+        attemptedAt: result.attemptedAt,
+        warnings: result.warnings,
+        error: result.warnings[0] || 'GSC connection unavailable',
+      }, { status: 503 })
     }
 
-    const { upserted } = await upsertSeoGscRows(auth.db, fetched.rows)
-    if (fetched.siteUrl) {
-      try {
-        await saveSnapshotVersion(
-          fetched.siteUrl,
-          fetched.range.endDate,
-          fetched.rows.length,
-          JSON.stringify({
-            rows: fetched.rows.map((r) => ({
-              keys: [r.query, r.page],
-              clicks: r.clicks,
-              impressions: r.impressions,
-              ctr: r.ctr,
-              position: r.position,
-            })),
-          }),
-        )
-      } catch {
-        /* snapshot is best-effort; rows are the source of truth */
-      }
+    if (result.status === 'failed') {
+      return NextResponse.json({
+        ok: false,
+        status: result.status,
+        rowsProcessed: 0,
+        range: result.range,
+        siteUrl: result.siteUrl,
+        source: 'live',
+        syncedAt: result.syncedAt,
+        attemptedAt: result.attemptedAt,
+        warnings: result.warnings,
+        error: result.error || 'GSC sync failed',
+      }, { status: 502 })
     }
 
     return NextResponse.json({
       ok: true,
-      rowsProcessed: upserted,
-      range: fetched.range,
-      siteUrl: fetched.siteUrl,
+      status: result.status,
+      rowsProcessed: result.rowsProcessed,
+      range: result.range,
+      siteUrl: result.siteUrl,
       source: 'live',
+      syncedAt: result.syncedAt,
+      attemptedAt: result.attemptedAt,
+      warnings: result.warnings,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'GSC sync failed'
