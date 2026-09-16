@@ -1,3 +1,5 @@
+import { resolveCategoryOrSubcategory } from './categories'
+
 const MARKET_HOST = 'market.yousafeconsultancy.com'
 
 /**
@@ -38,4 +40,35 @@ export function marketplaceCategoryHref(categoryId: string): string {
   // default immigration category, matching the engine helper's fallback.
   const id = String(categoryId || '').trim() || 'immigration'
   return getMarketplaceCanonicalUrl(`/categories/${id}`)
+}
+
+/**
+ * True when `categoryId` resolves to a real top-level category or
+ * subcategory in the canonical catalogue. This is the single validity
+ * authority used by persistence guards and reconciliation tooling — no
+ * second catalogue is ever introduced.
+ */
+export function isKnownMarketplaceCategoryId(categoryId: string): boolean {
+  const id = String(categoryId || '').trim()
+  if (!id) return false
+  return resolveCategoryOrSubcategory(id) !== null
+}
+
+/**
+ * Strict parser for the canonical public Marketplace category URL shape:
+ *   https://market.yousafeconsultancy.com/categories/<valid-id>
+ *
+ * Returns the category id ONLY for an exact match with a real catalogue id.
+ * Query strings, fragments, trailing slashes, extra path segments, the
+ * retired `/marketplace` prefix, the Portal/auth host, and unknown ids all
+ * return null — callers must fail closed rather than normalize or guess.
+ */
+export function parseCanonicalMarketplaceCategoryUrl(url: string): { categoryId: string } | null {
+  const raw = String(url || '')
+  const prefix = `${getMarketplaceBaseUrl()}/categories/`
+  if (!raw.startsWith(prefix)) return null
+  const id = raw.slice(prefix.length)
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return null
+  if (!isKnownMarketplaceCategoryId(id)) return null
+  return { categoryId: id }
 }

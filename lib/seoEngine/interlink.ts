@@ -37,6 +37,7 @@ import { getAllSubcategories, getCategoryById } from '@/lib/categories'
 import {
   getMarketplaceBaseUrl,
   marketplaceCategoryHref as canonicalMarketplaceCategoryHref,
+  parseCanonicalMarketplaceCategoryUrl,
 } from '@/lib/marketplaceSeo'
 
 export type InterlinkReason =
@@ -280,8 +281,40 @@ export async function persistPlannerInterlinks(
   return stored
 }
 
+/**
+ * Fail-closed validation for `marketplace_cta` edges.
+ *
+ * Every marketplace_cta edge must persist exactly the canonical public
+ * Marketplace category URL (`https://market.yousafeconsultancy.com/categories/<id>`
+ * with a real category/subcategory id) and targetHost 'market'. Returns a
+ * description of the first offending edge, or null when all marketplace_cta
+ * edges are canonical. Non-marketplace_cta reasons are deliberately untouched:
+ * legitimate Portal/auth targets remain allowed for other reasons.
+ */
+export function findNoncanonicalMarketplaceCta(edges: InterlinkEdge[]): string | null {
+  for (const edge of edges) {
+    if (edge.reason !== 'marketplace_cta') continue
+    const canonical = parseCanonicalMarketplaceCategoryUrl(edge.targetUrl)
+    if (!canonical || edge.targetHost !== 'market') {
+      return `${edge.targetUrl} (targetHost=${edge.targetHost})`
+    }
+  }
+  return null
+}
+
 export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number; error?: string }> {
   if (!edges.length) return { stored: 0 }
+  // Validate BEFORE the Supabase client exists: one noncanonical
+  // marketplace_cta edge rejects the whole batch atomically (zero writes) —
+  // never normalized, never partially stored, never silently reinterpreted
+  // as the default category.
+  const noncanonical = findNoncanonicalMarketplaceCta(edges)
+  if (noncanonical) {
+    return {
+      stored: 0,
+      error: `marketplace_cta target is not a canonical Marketplace category URL: ${noncanonical}`.slice(0, 300),
+    }
+  }
   try {
     const supabase = createSupabaseAdminClient()
     const rows = edges.map((e) => ({
