@@ -103,6 +103,46 @@ export function validateManifest(manifest, { order, dir = MIGRATIONS_DIR, readFi
   return { ok: violations.length === 0, violations }
 }
 
+const DOLLAR_QUOTED_BODY_RE = /\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1\$/g
+const TOP_LEVEL_TXN_CONTROL_RE = /\b(?:BEGIN|COMMIT|ROLLBACK)\b/
+const DENIED_STATEMENT_PATTERNS = [
+  { re: /\bCREATE\s+INDEX\s+CONCURRENTLY\b/, label: 'CREATE INDEX CONCURRENTLY' },
+  { re: /\bREINDEX\b/, label: 'REINDEX' },
+  { re: /\bVACUUM\b/, label: 'VACUUM' },
+  { re: /\bCREATE\s+DATABASE\b/, label: 'CREATE DATABASE' },
+  { re: /\bALTER\s+SYSTEM\b/, label: 'ALTER SYSTEM' },
+]
+
+export function ddlOnly(sql) {
+  return sql
+    .replace(DOLLAR_QUOTED_BODY_RE, ' ')
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:[^']|'')*'/g, "''")
+}
+
+export function scanTransactionSafety(filename, sql) {
+  const violations = []
+  const stripped = ddlOnly(sql)
+  const txnControl = stripped.match(TOP_LEVEL_TXN_CONTROL_RE)
+  if (txnControl) {
+    violations.push({
+      rule: 'TOP_LEVEL_TXN_CONTROL',
+      filename,
+      message: `top-level ${txnControl[0]} is not allowed in migrations`,
+    })
+  }
+  for (const { re, label } of DENIED_STATEMENT_PATTERNS) {
+    if (re.test(stripped)) {
+      violations.push({ rule: 'DENIED_STATEMENT', filename, message: `${label} is not allowed in migrations` })
+    }
+  }
+  if (!/;\s*$/.test(sql)) {
+    violations.push({ rule: 'MISSING_TRAILING_SEMICOLON', filename, message: 'migration must end with ;' })
+  }
+  return violations
+}
+
 export function validateMigrationSet({ order, manifest }) {
   const violations = []
   const baselineNames = new Set((manifest?.files ?? []).map((f) => f.filename))
@@ -146,13 +186,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const manifest = loadManifest()
   const manifestCheck = validateManifest(manifest, { order })
   const namingCheck = validateMigrationSet({ order, manifest })
-  for (const v of [...manifestCheck.violations, ...namingCheck.violations]) {
+  const safetyViolations = []
+  for (const filename of order) {
+    safetyViolations.push(...scanTransactionSafety(filename, readFileSync(join(MIGRATIONS_DIR, filename), 'utf8')))
+  }
+  const violations = [...manifestCheck.violations, ...namingCheck.violations, ...safetyViolations]
+  for (const v of violations) {
     console.error(`::error file=${v.filename ?? 'supabase/migration-baseline.json'}::${v.rule} ${v.message}`)
   }
-  if (!manifestCheck.ok || !namingCheck.ok) {
-    console.error(`migration-ledger-policy: FAILED (${manifestCheck.violations.length + namingCheck.violations.length} violations)`)
+  if (!manifestCheck.ok || !namingCheck.ok || safetyViolations.length > 0) {
+    console.error(`migration-ledger-policy: FAILED (${violations.length} violations)`)
     process.exit(1)
   }
   console.error(`migration-ledger-policy: manifest OK (69 files: 8 base, 57 timestamped, 4 index)`)
   console.error('migration-ledger-policy: naming policy OK')
+  console.error('migration-ledger-policy: transaction safety OK')
 }
