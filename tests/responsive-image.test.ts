@@ -2,9 +2,14 @@
  * responsive-image.test.ts
  *
  * Unit tests for the responsive image utilities in lib/responsiveImage.ts.
- * Pure function testing — no mocking required. Tests cover Supabase storage
- * URLs, non-Supabase URLs, edge cases like empty strings, and the priority
- * flag for LCP optimization.
+ *
+ * Contract (post image-delivery optimization): Supabase Storage image
+ * transforms are NOT enabled on this project. The `/storage/v1/render/image/...`
+ * endpoint returns 403 FeatureNotEnabled, and ordinary object URLs ignore
+ * `?width=&resize=&format=` query params — the origin returns the same bytes.
+ * Therefore these utilities must render stored objects truthfully: no
+ * fabricated width params, no fake srcSet descriptors. Uploads are optimized
+ * client-side before storage instead (lib/marketplaceImageOptimization.ts).
  */
 
 import {
@@ -19,6 +24,9 @@ import {
 
 const SUPABASE_URL =
   'https://storage.supabase.co/storage/v1/object/public/gig-gallery/seller-123/my-image.jpg'
+const SUPABASE_AUTH_URL =
+  'https://storage.supabase.co/storage/v1/object/authenticated/gig-gallery/seller-123/my-image.jpg'
+const SUPABASE_URL_WITH_PARAMS = SUPABASE_URL + '?cache=123'
 const NON_SUPABASE_URL = 'https://example.com/images/photo.jpg'
 const CDN_URL = 'https://cdn.example.com/gig-gallery/abc-123/image.webp'
 
@@ -27,106 +35,67 @@ const CDN_URL = 'https://cdn.example.com/gig-gallery/abc-123/image.webp'
 // ────────────────────────────────────────────────────────────
 
 describe('responsiveUrl', () => {
-  describe('Supabase storage URLs', () => {
-    it('adds width query param', () => {
+  describe('Supabase storage object URLs', () => {
+    it('returns an ordinary public object URL completely unchanged', () => {
       const result = responsiveUrl(SUPABASE_URL, 600)
-      const url = new URL(result)
-      expect(url.searchParams.get('width')).toBe('600')
+      expect(result).toBe(SUPABASE_URL)
     })
 
-    it('sets resize to cover', () => {
+    it('does not fabricate a width query param', () => {
       const result = responsiveUrl(SUPABASE_URL, 600)
-      const url = new URL(result)
-      expect(url.searchParams.get('resize')).toBe('cover')
+      expect(result).not.toContain('width=')
+      expect(new URL(result).searchParams.has('width')).toBe(false)
     })
 
-    it('removes any existing height param', () => {
-      const urlWithHeight = SUPABASE_URL + '?height=400&width=800'
-      const result = responsiveUrl(urlWithHeight, 600)
-      const parsed = new URL(result)
-      expect(parsed.searchParams.get('height')).toBeNull()
-      expect(parsed.searchParams.get('width')).toBe('600')
-    })
-
-    it('sets format=webp when format is webp', () => {
+    it('does not fabricate resize or format query params', () => {
       const result = responsiveUrl(SUPABASE_URL, 768, 'webp')
-      const url = new URL(result)
-      expect(url.searchParams.get('format')).toBe('webp')
-    })
-
-    it('does not set format when omitted', () => {
-      const result = responsiveUrl(SUPABASE_URL, 768)
-      const url = new URL(result)
-      expect(url.searchParams.has('format')).toBe(false)
-    })
-
-    it('does not set format when format is origin', () => {
-      const result = responsiveUrl(SUPABASE_URL, 768, 'origin')
-      const url = new URL(result)
-      expect(url.searchParams.has('format')).toBe(false)
-    })
-
-    it('works with authenticated bucket URLs', () => {
-      const authUrl = SUPABASE_URL.replace('/public/', '/authenticated/')
-      const result = responsiveUrl(authUrl, 600)
-      const url = new URL(result)
-      expect(url.searchParams.get('width')).toBe('600')
-    })
-
-    it('preserves other existing query params', () => {
-      const urlWithParam = SUPABASE_URL + '?cache=123'
-      const result = responsiveUrl(urlWithParam, 480)
       const parsed = new URL(result)
-      expect(parsed.searchParams.get('cache')).toBe('123')
-      expect(parsed.searchParams.get('width')).toBe('480')
+      expect(parsed.searchParams.has('resize')).toBe(false)
+      expect(parsed.searchParams.has('format')).toBe(false)
+    })
+
+    it('returns an authenticated object URL completely unchanged', () => {
+      const result = responsiveUrl(SUPABASE_AUTH_URL, 600)
+      expect(result).toBe(SUPABASE_AUTH_URL)
+    })
+
+    it('preserves the original URL exactly, including existing query params', () => {
+      const result = responsiveUrl(SUPABASE_URL_WITH_PARAMS, 480)
+      expect(result).toBe(SUPABASE_URL_WITH_PARAMS)
+    })
+
+    it('returns the same URL regardless of requested width', () => {
+      const widths = [320, 480, 768, 1024, 1280, 1920, 2560]
+      widths.forEach((w) => {
+        expect(responsiveUrl(SUPABASE_URL, w)).toBe(SUPABASE_URL)
+      })
     })
   })
 
   describe('non-Supabase URLs', () => {
     it('returns the URL unchanged for example.com URLs', () => {
-      const result = responsiveUrl(NON_SUPABASE_URL, 600)
-      expect(result).toBe(NON_SUPABASE_URL)
+      expect(responsiveUrl(NON_SUPABASE_URL, 600)).toBe(NON_SUPABASE_URL)
     })
 
     it('returns the URL unchanged for CDN URLs', () => {
-      const result = responsiveUrl(CDN_URL, 600)
-      expect(result).toBe(CDN_URL)
-    })
-
-    it('returns the URL unchanged regardless of width parameter', () => {
-      const result = responsiveUrl(NON_SUPABASE_URL, 1024)
-      expect(result).toBe(NON_SUPABASE_URL)
+      expect(responsiveUrl(CDN_URL, 600)).toBe(CDN_URL)
     })
   })
 
   describe('edge cases', () => {
     it('returns empty string when given an empty string', () => {
-      const result = responsiveUrl('', 600)
-      expect(result).toBe('')
+      expect(responsiveUrl('', 600)).toBe('')
     })
 
     it('returns URL unchanged for malformed URLs', () => {
       const malformed = 'not-a-valid-url'
-      const result = responsiveUrl(malformed, 600)
-      expect(result).toBe(malformed)
+      expect(responsiveUrl(malformed, 600)).toBe(malformed)
     })
 
-    it('handles different width values correctly', () => {
-      const widths = [320, 480, 768, 1024, 1280, 1920, 2560]
-      widths.forEach((w) => {
-        const result = responsiveUrl(SUPABASE_URL, w)
-        expect(new URL(result).searchParams.get('width')).toBe(String(w))
-      })
-    })
-
-    it('handles URL with special characters in the path', () => {
+    it('handles URL with special characters in the path unchanged', () => {
       const specialUrl =
         'https://storage.supabase.co/storage/v1/object/public/gig-gallery/seller-1/resized/uuid-image%402x-card.jpg'
-      const result = responsiveUrl(specialUrl, 600)
-      const parsed = new URL(result)
-      expect(parsed.searchParams.get('width')).toBe('600')
-      // Path should remain URL-encoded
-      expect(parsed.pathname).toContain('%40')
+      expect(responsiveUrl(specialUrl, 600)).toBe(specialUrl)
     })
   })
 })
@@ -136,67 +105,34 @@ describe('responsiveUrl', () => {
 // ────────────────────────────────────────────────────────────
 
 describe('generateSrcSet', () => {
-  describe('Supabase storage URLs', () => {
-    it('generates srcSet with 4 width descriptors', () => {
-      const srcSet = generateSrcSet(SUPABASE_URL)
-      const entries = srcSet.split(', ')
-      expect(entries).toHaveLength(4)
-    })
-
-    it('includes widths 480, 768, 1024, 1280', () => {
-      const srcSet = generateSrcSet(SUPABASE_URL)
-      const entries = srcSet.split(', ').map(e => e.split(' ')[1])
-      expect(entries).toEqual(['480w', '768w', '1024w', '1280w'])
-    })
-
-    it('uses webp format for all srcSet entries', () => {
-      const srcSet = generateSrcSet(SUPABASE_URL)
-      const entries = srcSet.split(', ')
-      entries.forEach((entry) => {
-        expect(entry).toContain('format=webp')
-      })
-    })
-
-    it('each entry has correct width in URL', () => {
-      const srcSet = generateSrcSet(SUPABASE_URL)
-      const entries = srcSet.split(', ')
-      const expectedWidths = [480, 768, 1024, 1280]
-      entries.forEach((entry, i) => {
-        const urlPart = entry.split(' ')[0]
-        expect(urlPart).toContain(`width=${expectedWidths[i]}`)
-      })
-    })
-
-    it('entries are comma-space separated', () => {
-      const srcSet = generateSrcSet(SUPABASE_URL)
-      // The pattern is: "url 480w, url 768w, url 1024w, url 1280w"
-      const pattern = /^(?:https?:\/\/\S+? \d+w(?:, |$)){4}$/
-      expect(srcSet).toMatch(pattern)
-    })
+  it('returns an empty string for ordinary Supabase object URLs (no fake variants)', () => {
+    expect(generateSrcSet(SUPABASE_URL)).toBe('')
   })
 
-  describe('non-Supabase URLs', () => {
-    it('returns empty string for example.com URLs', () => {
-      const result = generateSrcSet(NON_SUPABASE_URL)
-      expect(result).toBe('')
-    })
-
-    it('returns empty string for CDN URLs', () => {
-      const result = generateSrcSet(CDN_URL)
-      expect(result).toBe('')
-    })
+  it('never emits a width descriptor for Supabase object URLs', () => {
+    const srcSet = generateSrcSet(SUPABASE_URL)
+    expect(srcSet).not.toContain('w')
+    expect(srcSet).not.toContain('width=')
   })
 
-  describe('edge cases', () => {
-    it('returns empty string for empty URL', () => {
-      const result = generateSrcSet('')
-      expect(result).toBe('')
-    })
+  it('returns an empty string for authenticated object URLs', () => {
+    expect(generateSrcSet(SUPABASE_AUTH_URL)).toBe('')
+  })
 
-    it('returns empty string for malformed URL', () => {
-      const result = generateSrcSet('not-a-url')
-      expect(result).toBe('')
-    })
+  it('returns an empty string for example.com URLs', () => {
+    expect(generateSrcSet(NON_SUPABASE_URL)).toBe('')
+  })
+
+  it('returns an empty string for CDN URLs', () => {
+    expect(generateSrcSet(CDN_URL)).toBe('')
+  })
+
+  it('returns an empty string for empty URL', () => {
+    expect(generateSrcSet('')).toBe('')
+  })
+
+  it('returns an empty string for malformed URL', () => {
+    expect(generateSrcSet('not-a-url')).toBe('')
   })
 })
 
@@ -205,93 +141,61 @@ describe('generateSrcSet', () => {
 // ────────────────────────────────────────────────────────────
 
 describe('responsiveImageProps', () => {
-  describe('returned object shape', () => {
-    it('returns an object with src, srcSet, sizes, loading, fetchpriority, alt', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'My Image')
-      expect(props).toHaveProperty('src')
-      expect(props).toHaveProperty('srcSet')
-      expect(props).toHaveProperty('sizes')
-      expect(props).toHaveProperty('loading')
-      expect(props).toHaveProperty('fetchpriority')
-      expect(props).toHaveProperty('alt')
+  describe('truthful src / srcSet', () => {
+    it('uses the original URL as src — no width param fabrication', () => {
+      const props = responsiveImageProps(SUPABASE_URL, 'Test')
+      expect(props.src).toBe(SUPABASE_URL)
+      expect(props.src).not.toContain('width=')
+      expect(props.src).not.toContain('resize=')
+    })
+
+    it('does not emit a srcSet for ordinary storage object URLs', () => {
+      const props = responsiveImageProps(SUPABASE_URL, 'Test')
+      expect(props.srcSet).toBe('')
+    })
+
+    it('does not emit a srcSet for external URLs', () => {
+      const props = responsiveImageProps(NON_SUPABASE_URL, 'External')
+      expect(props.srcSet).toBe('')
+      expect(props.src).toBe(NON_SUPABASE_URL)
     })
   })
 
   describe('lazy loading (default)', () => {
     it('uses lazy loading when priority is not set', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test')
-      expect(props.loading).toBe('lazy')
+      expect(responsiveImageProps(SUPABASE_URL, 'Test').loading).toBe('lazy')
     })
 
     it('uses lazy loading when priority is false', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test', false)
-      expect(props.loading).toBe('lazy')
+      expect(responsiveImageProps(SUPABASE_URL, 'Test', false).loading).toBe('lazy')
     })
 
     it('sets fetchpriority to undefined when priority is not set', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test')
-      expect(props.fetchpriority).toBeUndefined()
+      expect(responsiveImageProps(SUPABASE_URL, 'Test').fetchpriority).toBeUndefined()
     })
   })
 
   describe('eager loading (priority)', () => {
     it('uses eager loading when priority is true', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Hero', true)
-      expect(props.loading).toBe('eager')
+      expect(responsiveImageProps(SUPABASE_URL, 'Hero', true).loading).toBe('eager')
     })
 
     it('sets fetchpriority to high when priority is true', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Hero', true)
-      expect(props.fetchpriority).toBe('high')
+      expect(responsiveImageProps(SUPABASE_URL, 'Hero', true).fetchpriority).toBe('high')
     })
   })
 
-  describe('src and srcSet delegation', () => {
-    it('delegates src to responsiveUrl with width 600', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test')
-      expect(props.src).toContain('width=600')
-      expect(props.src).toContain('resize=cover')
-    })
-
-    it('delegates srcSet to generateSrcSet', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test')
-      expect(props.srcSet).toContain('480w')
-      expect(props.srcSet).toContain('1280w')
-    })
-
-    it('generates empty srcSet for non-Supabase URLs', () => {
-      const props = responsiveImageProps(NON_SUPABASE_URL, 'External')
-      expect(props.srcSet).toBe('')
-      // src should be the original URL unchanged
-      expect(props.src).toBe(NON_SUPABASE_URL)
-    })
-
-    it('uses the original URL for non-Supabase src', () => {
-      const props = responsiveImageProps(NON_SUPABASE_URL, 'External')
-      expect(props.src).toBe(NON_SUPABASE_URL)
-    })
-  })
-
-  describe('sizes and alt', () => {
-    it('provides default sizes attribute', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'Test')
-      expect(props.sizes).toContain('100vw')
-      expect(props.sizes).toContain('33vw')
-    })
-
+  describe('alt behavior', () => {
     it('sets alt from title parameter', () => {
-      const props = responsiveImageProps(SUPABASE_URL, 'My Gig Image')
-      expect(props.alt).toBe('My Gig Image')
+      expect(responsiveImageProps(SUPABASE_URL, 'My Gig Image').alt).toBe('My Gig Image')
     })
 
     it('sets alt to empty string when no title is provided', () => {
-      const props = responsiveImageProps(SUPABASE_URL)
-      expect(props.alt).toBe('')
+      expect(responsiveImageProps(SUPABASE_URL).alt).toBe('')
     })
 
     it('sets alt to empty string for undefined title', () => {
-      const props = responsiveImageProps(SUPABASE_URL, undefined)
-      expect(props.alt).toBe('')
+      expect(responsiveImageProps(SUPABASE_URL, undefined).alt).toBe('')
     })
   })
 

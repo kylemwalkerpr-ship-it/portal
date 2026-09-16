@@ -31,13 +31,16 @@ describe('site hardening', () => {
     expect(footer).toContain('https://usa.yousafeconsultancy.com/contact/')
   })
 
-  it('keeps responsive WebP delivery wired into marketplace discovery cards', () => {
+  it('keeps marketplace discovery images on the truthful responsive helper (no fabricated width variants)', () => {
     const card = read('components/marketplace/MarketplaceHero.tsx')
     const responsive = read('lib/responsiveImage.ts')
     expect(card).toContain("import { responsiveImageProps } from '@/lib/responsiveImage'")
     expect(card).toContain('responsiveImageProps(imageUrl, gig.title)')
-    expect(responsive).toContain("format?: 'webp' | 'origin'")
-    expect(responsive).toContain("responsiveUrl(url, w, 'webp')")
+    // Supabase image transforms are not enabled on this project (403
+    // FeatureNotEnabled), so the helper must not fabricate width/format params.
+    expect(responsive).not.toContain("searchParams.set('width'")
+    expect(responsive).not.toContain("searchParams.set('format'")
+    expect(responsive).not.toContain('format=webp')
     expect(responsive).toContain("loading: priority ? ('eager' as const) : ('lazy' as const)")
   })
 })

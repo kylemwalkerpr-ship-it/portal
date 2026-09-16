@@ -1509,7 +1509,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
             return onUploadFile(file)
           }}
           onUploadResized={async (file: File, presetName: string, width: number, height: number) => {
-            // Server-side sharp processing via POST /api/images/resize
+            // Upload the cropped WebP as-is via POST /api/images/resize (no server-side processing)
             const form = new FormData()
             form.append('file', file)
             form.append('width', String(width))

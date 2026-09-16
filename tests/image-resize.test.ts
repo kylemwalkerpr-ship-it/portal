@@ -2,9 +2,10 @@
  * image-resize.test.ts
  *
  * Unit tests for the POST /api/images/resize endpoint.
- * The route uploads images as-is to Supabase Storage (no server-side sharp
- * processing). On-the-fly image transforms happen via Supabase URL query
- * params at render time (see lib/responsiveImage.ts).
+ * The route uploads images as-is to Supabase Storage (no server-side
+ * processing, and Supabase Storage image transforms are not enabled — the
+ * render endpoint returns 403 FeatureNotEnabled). Client-side optimization
+ * happens before upload (see lib/marketplaceImageOptimization.ts).
  */
 
 import http from 'http'

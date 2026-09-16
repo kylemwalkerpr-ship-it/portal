@@ -3,6 +3,7 @@
 
 import React from 'react'
 import ImageCropper from './ImageCropper'
+import { optimizeMarketplaceImage } from '@/lib/marketplaceImageOptimization'
 import { T, F } from './tokens'
 
 interface GalleryImage {
@@ -68,24 +69,25 @@ export default function GalleryManager({
     }
 
     setUploadError('')
+    const optimizedFile = await optimizeMarketplaceImage(file)
     const previewId = `pending-${crypto.randomUUID()}`
-    const previewUrl = URL.createObjectURL(file)
+    const previewUrl = URL.createObjectURL(optimizedFile)
     const optimisticImage: GalleryImage = {
       id: previewId,
       url: previewUrl,
-      name: file.name,
-      size: file.size,
+      name: optimizedFile.name,
+      size: optimizedFile.size,
       pending: true,
     }
     onReorder([...images, optimisticImage])
 
     try {
-      const url = await onUploadFile(file)
+      const url = await onUploadFile(optimizedFile)
       onReorder((prev) =>
         Array.isArray(prev)
           ? prev.map((img) =>
               img.id === previewId
-                ? { url, name: file.name, size: file.size }
+                ? { url, name: optimizedFile.name, size: optimizedFile.size }
                 : img,
             )
           : prev,
