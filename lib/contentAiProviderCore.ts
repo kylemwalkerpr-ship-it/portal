@@ -1,22 +1,22 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * LIVE POLICY (2026-09-02, owner-model): Entrim + Grok.
- *   1. Entrim Qwen3.6 27B (`entrim-qwen-27b`, api.entrim.ai/v1) — primary
- *   2. Entrim DeepSeek V4 Flash (`entrim-deepseek`, api.entrim.ai/v1)
- *   3. Grok 4.6 (`grok`, api.x.ai/v1 / SuperGrok) — the third live family
+ * COMMISSIONED POLICY (P2, 2026-09-15, registry-derived):
+ *   1. Grok 4.6 (`grok`, api.x.ai/v1 / SuperGrok) — retained xAI transport.
+ *   2. DeepSeek V4.1 Flash (`deepseek-v41-flash`, https://api.deepseek.com/v1
+ *      ONLY, upstream model id `deepseek-flash`) — first-party transport.
  *
- * The two Entrim families share one `ENTRIM_API_KEY` and are served by
- * `api.entrim.ai/v1`; Grok uses XAI_API_KEY or SuperGrok OAuth. Every other
- * host (NVIDIA / Cloudflare / Groq / Gemini / OpenRouter / OpenAI /
- * DeepSeek.com / Baseten / Parasail / Run BiOS / Zai / AIHubmix /
- * chatProvider bridge) is OUT OF COMMISSION and filtered out of the cascade
- * at runtime even if its key is still configured. Unknown / legacy pins
- * redirect to the Entrim Qwen default with any model override stripped.
+ * Exactly these two providers may register or execute; `adapterFor` is the
+ * only transport factory. Every retired host (Entrim / NVIDIA / Baseten /
+ * Parasail / Run BiOS / OpenAI / Cloudflare / Groq / Gemini / OpenRouter /
+ * DeepSeek.com aliases) remains as inert, non-registrable dead code until the
+ * P3 purge. A legacy/unknown pin is a typed selection-required failure
+ * (`ProviderSelectionRequiredError`, 409) with ZERO outbound requests — no
+ * redirect, no break-glass restore, no cross-provider fallback.
  *
- * Owner model: when `aiProvider` names one of the three, the call is
- * `exclusive` — no capacity cascade to another backend. Capacity cascade only
- * runs when exclusive is false.
+ * Owner model: when `aiProvider` names a commissioned pin (or a Grok alias),
+ * the call stays on that provider — no capacity cascade to another backend.
+ * Empty/'auto' resolves to the lane default (Grok 4.6).
  */
 
 import { qualityPromptBlock } from './seoFactory/contentQualityGate'
@@ -34,6 +34,16 @@ import {
   superGrokProxyHeaders,
   XAI_CLI_CHAT_PROXY_BASE_URL,
 } from './xaiGrokTransport'
+import {
+  COMMISSIONED_PROVIDERS,
+  ProviderSelectionRequiredError,
+  adapterFor,
+  isCommissionedPin,
+  resolveExecutionProvider,
+  type CommissionedProviderPin,
+  type ContentProviderAdapter,
+  type StudioLane,
+} from './contentAiRegistry'
 
 const CF_AI_MODEL =
   process.env.CLOUDFLARE_AI_MODEL?.trim() ||
@@ -134,66 +144,78 @@ const ENTRIM_DEEPSEEK_MODEL = 'deepseek-ai/DeepSeek-V4-Flash'
 const ENTRIM_MAX_TOKENS = 16384
 
 /**
- * LIVE PROVIDER POLICY (2026-09-02): Entrim Qwen3.6 27B (`entrim-qwen-27b`)
- * and Entrim DeepSeek V4 Flash (`entrim-deepseek`) are the ONLY commissioned
- * content backends for every pipeline stage — drafting, briefing, review,
- * refine, depth rescue, and visibility pings. Every other host (NVIDIA,
- * Baseten, Parasail, Run BiOS, Grok/xAI, OpenAI, Cloudflare, Groq, Zai,
- * AIHubmix, OpenRouter, Gemini, chat bridges) is OUT OF COMMISSION and is
- * filtered out of the cascade before any request leaves the Worker.
+ * COMMISSIONED PROVIDER POLICY (P2, 2026-09-15) — registry-derived.
  *
- * Rationale: each decommissioned host failed in production in a distinct way
- * (Entrim 524s are handled by retry, but NVIDIA minimax 429s, Grok 403
- * credit exhaustion, and stale Run BiOS/GLM deployments turned the cascade
- * into a latency and error-surface liability). A two-model cascade on one
- * first-party endpoint keeps every stage deterministic and the error surface
- * readable.
- *
- * Behavior:
- *  - A request pinning a decommissioned provider is REDIRECTED to the Entrim
- *    Qwen default (with a console.warn), and any model override is dropped —
- *    a retired host's model id must never leak into an Entrim request (the
- *    model=grok-4.6-into-Entrim 400 class of bug).
- *  - If Entrim is not configured at all, generation fails fast with a clear
- *    "set ENTRIM_API_KEY" error instead of silently drafting on a retired
- *    host.
- *  - CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade (break-glass
- *    for local diagnostics only — never set in production).
+ * The registry owns provider identity; this module may only register or
+ * execute `COMMISSIONED_PROVIDERS` through `adapterFor`. Every retired
+ * transport in this file is inert: it is unreachable from the registration
+ * tables, and a legacy/unknown pin fails closed with a typed
+ * selection-required error before any configuration or network work.
  */
-export const LIVE_PROVIDER_LABELS: readonly string[] = [ENTRIM_QWEN_LABEL, ENTRIM_DEEPSEEK_LABEL, 'grok']
-export const LIVE_DEFAULT_PROVIDER = 'grok'
-
-/** True when the provider label may serve requests under the live policy. */
 export function isLiveProviderLabel(label: string): boolean {
-  if (String(env('CONTENT_AI_ALL_PROVIDERS') || '').trim() === '1') return true
-  return LIVE_PROVIDER_LABELS.includes(label)
+  return isCommissionedPin(label)
 }
 
-/** Break-glass: CONTENT_AI_ALL_PROVIDERS=1 restores the legacy full cascade,
- *  including the Grok payment/quota sidecar. Under the live Entrim-only
- *  policy an Entrim failure must NEVER call grokComplete — Grok is out of
- *  commission and its credit-exhaustion failures would only add latency. */
-function allProvidersBreakGlass(): boolean {
-  return String(env('CONTENT_AI_ALL_PROVIDERS') || '').trim() === '1'
+/** All commissioned adapters (registration is code-level, not env-gated). */
+function commissionedAdapters(opts: ContentAiOptions): Map<CommissionedProviderPin, ContentProviderAdapter> {
+  const adapters = new Map<CommissionedProviderPin, ContentProviderAdapter>()
+  for (const provider of COMMISSIONED_PROVIDERS) {
+    adapters.set(provider.pin, adapterFor(provider.pin, opts))
+  }
+  return adapters
 }
 
 /**
- * Normalize a resolved pin to the live policy. Returns the (possibly
- * redirected) prefer label and a cleaned opts with any model override
- * stripped when the pin was redirected — a decommissioned provider's model
- * id is meaningless (and harmful) on Entrim.
+ * Runtime registration introspection (design §3.2, §11): the registered
+ * completer and stream-candidate pins, independent of env/keys. Retired
+ * transports can never appear because they are never passed to `adapterFor`.
  */
-function applyLiveProviderPolicy<T extends { model?: string }>(
-  prefer: string,
-  opts: T,
-): { prefer: string; opts: T; redirected: boolean } {
-  if (isLiveProviderLabel(prefer)) return { prefer, opts, redirected: false }
-  const cleaned = { ...opts }
-  delete cleaned.model
-  console.warn(
-    `[contentAi] provider "${prefer}" is out of commission — routing to ${LIVE_DEFAULT_PROVIDER} (live Entrim + Grok policy)`,
+export function registeredContentProviderPins(): { completers: string[]; streamCandidates: string[] } {
+  const adapters = commissionedAdapters({ system: '', prompt: '' })
+  const completers: string[] = []
+  const streamCandidates: string[] = []
+  for (const provider of COMMISSIONED_PROVIDERS) {
+    const adapter = adapters.get(provider.pin)
+    if (adapter && typeof adapter.complete === 'function') completers.push(provider.pin)
+    if (adapter && typeof adapter.stream === 'function') streamCandidates.push(provider.pin)
+  }
+  return { completers, streamCandidates }
+}
+
+/**
+ * Execution doors carry no lane parameter. Every lane default is Grok, so the
+ * canonical registry selector runs with a fixed internal lane instead of this
+ * module maintaining a second provider-selection policy.
+ */
+const EXECUTION_SELECTION_LANE: StudioLane = 'draft'
+
+/** Configured commissioned pins, for operator-facing failure diagnostics. */
+function configuredCommissionedPins(): string[] {
+  return COMMISSIONED_PROVIDERS.filter((provider) => provider.isConfigured()).map((provider) => provider.pin)
+}
+
+/** Failed-closed diagnostic when the selected commissioned pin has no credential. */
+function commissionedNotConfiguredError(pin: CommissionedProviderPin): Error {
+  const provider = COMMISSIONED_PROVIDERS.find((candidate) => candidate.pin === pin)
+  const keyEnvs = provider?.keyEnvs.join(' or ') || 'the provider credential'
+  const configured = configuredCommissionedPins().join(', ') || 'none'
+  return new Error(
+    `Selected AI provider "${pin}" is not configured. ` +
+    `Set ${keyEnvs} in the environment or the AI Key Vault (Command Center → Configure). ` +
+    `Currently configured commissioned providers: ${configured}.`,
   )
-  return { prefer: LIVE_DEFAULT_PROVIDER, opts: cleaned, redirected: true }
+}
+
+/**
+ * The single commissioned adapter for this execution (exclusive owner).
+ * Takes the ALREADY-resolved pin: the doors resolve selection before any
+ * vault/OAuth work, then pass the resolved pin here so it is never resolved
+ * a second time after refresh.
+ */
+function commissionedAdapterFor(pin: CommissionedProviderPin, opts: ContentAiOptions): ContentProviderAdapter {
+  const adapter = adapterFor(pin, opts)
+  if (!adapter.isConfigured()) throw commissionedNotConfiguredError(pin)
+  return adapter
 }
 const RUNBIOS_BASE_URL = RUNBIOS_CATALOG_BASE
 const RUNBIOS_GLM_MODEL = 'glm-5.3-flash'
@@ -418,9 +440,24 @@ type OpenAiCompat = {
  */
 let vaultOverlay: Record<string, string> | null = null
 
-/** Replace the active vault overlay (used by refreshAiVault / withVaultEnv). */
+/**
+ * Caller-injected overlay (explicit operator/test injection via
+ * `setVaultOverlay`). It wins over vault-derived values and survives
+ * `refreshAiVault()` until it is replaced or cleared with
+ * `setVaultOverlay(null)`. Production code never injects an overlay; vault
+ * refreshes only update the vault-derived layer.
+ */
+let injectedVaultOverlay: Record<string, string> | null = null
+
+/** Replace the active vault overlay (explicit injection; see above). */
 export function setVaultOverlay(overlay: Record<string, string> | null): void {
+  injectedVaultOverlay = overlay
   vaultOverlay = overlay
+}
+
+/** Merge keys into the vault-derived overlay without marking them injected. */
+function mergeVaultOverlay(overlay: Record<string, string>): void {
+  vaultOverlay = { ...(vaultOverlay || {}), ...overlay }
 }
 
 /**
@@ -456,14 +493,14 @@ export async function refreshAiVault(): Promise<string[]> {
         oauthErr instanceof Error ? oauthErr.message : oauthErr,
       )
     }
-    vaultOverlay = overlay
-    return Object.keys(overlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
+    vaultOverlay = injectedVaultOverlay ? { ...overlay, ...injectedVaultOverlay } : overlay
+    return Object.keys(vaultOverlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
   } catch (e) {
     console.warn(
       '[contentAi] vault overlay unavailable (is ai_provider_keys migrated?) — env vars only',
       e instanceof Error ? e.message : e,
     )
-    vaultOverlay = null
+    vaultOverlay = injectedVaultOverlay
     return []
   }
 }
@@ -1324,7 +1361,7 @@ async function grokOpenResponses(
       try { await res.body?.cancel() } catch { /* best effort */ }
       apiKey = refreshed.accessToken
       const overlay = { ...(vaultOverlay || {}) }
-      setVaultOverlay(overlayGrokAuth(overlay, refreshed))
+      mergeVaultOverlay(overlayGrokAuth(overlay, refreshed))
       res = await post(baseURL, apiKey, false)
     }
   }
@@ -2815,33 +2852,19 @@ export function isCloudflareAiConfigured(): boolean {
   return resolveCloudflareAiAuth() !== null
 }
 
-/** Operator-facing list of which live content AI backends are configured. */
+/** Operator-facing list of the commissioned content AI backends (registry-derived). */
 export function listConfiguredContentProviders(): Array<{
   id: string
   label: string
   configured: boolean
   role: 'primary' | 'fallback'
 }> {
-  return [
-    {
-      id: ENTRIM_QWEN_LABEL,
-      label: 'Qwen3.6 27B · Entrim (api.entrim.ai/v1)',
-      configured: isEntrimConfigured(),
-      role: 'primary',
-    },
-    {
-      id: ENTRIM_DEEPSEEK_LABEL,
-      label: 'DeepSeek V4 Flash · Entrim (api.entrim.ai/v1)',
-      configured: isEntrimConfigured(),
-      role: 'primary',
-    },
-    {
-      id: 'grok',
-      label: 'xAI Grok (grok-4.6 · api.x.ai/v1)',
-      configured: isGrokConfigured(),
-      role: 'primary',
-    },
-  ]
+  return COMMISSIONED_PROVIDERS.map((provider) => ({
+    id: provider.pin,
+    label: provider.label,
+    configured: provider.isConfigured(),
+    role: 'primary' as const,
+  }))
 }
 
 /**
@@ -3089,51 +3112,6 @@ function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
     .map(({ item }) => item)
 }
 
-type CompleteFn = () => Promise<ContentAiResult>
-
-/**
- * Ordered completers — LIVE POLICY (2026-09-02): ONLY the three live
- * backends are registered (Entrim Qwen3.6 27B, Entrim DeepSeek V4 Flash,
- * Grok 4.6). NVIDIA / Run BiOS / OpenAI / Groq / Gemini / Baseten / Parasail
- * / Cloudflare / OpenRouter / Zai / AIHubmix transports are NOT registered in
- * the factory cascade under the live policy, so they can never occupy a slot.
- * The isLiveProviderLabel filter remains as a second safety net.
- */
-function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
-  const items: Array<{ label: string; run: CompleteFn }> = []
-
-  const pushGrok = () => {
-    if (isGrokConfigured()) items.push({ label: 'grok', run: () => grokComplete(opts) })
-  }
-  const pushEntrim = () => {
-    if (isEntrimConfigured()) {
-      items.push({ label: ENTRIM_DEEPSEEK_LABEL, run: () => openAiCompatibleComplete(getEntrimProvider()!, opts) })
-      items.push({ label: ENTRIM_QWEN_LABEL, run: () => entrimQwenComplete(opts) })
-    }
-  }
-
-  // The three live providers, lead-first.
-  pushEntrim()
-  pushGrok()
-
-  const orderedItems = sortByAdminOrder(items)
-  const preferredIndex = orderedItems.findIndex((item) => item.label === prefer)
-  if (preferredIndex > 0) {
-    const [preferred] = orderedItems.splice(preferredIndex, 1)
-    if (preferred) orderedItems.unshift(preferred)
-  }
-  const seen = new Set<string>()
-  return orderedItems
-    // Live-provider policy: decommissioned hosts never occupy a cascade slot.
-    .filter((i) => isLiveProviderLabel(i.label))
-    .filter((i) => {
-      if (seen.has(i.label)) return false
-      seen.add(i.label)
-      return true
-    })
-    .slice(0, maxProviderCandidates())
-}
-
 /**
  * Track whether we've hit a subrequest budget error so the fallback cascade
  * stops immediately rather than pointlessly trying every remaining provider.
@@ -3331,7 +3309,26 @@ export function resolveAiProviderPin(raw?: string): { explicit: string; prefer: 
   return { explicit, prefer: explicit || preferProvider() }
 }
 
+/**
+ * Generate long-form content.
+ *
+ * Commissioned policy (P2): exactly ONE commissioned provider serves each
+ * call — the explicitly selected pin, or the Grok lane default for
+ * empty/'auto'. A legacy/unknown pin throws a typed
+ * `ProviderSelectionRequiredError` before any configuration or network work;
+ * there is no redirect, no break-glass restore, and no cross-provider
+ * fallback (Grok↔DeepSeek crossover is impossible by construction). A single
+ * adapter keeps same-provider retries inside its own transport.
+ */
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
+  // Ask the canonical registry selector at the very start, BEFORE any
+  // configuration, vault, OAuth, or provider network work: a legacy/unknown
+  // explicit pin must fail closed with ProviderSelectionRequiredError, and
+  // only missing/empty/'auto' may resolve to the Grok lane default.
+  const selection = resolveExecutionProvider({ requestedPin: opts.aiProvider, lane: EXECUTION_SELECTION_LANE })
+  if (selection.kind === 'needs_selection') {
+    throw new ProviderSelectionRequiredError(selection.legacyValue)
+  }
   // Apply the latest admin provider/key settings without requiring a redeploy.
   await refreshAiVault()
   // Every provider receives the same compliance contract, including custom
@@ -3340,145 +3337,32 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const { explicit: resolvedExplicit, prefer: resolvedPrefer, model } = resolveAiProviderPin(opts.aiProvider)
-  // Live-provider policy: only the three live backends serve requests. A pin
-  // naming a decommissioned host is redirected to the Entrim default with any
-  // model override stripped (a retired model id must never reach Entrim).
-  const { prefer, opts: policyOpts, redirected: pinRedirected } = applyLiveProviderPolicy(resolvedPrefer, opts)
-  opts = policyOpts
-  // A redirected explicit pin now belongs to the live provider: early-fail,
-  // exclusive truncation, and error labels must all reference Entrim, not the
-  // decommissioned host the operator's stale picker still names.
-  const explicit = pinRedirected && resolvedExplicit ? prefer : resolvedExplicit
-  // A redirected pin drops the retired provider's model override — never
-  // re-attach it here (grok-4.6-in-Entrim class of 400s).
-  if (model && !opts.model && !pinRedirected) opts = { ...opts, model }
-  const errors: string[] = []
-  let candidates = orderedCompleters(opts, prefer)
-
-  // Exclusive pin (owner mode): the chosen model alone must serve this
-  // request — no silent fallback to another backend. Truncate the cascade to
-  // just the pinned provider so any failure surfaces loudly. Capacity cascade
-  // only ever runs when exclusive is false.
-  const allCandidates = candidates
-  if (opts.exclusive) {
-    candidates = candidates.filter((c) => c.label === prefer)
-  }
-  // Reviewer-style exclusive pins opt into cascadeOnCapacity: on a transient
-  // infrastructure failure (529 overload, timeout, abort) the fix falls
-  // through to the rest of the chain instead of hard-failing.
-  const cascadeChain =
-    opts.exclusive && opts.cascadeOnCapacity
-      ? allCandidates.filter((c) => c.label !== prefer)
-      : []
-
-  // Early-fail: if the admin explicitly selected a provider but it isn't
-  // in the cascade (missing API key), throw immediately with a clear
-  // diagnostic instead of silently cycling through every other backend.
-  if (explicit && !candidates.some((c) => c.label === prefer)) {
-    const configured = candidates.map((c) => c.label).join(', ') || 'none'
-    // Show the friendly GPT alias (e.g. 'gpt-5.6-terra') when the pin was a
-    // model alias, so the message matches the picker label.
-    const display = model && GPT_ALIAS_RE.test((opts.aiProvider || '').trim().toLowerCase())
-      ? `${opts.aiProvider!.trim()} (${prefer})`
-      : prefer
-    // Live policy: the three live backends are the only path, so the fix is
-    // "set ENTRIM_API_KEY / XAI_API_KEY" — recommending a retired provider's
-    // key (OpenAI/NVIDIA) would send the operator in circles.
-    throw new Error(
-      `Selected AI provider "${display}" is not configured. ` +
-      `The live policy (Entrim + Grok) requires ENTRIM_API_KEY (and XAI_API_KEY / SuperGrok for grok) — set it in the environment or the AI Key Vault (Command Center → Configure). ` +
-      `Currently available providers: ${configured}.`,
-    )
-  }
-
-  if (!candidates.length) {
-    throw new Error(
-      'No live content AI provider configured. The live policy (Entrim + Grok) requires ENTRIM_API_KEY (and XAI_API_KEY / SuperGrok for grok). All other backends are out of commission.',
-    )
-  }
-
-  for (let i = 0; i < candidates.length; i++) {
-    const c = candidates[i]
-    if (subrequestBudgetExhausted) {
-      errors.push(`${c.label}: skipped — subrequest budget exhausted`)
-      continue
-    }
-    try {
-      return await withDeadline(c.label, deadlineForProvider(c.label, opts.timeoutMs, opts.strictTimeout === true), c.run())
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      errors.push(`${c.label}: ${msg}`)
-      // Grok payment/quota sidecar: break-glass ONLY. An Entrim/other failure
-      // must never silently bounce to grokComplete unless the operator turned
-      // the full cascade back on (CONTENT_AI_ALL_PROVIDERS=1) — owner mode has
-      // its own designated fallback legs.
-      const paymentFail =
-        allProvidersBreakGlass() && isPaymentOrQuotaFailure(e) && c.label !== 'grok' && isGrokConfigured()
-      if (paymentFail) {
-        try {
-          return await withDeadline('grok', deadlineForProvider('grok', opts.timeoutMs, opts.strictTimeout === true), grokComplete(opts))
-        } catch (grokErr) {
-          const grokMsg = grokErr instanceof Error ? grokErr.message : String(grokErr)
-          errors.push(`grok: ${grokMsg}`)
-        }
-      }
-      // Exclusive pins (Research brief) stay fail-closed. A draft picker
-      // selection must cascade — a missing GLM deployment must not abandon
-      // the job at 0 words. The reviewer (cascadeOnCapacity) is the exception:
-      // a provider that cannot serve RIGHT NOW — transient overload/timeout OR
-      // billing/quota (Baseten 402 "payment status") — falls through to the
-      // next host so the fix sweep still ships.
-      if (opts.exclusive && explicit && c.label === prefer) {
-        if (
-          opts.cascadeOnCapacity &&
-          cascadeChain.length &&
-          (isTransientInfraError(e) || isPaymentOrQuotaFailure(e) || isUnusableGenerationFailure(e))
-        ) {
-          console.warn(
-            `[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`,
-          )
-          candidates = cascadeChain
-          i = -1 // restart at the first fallback (cascadeChain excludes prefer)
-          continue
-        }
-        if (paymentFail) {
-          throw new Error(
-            `Explicit AI provider "${prefer}" failed on billing/quota and SuperGrok fallback also failed. ` +
-            `Provider errors: ${errors.join(' | ')}`,
-          )
-        }
-        const grokQuotaHint =
-          prefer === 'grok' && isPaymentOrQuotaFailure(e)
-            ? grokQuotaGuidance(e)
-            : ' Check the API key and model in repo secrets or the AI Key Vault (Command Center → Configure). '
-        throw new Error(
-          `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}.${grokQuotaHint}` +
-          `Provider errors: ${errors.join(' | ')}`,
-        )
-      }
-      console.warn(`[contentAi] ${c.label} failed; trying next`)
-      if (isSubrequestLimitError(e)) {
-        subrequestBudgetExhausted = true
-      }
-    }
-  }
-
-  const failureSummary = quotaFailureSummary(errors)
-  throw new Error(
-    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${failureSummary.note}${failureSummary.nextStep}`,
+  const adapter = commissionedAdapterFor(selection.pin, opts)
+  return withDeadline(
+    adapter.pin,
+    deadlineForProvider(adapter.pin, opts.timeoutMs, opts.strictTimeout === true),
+    adapter.complete(),
   )
 }
 
 
 /**
- * Stream long-form content into the editor. Tries true SSE stream first,
- * then falls back to non-stream complete with synthetic chunking so the UI
- * still gets progressive updates.
+ * Stream long-form content into the editor through the single commissioned
+ * adapter selected for this call — the Grok Responses stream or the
+ * first-party DeepSeek SSE stream. Legacy/unknown pins throw typed before any
+ * network work, and there is no cross-provider streaming fallback.
  */
 export async function* generateContentTextStream(
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
+  // Ask the canonical registry selector at the very start, BEFORE any
+  // configuration, vault, OAuth, or provider network work: a legacy/unknown
+  // explicit pin must fail closed with ProviderSelectionRequiredError, and
+  // only missing/empty/'auto' may resolve to the Grok lane default.
+  const selection = resolveExecutionProvider({ requestedPin: opts.aiProvider, lane: EXECUTION_SELECTION_LANE })
+  if (selection.kind === 'needs_selection') {
+    throw new ProviderSelectionRequiredError(selection.legacyValue)
+  }
   // Apply the latest admin provider/key settings before constructing candidates.
   await refreshAiVault()
   // Streaming and complete generation share one compliance contract.
@@ -3486,223 +3370,6 @@ export async function* generateContentTextStream(
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const { explicit: resolvedExplicit, prefer: resolvedPrefer, model } = resolveAiProviderPin(opts.aiProvider)
-  // Live-provider policy (see generateContentText): Entrim Qwen + Entrim
-  // DeepSeek only. Retired pins redirect to the Entrim default, model
-  // override dropped.
-  const { prefer, opts: policyOpts, redirected: pinRedirected } = applyLiveProviderPolicy(resolvedPrefer, opts)
-  opts = policyOpts
-  const explicit = pinRedirected && resolvedExplicit ? prefer : resolvedExplicit
-  if (model && !opts.model && !pinRedirected) opts = { ...opts, model }
-  const errors: string[] = []
-
-  type Candidate = {
-    label: string
-    stream?: () => AsyncGenerator<ContentAiStreamEvent>
-    complete: () => Promise<ContentAiResult>
-  }
-
-  const candidates: Candidate[] = []
-
-  // LIVE POLICY (2026-09-02): ONLY the three live backends are registered as
-  // stream candidates — Entrim Qwen3.6 27B, Entrim DeepSeek V4 Flash, Grok.
-  // NVIDIA / Run BiOS / Baseten / Parasail / zai / OpenRouter / Cloudflare /
-  // groq / gemini / aihubmix / chatProvider-bridge are NOT registered here, so
-  // a stale admin order can never push a decommissioned host into the stream.
-  const entrim = getEntrimProvider()
-  if (entrim) {
-    candidates.push({
-      label: ENTRIM_DEEPSEEK_LABEL,
-      stream: () =>
-        openAiCompatibleStream(entrim, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
-        }),
-      complete: () => openAiCompatibleComplete(entrim, opts),
-    })
-  }
-  const entrimQwen = getEntrimQwenProvider()
-  if (entrimQwen) {
-    candidates.push({
-      label: ENTRIM_QWEN_LABEL,
-      stream: () =>
-        openAiCompatibleStream(entrimQwen, {
-          ...opts,
-          maxTokens: Math.min(opts.maxTokens ?? ENTRIM_MAX_TOKENS, ENTRIM_MAX_TOKENS),
-        }),
-      complete: () => entrimQwenComplete(opts),
-    })
-  }
-  if (isGrokConfigured()) {
-    candidates.push({
-      label: 'grok',
-      stream: () => grokResponsesStream(opts),
-      complete: () => grokComplete(opts),
-    })
-  }
-
-  // Admin order controls the default stream cascade; manual pins still win.
-  const adminOrder = configuredProviderOrder()
-  if (adminOrder.length) {
-    const rank = new Map(adminOrder.map((id, index) => [id, index]))
-    candidates.sort((a, b) => (rank.get(a.label) ?? 10000) - (rank.get(b.label) ?? 10000))
-  }
-  if (
-    prefer === ENTRIM_DEEPSEEK_LABEL ||
-    prefer === ENTRIM_QWEN_LABEL ||
-    prefer === 'grok' ||
-    prefer === 'xai'
-  ) {
-    const idx = candidates.findIndex((c) => c.label === prefer)
-    if (idx > 0) {
-      const [pref] = candidates.splice(idx, 1)
-      candidates.unshift(pref)
-    }
-  } else if (prefer === 'grok') {
-    const idx = candidates.findIndex((c) => c.label === 'grok')
-    if (idx > 0) {
-      const [pref] = candidates.splice(idx, 1)
-      candidates.unshift(pref)
-    }
-  }
-
-  // Dedupe preserving the MiniMax-first default order.
-  // Live-provider policy FIRST: drop decommissioned hosts before the
-  // candidate cap, so a stale admin order can never crowd both Entrim
-  // backends out of the bounded cascade.
-  const seen = new Set<string>()
-  let unique = candidates
-    .filter((c) => isLiveProviderLabel(c.label))
-    .filter((c) => {
-      if (seen.has(c.label)) return false
-      seen.add(c.label)
-      return true
-    })
-    .slice(0, maxProviderCandidates())
-
-  // Exclusive pin: only the selected provider may serve this request — no
-  // cascade to other backends (the Research brief belongs to ChatGPT alone).
-  const allStreamCandidates = unique
-  if (opts.exclusive) {
-    unique = unique.filter((c) => c.label === prefer)
-  }
-  const cascadeChain =
-    opts.exclusive && opts.cascadeOnCapacity
-      ? allStreamCandidates.filter((c) => c.label !== prefer)
-      : []
-
-  let explicitProviderFailed = false
-  for (let i = 0; i < unique.length; i++) {
-    const c = unique[i]
-    if (subrequestBudgetExhausted) {
-      errors.push(`${c.label}: skipped — subrequest budget exhausted`)
-      continue
-    }
-    // When the admin explicitly chose a provider and it's about to be skipped
-    // because its stream isn't available (no SSE), surface the gap as a visible
-    // provider event before the cascade continues.
-    if (explicit && c.label === prefer && !c.stream) {
-      // Grok 4.6 / SuperGrok uses the Responses API (no chat SSE). Fall
-      // through to completeAsStream instead of failing the job.
-      yield { type: 'provider', provider: c.label, model: grokModelId(opts) }
-    }
-    if (c.stream) {
-      try {
-        yield* c.stream()
-        return
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        errors.push(`${c.label} stream: ${msg}`)
-        // When the admin explicitly chose this provider, emit a visible
-        // failure event in the Livestream so they can diagnose the issue
-        // (bad API key, quota, network) instead of wondering why their
-        // selection was ignored. Continue the cascade for resilience.
-        if (explicit && c.label === prefer) {
-          explicitProviderFailed = true
-          // Grok payment/quota sidecar is break-glass only (see generateContentText).
-          if (allProvidersBreakGlass() && isPaymentOrQuotaFailure(e) && prefer !== 'grok' && isGrokConfigured()) {
-            yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
-            yield* completeAsStream(() => grokComplete(opts))
-            return
-          }
-          const failure = `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}`
-          yield {
-            type: 'provider',
-            provider: c.label,
-            model: `FAILED: ${failure}`,
-          }
-          // Research briefs (`exclusive`) stay pinned. Draft picker pins
-          // cascade so a 404 GLM deployment falls through to DeepSeek/Grok
-          // instead of closing the job with an empty body. The reviewer
-          // (cascadeOnCapacity) falls through on transient overloads/timeouts
-          // so the fix sweep still ships.
-          if (opts.exclusive) {
-            if (
-              opts.cascadeOnCapacity &&
-              cascadeChain.length &&
-              (isTransientInfraError(e) || isPaymentOrQuotaFailure(e) || isUnusableGenerationFailure(e))
-            ) {
-              unique = cascadeChain
-              i = -1 // restart at the first fallback (cascadeChain excludes prefer)
-              console.warn(`[contentAi] explicit ${prefer} unavailable (${msg.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
-              continue
-            }
-            const grokQuotaHint =
-              prefer === 'grok' && isPaymentOrQuotaFailure(e)
-                ? grokQuotaGuidance(e)
-                : ''
-            throw new Error(failure + grokQuotaHint)
-          }
-        }
-        if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
-        // Do not immediately call the same provider again through its
-        // complete endpoint. Move to the next bounded candidate instead.
-        continue
-      }
-    }
-    try {
-      yield* completeAsStream(c.complete)
-      return
-    } catch (e2) {
-      const msg2 = e2 instanceof Error ? e2.message : String(e2)
-      errors.push(`${c.label}: ${msg2}`)
-      if (c.label === 'grok' || (explicit && c.label === prefer)) {
-        yield { type: 'provider', provider: c.label, model: `FAILED: ${msg2.slice(0, 220)}` }
-      }
-      if (explicit && c.label === prefer) {
-        explicitProviderFailed = true
-        // Grok payment/quota sidecar is break-glass only (see generateContentText).
-        if (allProvidersBreakGlass() && isPaymentOrQuotaFailure(e2) && prefer !== 'grok' && isGrokConfigured()) {
-          yield { type: 'provider', provider: 'grok', model: grokModelId(opts) }
-          yield* completeAsStream(() => grokComplete(opts))
-          return
-        }
-        // Reviewer-style exclusive pins cascade on transient infra / billing
-        // failures even when the pinned provider had no SSE path.
-        if (
-          opts.exclusive &&
-          opts.cascadeOnCapacity &&
-          cascadeChain.length &&
-          (isTransientInfraError(e2) || isPaymentOrQuotaFailure(e2) || isUnusableGenerationFailure(e2))
-        ) {
-          unique = cascadeChain
-          i = -1
-          console.warn(`[contentAi] explicit ${prefer} unavailable (${msg2.slice(0, 140)}); cascading to ${cascadeChain.map((x) => x.label).join(', ')}`)
-          continue
-        }
-      }
-      if (isSubrequestLimitError(e2)) {
-        subrequestBudgetExhausted = true
-      }
-    }
-  }
-
-
-
-  const failureSummary = quotaFailureSummary(errors)
-  throw new Error(
-    errors.length
-      ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${failureSummary.note}${failureSummary.nextStep}`
-      : 'No live content AI provider configured for streaming — the live policy (Entrim + Grok) requires ENTRIM_API_KEY / XAI_API_KEY.',
-  )
+  const adapter = commissionedAdapterFor(selection.pin, opts)
+  yield* adapter.stream()
 }
