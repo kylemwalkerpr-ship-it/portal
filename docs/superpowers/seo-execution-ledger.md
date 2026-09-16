@@ -155,3 +155,44 @@ For the 29 squash-merge deletions, the branch tip was proven byte-identical to t
 - Security advisors snapshot `2026-09-15T21:45:45Z`: no longer list either support RPC in `anon`/`authenticated` SECURITY DEFINER warnings and no longer list the four views as `security_definer_view` findings. Unrelated advisor backlog remains.
 - Result: the narrow Task 1 claim is now `PASS` in `docs/superpowers/seo-parity-matrix.md` (two RPCs + four views only). The separate base-table least-privilege follow-up row remains `PENDING` and out of scope for Task 1.
 - This evidence worktree is documentation-only: it changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`, and performs no commit, push, PR, merge, deploy, or production DDL. Stopped for supervisor review.
+
+## 2026-09-15 — Forward-only migration ledger adoption (Phase 3)
+
+Phase 3 G3 docs-only evidence for the Forward-Only Migration Ledger Adoption rollout: G0 pre-state, G1 adoption run, G2 independent supervisor verification. No source diff; no secrets or token values are recorded in this section.
+
+**Executor:** DeepSeek V4.1 Flash (deepseek/deepseek-flash, high) · **Branch:** `architecture/migration-ledger-phase-3-evidence` · **Base:** `36dcd418fb2e706f5b01353ce6cc0cf4d0c4d479`
+
+### G0 — pre-adoption state (read-only)
+
+- Dispatch `expected_main_sha`: `36dcd418fb2e706f5b01353ce6cc0cf4d0c4d479`.
+- Manifest baseline `generatedFrom.gitSha` (`supabase/migration-baseline.json`, `migrationCount: 69`): `39e43edbb06ba47893235ba0a6972eb0cff59db2`.
+- Last old-runner run before adoption: `35024648323` (failure, pre-existing replay issue; not caused by adoption).
+- Ledger pre-state: `SELECT to_regclass('supabase_migrations.yousafe_migration_ledger') AS ledger_reg;` → `null` (ledger absent; expected fail-closed RED).
+- Native pre-state `supabase_migrations.schema_migrations`: `count(*) = 7` — `drop_all_stripe_columns`, `gsc_connection`, `conversation_ai_mode`, `attorney_show_bar_number`, `marketplace_gig_gallery_public`, `provider_credential_visibility_controls`, `content_studio_evidence_contract` (sorted versions `20260616092444`, `20260616095653`, `20260907103305`, `20260907104004`, `20260909124337`, `20260911112020`, `20260914181604`).
+- Corroborating privileged connector runtime identity (read-only, not workflow transport proof): `current_user=postgres`, `session_user=postgres`, `role=none`.
+
+### G1 — adoption run (dispatch-only workflow)
+
+- Run ID `35070817047` — https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/35070817047
+- Environment `migration-ledger-adoption` with required reviewer approval; run conclusion `success`; secret-value pattern check found none.
+- Workflow runtime role: `current_user=postgres`, `session_user=postgres`, `role=none`.
+- Exact verified summary line: `LEDGER ADOPTION VERIFIED: 69/69 files, source_git_sha=39e43edbb06ba47893235ba0a6972eb0cff59db2, native_history_unchanged=true, runtime_role_verified=true`
+
+### G2 — independent supervisor verification (read-only)
+
+- Row count: `total_rows=69`, `distinct_rows=69`.
+- Provenance: rows with `applied_by <> 'adoption-baseline'` OR `source_git_sha <> '39e43edbb06ba47893235ba0a6972eb0cff59db2'` = `0`; rows with `applied_by = 'ci-runner'` = `0`.
+- Hash equality (`shasum -a 256 -c` of the manifest against `supabase/migrations`): `69 OK, 0 FAILED`.
+- Canonical pair SHA-256 equality: production ledger pair = `67c8b69fc9500881686b5b8f1b8fba05765377d37c1daf4aa85e1de41aa2645d`; local manifest pair = `67c8b69fc9500881686b5b8f1b8fba05765377d37c1daf4aa85e1de41aa2645d`; identical.
+- Native post-adoption `supabase_migrations.schema_migrations`: `count(*) = 7`, exact sorted version/name list identical to G0 (unchanged): `drop_all_stripe_columns`, `gsc_connection`, `conversation_ai_mode`, `attorney_show_bar_number`, `marketplace_gig_gallery_public`, `provider_credential_visibility_controls`, `content_studio_evidence_contract`.
+- Production read-only verification found trigger `yousafe_migration_ledger_immutable` enabled (`tgenabled = 'O'`) on `supabase_migrations.yousafe_migration_ledger`, using function `supabase_migrations.yousafe_migration_ledger_immutable`.
+- `runtime_role_verified=true` (from the actual adoption workflow Management API path).
+
+### T13 immutability evidence (local, $0)
+
+- T13 (append-only trigger: `INSERT` succeeds; `UPDATE`/`DELETE` rejected with SQLSTATE `55000`; trigger-absent RED control accepted the `UPDATE`) was proven at $0 on a disposable **local PostgreSQL 17.11** instance using the exact committed DDL (`composeLedgerDdl()` in `scripts/migration-ledger-adoption.mjs`).
+- This was a local engine-level reproducibility proof of the committed DDL — **not** a Supabase Management API test and not a production action.
+
+### Scope
+
+- Docs-only: the Phase 3 evidence change touches only `docs/superpowers/seo-execution-ledger.md`; no source, workflow, or migration file changed, and no push, PR, merge, deploy, or Phase 4 work was performed by this task.
