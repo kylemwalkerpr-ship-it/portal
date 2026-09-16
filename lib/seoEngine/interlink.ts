@@ -37,6 +37,7 @@ import { getAllSubcategories, getCategoryById } from '@/lib/categories'
 import {
   getMarketplaceBaseUrl,
   marketplaceCategoryHref as canonicalMarketplaceCategoryHref,
+  parseCanonicalMarketplaceCategoryUrl,
 } from '@/lib/marketplaceSeo'
 
 export type InterlinkReason =
@@ -223,11 +224,24 @@ export function interlinkPromptBlock(edges: InterlinkEdge[]): string {
 }
 
 /**
+ * Lifecycle states that may feed AUTOMATIC drafting suggestions under today's
+ * schema: `planned` (suggest it) and `applied` (already executed). `rejected`,
+ * `manual`, `paused` and `awaiting_gate` are lifecycle decisions — never
+ * suggest them automatically.
+ */
+export const PLAN_ELIGIBLE_INTERLINK_STATUSES = ['planned', 'applied'] as const
+
+const PLAN_ELIGIBLE_STATUS_SET: ReadonlySet<string> = new Set(PLAN_ELIGIBLE_INTERLINK_STATUSES)
+
+/**
  * Load the engine's PERSISTED interlink edges for a lifecycle cell —
  * `seo-<country>-<stage>-%` source slugs (planner missions). Shaped like the
  * Opportunity Radar's interlink options so the pipeline's interlinkAllowlist
  * contract accepts them: the writer is told to embed them as internal links
  * and the ship-time link audit treats them as allowlisted targets.
+ *
+ * Plan-eligible only: planned/applied may be suggested; gate-rejected or
+ * manually held edges must never leak into automatic drafting.
  */
 export async function loadEngineInterlinksForCell(
   stage: string,
@@ -238,17 +252,22 @@ export async function loadEngineInterlinksForCell(
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_interlinks')
-      .select('target_url,target_host,anchor_text,reason')
+      .select('target_url,target_host,anchor_text,reason,status')
       .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
+      .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
       .order('score', { ascending: false })
       .limit(limit)
     const rows = (data as Array<Record<string, unknown>>) || []
-    return rows.map((r) => ({
-      label: String(r.anchor_text || r.target_url || ''),
-      url: String(r.target_url || ''),
-      site: String(r.target_host || ''),
-      matchedOn: [String(r.reason || 'engine_interlink')],
-    }))
+    // Defence-in-depth: even if a caller's query ever stops filtering, an
+    // ineligible lifecycle row can never reach automatic suggestions.
+    return rows
+      .filter((r) => PLAN_ELIGIBLE_STATUS_SET.has(String(r.status || 'planned')))
+      .map((r) => ({
+        label: String(r.anchor_text || r.target_url || ''),
+        url: String(r.target_url || ''),
+        site: String(r.target_host || ''),
+        matchedOn: [String(r.reason || 'engine_interlink')],
+      }))
   } catch {
     return []
   }
@@ -280,10 +299,50 @@ export async function persistPlannerInterlinks(
   return stored
 }
 
+/**
+ * Fail-closed validation for `marketplace_cta` edges.
+ *
+ * Every marketplace_cta edge must persist exactly the canonical public
+ * Marketplace category URL (`https://market.yousafeconsultancy.com/categories/<id>`
+ * with a real category/subcategory id) and targetHost 'market'. Returns a
+ * description of the first offending edge, or null when all marketplace_cta
+ * edges are canonical. Non-marketplace_cta reasons are deliberately untouched:
+ * legitimate Portal/auth targets remain allowed for other reasons.
+ */
+export function findNoncanonicalMarketplaceCta(edges: InterlinkEdge[]): string | null {
+  for (const edge of edges) {
+    if (edge.reason !== 'marketplace_cta') continue
+    const canonical = parseCanonicalMarketplaceCategoryUrl(edge.targetUrl)
+    if (!canonical || edge.targetHost !== 'market') {
+      return `${edge.targetUrl} (targetHost=${edge.targetHost})`
+    }
+  }
+  return null
+}
+
 export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number; error?: string }> {
   if (!edges.length) return { stored: 0 }
+  // Validate BEFORE the Supabase client exists: one noncanonical
+  // marketplace_cta edge rejects the whole batch atomically (zero writes) —
+  // never normalized, never partially stored, never silently reinterpreted
+  // as the default category.
+  const noncanonical = findNoncanonicalMarketplaceCta(edges)
+  if (noncanonical) {
+    return {
+      stored: 0,
+      error: `marketplace_cta target is not a canonical Marketplace category URL: ${noncanonical}`.slice(0, 300),
+    }
+  }
   try {
     const supabase = createSupabaseAdminClient()
+    // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
+    // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
+    // actor/timestamps — belongs to the ship loop and the compliance gate, so
+    // those columns are deliberately omitted from the payload. With
+    // `defaultToNull: false` PostgREST sends `Prefer: missing=default`: on
+    // INSERT the omitted columns take their DB defaults (status -> 'planned'),
+    // while on conflict only the keys present here are updated. No
+    // read-before-write race needed.
     const rows = edges.map((e) => ({
       source_slug: e.sourceSlug,
       target_url: e.targetUrl,
@@ -292,10 +351,11 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
       context_h2: e.contextH2 || null,
       reason: e.reason,
       score: e.score,
-      status: 'planned',
       cluster_id: e.clusterId || null,
     }))
-    const { error } = await supabase.from('seo_interlinks').upsert(rows, { onConflict: 'source_slug,target_url' })
+    const { error } = await supabase
+      .from('seo_interlinks')
+      .upsert(rows, { onConflict: 'source_slug,target_url', defaultToNull: false })
     if (error) {
       // A missing table (migration not applied) is just as real a failure as
       // any other — never mask it as "nothing to store".
@@ -344,8 +404,10 @@ export async function loadInterlinkGraph(limit = 100): Promise<{
     for (const r of rows) {
       const reason = String(r.reason || 'ontology_neighbor')
       byReason[reason] = (byReason[reason] || 0) + 1
+      // Count strictly: `applied` is the only executed state; `planned` only
+      // when status is actually planned. Gate states must not be relabelled.
       if (r.status === 'applied') applied += 1
-      else planned += 1
+      else if (r.status === 'planned') planned += 1
     }
     return { edges: rows, byReason, applied, planned }
   } catch {
@@ -429,8 +491,11 @@ export async function loadPersistedCell(opts: {
         : srcSlug
       const stageKey = stem.split('-')[0]
       if (stem !== srcSlug && stageKey) byStageMap[stageKey] = (byStageMap[stageKey] || 0) + 1
+      // Count strictly; byStatus above keeps every other lifecycle state
+      // (rejected/manual/paused/awaiting_gate) visible instead of folding it
+      // into the planned tally.
       if (status === 'applied') applied += 1
-      else planned += 1
+      else if (status === 'planned') planned += 1
       const u = String(r.updated_at || r.created_at || '')
       if (u && (!lastUpdated || u > lastUpdated)) lastUpdated = u
       topTargets.push({

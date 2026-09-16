@@ -9,7 +9,16 @@
 
 import { finalizePipelineContentType } from './jobContentType'
 import type { OwnerPlan } from './ownership'
-import { assertPlanRepoConsistency, HOST_REPO, assertCanonicalIsNotCountryHub } from './ownership'
+import {
+  assertPlanRepoConsistency,
+  HOST_REPO,
+  assertCanonicalIsNotCountryHub,
+  resolveOwner,
+} from './ownership'
+import {
+  assertPublicationDestinationAllowed,
+  PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+} from './broadCreateFreeze'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile, buildBlogPostEntry, insertBlogPostIntoData } from './renderTarget'
@@ -730,6 +739,30 @@ export async function shipContent(opts: {
       `Held ship: mandatory compliance evaluation could not run for "${opts.primaryKeyword || opts.title}": ${msg}`,
     )
   }
+
+  // ── P0 global publication freeze (Git-write door) ────────────────────────
+  // Publishing is not authority by label. Re-resolve CURRENT ownership from
+  // primaryKeyword/region WITHOUT hints and with the neutral ownership-proof
+  // contentType (NOT the finalized rendering type: a legal registry owner with
+  // a news_summary intent finalizes to `blog_post`, whose explicit-blog
+  // standing-rules early return would refuse the very owner authoring
+  // approved). Then require the ACTUAL final canonical to be that resolved
+  // existing owner (matched registry owner_url, or the locked strike-seed
+  // canonical). A fabricated ownerUrlHint, a standing-rules/registry_host
+  // fallback, or a canonical that diverges from the matched owner refuses
+  // BEFORE any Git read/write/branch creation — and BEFORE the dry-run return,
+  // so a dry run can never claim green while the real write would be refused.
+  // The explicit P13 unlock is the only bypass.
+  const ownershipAuthority = await resolveOwner({
+    primaryKeyword: opts.primaryKeyword,
+    contentType: PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+    region: opts.region,
+    indexable: opts.plan.indexable !== false,
+  })
+  await assertPublicationDestinationAllowed(ownershipAuthority, opts.plan.canonicalUrl, {
+    primaryKeyword: opts.primaryKeyword,
+    env: process.env as Record<string, string | undefined>,
+  })
 
   // ── Route-subtype overwrite guard (last line of defence) ─────────────────
   // Refuse to overwrite an existing page whose route subtype differs from this

@@ -8,6 +8,10 @@ import {
   type OwnerHost,
   type OwnerPlan,
 } from '@/lib/seoFactory/ownership'
+import {
+  assertPublicationDestinationAllowed,
+  PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+} from '@/lib/seoFactory/broadCreateFreeze'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -167,6 +171,34 @@ function exactContractPlan(resolved: OwnerPlan, execution: StrictExecution): Own
   }
 }
 
+/**
+ * P0 global publication freeze for DIRECT existing-PR merges. Merging an open
+ * PR bypasses shipContent, so re-resolve CURRENT ownership from the job's
+ * mission inputs WITHOUT hints and require the persisted destination
+ * (canonical_url) to be that resolved existing owner. A fabricated/fallback
+ * destination, a canonical diverging from the matched registry owner, and a
+ * blank canonical all fail closed. The explicit P13 unlock is the only bypass.
+ * Throws so the caller returns a stable refusal response BEFORE any merge.
+ */
+async function assertDirectMergeDestinationAllowed(job: Record<string, any>): Promise<void> {
+  const primaryKeyword = String(job.primary_keyword || job.topic || '')
+  // Content-format agnostic ownership proof: re-resolve with the neutral
+  // ownership-proof type, NOT the persisted rendering type. A legal registry
+  // owner finalized as `blog_post` (news_summary intent) must not be refused by
+  // the explicit-blog standing-rules early return; the persisted canonical
+  // still has to equal the fresh owner and pass the exact live proof below.
+  const authority = await resolveOwner({
+    primaryKeyword,
+    contentType: PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+    region: String(job.region || 'US'),
+    indexable: job.indexable !== false,
+  })
+  await assertPublicationDestinationAllowed(authority, job.canonical_url ?? null, {
+    primaryKeyword,
+    env: process.env as Record<string, string | undefined>,
+  })
+}
+
 async function mergeExistingPr(
   execution: StrictExecution,
   job: Record<string, any>,
@@ -179,6 +211,22 @@ async function mergeExistingPr(
   }
   if (!jobPassesShipGate(job)) {
     return NextResponse.json({ error: 'Ship gate not cleared' }, { status: 409 })
+  }
+  // P0 global publication freeze: re-resolve ownership and require the
+  // persisted destination to be the current existing owner. Enforced before
+  // the dry-run branch too, so a dry run cannot report a mergeable PR while
+  // the real merge would be refused.
+  try {
+    await assertDirectMergeDestinationAllowed(job)
+  } catch (freezeError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'broad_create_frozen',
+        error: freezeError instanceof Error ? freezeError.message : 'Broad net-new CREATE is frozen',
+      },
+      { status: 409 },
+    )
   }
   if (dryRun) {
     await assertRemoteExecution(execution)

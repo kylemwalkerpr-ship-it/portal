@@ -6,6 +6,7 @@
 import { validateRevisionQuality } from './revisionQuality'
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
+import { assertBroadCreateDestinationAllowed } from './broadCreateFreeze'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { auditContent, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipResult } from './ship'
@@ -166,6 +167,12 @@ export async function* runSeoFactoryPipelineStream(
       slug: input.slug,
       ownerUrlHint,
     })
+    // P0 broad-CREATE freeze: refuse unowned fallback creates AND dead or
+    // redirected registry owners before the early drafting row and before any
+    // AI generation (outer catch yields 'error'). Static registry agreement is
+    // necessary but not sufficient — the exact live existence proof is awaited
+    // here too.
+    await assertBroadCreateDestinationAllowed(plan, { primaryKeyword })
     contentType = finalizePipelineContentType(input.contentType, plan)
     assertPlanRepoConsistency(plan)
     // Word window: honor brief/operator minWords/maxWords when present,

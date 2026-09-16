@@ -4,6 +4,10 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline } from '@/lib/seoFactory/pipeline'
 import { shipContent, mergePullRequest, revertContent, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
+import {
+  assertPublicationDestinationAllowed,
+  PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+} from '@/lib/seoFactory/broadCreateFreeze'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateContentQuality } from '@/lib/seoFactory/contentQualityGate'
@@ -86,6 +90,34 @@ async function enqueueRepurposeHook(sourceUrl: string, relatedJobId: string) {
       e instanceof Error ? e.message : e,
     )
   }
+}
+
+/**
+ * P0 global publication freeze for DIRECT existing-PR merges. Merging an open
+ * PR bypasses shipContent, so re-resolve CURRENT ownership from the job's
+ * mission inputs WITHOUT hints and require the persisted destination
+ * (canonical_url) to be that resolved existing owner. A fabricated/fallback
+ * destination, a canonical diverging from the matched registry owner, and a
+ * blank canonical all fail closed. The explicit P13 unlock is the only bypass.
+ * Throws so callers can return a stable refusal response.
+ */
+async function assertDirectMergeDestinationAllowed(job: Record<string, any>): Promise<void> {
+  const primaryKeyword = String(job.primary_keyword || job.topic || '')
+  // Content-format agnostic ownership proof: re-resolve with the neutral
+  // ownership-proof type, NOT the persisted rendering type. A legal registry
+  // owner finalized as `blog_post` (news_summary intent) must not be refused by
+  // the explicit-blog standing-rules early return; the persisted canonical
+  // still has to equal the fresh owner and pass the exact live proof below.
+  const authority = await resolveOwner({
+    primaryKeyword,
+    contentType: PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+    region: String(job.region || 'US'),
+    indexable: job.indexable !== false,
+  })
+  await assertPublicationDestinationAllowed(authority, job.canonical_url ?? null, {
+    primaryKeyword,
+    env: process.env as Record<string, string | undefined>,
+  })
 }
 
 /** Re-read audit_json at write time so a concurrent Audit & Fix stamp is not
@@ -1518,6 +1550,20 @@ export async function PATCH(request: NextRequest) {
           { status: 409 },
         )
       }
+      // P0 global publication freeze: re-resolve ownership and require the
+      // persisted destination to be the current existing owner.
+      try {
+        await assertDirectMergeDestinationAllowed(job)
+      } catch (freezeErr) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'broad_create_frozen',
+            error: freezeErr instanceof Error ? freezeErr.message : 'Broad net-new CREATE is frozen',
+          },
+          { status: 409 },
+        )
+      }
       const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
       try {
         const merged = await mergePullRequest({
@@ -1819,6 +1865,21 @@ export async function PATCH(request: NextRequest) {
           if (!jobPassesShipGate(job)) {
             return NextResponse.json(
               { error: 'Ship gate not cleared' },
+              { status: 409 },
+            )
+          }
+          // P0 global publication freeze: re-resolve ownership and require the
+          // persisted destination to be the current existing owner. A
+          // fabricated/fallback destination or blank canonical fails closed.
+          try {
+            await assertDirectMergeDestinationAllowed(job)
+          } catch (freezeErr) {
+            return NextResponse.json(
+              {
+                ok: false,
+                code: 'broad_create_frozen',
+                error: freezeErr instanceof Error ? freezeErr.message : 'Broad net-new CREATE is frozen',
+              },
               { status: 409 },
             )
           }
