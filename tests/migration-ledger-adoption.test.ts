@@ -19,6 +19,7 @@ const POLICY = join(ROOT, 'scripts', 'migration-ledger-policy.mjs')
 const ORDER = join(ROOT, 'scripts', 'migration-order.mjs')
 const MANIFEST = join(ROOT, 'supabase', 'migration-baseline.json')
 const MIGRATIONS = join(ROOT, 'supabase', 'migrations')
+const WORKFLOW = join(ROOT, '.github', 'workflows', 'adopt-migration-ledger.yml')
 const manifestJson = JSON.parse(readFileSync(MANIFEST, 'utf8')) as {
   generatedFrom: { gitSha: string }
   files: Array<{ filename: string; sha256: string }>
@@ -736,5 +737,59 @@ describe('management sql client', () => {
     for (const column of ['filename', 'sha256', 'applied_by', 'source_git_sha']) {
       expect(out.presentQueries[1]).toContain(column)
     }
+  })
+})
+
+describe('adoption workflow contract (T14)', () => {
+  let yaml = ''
+
+  beforeAll(() => {
+    yaml = readFileSync(WORKFLOW, 'utf8')
+  })
+
+  it('is dispatch-only: exactly one workflow_dispatch trigger and no push trigger', () => {
+    expect(yaml).toMatch(/^\s*workflow_dispatch:/m)
+    expect(yaml).not.toMatch(/^\s*push:/m)
+  })
+
+  it('requires the migration-ledger-adoption environment', () => {
+    expect(yaml).toContain('environment: migration-ledger-adoption')
+  })
+
+  it('has no job-level if:, so an invalid dispatch fails instead of skipping silently', () => {
+    expect(yaml).not.toMatch(/^ {4}if:/m)
+  })
+
+  it('runs the refusal guard as the first step, before checkout', () => {
+    expect(yaml.indexOf('Refuse unless dispatched from main with exact confirmation')).toBeGreaterThanOrEqual(0)
+    expect(yaml.indexOf('Refuse unless dispatched from main with exact confirmation')).toBeLessThan(
+      yaml.indexOf('actions/checkout'),
+    )
+    expect(yaml).toContain('test "${{ github.ref }}" = "refs/heads/main"')
+    expect(yaml).toContain('test "${{ inputs.confirmation }}" = "ADOPT-BASELINE-69"')
+    expect(yaml).toContain('ADOPT-BASELINE-69')
+  })
+
+  it('pins the checkout to the expected_main_sha input', () => {
+    expect(yaml).toContain('ref: ${{ inputs.expected_main_sha }}')
+  })
+
+  it('serializes adoption in the migration concurrency group without cancelling', () => {
+    expect(yaml).toContain('group: seo-factory-migrations-${{ github.ref }}')
+    expect(yaml).toContain('cancel-in-progress: false')
+  })
+
+  it('grants contents: read only', () => {
+    expect(yaml).toContain('permissions:\n  contents: read')
+  })
+
+  it('never echoes the token', () => {
+    expect(yaml).not.toMatch(/echo\s+.*SUPABASE_ACCESS_TOKEN/i)
+  })
+
+  it('invokes the thin adoption CLI without apply-migrations or inline SQL file lists', () => {
+    expect(yaml).toContain('node scripts/adopt-migration-ledger.mjs')
+    expect(yaml).not.toContain('scripts/apply-migrations.mjs')
+    expect(yaml.match(/supabase\/migrations\/[a-z0-9_]+\.sql/gi)).toBeNull()
   })
 })
