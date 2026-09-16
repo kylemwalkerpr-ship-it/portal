@@ -1,6 +1,3 @@
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { dirname } from 'node:path'
 import { migrationOrder, MIGRATIONS_DIR } from './migration-order.mjs'
 import {
   MANIFEST_PATH,
@@ -14,8 +11,6 @@ import {
   readNativeMigrationHistory,
   readLedgerRows,
 } from './supabase-management-sql.mjs'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export class AdoptionError extends Error {
   constructor(message) {
@@ -163,6 +158,9 @@ export async function runAdoption({
       `ADOPTION FAILED: runtime role is not postgres (current_user=${role.currentUser}, session_user=${role.sessionUser}); no writes sent`,
     )
   }
+  log(
+    `RUNTIME ROLE VERIFIED: current_user=${role.currentUser}, session_user=${role.sessionUser}, role=${role.role ?? 'null'}`,
+  )
 
   const ddlResult = await client.execute(composeLedgerDdl())
   if (!ddlResult.ok) {

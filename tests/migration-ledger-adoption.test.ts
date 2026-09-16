@@ -46,7 +46,7 @@ const FIXTURES = `
       applied_by: 'adoption-baseline',
       source_git_sha: manifest.generatedFrom.gitSha,
     }))
-  function fakeClient({ ledger = { exists: false, rows: [] }, role = { current_user: 'postgres', session_user: 'postgres', role: null }, native = [], onInsert } = {}) {
+  function fakeClient({ ledger = { exists: false, rows: [] }, role = { current_user: 'postgres', session_user: 'postgres', role: null }, native = [], onInsert, events } = {}) {
     const queries = []
     const executes = []
     const inserts = []
@@ -62,10 +62,12 @@ const FIXTURES = `
         throw new Error('unexpected query: ' + sql)
       },
       async execute(sql) {
+        events?.push('execute')
         executes.push(sql)
         return { ok: true, status: 200, body: '[]' }
       },
       async runSql(sql) {
+        events?.push('runSql')
         inserts.push(sql)
         if (onInsert) return onInsert({ ledger, inserts })
         return { ok: true, status: 200, body: '[]' }
@@ -86,6 +88,7 @@ const FIXTURES = `
         migrationsDir: overrides.migrationsDir,
         expectedMainSha: overrides.expectedMainSha ?? manifest.generatedFrom.gitSha,
         assertAncestor: overrides.assertAncestor ?? (async () => true),
+        log: overrides.log,
       })
       return { result }
     } catch (err) {
@@ -385,6 +388,34 @@ describe('migration ledger adoption core', () => {
     expect(out.recovered).toBe(false)
     expect(out.insertedRequests).toBe(1)
     expect(out.summaryLine).toBe(
+      `LEDGER ADOPTION VERIFIED: 69/69 files, source_git_sha=${BASELINE_SHA}, native_history_unchanged=true, runtime_role_verified=true`,
+    )
+  })
+
+  it('T9.9b logs the verified runtime role for diagnostics after the postgres gate and before any write', () => {
+    const out = evalAdoption<{
+      status?: string
+      error?: string
+      logs: string[]
+      events: string[]
+    }>(`
+      ${FIXTURES}
+      const logs = []
+      const events = []
+      const { client } = fakeClient({ onInsert: commitRows, events })
+      const outcome = await run({ client, log: (line) => { logs.push(line); events.push('log') } })
+      console.log(JSON.stringify({
+        status: outcome.result?.status,
+        error: outcome.error,
+        logs,
+        events,
+      }))
+    `)
+    expect(out.error).toBeUndefined()
+    expect(out.status).toBe('ADOPTED')
+    expect(out.logs[0]).toBe('RUNTIME ROLE VERIFIED: current_user=postgres, session_user=postgres, role=null')
+    expect(out.events).toEqual(['log', 'execute', 'runSql', 'log'])
+    expect(out.logs[out.logs.length - 1]).toBe(
       `LEDGER ADOPTION VERIFIED: 69/69 files, source_git_sha=${BASELINE_SHA}, native_history_unchanged=true, runtime_role_verified=true`,
     )
   })
@@ -738,6 +769,88 @@ describe('management sql client', () => {
       expect(out.presentQueries[1]).toContain(column)
     }
   })
+
+  it('T9.18 ledger DDL execute retries transient results, never retries permanent ones, and returns success after retry', () => {
+    const out = evalAdoption<{
+      transient: { result: { ok: boolean; status: number }; fetches: number; sleeps: number[] }
+      permanent: { result: { ok: boolean; status: number }; fetches: number; sleeps: number[] }
+      networkThen200: { result: { ok: boolean; status: number }; fetches: number; sleeps: number[] }
+      exhausted: { result: { ok: boolean; status: number }; fetches: number; sleeps: number[] }
+    }>(`
+      const jsonResponse = (status, body) => ({
+        ok: status >= 200 && status < 300,
+        status,
+        text: async () => body,
+      })
+      const scriptedFetch = (responses) => {
+        const calls = { count: 0 }
+        const fetchImpl = async () => {
+          const response = responses[calls.count] ?? responses[responses.length - 1]
+          calls.count += 1
+          if (response instanceof Error) throw response
+          return response
+        }
+        return { fetchImpl, calls }
+      }
+      const clientFor = (fetchImpl, sleeps) =>
+        mgmt.createManagementSqlClient({
+          projectRef: 'proj',
+          accessToken: 'token',
+          fetchImpl,
+          sleepFn: async (ms) => { sleeps.push(ms) },
+        })
+      const ddl = 'CREATE TABLE IF NOT EXISTS supabase_migrations.yousafe_migration_ledger (filename text)'
+
+      const transient = (() => {
+        const sleeps = []
+        const { fetchImpl, calls } = scriptedFetch([
+          jsonResponse(503, 'busy'),
+          jsonResponse(503, 'busy'),
+          jsonResponse(201, '[]'),
+        ])
+        return clientFor(fetchImpl, sleeps).execute(ddl).then((result) => ({ result, fetches: calls.count, sleeps }))
+      })()
+
+      const permanent = (() => {
+        const sleeps = []
+        const { fetchImpl, calls } = scriptedFetch([jsonResponse(400, 'bad ddl')])
+        return clientFor(fetchImpl, sleeps).execute(ddl).then((result) => ({ result, fetches: calls.count, sleeps }))
+      })()
+
+      const networkThen200 = (() => {
+        const sleeps = []
+        const { fetchImpl, calls } = scriptedFetch([new Error('socket hang up'), jsonResponse(200, '[]')])
+        return clientFor(fetchImpl, sleeps).execute(ddl).then((result) => ({ result, fetches: calls.count, sleeps }))
+      })()
+
+      const exhausted = (() => {
+        const sleeps = []
+        const { fetchImpl, calls } = scriptedFetch([jsonResponse(503, 'busy')])
+        return clientFor(fetchImpl, sleeps).execute(ddl).then((result) => ({ result, fetches: calls.count, sleeps }))
+      })()
+
+      const [a, b, c, d] = await Promise.all([transient, permanent, networkThen200, exhausted])
+      console.log(JSON.stringify({
+        transient: a,
+        permanent: b,
+        networkThen200: c,
+        exhausted: d,
+      }))
+    `)
+    expect(out.transient.result).toMatchObject({ ok: true, status: 201 })
+    expect(out.transient.fetches).toBe(3)
+    expect(out.transient.sleeps).toEqual([1000, 2000])
+    expect(out.permanent.result).toMatchObject({ ok: false, status: 400 })
+    expect(out.permanent.fetches).toBe(1)
+    expect(out.permanent.sleeps).toEqual([])
+    expect(out.networkThen200.result).toMatchObject({ ok: true, status: 200 })
+    expect(out.networkThen200.fetches).toBe(2)
+    expect(out.networkThen200.sleeps).toEqual([1000])
+    expect(out.exhausted.result.ok).toBe(false)
+    expect(out.exhausted.result.status).toBe(503)
+    expect(out.exhausted.fetches).toBe(3)
+    expect(out.exhausted.sleeps).toEqual([1000, 2000])
+  })
 })
 
 describe('adoption workflow contract (T14)', () => {
@@ -746,6 +859,31 @@ describe('adoption workflow contract (T14)', () => {
   beforeAll(() => {
     yaml = readFileSync(WORKFLOW, 'utf8')
   })
+
+  const stepBlocks = (source: string): string[] =>
+    source
+      .split(/\n(?= {6}- )/)
+      .filter((block) => /^ {6}- (?:name|uses):/.test(block))
+
+  const stepBlock = (matcher: string): string => stepBlocks(yaml).find((block) => block.includes(matcher)) ?? ''
+
+  const runScripts = (source: string): string[] => {
+    const lines = source.split('\n')
+    const scripts: string[] = []
+    for (let i = 0; i < lines.length; i += 1) {
+      const match = lines[i].match(/^(\s*)run:\s*\|-?\s*$/)
+      if (!match) continue
+      const baseIndent = match[1].length
+      const script: string[] = []
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const line = lines[j]
+        if (line.trim() !== '' && (line.match(/^\s*/)?.[0].length ?? 0) <= baseIndent) break
+        script.push(line)
+      }
+      scripts.push(script.join('\n'))
+    }
+    return scripts
+  }
 
   it('is dispatch-only: exactly one workflow_dispatch trigger and no push trigger', () => {
     expect(yaml).toMatch(/^\s*workflow_dispatch:/m)
@@ -765,13 +903,43 @@ describe('adoption workflow contract (T14)', () => {
     expect(yaml.indexOf('Refuse unless dispatched from main with exact confirmation')).toBeLessThan(
       yaml.indexOf('actions/checkout'),
     )
-    expect(yaml).toContain('test "${{ github.ref }}" = "refs/heads/main"')
-    expect(yaml).toContain('test "${{ inputs.confirmation }}" = "ADOPT-BASELINE-69"')
-    expect(yaml).toContain('ADOPT-BASELINE-69')
+    const guard = stepBlock('Refuse unless dispatched from main with exact confirmation')
+    expect(guard).toContain('GITHUB_REF: ${{ github.ref }}')
+    expect(guard).toContain('CONFIRMATION: ${{ inputs.confirmation }}')
+    expect(guard).toContain('test "${GITHUB_REF}" = "refs/heads/main"')
+    expect(guard).toContain('test "${CONFIRMATION}" = "ADOPT-BASELINE-69"')
+    expect(guard).toContain('ADOPT-BASELINE-69')
   })
 
-  it('pins the checkout to the expected_main_sha input', () => {
-    expect(yaml).toContain('ref: ${{ inputs.expected_main_sha }}')
+  it('pins the checkout to expected_main_sha with full history (fetch-depth: 0)', () => {
+    const checkout = stepBlock('actions/checkout@v4')
+    expect(checkout).not.toBe('')
+    expect(checkout).toContain('ref: ${{ inputs.expected_main_sha }}')
+    expect(checkout).toMatch(/^\s*fetch-depth:\s*0\s*$/m)
+  })
+
+  it('maps dispatch expressions to step env and never interpolates them inside run: scripts', () => {
+    const scripts = runScripts(yaml)
+    expect(scripts.length).toBeGreaterThanOrEqual(3)
+    for (const script of scripts) {
+      expect(script).not.toContain('${{')
+    }
+    expect(yaml).not.toContain('test "${{ github.ref }}"')
+    expect(yaml).not.toContain('test "${{ inputs.confirmation }}"')
+    expect(yaml).not.toContain('test "$(git rev-parse HEAD)" = "${{ inputs.expected_main_sha }}"')
+    expect(yaml).not.toContain('git merge-base --is-ancestor "${{ inputs.expected_main_sha }}"')
+  })
+
+  it('verifies the pinned checkout with env-backed values and leaves manifest-baseline ancestry to the CLI', () => {
+    const verify = stepBlock('Verify pinned checkout')
+    expect(verify).not.toBe('')
+    const verifyName = verify.split('\n')[0] ?? ''
+    expect(verifyName).not.toMatch(/ancestry/i)
+    expect(verifyName).not.toMatch(/baseline/i)
+    expect(verify).toContain('EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}')
+    expect(verify).toContain('test "$(git rev-parse HEAD)" = "${EXPECTED_MAIN_SHA}"')
+    expect(verify).toContain('git fetch --no-tags origin main')
+    expect(verify).toContain('git merge-base --is-ancestor "${EXPECTED_MAIN_SHA}" origin/main')
   })
 
   it('serializes adoption in the migration concurrency group without cancelling', () => {

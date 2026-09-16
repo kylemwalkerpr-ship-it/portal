@@ -27,27 +27,40 @@ jobs:
     steps:
       # First step, before checkout and before any secret is exposed: a non-main
       # or bad-confirmation dispatch must FAIL this workflow, never skip the job.
+      # Dispatch values arrive via env and are referenced only as quoted shell
+      # variables, never interpolated into the script text (shell-injection safe).
       - name: Refuse unless dispatched from main with exact confirmation
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          test "${{ github.ref }}" = "refs/heads/main"
-          test "${{ inputs.confirmation }}" = "ADOPT-BASELINE-69"
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "${CONFIRMATION}" = "ADOPT-BASELINE-69"
           echo "dispatch guard passed"
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.expected_main_sha }}
+          # Full history is required: the adoption CLI re-runs the manifest
+          # baseline ancestry proof, which a depth-1 shallow boundary breaks.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Verify pinned checkout and baseline ancestry
+      # runAdoption() owns the authoritative manifest-baseline ancestry proof
+      # (git merge-base --is-ancestor <baseline> HEAD). This step only asserts
+      # that the pinned checkout is the expected commit and is on main.
+      - name: Verify pinned checkout is a commit on main
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_main_sha }}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_MAIN_SHA}"
           git fetch --no-tags origin main
-          git merge-base --is-ancestor "${{ inputs.expected_main_sha }}" origin/main
+          git merge-base --is-ancestor "${EXPECTED_MAIN_SHA}" origin/main
 
       - name: Adopt baseline ledger (writes ledger rows only)
         env:
