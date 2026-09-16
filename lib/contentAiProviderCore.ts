@@ -1056,7 +1056,7 @@ export function resolveEffectiveModel(p: OpenAiCompat, opts: ContentAiOptions): 
   return requested
 }
 
-async function openAiCompatibleComplete(
+export async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): Promise<ContentAiResult> {
@@ -1362,7 +1362,7 @@ async function grokResponsesFetch(
   }
 }
 
-async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
+export async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<ContentAiStreamEvent> {
   const model = grokModelId(opts)
   const limits = grokRequestLimits(opts.maxTokens, opts.reasoningEffort, { disableThinking: opts.disableThinking })
   yield { type: 'provider', provider: 'grok', model: `${model} · ${limits.reasoningEffort} effort` }
@@ -1411,7 +1411,7 @@ async function* grokResponsesStream(opts: ContentAiOptions): AsyncGenerator<Cont
   yield { type: 'done', text: full.trim(), provider: 'grok', model }
 }
 
-async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+export async function grokComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const model = grokModelId(opts)
   return withRetry('grok', async () => {
     let text = ''
@@ -2259,7 +2259,7 @@ async function* parseOpenAiSse(
   }
 }
 
-async function* openAiCompatibleStream(
+export async function* openAiCompatibleStream(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
