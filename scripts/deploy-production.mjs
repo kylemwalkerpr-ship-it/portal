@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
 
 const required = {
   GITHUB_ACTIONS: 'true',
@@ -19,12 +20,26 @@ if (mismatches.length > 0) {
   process.exit(78)
 }
 
+const secretsFile = process.env.WORKER_SECRETS_FILE || ''
+
+if (!secretsFile) {
+  console.error('\nProduction deploy blocked.\n')
+  console.error('WORKER_SECRETS_FILE is not set. The Deploy YouSafe Portal workflow must prepare the ephemeral Worker secrets file before deploying.')
+  process.exit(78)
+}
+
+if (!fs.existsSync(secretsFile) || !fs.statSync(secretsFile).isFile()) {
+  console.error('\nProduction deploy blocked.\n')
+  console.error(`WORKER_SECRETS_FILE does not exist or is not a file: ${secretsFile}`)
+  process.exit(78)
+}
+
 console.log(`GitHub-only deploy gate passed for ${process.env.GITHUB_SHA || 'current main commit'}.`)
 
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-const result = spawnSync(command, ['opennextjs-cloudflare', 'deploy'], {
+const result = spawnSync(command, ['wrangler', 'deploy', '--secrets-file', secretsFile], {
   cwd: process.cwd(),
-  env: process.env,
+  env: { ...process.env, OPEN_NEXT_DEPLOY: 'true' },
   stdio: 'inherit',
 })
 
