@@ -63,6 +63,23 @@ import { GSC_STRIKE_SEEDS_2026_08 } from './strikeSeeds'
 export const BROAD_CREATE_UNLOCK_ENV = 'SEO_FACTORY_UNLOCK_BROAD_CREATE'
 
 /**
+ * Content type used ONLY for publication-door ownership-proof re-resolution.
+ *
+ * Publication proof answers one question — "does CURRENT no-hint ownership
+ * registry/strike-seed truth prove this persisted final canonical is an
+ * existing owner?" — which is independent of the article's RENDERING content
+ * type. A legal registry owner can carry a news_summary intent, so the
+ * pipeline finalizes the rendering type to `blog_post` while the owner still
+ * lives on the legal/apex host. Re-resolving with `blog_post` would take
+ * `resolveOwner`'s explicit-blog standing-rules early return and refuse the
+ * very owner authoring approved (its canonical would re-resolve to a new
+ * sibling), so publication always re-resolves owner truth with this neutral
+ * ownership-proof type. Rendering, gates and persistence keep using the
+ * finalized contentType unchanged; this value is never a destination hint.
+ */
+export const PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE = 'legal_guide'
+
+/**
  * The OwnerPlan fields accepted by the gate. `matched` and `action` are
  * accepted for call-site compatibility but the action label is deliberately
  * NOT consulted: an `expand` / `keep` label on a fallback route is not proof

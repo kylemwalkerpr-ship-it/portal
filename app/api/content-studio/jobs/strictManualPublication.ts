@@ -8,7 +8,10 @@ import {
   type OwnerHost,
   type OwnerPlan,
 } from '@/lib/seoFactory/ownership'
-import { assertPublicationDestinationAllowed } from '@/lib/seoFactory/broadCreateFreeze'
+import {
+  assertPublicationDestinationAllowed,
+  PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
+} from '@/lib/seoFactory/broadCreateFreeze'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -179,11 +182,14 @@ function exactContractPlan(resolved: OwnerPlan, execution: StrictExecution): Own
  */
 async function assertDirectMergeDestinationAllowed(job: Record<string, any>): Promise<void> {
   const primaryKeyword = String(job.primary_keyword || job.topic || '')
-  const contentType =
-    job.content_type === 'article' ? 'legal_guide' : String(job.content_type || 'legal_guide')
+  // Content-format agnostic ownership proof: re-resolve with the neutral
+  // ownership-proof type, NOT the persisted rendering type. A legal registry
+  // owner finalized as `blog_post` (news_summary intent) must not be refused by
+  // the explicit-blog standing-rules early return; the persisted canonical
+  // still has to equal the fresh owner and pass the exact live proof below.
   const authority = await resolveOwner({
     primaryKeyword,
-    contentType,
+    contentType: PUBLICATION_OWNERSHIP_PROOF_CONTENT_TYPE,
     region: String(job.region || 'US'),
     indexable: job.indexable !== false,
   })
