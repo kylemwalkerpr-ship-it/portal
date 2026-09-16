@@ -32,6 +32,12 @@ const plan = {
   canonicalUrl: 'https://legal.yousafeconsultancy.com/us/manual/',
   indexable: true,
   blockers: [],
+  // Genuine existing owner for the P0 global publication freeze: the direct
+  // merge gate re-resolves via this mocked resolver and requires the persisted
+  // canonical to equal the matched registry owner URL.
+  matched: { id: 1, owner_url: 'https://legal.yousafeconsultancy.com/us/manual/' },
+  routingSource: 'registry_owner_url',
+  action: 'expand',
 }
 jest.mock('@/lib/seoFactory/ownership', () => ({ resolveOwner: jest.fn(async () => plan) }))
 jest.mock('@/lib/seoFactory/audit', () => ({
@@ -53,6 +59,20 @@ jest.mock('@/lib/githubContents', () => ({ githubFetch: jest.fn(), getRepoFileCo
 jest.mock('@/lib/seoFactory/jobShipGate', () => {
   const actual = jest.requireActual('@/lib/seoFactory/jobShipGate')
   return { ...actual, jobPassesShipGate: jest.fn(() => true) }
+})
+
+/**
+ * The P0 global publication freeze re-checks an exact live existence proof for
+ * the resolved owner on direct existing-PR merges. This file's resolver is
+ * mocked with a synthetic owner, so the live probe is mocked as an exact 200 —
+ * no real network request is ever made.
+ */
+const liveFetchMock = jest.fn(async (url: string) => ({ ok: true, status: 200, url: String(url) }))
+const originalFetch = global.fetch
+;(global as unknown as { fetch: unknown }).fetch = liveFetchMock
+
+afterAll(() => {
+  ;(global as unknown as { fetch: unknown }).fetch = originalFetch
 })
 
 const jobId = '00000000-0000-0000-0000-000000000199'

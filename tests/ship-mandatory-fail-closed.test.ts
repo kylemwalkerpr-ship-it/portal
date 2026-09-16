@@ -166,21 +166,55 @@ describe('shipContent — mandatory gate FAILS CLOSED on the actual ship path', 
     expect(githubMock('putRepoFile')).not.toHaveBeenCalled()
   })
 
-  it('keeps a legitimately-evaluated NONCRITICAL verdict advisory (nonblocking) — dry-run proceeds', async () => {
+  it('keeps a legitimately-evaluated mandatory.applicable=false verdict advisory (nonblocking) on a genuine exact-live existing owner — dry-run proceeds', async () => {
     const gate = require('@/lib/seoEngine/gate') as { enforceGate: jest.Mock }
     gate.enforceGate.mockResolvedValue({ mandatory: { applicable: false, met: true, missing: [] }, recorded: true })
-    const result = await shipContent({
-      mode: 'pr',
-      plan: makePlan(),
-      content: '## In 60 seconds\nUK banking basics for newcomers.',
-      title: 'Open a UK Bank Account',
-      region: 'UK',
-      contentType: 'regional_page',
-      primaryKeyword: 'open bank account uk immigrant',
-      audit: AUDIT,
-      dryRun: true,
-    })
-    expect(result.status).toBe('dry_run')
+    // The gate legitimately evaluated this mission and returned
+    // mandatory.applicable=false, so the non-applicable mandatory verdict stays
+    // advisory/nonblocking. Genuine exact-live registry-backed destination
+    // (registry id 3): the P0 global publication freeze re-resolves ownership
+    // on the real ship path and requires an exact live existence proof, so this
+    // test mocks the live probe with an exact 200 (no real network) to prove
+    // the advisory verdict on a genuine existing owner.
+    const ownerUrl = 'https://legal.yousafeconsultancy.com/us/student-visas/f1-document-checklist-2026/'
+    const originalFetch = global.fetch
+    const liveFetchMock = jest.fn(async () => ({ ok: true, status: 200, url: ownerUrl }))
+    ;(global as unknown as { fetch: unknown }).fetch = liveFetchMock
+    require('@/lib/seoFactory/broadCreateFreeze').resetBroadCreateLiveCache?.()
+    try {
+      const result = await shipContent({
+        mode: 'pr',
+        plan: makePlan({
+          matched: {
+            id: 3,
+            primary_keyword: 'f-1 document checklist',
+            intent_class: 'checklist',
+            owner_host: 'legal',
+            owner_url: ownerUrl,
+            supporting_urls: [],
+            action: 'keep',
+            market_destination: null,
+            status: 'confirmed',
+            notes: '',
+          } as OwnerPlan['matched'],
+          routingSource: 'registry_owner_url',
+          canonicalUrl: ownerUrl,
+          filePath: 'app/us/student-visas/f1-document-checklist-2026/page.tsx',
+          contentType: 'legal_guide',
+        }),
+        content: '## In 60 seconds\nInformation only, not legal advice.',
+        title: 'F-1 Document Checklist',
+        region: 'US',
+        contentType: 'legal_guide',
+        primaryKeyword: 'f-1 document checklist',
+        audit: AUDIT,
+        dryRun: true,
+      })
+      expect(result.status).toBe('dry_run')
+      expect(liveFetchMock).toHaveBeenCalled()
+    } finally {
+      ;(global as unknown as { fetch: unknown }).fetch = originalFetch
+    }
   })
 })
 

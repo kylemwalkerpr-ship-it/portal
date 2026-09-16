@@ -132,6 +132,17 @@ const makeSupabaseClient = () => {
 let supabaseClient: any
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn(() => supabaseClient) }))
 
+/**
+ * Exact-live registry owner fixture (registry id 3, confirmed/keep; live URL
+ * answers 200 exactly). The P0 global publication freeze re-resolves ownership
+ * on direct existing-PR merges and requires both static authority and an exact
+ * live existence proof, so this file mocks global fetch — no real network.
+ */
+const F1_KEYWORD = 'f-1 document checklist'
+const F1_CANONICAL = 'https://legal.yousafeconsultancy.com/us/student-visas/f1-document-checklist-2026/'
+const liveFetchMock = jest.fn()
+const originalFetch = global.fetch
+
 const APPROVED_HEAD_SHA = 'approved-head-sha-123'
 function contractIdFor(id: string) { return `contract-${id}` }
 function contractHashFor(id: string) { return `contract-hash-${id}` }
@@ -163,8 +174,8 @@ function manifestFor(id: string, content: string, prNumber: number | null = 12) 
     opportunityId,
     repoOwner: 'caseworks',
     repoName: 'caseworks',
-    path: 'app/ca/study-permit/page.tsx',
-    canonical: 'https://yousafeconsultancy.com/ca/study-permit/',
+    path: 'app/us/student-visas/f1-document-checklist-2026/page.tsx',
+    canonical: F1_CANONICAL,
     expectedMarker,
     content,
     approvedContentHash: artifactContentHash(content),
@@ -179,16 +190,20 @@ function manifestFor(id: string, content: string, prNumber: number | null = 12) 
 function baseJob(overrides: Record<string, unknown> = {}): Record<string, any> {
   return {
     id: 'j1',
-    title: 'Canada Study Permit Guide',
-    topic: 'canada study permit',
-    primary_keyword: 'canada study permit',
+    title: 'F-1 Document Checklist',
+    // Exact-live registry-backed keyword (registry id 3) so the P0 global
+    // publication freeze's fresh ownership re-resolution accepts the persisted
+    // destination on direct existing-PR merges (a synthetic unowned destination
+    // now fails closed; registry agreement alone is not live proof).
+    topic: F1_KEYWORD,
+    primary_keyword: F1_KEYWORD,
     content_type: 'legal_guide',
-    region: 'CA',
+    region: 'US',
     status: 'pr_created',
     pr_number: 12,
     target_repo: 'caseworks/caseworks',
-    canonical_url: 'https://yousafeconsultancy.com/ca/study-permit/',
-    content_path: 'app/ca/study-permit/page.tsx',
+    canonical_url: F1_CANONICAL,
+    content_path: 'app/us/student-visas/f1-document-checklist-2026/page.tsx',
     content: mkContent(),
     audit_json: { score: 96, blockers: [] },
     ai_provider: 'grok',
@@ -228,6 +243,10 @@ function post(body: Record<string, unknown>) { return POST(request('POST', body)
 beforeEach(() => {
   jest.clearAllMocks()
   supabaseClient = makeSupabaseClient()
+  liveFetchMock.mockReset()
+  liveFetchMock.mockResolvedValue({ ok: true, status: 200, url: F1_CANONICAL })
+  ;(global as unknown as { fetch: unknown }).fetch = liveFetchMock
+  require('@/lib/seoFactory/broadCreateFreeze').resetBroadCreateLiveCache?.()
   mockMergePullRequest.mockResolvedValue({ merged: true, sha: 'sha123', message: 'merged' })
   mockLoadWritingContract.mockImplementation(async (_db: unknown, input: any) => ({
     schemaVersion: 2,
@@ -267,6 +286,10 @@ beforeEach(() => {
       mode: 'pr',
     }
   })
+})
+
+afterAll(() => {
+  ;(global as unknown as { fetch: unknown }).fetch = originalFetch
 })
 
 describe('PATCH merge_pr — refuses an ungated PR', () => {
