@@ -5,8 +5,37 @@ const root = process.cwd()
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 
 const pkg = JSON.parse(read('package.json'))
+const lock = JSON.parse(read('package-lock.json'))
+
+const WRANGLER_GRANULAR_ROLE_FLOOR = '4.132.0'
+
+function versionTriple(version: string): [number, number, number] {
+  const match = version.match(/(\d+)\.(\d+)\.(\d+)/)
+  if (!match) throw new Error(`Cannot parse a semver floor from "${version}"`)
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function meetsFloor(version: string, floor: string): boolean {
+  const [major, minor, patch] = versionTriple(version)
+  const [floorMajor, floorMinor, floorPatch] = versionTriple(floor)
+  if (major !== floorMajor) return major > floorMajor
+  if (minor !== floorMinor) return minor > floorMinor
+  return patch >= floorPatch
+}
 
 describe('GitHub-only production deployment contract', () => {
+  test('pins root Wrangler at the granular per-Worker role floor of 4.132.0', () => {
+    const declared = pkg.devDependencies.wrangler
+    expect(meetsFloor(declared, WRANGLER_GRANULAR_ROLE_FLOOR)).toBe(true)
+
+    const lockRoot = lock.packages[''].devDependencies.wrangler
+    expect(meetsFloor(lockRoot, WRANGLER_GRANULAR_ROLE_FLOOR)).toBe(true)
+
+    const resolved = lock.packages['node_modules/wrangler'].version
+    expect(meetsFloor(resolved, WRANGLER_GRANULAR_ROLE_FLOOR)).toBe(true)
+    expect(meetsFloor(declared, resolved)).toBe(true)
+  })
+
   test('routes npm deploy through an environment guard rather than exposing OpenNext directly', () => {
     expect(pkg.scripts.deploy).toBe('node scripts/deploy-production.mjs')
     expect(pkg.scripts.deploy).not.toContain('opennextjs-cloudflare deploy')
