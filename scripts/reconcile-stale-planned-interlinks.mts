@@ -1,34 +1,38 @@
 /**
  * Read-only reconciliation evidence report for `seo_interlinks` rows whose
- * target_url still uses the retired Portal-host Marketplace form.
+ * target_url is not the canonical public Marketplace category URL.
  *
- * Public Marketplace category URLs are
- *   https://market.yousafeconsultancy.com/categories/<id>
- * The retired form
- *   https://portal.yousafeconsultancy.com/marketplace/categories/<id>
- * must never be emitted. The production reconciliation for the 70 stale
- * planned rows was applied atomically by supervisor SQL on 2026-09-15; this
- * script is now strictly READ-ONLY evidence tooling: it queries, validates,
- * maps, and prints rollback evidence. It contains NO update path and accepts
- * no flags that mutate anything.
+ * Canonical public form:
+ *   https://market.yousafeconsultancy.com/categories/<valid-id>
+ * Known retired forms (recognized safely, never emitted):
+ *   https://portal.yousafeconsultancy.com/marketplace/category/<id>    (singular)
+ *   https://portal.yousafeconsultancy.com/marketplace/categories/<id>  (plural)
  *
- * Safety model (fails closed — never guesses):
- *   - READ-ONLY: no INSERT/UPDATE/DELETE is issued against any table.
- *   - Only rows with status='planned' AND target_url beginning with the exact
- *     retired prefix are considered.
- *   - A candidate is valid ONLY if target_url matches, in full:
- *       ^https://portal[.]yousafeconsultancy[.]com/marketplace/categories/[a-z0-9]+(?:-[a-z0-9]+)*$
- *     ANY malformed match-prefix row aborts the report.
- *   - Mapping is a pure prefix replacement that preserves the category id.
- *   - Uniqueness is checked against existing (source_slug, new_target_url)
- *     pairs and within the candidate mapping itself; ANY collision aborts.
- *   - The report prints a full rollback mapping (new -> old) for every row.
+ * Classification and mapping live in scripts/interlinkReconciliation.ts
+ * (pure, unit-tested). This executable wrapper is strictly READ-ONLY:
+ *   - marketplace_cta rows are fetched with SELECT.
+ *   - Canonical rows are evidence/no-op, never candidates.
+ *   - Known legacy rows map to the canonical URL only when the id is a real
+ *     current category/subcategory AND status='planned' AND the mapped
+ *     (source_slug, canonical_target_url) pair is free.
+ *   - Malformed/unsupported, invalid-id, query/hash, and non-planned legacy
+ *     rows FAIL CLOSED (problem report + non-zero exit, no evidence output).
+ *   - Existing-canonical collisions are reported with the stale row id plus
+ *     the canonical row id/URL; intra-mapping collisions also fail closed.
+ *     Nothing is ever updated, deleted, or merged.
+ *   - No INSERT/UPDATE/DELETE/UPSERT/RPC is issued against any table, and no
+ *     --apply flag or argv mutation path exists.
  *
  * Usage:
  *   npx tsx --env-file=.env.local scripts/reconcile-stale-planned-interlinks.mts
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
+import {
+  classifyMarketplaceCtaRows,
+  type InterlinkReconcileRow,
+  type MarketplaceCtaReconciliation,
+} from './interlinkReconciliation'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = resolveSupabaseKey()
@@ -37,146 +41,113 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1)
 }
 
-const RETIRED_PREFIX = 'https://portal.yousafeconsultancy.com/marketplace/categories/'
-const CANONICAL_PREFIX = 'https://market.yousafeconsultancy.com/categories/'
-const VALID_TARGET_RE =
-  /^https:\/\/portal[.]yousafeconsultancy[.]com\/marketplace\/categories\/[a-z0-9]+(?:-[a-z0-9]+)*$/
-
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
-interface InterlinkRow {
-  id: string
-  source_slug: string
-  target_url: string
-  status: string | null
-}
+const COLLISION_QUERY_CHUNK = 50
 
-interface Reconciliation {
-  id: string
-  source_slug: string
-  old_target_url: string
-  new_target_url: string
-}
-
-function newUrlFor(oldUrl: string): string {
-  return CANONICAL_PREFIX + oldUrl.slice(RETIRED_PREFIX.length)
-}
-
-/** Fetch planned rows whose target_url starts with the exact retired prefix. */
-async function fetchStalePlanned(): Promise<InterlinkRow[]> {
+/** SELECT every marketplace_cta row — status is classified, not filtered. */
+async function fetchMarketplaceCtaRows(): Promise<InterlinkReconcileRow[]> {
   const { data, error } = await supabase
     .from('seo_interlinks')
     .select('id, source_slug, target_url, status')
-    .eq('status', 'planned')
-    .like('target_url', `${RETIRED_PREFIX}%`)
+    .eq('reason', 'marketplace_cta')
     .order('id', { ascending: true })
-  if (error) throw new Error(`stale planned query failed: ${error.message}`)
-  return (data ?? []) as InterlinkRow[]
-}
-
-/** Fail closed when ANY match-prefix row is malformed (non-category target). */
-function validate(rows: InterlinkRow[]): InterlinkRow[] {
-  const malformed = rows.filter((r) => !VALID_TARGET_RE.test(r.target_url))
-  if (malformed.length > 0) {
-    console.error(`FAIL CLOSED — ${malformed.length} malformed target_url(s) among match-prefix rows:`)
-    for (const r of malformed) {
-      console.error(`  ${r.id} ${r.source_slug} ${r.target_url}`)
-    }
-    console.error('No reconciliation evidence is produced while any malformed target exists. Fix or remove these rows first.')
-    process.exit(1)
-  }
-  return rows
+  if (error) throw new Error(`marketplace_cta query failed: ${error.message}`)
+  return (data ?? []) as InterlinkReconcileRow[]
 }
 
 /**
- * Fail closed when the candidate mapping itself is not injective per
- * (source_slug, new_target_url): two candidate rows reconciling to the same
- * (source_slug, new_target_url) pair would collide with each other on the
- * table's unique constraint.
+ * SELECT any-reason rows already holding a mapped canonical target URL, so
+ * cross-reason collisions on the table's (source_slug, target_url) unique
+ * constraint are detected too. Chunked to keep PostgREST URLs bounded.
  */
-function assertNoIntraMappingCollisions(recons: Reconciliation[]): void {
-  const seen = new Map<string, string>()
-  const intra: string[] = []
-  for (const r of recons) {
-    const key = `${r.source_slug}\u0000${r.new_target_url}`
-    const first = seen.get(key)
-    if (first !== undefined) {
-      intra.push(`${first} + ${r.id} -> ${r.source_slug} ${r.new_target_url}`)
-    } else {
-      seen.set(key, r.id)
-    }
+async function fetchRowsHoldingCanonicalTargets(urls: string[]): Promise<InterlinkReconcileRow[]> {
+  const out: InterlinkReconcileRow[] = []
+  for (let i = 0; i < urls.length; i += COLLISION_QUERY_CHUNK) {
+    const chunk = urls.slice(i, i + COLLISION_QUERY_CHUNK)
+    const { data, error } = await supabase
+      .from('seo_interlinks')
+      .select('id, source_slug, target_url, status')
+      .in('target_url', chunk)
+      .order('id', { ascending: true })
+    if (error) throw new Error(`collision query failed: ${error.message}`)
+    out.push(...((data ?? []) as InterlinkReconcileRow[]))
   }
-  if (intra.length > 0) {
-    console.error(`FAIL CLOSED — ${intra.length} intra-mapping collision(s): two candidate rows reconcile to the same (source_slug, new_target_url):`)
-    for (const line of intra) {
-      console.error(`  ${line}`)
-    }
-    console.error('No reconciliation evidence is produced while the mapping itself is ambiguous. Deduplicate these candidates first.')
-    process.exit(1)
-  }
+  return out
 }
 
-/**
- * Fail closed when any row already holds the same (source_slug, new_target_url)
- * pair the reconciliation would produce. The candidate row itself is excluded
- * (its old target_url necessarily differs from its new one); candidate-vs-
- * candidate duplicates are covered by assertNoIntraMappingCollisions.
- */
-async function assertNoCollisions(recons: Reconciliation[]): Promise<void> {
-  const slugs = [...new Set(recons.map((r) => r.source_slug))]
-  const newUrls = [...new Set(recons.map((r) => r.new_target_url))]
-  const { data, error } = await supabase
-    .from('seo_interlinks')
-    .select('id, source_slug, target_url')
-    .in('source_slug', slugs)
-    .in('target_url', newUrls)
-  if (error) throw new Error(`collision query failed: ${error.message}`)
+function printCounts(result: MarketplaceCtaReconciliation): void {
+  console.log(`total_marketplace_cta_rows: ${result.total}`)
+  console.log(`canonical_count: ${result.canonicalRows.length}`)
+  console.log(`update_safe_count: ${result.updateSafeCandidates.length}`)
+  console.log(`existing_canonical_collision_count: ${result.existingCanonicalCollisions.length}`)
+  console.log(`intra_mapping_collision_count: ${result.intraMappingCollisions.length}`)
+  console.log(`malformed_unsupported_count: ${result.malformedUnsupported.length}`)
+  console.log(`non_planned_legacy_count: ${result.nonPlannedLegacy.length}`)
+  console.log(`rollback_count: ${result.rollbackMappings.length}`)
+}
 
-  const existing = (data ?? []) as Array<Pick<InterlinkRow, 'id' | 'source_slug' | 'target_url'>>
-  const candidateIds = new Set(recons.map((r) => r.id))
-  const collisions = existing.filter(
-    (row) => !candidateIds.has(row.id) && recons.some((r) => r.source_slug === row.source_slug && r.new_target_url === row.target_url),
-  )
-  if (collisions.length > 0) {
-    console.error(`FAIL CLOSED — ${collisions.length} collision(s): a row already holds the reconciled (source_slug, target_url):`)
-    for (const c of collisions) {
-      console.error(`  ${c.id} ${c.source_slug} ${c.target_url}`)
-    }
-    console.error('No reconciliation evidence is produced while any collision exists. Resolve duplicates first.')
-    process.exit(1)
+function printFailClosedProblems(result: MarketplaceCtaReconciliation): void {
+  console.error('')
+  console.error('FAIL CLOSED — reconciliation evidence withheld:')
+  for (const row of result.malformedUnsupported) {
+    console.error(`  MALFORMED/UNSUPPORTED ${row.id} ${row.source_slug} [status=${row.status ?? 'null'}] ${row.target_url}`)
   }
+  for (const row of result.nonPlannedLegacy) {
+    console.error(`  NON-PLANNED LEGACY ${row.id} ${row.source_slug} [status=${row.status ?? 'null'}] ${row.target_url}`)
+  }
+  for (const collision of result.intraMappingCollisions) {
+    console.error(`  INTRA-MAPPING COLLISION ${collision.rowIds.join(' + ')} -> ${collision.sourceSlug} ${collision.canonicalTargetUrl}`)
+  }
+  console.error('Fix or remove these rows first; this script contains no mutation path.')
 }
 
 async function main(): Promise<void> {
   console.log('MODE: READ-ONLY EVIDENCE REPORT')
 
-  const stale = validate(await fetchStalePlanned())
-  const recons: Reconciliation[] = stale.map((r) => ({
-    id: r.id,
-    source_slug: r.source_slug,
-    old_target_url: r.target_url,
-    new_target_url: newUrlFor(r.target_url),
-  }))
+  const rows = await fetchMarketplaceCtaRows()
+  const preliminary = classifyMarketplaceCtaRows(rows)
+  const mappedTargets = [
+    ...new Set(
+      preliminary.rows
+        .map((row) => row.canonicalTargetUrl)
+        .filter((url): url is string => Boolean(url)),
+    ),
+  ]
+  const existingPairRows = await fetchRowsHoldingCanonicalTargets(mappedTargets)
+  const result = classifyMarketplaceCtaRows(rows, existingPairRows)
 
-  assertNoIntraMappingCollisions(recons)
-  await assertNoCollisions(recons)
+  printCounts(result)
 
-  console.log(`affected_count: ${recons.length}`)
-  console.log(`malformed_count: 0`)
-  console.log(`collision_count: 0`)
-  console.log('')
-  for (const r of recons) {
-    console.log(`· ${r.id} ${r.source_slug}`)
-    console.log(`    old: ${r.old_target_url}`)
-    console.log(`    new: ${r.new_target_url}`)
+  if (result.failsClosed) {
+    printFailClosedProblems(result)
+    process.exit(1)
   }
-  console.log('')
-  console.log(`rollback_count: ${recons.length}`)
-  for (const r of recons) {
-    console.log(`ROLLBACK ${r.new_target_url} -> ${r.old_target_url}`)
+
+  if (result.existingCanonicalCollisions.length > 0) {
+    console.log('')
+    console.log('existing_canonical_collisions (report only — no update/delete/merge; supervisor decides):')
+    for (const row of result.existingCanonicalCollisions) {
+      console.log(`  · stale ${row.id} (${row.source_slug})`)
+      console.log(`      old: ${row.target_url}`)
+      console.log(`      canonical already held by ${row.collidesWithRowId}: ${row.canonicalTargetUrl}`)
+    }
   }
+
+  console.log('')
+  for (const mapping of result.rollbackMappings) {
+    console.log(`· ${mapping.staleId} ${mapping.sourceSlug}`)
+    console.log(`    old: ${mapping.from}`)
+    console.log(`    new: ${mapping.to}`)
+  }
+
+  console.log('')
+  for (const mapping of result.rollbackMappings) {
+    console.log(`ROLLBACK ${mapping.to} -> ${mapping.from}`)
+  }
+
   console.log('')
   console.log('Done — read-only report (no rows were modified; production reconciliation is applied via supervisor SQL)')
 }

@@ -6,6 +6,7 @@
 import { validateRevisionQuality } from './revisionQuality'
 import { createClient } from '@supabase/supabase-js'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
+import { assertBroadCreateAllowed } from './broadCreateFreeze'
 import { stripDuplicateArticleCopy } from './editorialScaffold'
 import { auditContent, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipResult } from './ship'
@@ -166,6 +167,9 @@ export async function* runSeoFactoryPipelineStream(
       slug: input.slug,
       ownerUrlHint,
     })
+    // P0 broad-CREATE freeze: refuse unowned fallback creates before the early
+    // drafting row and before any AI generation (outer catch yields 'error').
+    assertBroadCreateAllowed(plan, { primaryKeyword })
     contentType = finalizePipelineContentType(input.contentType, plan)
     assertPlanRepoConsistency(plan)
     // Word window: honor brief/operator minWords/maxWords when present,

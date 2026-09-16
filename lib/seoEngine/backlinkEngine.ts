@@ -132,6 +132,9 @@ export async function listInboundGaps(opts: {
     const { data: interlinks } = await supabase
       .from('seo_interlinks')
       .select('source_slug, target_url, anchor_text')
+      // Executed authority only: `applied` means the exact target URL was
+      // found in the shipped body. Planned/gate-held edges are not links yet.
+      .eq('status', 'applied')
       .limit(2000)
 
     // Build inbound view: for each source_slug, count incoming edges.
@@ -196,7 +199,9 @@ export async function listOutboundGaps(opts: {
     const { data: interlinks } = await supabase
       .from('seo_interlinks')
       .select('source_slug, target_url, reason')
-      .in('status', ['planned', 'applied'])
+      // Only executed (applied) edges count as outbound authority — `planned`
+      // edges are not in any shipped body yet.
+      .eq('status', 'applied')
 
     // For each source_slug, count distinct outbound targets.
     const outbound = new Map<string, { count: number; targets: Set<string> }>()

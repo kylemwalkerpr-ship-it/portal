@@ -43,10 +43,13 @@ async function fetchSystemHealth(): Promise<HealthData> {
     .from('seo_interlinks')
     .select('*', { count: 'exact', head: true })
 
-  const { count: activeInterlinks } = await supabase
+  // Executed/applied interlinks — `applied` is the only executed state in
+  // seo_interlinks under today's schema (there is no 'active' status). The
+  // HealthData field name stays `interlinkActive` for compatibility.
+  const { count: appliedInterlinks } = await supabase
     .from('seo_interlinks')
     .select('*', { count: 'exact', head: true })
-    .eq('status', 'active')
+    .eq('status', 'applied')
 
   const { data: lastAudit } = await supabase
     .from('content_jobs')
@@ -65,7 +68,7 @@ async function fetchSystemHealth(): Promise<HealthData> {
     gscConnected: !!gscConnected,
     gscMode,
     interlinkTotal: interlinkCount ?? 0,
-    interlinkActive: activeInterlinks ?? 0,
+    interlinkActive: appliedInterlinks ?? 0,
     lastSiteScan: (lastAudit && lastAudit.length > 0) ? lastAudit[0].updated_at : null,
     totalShipped: shippedCount ?? 0,
   }
@@ -119,6 +122,7 @@ interface HealthData {
   gscConnected: boolean
   gscMode: string | null
   interlinkTotal: number
+  /** Applied/executed interlinks (status='applied'); name kept for compatibility. */
   interlinkActive: number
   lastSiteScan: string | null
   totalShipped: number
@@ -168,7 +172,7 @@ function buildSlackBlocks(health: HealthData, cal: CalibrationData) {
           { type: 'mrkdwn', text: `*🔑 API Keys*\n${health.apiKeysConfigured} configured` },
           { type: 'mrkdwn', text: `*🔗 GSC*\n${health.gscConnected ? statusEmoji(true) + ' Connected' : statusEmoji(false) + ' Offline'} · ${health.gscMode?.toUpperCase() || 'none'}` },
           { type: 'mrkdwn', text: `*🩺 Last Audit*\n${lastScan}` },
-          { type: 'mrkdwn', text: `*🕸️ Interlinks*\n${health.interlinkTotal} total · ${health.interlinkActive} active` },
+          { type: 'mrkdwn', text: `*🕸️ Interlinks*\n${health.interlinkTotal} total · ${health.interlinkActive} applied` },
           { type: 'mrkdwn', text: `*📦 Shipped*\n${health.totalShipped} merged jobs` },
           { type: 'mrkdwn', text: `*🧠 Model*\n${cal.accuracy ?? '—'}% accuracy ${trendEmoji(cal.accuracyTrend)} · ${cal.eventsCount} events` },
         ],
@@ -209,7 +213,7 @@ function buildDiscordEmbed(health: HealthData, cal: CalibrationData) {
             inline: true,
           },
           { name: '🩺 Last Audit', value: lastScan, inline: true },
-          { name: '🕸️ Interlinks', value: `${health.interlinkTotal} total · ${health.interlinkActive} active`, inline: true },
+          { name: '🕸️ Interlinks', value: `${health.interlinkTotal} total · ${health.interlinkActive} applied`, inline: true },
           { name: '📦 Shipped', value: `${health.totalShipped} merged`, inline: true },
           {
             name: '🧠 Model',
