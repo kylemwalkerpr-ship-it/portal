@@ -2,28 +2,39 @@
  * Shared AI helper for the SEO Master Engine and Discover intel calls.
  *
  * The deterministic SEO engine remains the source of evidence/data. Its AI
- * harmonization is a bounded two-model pair (Entrim-only live policy):
- *   LEAD        — Entrim Qwen3.6 27B (`entrim-qwen-27b`). It consumes the
- *                 complete engine result and reconciles titles, keyword
- *                 research/planning/clustering, sources, internal and
- *                 external links, H1/H2/H3, related questions, and search
- *                 intent without inventing or dropping verified evidence.
- *   COMPLEMENT  — Entrim DeepSeek V4 Flash (`entrim-deepseek`). It runs in
- *                 parallel on the same payload; when the drafts disagree the
- *                 lead merges, keeping deterministic engine evidence
- *                 authoritative.
- * No other model silently joins the pair. Explicit pins stay single-model.
- * Without ENTRIM_API_KEY the pair fails closed.
+ * harmonization is a bounded two-provider pair of the commissioned registry
+ * (design §13 decision 3):
+ *   LEAD        — Grok 4.6 (`grok`) over the retained xAI transport. It
+ *                 consumes the complete engine result and reconciles titles,
+ *                 keyword research/planning/clustering, sources, internal
+ *                 and external links, H1/H2/H3, related questions, and
+ *                 search intent without inventing or dropping verified
+ *                 evidence.
+ *   COMPLEMENT  — DeepSeek V4.1 Flash (`deepseek-v41-flash`) on the
+ *                 first-party `api.deepseek.com` transport (upstream model
+ *                 `deepseek-flash`). It runs in parallel on the same payload;
+ *                 when the drafts disagree the Grok lead merges, keeping
+ *                 deterministic engine evidence authoritative.
+ *
+ * The pair requires BOTH providers configured (`enginePairReady()`); without
+ * either key it fails closed — there is NO single-lead degradation and no
+ * Grok↔DeepSeek cross-fallback. Explicit commissioned pins stay single-model;
+ * a legacy/unknown pin is a typed selection-required failure.
  */
 
 import {
   generateContentText,
-  isEntrimConfigured,
-  isOpenaiConfigured,
   refreshAiVault,
   type ContentAiOptions,
   type ContentAiResult,
 } from '@/lib/contentAiProvider'
+import {
+  DEEPSEEK_V41_FLASH_PIN,
+  GROK_PIN,
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+  commissionedProvider,
+} from '@/lib/contentAiRegistry'
 import {
   engineLegBreakerLabel,
   isEngineLegOpen,
@@ -32,18 +43,15 @@ import {
   type EnginePairLeg,
 } from '@/lib/seoEngine/enginePairBreaker'
 
-/** Live policy fallback: the second Entrim family (Grok is out of
- *  commission). */
-export const ENGINE_FALLBACK_PROVIDER = 'entrim-deepseek' as const
-/** Graduated Discover-stage pair: Entrim lead (Qwen3.6 27B) + Entrim
- *  complement (DeepSeek V4 Flash) — both served by api.entrim.ai/v1 with the
- *  single ENTRIM vault key. Under the Entrim-only live policy these are the
- *  ONLY engine legs: without ENTRIM_API_KEY the pair fails closed (the
- *  retired Run BiOS Claude / Grok degradation paths are removed). */
-export const ENGINE_LEAD_PROVIDER = 'entrim-qwen-27b' as const
-export const ENGINE_LEAD_MODEL = 'Qwen/Qwen3.6-27B' as const
-export const ENGINE_COMPLEMENT_PROVIDER = 'entrim-deepseek' as const
+/** Discover-stage pair: Grok 4.6 (lead) + DeepSeek V4.1 Flash (complement).
+ *  Both legs must be configured or the pair fails closed. */
+export const ENGINE_LEAD_PROVIDER = GROK_PIN
+export const ENGINE_COMPLEMENT_PROVIDER = DEEPSEEK_V41_FLASH_PIN
 export const ENGINE_PAIR = 'engine-pair' as const
+
+/** Breaker slots for the two commissioned legs (registry pins). */
+const PAIR_LEAD_LEG: EnginePairLeg = GROK_PIN
+const PAIR_COMPLEMENT_LEG: EnginePairLeg = DEEPSEEK_V41_FLASH_PIN
 
 const PAIR_MAX_TOKENS = 4096
 const HARMONY_MAX_TOKENS = 3072
@@ -84,32 +92,28 @@ export interface EnginePairRollup {
 
 export type EngineTextResult = ContentAiResult & { pair?: EnginePairMeta }
 
-/** Sync resolver used by tests and callers that already refreshed the vault. */
+/**
+ * Sync resolver used by tests and callers that already refreshed the vault.
+ * Empty/'auto'/the pair sentinel resolve to the pair; a commissioned pin
+ * resolves to itself; every legacy/unknown value fails closed with a typed
+ * `ProviderSelectionRequiredError` (never a redirect).
+ */
 export function resolveEngineAiProvider(preferred?: string): string {
   const want = String(preferred || '').trim()
   if (!want || want === 'auto' || want === ENGINE_PAIR) {
     return ENGINE_PAIR
   }
-  if (want === ENGINE_FALLBACK_PROVIDER) return ENGINE_FALLBACK_PROVIDER
-  // Entrim Qwen3.6 27B — explicit Discover-stage pin (alias 'qwen' / bare
-  // 'qwen3.6-27b' canonicalize to the provider pin the cascade understands).
-  if (want === 'entrim-qwen-27b' || want === 'qwen3.6-27b' || want === 'qwen') {
-    return 'entrim-qwen-27b'
-  }
-  // Live policy: an OpenAI pin without a key routes to the Entrim lead —
-  // Grok (the legacy redirect target) is out of commission.
-  if (want === 'openai' && !isOpenaiConfigured()) {
-    return ENGINE_LEAD_PROVIDER
-  }
-  return want
+  const pin = canonicalCommissionedPin(want)
+  if (!pin) throw new ProviderSelectionRequiredError(want)
+  return pin
 }
 
 export function enginePairReady(): boolean {
-  // Live policy: Entrim serves both legs with one key. Without ENTRIM_API_KEY
-  // the pair is NOT ready — the retired Grok single-lead degradation is gone
-  // (generateEngineText falls back to the Entrim Qwen primary, which fails
-  // closed with the live-policy error when the key is missing).
-  return isEntrimConfigured()
+  // BOTH commissioned providers must be configured: Grok serves the lead and
+  // first-party DeepSeek serves the complement. One key alone is NOT the pair
+  // — there is no single-lead degradation (design §13 decision 3).
+  return commissionedProvider(ENGINE_LEAD_PROVIDER).isConfigured()
+    && commissionedProvider(ENGINE_COMPLEMENT_PROVIDER).isConfigured()
 }
 
 export function extractEngineJsonObject(text: string): Record<string, unknown> | null {
@@ -194,10 +198,10 @@ export function accumulatePairRollup(rollup: EnginePairRollup, meta?: EnginePair
 
 export function formatEnginePairTape(rollup: EnginePairRollup | null | undefined): string {
   if (!rollup || rollup.calls <= 0) return ''
-  // Label the actual legs that ran: the Entrim pair is the only combination
-  // the live policy allows — the tape reports exactly what executed.
-  const lead = rollup.lead || 'Qwen/Qwen3.6-27B'
-  const complement = rollup.complement || 'deepseek-ai/DeepSeek-V4-Flash'
+  // Label the actual legs that ran: the commissioned pair is the only
+  // combination the policy allows — the tape reports exactly what executed.
+  const lead = rollup.lead || commissionedProvider(ENGINE_LEAD_PROVIDER).apiModel
+  const complement = rollup.complement || commissionedProvider(ENGINE_COMPLEMENT_PROVIDER).apiModel
   const bits = [`${lead} + ${complement} complement`]
   if (rollup.disagreed) bits.push('disagreed')
   if (rollup.merged) bits.push('merged')
@@ -245,37 +249,36 @@ export async function generateEnginePairText(
   // specify one; explicit caller timeouts always win.
   const leadTimeoutMs = opts.timeoutMs ?? PAIR_LEAD_MIN_TIMEOUT_MS
 
-  // Leg readiness: Entrim serves both legs with one key. Under the live
-  // policy there is no Grok degradation — without ENTRIM_API_KEY both legs
-  // are notConfigured and the pair fails closed with a readable reason.
-  const entrimReady = isEntrimConfigured()
-  const leadReady = entrimReady
-  const complementReady = entrimReady
-  const leadProvider = ENGINE_LEAD_PROVIDER
-  const complementProvider = ENGINE_COMPLEMENT_PROVIDER
-  const notConfigured = (label: string) =>
-    ({ status: 'rejected', reason: new Error(`${label}: not configured`) }) as PromiseSettledResult<ContentAiResult>
-
+  // Leg readiness: both commissioned providers must be configured. A missing
+  // key fails the pair closed with a readable reason — there is NO single-lead
+  // degradation (design §13 decision 3).
+  const lead = commissionedProvider(ENGINE_LEAD_PROVIDER)
+  const complementProviderDef = commissionedProvider(ENGINE_COMPLEMENT_PROVIDER)
+  const leadReady = lead.isConfigured()
+  const complementReady = complementProviderDef.isConfigured()
+  // Config gate: BOTH providers must be configured or the pair fails fast as
+  // `config` before a single outbound request — no lead-only degradation.
+  if (!leadReady || !complementReady) {
+    throw new Error(
+      `Engine pair failed. Lead (${lead.label}): ${leadReady ? 'ready' : 'not configured'}. ` +
+        `Complement (${complementProviderDef.label}): ${complementReady ? 'ready' : 'not configured'}.`,
+    )
+  }
   const [leadSettled, complementSettled] = await Promise.all([
-    leadReady
-      ? runPairLeg('entrim-qwen', () => generateContentText({
-          ...shared,
-          ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
-          aiProvider: leadProvider,
-          model: ENGINE_LEAD_MODEL,
-          maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
-        }))
-      : Promise.resolve(notConfigured('Entrim Qwen3.6 27B')),
-    complementReady
-      ? runPairLeg('entrim-deepseek', () => generateContentText({
-          ...shared,
-          aiProvider: complementProvider,
-          maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
-        }))
-      : Promise.resolve(notConfigured('Entrim DeepSeek V4 Flash (no ENTRIM key)')),
+    runPairLeg(PAIR_LEAD_LEG, () => generateContentText({
+      ...shared,
+      ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
+      aiProvider: lead.pin,
+      maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
+    })),
+    runPairLeg(PAIR_COMPLEMENT_LEG, () => generateContentText({
+      ...shared,
+      aiProvider: complementProviderDef.pin,
+      maxTokens: opts.maxTokens ?? PAIR_MAX_TOKENS,
+    })),
   ])
 
-  const lead = settledText(leadSettled)
+  const leadResult = settledText(leadSettled)
   const complement = settledText(complementSettled)
   const leadErr = leadSettled.status === 'rejected'
     ? (leadSettled.reason instanceof Error ? leadSettled.reason.message : String(leadSettled.reason))
@@ -284,59 +287,30 @@ export async function generateEnginePairText(
     ? (complementSettled.reason instanceof Error ? complementSettled.reason.message : String(complementSettled.reason))
     : ''
 
-  if (lead && !complement) {
-    return {
-      ...lead,
-      model: `${lead.model} · pair (complement unavailable)`,
-      pair: {
-        leadModel: lead.model,
-        complementModel: null,
-        merged: false,
-        leadOnly: true,
-        complementOnly: false,
-        disagreed: false,
-        extras: { statutes: [], urls: [] },
-      },
-    }
-  }
-  if (!lead && complement) {
-    return {
-      ...complement,
-      model: `${complement.model} · pair (lead unavailable)`,
-      pair: {
-        leadModel: ENGINE_LEAD_PROVIDER,
-        complementModel: complement.model,
-        merged: false,
-        leadOnly: false,
-        complementOnly: true,
-        disagreed: false,
-        complementText: complement.text,
-        extras: harvestComplementExtras('', complement.text),
-      },
-    }
-  }
-  if (!lead && !complement) {
+  // No lead-only / complement-only degradation: the pair is a unit of two
+  // commissioned providers, so any missing leg fails the whole pair closed.
+  if (!leadResult || !complement) {
     throw new Error(
-      `Engine pair failed. Lead (Entrim Qwen3.6 27B): ${leadErr.slice(0, 280) || 'empty'}. ` +
-        `Complement (Entrim DeepSeek V4 Flash): ${complementErr.slice(0, 280) || 'empty'}.`,
+      `Engine pair failed. Lead (${lead.label}): ${leadErr.slice(0, 280) || 'empty'}. ` +
+        `Complement (${complementProviderDef.label}): ${complementErr.slice(0, 280) || 'empty'}.`,
     )
   }
 
-  const extras = harvestComplementExtras(lead!.text, complement!.text)
-  const disagreed = textsDiffer(lead!.text, complement!.text)
+  const extras = harvestComplementExtras(leadResult.text, complement.text)
+  const disagreed = textsDiffer(leadResult.text, complement.text)
   if (!disagreed) {
     return {
-      text: lead!.text,
+      text: leadResult.text,
       provider: ENGINE_LEAD_PROVIDER,
-      model: `${lead!.model} + ${complement!.model}`,
+      model: `${leadResult.model} + ${complement.model}`,
       pair: {
-        leadModel: lead!.model,
-        complementModel: complement!.model,
+        leadModel: leadResult.model,
+        complementModel: complement.model,
         merged: false,
         leadOnly: false,
         complementOnly: false,
         disagreed: false,
-        complementText: complement!.text,
+        complementText: complement.text,
         extras,
       },
     }
@@ -348,11 +322,10 @@ export async function generateEnginePairText(
       ...shared,
       ...(leadTimeoutMs != null ? { timeoutMs: leadTimeoutMs } : {}),
       aiProvider: ENGINE_LEAD_PROVIDER,
-      model: ENGINE_LEAD_MODEL,
       maxTokens: Math.min(opts.maxTokens ?? HARMONY_MAX_TOKENS, HARMONY_MAX_TOKENS),
       system:
-        `${opts.system}\n\nYou are the lead Master Engine reasoner (Qwen3.6 27B). ` +
-        `A complement model (DeepSeek V4 Flash) reviewed the same payload. Produce one final answer. ` +
+        `${opts.system}\n\nYou are the lead Master Engine reasoner (Grok 4.6). ` +
+        `A complement model (DeepSeek V4.1 Flash) reviewed the same payload. Produce one final answer. ` +
         `Keep your structure, judgment, and priorities. Adopt complement facts, statutes, ` +
         `URLs, numbers, or blockers you missed when they match the payload. ` +
         `The deterministic engine evidence in the payload is authoritative — never ` +
@@ -360,31 +333,31 @@ export async function generateEnginePairText(
         `headings, related questions, or search intent. Do not mention either model.` +
         (wantsJson(opts) ? ' If the original asked for JSON, return ONLY valid JSON.' : ''),
       prompt:
-        `${opts.prompt}\n\n--- LEAD DRAFT ---\n${lead!.text}\n\n--- COMPLEMENT DRAFT ---\n${complement!.text}`,
+        `${opts.prompt}\n\n--- LEAD DRAFT ---\n${leadResult.text}\n\n--- COMPLEMENT DRAFT ---\n${complement.text}`,
     })
     const text = (harmony.text || '').trim()
     if (text) merged = harmony
   } catch {
-    // Harmony is best-effort — the Opus lead's first pass still stands.
+    // Harmony is best-effort — the Grok lead's first pass still stands.
   }
 
   const chosen = wantsJson(opts) && complement
-    ? pickJsonPreserving(lead!, complement, merged)
-    : (merged || lead!)
+    ? pickJsonPreserving(leadResult, complement, merged)
+    : (merged || leadResult)
 
-  const extrasAfter = harvestComplementExtras(chosen.text, complement!.text)
+  const extrasAfter = harvestComplementExtras(chosen.text, complement.text)
   return {
     text: chosen.text,
     provider: ENGINE_LEAD_PROVIDER,
-    model: `${ENGINE_LEAD_MODEL} + ${complement!.model}`,
+    model: `${leadResult.model} + ${complement.model}`,
     pair: {
-      leadModel: lead!.model,
-      complementModel: complement!.model,
+      leadModel: leadResult.model,
+      complementModel: complement.model,
       merged: chosen === merged,
       leadOnly: false,
       complementOnly: false,
       disagreed: true,
-      complementText: complement!.text,
+      complementText: complement.text,
       extras: extrasAfter,
     },
   }
@@ -396,39 +369,23 @@ export async function generateEngineText(
   await refreshAiVault()
   const want = String(opts.aiProvider || '').trim()
   const asksPair = !want || want === 'auto' || want === ENGINE_PAIR
-  if (asksPair && enginePairReady()) {
+  if (asksPair) {
+    // The pair is the only two-provider construct; it fails closed when
+    // either commissioned key is missing. No single-lead degradation.
     return generateEnginePairText(opts)
   }
 
-  const primary = asksPair
-    ? ENGINE_LEAD_PROVIDER
-    : resolveEngineAiProvider(opts.aiProvider)
-
+  const primary = resolveEngineAiProvider(opts.aiProvider)
   if (primary === ENGINE_PAIR) {
     return generateEnginePairText(opts)
   }
 
-  try {
-    return await generateContentText({
-      ...opts,
-      aiProvider: primary,
-      exclusive: true,
-    })
-  } catch (primaryErr) {
-    if (primary === ENGINE_FALLBACK_PROVIDER) throw primaryErr
-    const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
-    try {
-      return await generateContentText({
-        ...opts,
-        aiProvider: ENGINE_FALLBACK_PROVIDER,
-        exclusive: true,
-      })
-    } catch (fallbackErr) {
-      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-      throw new Error(
-        `Engine AI failed. Primary (${primary}): ${primaryMsg.slice(0, 280)}. ` +
-          `Fallback (Entrim DeepSeek): ${fallbackMsg.slice(0, 280)}.`,
-      )
-    }
-  }
+  // Explicit commissioned pins stay single-model and exclusive: a failure is
+  // final — never a cross-provider fallback.
+  return generateContentText({
+    ...opts,
+    aiProvider: primary,
+    exclusive: true,
+    cascadeOnCapacity: false,
+  })
 }

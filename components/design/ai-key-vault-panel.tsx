@@ -71,6 +71,17 @@ interface GrokOAuthStatus {
   operationalState?: 'disconnected' | 'connected-unverified' | 'healthy' | 'degraded'
 }
 
+interface LegacyVaultRow {
+  provider: string
+  maskedKey: string | null
+  model: string | null
+  baseUrl: string | null
+  enabled: boolean
+  updatedAt: string | null
+  legacy: true
+  executable: false
+}
+
 interface Draft {
   key: string
   baseUrl: string
@@ -109,6 +120,60 @@ function parseProviderOrder(value: string | null | undefined, fallback: string[]
     merged.splice(1, 0, 'grok')
   }
   return merged
+}
+
+type ModelProviderRow = { id: string; modelOptions?: string[] }
+
+/**
+ * The provider a persisted/saved default-model override actually binds to.
+ * Mirrors the settings route and runtime overlay: an exact commissioned pin
+ * wins; otherwise the first commissioned pin in priority order; otherwise the
+ * lane default row. A non-exact/legacy provider value is ignored here (it is
+ * non-executable), so it can never make a stale model look valid.
+ */
+export function effectiveModelProviderFor<T extends ModelProviderRow>(
+  rows: T[],
+  defaultProvider: string,
+  providerOrder: string[],
+): T | null {
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const explicit = String(defaultProvider || '').trim()
+  if (explicit && explicit !== 'auto' && explicit !== 'reselect') {
+    const selected = byId.get(explicit)
+    if (selected) return selected
+  }
+  for (const id of providerOrder) {
+    const row = byId.get(id)
+    if (row) return row
+  }
+  return rows[0] || null
+}
+
+export interface LoadedDefaultModelState {
+  defaultModel: string
+  staleDefaultModel: string | null
+}
+
+/**
+ * Initial-load truthfulness for a persisted `default_model`. A non-empty
+ * saved model is editable only when the effective saved provider's own
+ * options include it; ANY other non-empty value — including any model saved
+ * against hard-pinned DeepSeek, which has no override surface — becomes an
+ * explicit reselection state instead of being silently reset to Auto.
+ * Operator-initiated changes may still fall back to Auto afterwards.
+ */
+export function loadedDefaultModelState(opts: {
+  savedModel: string | null | undefined
+  savedDefaultProvider: string | null | undefined
+  rows: ModelProviderRow[]
+  providerOrder: string[]
+}): LoadedDefaultModelState {
+  const savedModel = String(opts.savedModel || '').trim()
+  if (!savedModel) return { defaultModel: 'auto', staleDefaultModel: null }
+  const provider = effectiveModelProviderFor(opts.rows, String(opts.savedDefaultProvider || ''), opts.providerOrder)
+  const editable = provider?.modelOptions || []
+  if (editable.includes(savedModel)) return { defaultModel: savedModel, staleDefaultModel: null }
+  return { defaultModel: 'reselect-model', staleDefaultModel: savedModel }
 }
 
 const input = (w: string): React.CSSProperties => ({
@@ -155,10 +220,14 @@ function ShadowedEnv({ row }: { row: VaultStatusRow }) {
 
 export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void }) {
   const [rows, setRows] = React.useState<VaultStatusRow[] | null>(null)
+  const [legacyRows, setLegacyRows] = React.useState<LegacyVaultRow[]>([])
+  const [legacyDefault, setLegacyDefault] = React.useState<string | null>(null)
   const [settings, setSettings] = React.useState<AiSettings | null>(null)
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({})
   const [defaultProvider, setDefaultProvider] = React.useState('auto')
-  const [defaultModel, setDefaultModel] = React.useState('')
+  const [defaultModel, setDefaultModel] = React.useState('auto')
+  const [staleDefaultModel, setStaleDefaultModel] = React.useState<string | null>(null)
+  const [defaultModelOptions, setDefaultModelOptions] = React.useState<string[]>([])
   const [maxProviders, setMaxProviders] = React.useState('3')
   const [providerOrder, setProviderOrder] = React.useState<string[]>([])
   const [busy, setBusy] = React.useState<string | null>(null)
@@ -176,11 +245,39 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       const d = await res.json()
       const nextRows = (d.providers || []) as VaultStatusRow[]
       setRows(nextRows)
+      setLegacyRows(Array.isArray(d.legacyProviders) ? (d.legacyProviders as LegacyVaultRow[]) : [])
       const s = (d.settings || {}) as AiSettings
       setSettings(s)
-      setProviderOrder(parseProviderOrder(s.provider_order, nextRows.map((row) => row.id)))
-      setDefaultProvider(s.default_provider || 'auto')
-      setDefaultModel(s.default_model || ((d.grokOAuth as GrokOAuthStatus | null)?.connected ? 'grok-4.6' : ''))
+      const nextOrder = parseProviderOrder(s.provider_order, nextRows.map((row) => row.id))
+      setProviderOrder(nextOrder)
+      // A persisted legacy default is never silently shown as Grok: surface an
+      // explicit re-selection state until the operator picks a commissioned pin.
+      const savedDefault = String(s.default_provider || '').trim()
+      const commissionedIds = new Set(nextRows.map((row) => row.id))
+      if (savedDefault && savedDefault !== 'auto' && !commissionedIds.has(savedDefault)) {
+        setLegacyDefault(savedDefault)
+        setDefaultProvider('reselect')
+      } else {
+        setLegacyDefault(null)
+        setDefaultProvider(savedDefault || 'auto')
+      }
+      // Only registry-commissioned model ids are selectable, and the persisted
+      // model binds to the effective saved provider exactly like the settings
+      // route/runtime overlay. A stale, cross-provider, or hard-pinned value is
+      // surfaced as an explicit re-selection state on load — the later
+      // provider-switch effect must never be the first to silently reset it.
+      const modelOptions = Array.isArray(d.defaultModelOptions)
+        ? (d.defaultModelOptions as string[]).map((value) => String(value)).filter(Boolean)
+        : []
+      setDefaultModelOptions(modelOptions)
+      const loadedModel = loadedDefaultModelState({
+        savedModel: s.default_model,
+        savedDefaultProvider: s.default_provider,
+        rows: nextRows,
+        providerOrder: nextOrder,
+      })
+      setStaleDefaultModel(loadedModel.staleDefaultModel)
+      setDefaultModel(loadedModel.defaultModel)
       setMaxProviders(s.max_providers || '3')
       setGrokOAuth((d.grokOAuth || null) as GrokOAuthStatus | null)
       setVaultOverlayOk(d.overlayOk !== false)
@@ -381,6 +478,14 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   }, [grokOAuth?.pending, grokOAuth?.connected, grokOAuth?.interval])
 
   const saveSettings = async () => {
+    if (defaultProvider === 'reselect') {
+      setNote({ ok: false, text: 'Reselect a commissioned provider before saving defaults.' })
+      return
+    }
+    if (defaultModel === 'reselect-model') {
+      setNote({ ok: false, text: 'Reselect a commissioned model before saving defaults.' })
+      return
+    }
     setBusy('settings')
     try {
       const res = await fetch('/api/seo-factory/ai-keys/settings', {
@@ -389,15 +494,26 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           defaultProvider: defaultProvider === 'auto' ? 'auto' : defaultProvider,
-          defaultModel,
+          defaultModel: defaultModel === 'auto' ? '' : defaultModel,
           maxProviders,
           providerOrder,
         }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
-      setSettings((j.settings as AiSettings) || settings)
-      setNote({ ok: true, text: `Defaults saved — ${defaultProvider === 'auto' ? 'auto' : defaultProvider}${defaultModel ? ` · ${defaultModel}` : ''}` })
+      const saved = (j.settings as AiSettings) || settings
+      setSettings(saved)
+      // Resync local state from the persisted (sanitized) response so a stale
+      // or partially applied value can never linger in the editor.
+      const persistedModel = String(saved?.default_model || '').trim()
+      if (persistedModel && !defaultModelOptions.includes(persistedModel)) {
+        setStaleDefaultModel(persistedModel)
+        setDefaultModel('reselect-model')
+      } else {
+        setStaleDefaultModel(null)
+        setDefaultModel(persistedModel || 'auto')
+      }
+      setNote({ ok: true, text: `Defaults saved — ${defaultProvider === 'auto' ? 'auto' : defaultProvider}${persistedModel ? ` · ${persistedModel}` : ''}` })
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message : 'Settings save failed' })
     } finally {
@@ -414,6 +530,34 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
     const completeOrder = [...providerOrder, ...knownIds.filter((id) => !providerOrder.includes(id))]
     return completeOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
   }, [rows, providerOrder])
+
+  // The provider the saved default-model override applies to: an explicitly
+  // selected commissioned pin wins, else the first commissioned pin in the
+  // operator's priority order, else the lane default row. Mirrors the settings
+  // route binding so the panel can never submit a cross-provider model.
+  const effectiveModelProvider = React.useMemo(
+    () => effectiveModelProviderFor(rows || [], defaultProvider, providerOrder),
+    [rows, defaultProvider, providerOrder],
+  )
+
+  // Only override-capable providers expose an editable model choice. A
+  // hard-pinned provider (deepseek-v41-flash) has no override surface: Auto /
+  // blank resolves to its registry model, so its upstream model id is never an
+  // editable option.
+  const effectiveModelOptions = React.useMemo(
+    () => effectiveModelProvider?.modelOptions || [],
+    [effectiveModelProvider],
+  )
+
+  // Provider switched: an editable model that no longer belongs to the
+  // effective provider moves the control to Auto instead of submitting a
+  // cross-provider value. An explicit stale/reselection state is preserved
+  // until the operator acts on it.
+  React.useEffect(() => {
+    if (loading) return
+    if (defaultModel === 'auto' || defaultModel === 'reselect-model') return
+    if (!effectiveModelOptions.includes(defaultModel)) setDefaultModel('auto')
+  }, [loading, defaultModel, effectiveModelOptions])
 
   // Host-level grouping for the priority list: one row per provider (apex),
   // with its models kept in their current relative order.
@@ -498,10 +642,6 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       setNote({ ok: false, text: 'Paste an API key (or pick a model) first.' })
       return
     }
-    if (g.name === 'parasail' && shared.key.trim() && !/^psk-/i.test(shared.key.trim())) {
-      setNote({ ok: false, text: 'Parasail keys start with psk-. Check you copied the full key.' })
-      return
-    }
     setBusy(`save-group-${g.name}`)
     try {
       for (const m of g.members) {
@@ -582,7 +722,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
           this vault — supabase-js v2 rejects <code style={{ fontFamily: C.mono }}>sb_secret_…</code> service keys and
           <code style={{ fontFamily: C.mono }}> ai_provider_keys</code> denies the anon fallback. Pasted keys will NOT be
           used for generation until either a legacy <code style={{ fontFamily: C.mono }}>eyJ…</code> service key is set on the
-          Worker, or the matching env secret (<code style={{ fontFamily: C.mono }}>ENTRIM_API_KEY</code>, etc.) exists as a repo secret.
+          Worker, or the matching env secret (<code style={{ fontFamily: C.mono }}>XAI_API_KEY</code> / <code style={{ fontFamily: C.mono }}>DEEPSEEK_API_KEY</code>) exists as a repo secret.
         </div>
       )}
       <div style={{
@@ -607,15 +747,30 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         <label style={{ display: 'grid', gap: 3 }}>
           <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Default provider</span>
           <select value={defaultProvider} onChange={(e) => setDefaultProvider(e.target.value)} style={input('100%')}>
-            <option value="auto">Auto (Grok → OpenAI → rest)</option>
+            <option value="auto">Auto (Grok 4.6 — lane default)</option>
             {rows?.map((r) => (
               <option key={r.id} value={r.id}>{r.label}{r.configured ? '' : ' (not configured)'}</option>
             ))}
+            {legacyDefault && (
+              <option value="reselect">⚠ Reselect provider — saved &quot;{legacyDefault}&quot; is legacy</option>
+            )}
           </select>
         </label>
         <label style={{ display: 'grid', gap: 3 }}>
           <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Default model</span>
-          <input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="gpt-5.6-terra" style={input('100%')} />
+          <select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} style={input('100%')}>
+            <option value="auto">
+              {effectiveModelOptions.length
+                ? 'Auto — provider’s commissioned model'
+                : `Auto — hard-pinned ${effectiveModelProvider?.defaultModel || 'commissioned model'}`}
+            </option>
+            {effectiveModelOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+            {staleDefaultModel && (
+              <option value="reselect-model">⚠ Reselect model — saved &quot;{staleDefaultModel}&quot; is stale</option>
+            )}
+          </select>
         </label>
         <label style={{ display: 'grid', gap: 3 }}>
           <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Max providers</span>
@@ -630,7 +785,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       <div style={{ padding: 10, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: '#fff', marginBottom: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Provider priority</div>
-          <div style={{ fontSize: 9, color: C.textDim }}>Top = first eligible lead · arrows change fallback order · Save defaults applies it everywhere</div>
+          <div style={{ fontSize: 9, color: C.textDim }}>Top = first eligible lead · arrows change priority order · Save defaults applies it everywhere</div>
         </div>
         <div style={{ display: 'grid', gap: 4 }}>
           {priorityHosts.map((h, index) => (
@@ -648,6 +803,25 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
           ))}
         </div>
       </div>
+
+      {/* Legacy/historical rows — audit visibility only, never selectable */}
+      {legacyRows.length > 0 && (
+        <div style={{ padding: 10, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2, marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Legacy vault rows — read-only · non-executable</div>
+            <div style={{ fontSize: 9, color: C.textDim }}>Historical rows kept for audit. They cannot be selected, tested, defaulted, or executed.</div>
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>
+            {legacyRows.map((l) => (
+              <div key={l.provider} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px', borderRadius: C.radiusXs, background: '#fff', border: `1px solid ${C.border2}` }}>
+                <span style={{ flex: '1 1 160px', minWidth: 120, fontSize: 10, fontFamily: C.mono, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.provider}</span>
+                <span style={{ fontSize: 9.5, fontFamily: C.mono, color: C.textDim }}>{l.maskedKey || 'no key'}{l.model ? ` · ${l.model}` : ''}</span>
+                <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, background: '#F3F4F6', color: '#6B7280', border: `1px solid ${C.border}` }}>LEGACY · NON-EXECUTABLE</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {groups.map((g) => {
         const shared = draft(`group:${g.name}`)
@@ -696,7 +870,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
               {g.members.map((m) => (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                   <span style={{ flex: '1 1 220px', fontSize: 10, color: C.textMuted, fontWeight: 600, minWidth: 160 }}>
-                    {m.role === 'primary' ? 'Lead' : 'Fallback'} · {m.label}
+                    {m.label}
                   </span>
                   <select
                     value={draft(m.id).model.trim() || m.model || m.defaultModel}
@@ -763,8 +937,8 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
                   </div>
                   <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 6, lineHeight: 1.45 }}>
                     Sign in with the SuperGrok (or X Premium+) account you already pay for.
-                    Content Studio stores a refresh token and uses Grok 4.6 as the fallback
-                    for Master Engine, Discover, Research, and Draft.
+                    Content Studio stores a refresh token and uses Grok 4.6 as the
+                    commissioned provider for Master Engine, Discover, Research, and Draft.
                   </div>
                   {grokOAuth?.pending && grokOAuth.userCode && (
                     <div style={{ fontSize: 10, fontFamily: C.mono, color: C.text, marginBottom: 6 }}>

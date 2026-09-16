@@ -7,10 +7,9 @@
  * The runtime chain (lib/contentAiProvider.ts) reads the vault overlay FIRST
  * and Worker secrets second (env() → vaultOverlay → process.env). When a key
  * is rotated in GitHub secrets and redeployed, a STALE vault row still wins
- * and returns auth/payment errors — e.g. Baseten 402 "please check your
- * current payment status" even though the freshly-rotated Worker secret
- * returns 200. This script makes the vault match the Worker secret so the two
- * sources of truth cannot drift.
+ * and returns auth/payment errors even though the freshly-rotated Worker
+ * secret returns 200. This script makes the vault match the Worker secret so
+ * the two sources of truth cannot drift.
  *
  * TRANSPORT
  * ---------
@@ -31,19 +30,12 @@
  */
 
 const SYNC_MAP = {
-  // env var name → ai_provider_keys.provider ids it should populate
-  BASETEN_API_KEY: ['baseten-deepseek', 'baseten-glm-fast'],
-  OPENAI_API_KEY: ['openai'],
-  AIHUBMIX_API_KEY: ['aihubmix-glm-fast'],
-  PARASAIL_API_KEY: ['parasail-deepseek', 'parasail-deepseek-pro', 'parasail-glm'],
-  NVIDIA_API_KEY: ['nvidia-minimax', 'nvidia-nemotron', 'nvidia-glm', 'nvidia-deepseek'],
+  // env var name → ai_provider_keys.provider ids it should populate.
+  // Exactly the two commissioned Content Studio providers: Grok 4.6 (retained
+  // xAI transport) and DeepSeek V4.1 Flash (first-party api.deepseek.com only).
+  // Retired provider rows are no longer injected; historical rows are retained.
   XAI_API_KEY: ['grok'],
-  GROQ_API_KEY: ['groq'],
-  GEMINI_API_KEY: ['gemini'],
-  DEEPSEEK_API_KEY: ['deepseek'],
-  OPENROUTER_API_KEY: ['openrouter'],
-  CLOUDFLARE_AI_TOKEN: ['cloudflare-ai'],
-  CUSTOM_AI_API_KEY: ['custom'],
+  DEEPSEEK_API_KEY: ['deepseek-v41-flash'],
 }
 
 const REF = (process.env.SUPABASE_PROJECT_REF || 'krggzrxxnqfsbbklatxl').trim()

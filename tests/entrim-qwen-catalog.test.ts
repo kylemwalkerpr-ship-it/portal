@@ -1,42 +1,34 @@
-import { resolveAiProviderPin, ENTRIM_QWEN_LABEL, ENTRIM_QWEN_MODEL } from '../lib/contentAiProvider'
-import { ENTRIM_QWEN_PIN, modelsForLane, parseStudioPin, canonicalizePin } from '../lib/contentAiCatalog'
-import { resolveEngineAiProvider } from '../lib/seoEngine/engineAi'
+/**
+ * Entrim Qwen3.6 27B — CATALOG RETIREMENT (P2, 2026-09-15).
+ *
+ * Entrim (`entrim-qwen-27b` / `qwen3.6-27b` / `qwen`) is a retired provider
+ * family: it is absent from every lane picker, parses as
+ * `{kind:'needs_selection'}` (never a selectable row or a silent Grok
+ * coercion), and the Discover engine resolver fails closed with a typed
+ * `ProviderSelectionRequiredError`.
+ */
+import { ProviderSelectionRequiredError } from '@/lib/contentAiRegistry'
+import { modelsForLane, parseStudioPin } from '@/lib/contentAiCatalog'
+import { resolveEngineAiProvider } from '@/lib/seoEngine/engineAi'
 
-describe('Entrim Qwen3.6 27B catalogue wiring', () => {
-  it('resolveAiProviderPin maps the pin to the Entrim provider with the exact upstream model', () => {
-    const r = resolveAiProviderPin('entrim-qwen-27b')
-    expect(r.explicit).toBe('entrim-qwen-27b')
-    expect(r.model).toBe('Qwen/Qwen3.6-27B')
-  })
-
-  it('catalog parseStudioPin resolves the studio picker selection', () => {
-    const parsed = parseStudioPin('entrim-qwen-27b')
-    expect(parsed.model.id).toBe('qwen3.6-27b')
-    expect(parsed.host.id).toBe('entrim')
-    expect(parsed.model.apiModel).toBe('Qwen/Qwen3.6-27B')
-  })
-
-  it('appears in the brief and review lane pickers (host allowed now)', () => {
-    for (const lane of ['brief', 'review', 'command'] as const) {
+describe('Entrim Qwen3.6 27B catalog retirement', () => {
+  it('is absent from every lane picker — only the two commissioned models remain', () => {
+    for (const lane of ['draft', 'brief', 'review', 'command'] as const) {
       const ids = modelsForLane(lane).map((m) => m.id)
-      expect(ids).toContain('qwen3.6-27b')
+      expect(ids).not.toContain('qwen3.6-27b')
+      expect(ids).toEqual(['grok-4.6', 'deepseek-v41-flash'])
     }
   })
 
-  it('aliases resolve to the canonical pin', () => {
-    expect(canonicalizePin('entrim-qwen-27b')).toBe('entrim-qwen-27b')
-    expect(canonicalizePin('qwen3.6-27b')).toBe('entrim-qwen-27b')
-    expect(canonicalizePin('qwen')).toBe('entrim-qwen-27b')
+  it('parses as needs_selection, never a selectable catalog row', () => {
+    for (const legacy of ['entrim-qwen-27b', 'qwen3.6-27b', 'qwen'] as const) {
+      expect(parseStudioPin(legacy)).toMatchObject({ kind: 'needs_selection', legacyValue: legacy })
+    }
   })
 
-  it('engine AI (Discover) resolves the explicit pin without coercion', () => {
-    expect(resolveEngineAiProvider('entrim-qwen-27b')).toBe('entrim-qwen-27b')
-    expect(resolveEngineAiProvider('qwen')).toBe('entrim-qwen-27b')
-  })
-
-  it('consts point at the exact upstream model id', () => {
-    expect(ENTRIM_QWEN_LABEL).toBe('entrim-qwen-27b')
-    expect(ENTRIM_QWEN_MODEL).toBe('Qwen/Qwen3.6-27B')
-    expect(ENTRIM_QWEN_PIN).toBe('entrim-qwen-27b')
+  it('Discover engine resolution fails closed for the retired pin', () => {
+    for (const legacy of ['entrim-qwen-27b', 'qwen'] as const) {
+      expect(() => resolveEngineAiProvider(legacy)).toThrow(ProviderSelectionRequiredError)
+    }
   })
 })

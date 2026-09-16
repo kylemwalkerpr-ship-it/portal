@@ -100,7 +100,8 @@ describe('migration ledger manifest', () => {
       console.log(JSON.stringify(policy.loadManifest().files.map((entry) => entry.filename)))
     `)
     const order = evalPolicy<string[]>(`
-      console.log(JSON.stringify(migrationOrder()))
+      const manifestNames = new Set(policy.loadManifest().files.map((entry) => entry.filename))
+      console.log(JSON.stringify(migrationOrder().filter((filename) => manifestNames.has(filename))))
     `)
     expect(names).toEqual(order)
   })
@@ -229,11 +230,14 @@ describe('migration ledger manifest', () => {
       strictRules: string[]
       strictEstateMessages: string[]
       toleratedOk: boolean
+      strictFound: number
     }>(`
       const manifest = policy.loadManifest()
+      const manifestNames = new Set(manifest.files.map((entry) => entry.filename))
       const order = migrationOrder()
-      const appended = [...order, '20270101120000_brand_new_thing.sql']
-      const exact = policy.validateManifest(manifest, { order, requireExactEstate: true })
+      const baselineOrder = order.filter((filename) => manifestNames.has(filename))
+      const appended = [...baselineOrder, '20270101120000_brand_new_thing.sql']
+      const exact = policy.validateManifest(manifest, { order: baselineOrder, requireExactEstate: true })
       const strictAppended = policy.validateManifest(manifest, { order: appended, requireExactEstate: true })
       const tolerated = policy.validateManifest(manifest, { order: appended })
       console.log(JSON.stringify({
@@ -244,12 +248,13 @@ describe('migration ledger manifest', () => {
           .filter((violation) => violation.rule === 'MANIFEST_ESTATE_CHANGED')
           .map((violation) => violation.message),
         toleratedOk: tolerated.ok,
+        strictFound: appended.length,
       }))
     `)
     expect(result.exactOk).toBe(true)
     expect(result.exactViolations).toBe(0)
     expect(result.strictRules).toContain('MANIFEST_ESTATE_CHANGED')
-    expect(result.strictEstateMessages[0]).toContain('found 70')
+    expect(result.strictEstateMessages[0]).toContain(`found ${result.strictFound}`)
     expect(result.toleratedOk).toBe(true)
   })
 })

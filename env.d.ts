@@ -58,30 +58,20 @@ declare global {
     DATAFORSEO_LOGIN: string
     DATAFORSEO_PASSWORD: string
 
-    // AIHubmix OpenAI-compatible aggregator — GLM 5.2 Fast (glm-5.2-fast-preview)
-    AIHUBMIX_API_KEY: string
-    AIHUBMIX_BASE_URL: string
-    AIHUBMIX_GLM_MODEL: string
+    // Content Studio commissioned providers (identity owned by
+    // lib/contentAiRegistry.ts). Grok 4.6 runs over the retained xAI transport;
+    // XAI_MODEL / XAI_BASE_URL are retained for existing Grok transport
+    // compatibility and are not injected by the official deploy workflow. The
+    // vault UI constrains saved Grok base URLs to the commissioned xAI endpoint.
+    XAI_API_KEY: string
+    XAI_MODEL: string
+    XAI_BASE_URL: string
 
-    // Entrim OpenAI-compatible endpoint — first-party DeepSeek V4 Flash
-    ENTRIM_API_KEY: string
-    ENTRIM_BASE_URL: string
-    ENTRIM_MODEL: string
-    // Entrim Qwen3.6 27B — lane-isolated model env; the Qwen vault row must
-    // never write its id into ENTRIM_MODEL (the DeepSeek lane reads that).
-    ENTRIM_QWEN_MODEL: string
-
-    // Parasail OpenAI-compatible serverless (api.parasail.io) — psk- keys
-    PARASAIL_API_KEY: string
-    PARASAIL_BASE_URL: string
-    PARASAIL_DEEPSEEK_MODEL: string
-    PARASAIL_DEEPSEEK_PRO_MODEL: string
-    PARASAIL_PRO_REASONING_EFFORT: string
-    PARASAIL_GLM_MODEL: string
-
-    RUNBIOS_API_KEY: string
-    RUNBIOS_BASE_URL: string
-    RUNBIOS_GLM_MODEL: string
+    // DeepSeek V4.1 Flash — first-party api.deepseek.com/v1 only. There is
+    // deliberately NO DEEPSEEK_BASE_URL / DEEPSEEK_MODEL override for the
+    // commissioned path: the pin's base URL and upstream model are fixed in
+    // lib/contentAiRegistry.ts.
+    DEEPSEEK_API_KEY: string
   }
 }
 

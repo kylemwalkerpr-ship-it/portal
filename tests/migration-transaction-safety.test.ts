@@ -29,10 +29,11 @@ describe('migration transaction safety', () => {
   it('T10.1 scans the whole estate clean and confirms trailing semicolons', () => {
     const result = evalPolicy<{
       count: number
+      diskCount: number
       notClean: string[]
       missingSemicolon: string[]
     }>(`
-      const { readFileSync } = await import('node:fs')
+      const { readFileSync, readdirSync } = await import('node:fs')
       const { join: joinPath } = await import('node:path')
       const notClean = []
       const missingSemicolon = []
@@ -42,9 +43,10 @@ describe('migration transaction safety', () => {
         if (policy.scanTransactionSafety(filename, sql).length !== 0) notClean.push(filename)
         if (!/;\\s*$/.test(sql)) missingSemicolon.push(filename)
       }
-      console.log(JSON.stringify({ count: files.length, notClean, missingSemicolon }))
+      const diskCount = readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith('.sql')).length
+      console.log(JSON.stringify({ count: files.length, diskCount, notClean, missingSemicolon }))
     `)
-    expect(result.count).toBe(69)
+    expect(result.count).toBe(result.diskCount)
     expect(result.notClean).toEqual([])
     expect(result.missingSemicolon).toEqual([])
   })

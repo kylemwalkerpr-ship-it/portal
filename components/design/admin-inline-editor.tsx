@@ -131,8 +131,9 @@ type Props = {
    *  canonicalUrl into the front matter — otherwise ahrefs_canonical_missing
    *  recurs on every re-audit because the repair never learns the URL. */
   targetUrl?: string
-  /** Review model override — defaults to Entrim Qwen3.6 27B
-   *  (DEFAULT_REVIEW_PIN — the live policy reviewer).
+  /** Review model override — defaults to Grok 4.6 (DEFAULT_REVIEW_PIN, the
+   *  lane default). Both commissioned providers are selectable; a legacy saved
+   *  pin renders the picker's explicit "Reselect provider" state.
    *  The selected provider/model is sent to the reaudit API as reviewModel. */
   reviewModel?: string
   onReviewModelChange?: (m: string) => void
@@ -1493,7 +1494,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
         {onReviewModelChange && (
           <StudioModelHostSelect
             lane="review"
-            pin={reviewModel === 'grok' || reviewModel === 'supergrok' || reviewModel === 'xai' ? 'grok' : (reviewModel || DEFAULT_REVIEW_PIN)}
+            pin={reviewModel || DEFAULT_REVIEW_PIN}
             onPinChange={onReviewModelChange}
             disabled={allBusy}
             modelAriaLabel="Review AI model"

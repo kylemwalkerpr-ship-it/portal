@@ -24,6 +24,7 @@ import {
   generateEngineText,
   type EnginePairRollup,
 } from '@/lib/seoEngine/engineAi'
+import { LANE_DEFAULT_PIN } from '@/lib/contentAiRegistry'
 import { getStage, LIFECYCLE_STAGES, COUNTRIES, isCountry, type Country } from './ontology'
 import { buildPredictiveSignal, type EvidenceLineage } from './intelligence'
 
@@ -479,7 +480,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
               prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`,
               maxTokens: 250,
               timeoutMs: 25000,
-              aiProvider: 'entrim-qwen-27b',
+              aiProvider: LANE_DEFAULT_PIN,
               skipQualityContract: true,
               temperature: 0.2,
             })

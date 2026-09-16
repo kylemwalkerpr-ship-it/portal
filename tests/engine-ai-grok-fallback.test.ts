@@ -1,10 +1,23 @@
 /**
- * Discover / Master Engine AI harmonization — LIVE POLICY (2026-09-02):
- * the deterministic SEO engine stays authoritative; the harmonization pair
- * is Entrim Qwen3.6 27B (lead) + Entrim DeepSeek V4 Flash (complement), both
- * on api.entrim.ai/v1 with the single ENTRIM vault key. Grok / Claude /
- * Run BiOS are out of commission — without ENTRIM_API_KEY the engine fails
- * closed with the live-policy error.
+ * Discover / Master Engine AI harmonization — COMMISSIONED PAIR (P2,
+ * 2026-09-15, design §13 decision 3).
+ *
+ * The deterministic SEO engine stays authoritative; the harmonization pair is
+ * exactly:
+ *
+ *   LEAD        — Grok 4.6 (`grok`) on the retained xAI transport.
+ *   COMPLEMENT  — DeepSeek V4.1 Flash (`deepseek-v41-flash`) on first-party
+ *                 `api.deepseek.com` with upstream model `deepseek-flash`.
+ *
+ * Regression lock:
+ *
+ *  1. `enginePairReady()` requires BOTH commissioned keys — one key alone is
+ *     not the pair and there is NO single-lead degradation.
+ *  2. A legacy/unknown explicit pin is a typed `ProviderSelectionRequiredError`
+ *     with zero outbound calls — never a redirect.
+ *  3. No Grok<->DeepSeek cross-fallback: each leg touches only its own literal
+ *     host, and a failing single-pin leg throws instead of drafting on the
+ *     other provider. Retired Entrim/OpenAI/Run BiOS hosts never appear.
  */
 
 jest.mock('@/lib/aiKeyVault', () => ({
@@ -20,54 +33,100 @@ import {
   generateEngineText,
   generateEnginePairText,
   extractEngineJsonObject,
-  ENGINE_FALLBACK_PROVIDER,
+  ENGINE_COMPLEMENT_PROVIDER,
+  ENGINE_LEAD_PROVIDER,
   ENGINE_PAIR,
+  enginePairReady,
   resolveEngineAiProvider,
 } from '@/lib/seoEngine/engineAi'
 import { resetEnginePairBreaker } from '@/lib/seoEngine/enginePairBreaker'
+import { ProviderSelectionRequiredError } from '@/lib/contentAiRegistry'
 
-describe('resolveEngineAiProvider — live pin mapping', () => {
-  const envKeys = ['OPENAI_API_KEY', 'XAI_API_KEY', 'ENTRIM_API_KEY'] as const
-  const saved: Record<string, string | undefined> = {}
+const LEGACY_ENGINE_PINS = [
+  'entrim-deepseek',
+  'entrim-qwen-27b',
+  'qwen',
+  'nvidia-deepseek',
+  'baseten-deepseek',
+  'parasail-deepseek',
+  'runbios-claude-opus',
+  'openai',
+  'gpt-5.6-sol',
+  'deepseek',
+  'deepseek-flash',
+] as const
 
-  beforeAll(() => {
-    for (const k of envKeys) saved[k] = process.env[k]
+describe('commissioned engine pair identity', () => {
+  it('exports the commissioned pair — Grok lead + first-party DeepSeek complement', () => {
+    expect(ENGINE_LEAD_PROVIDER).toBe('grok')
+    expect(ENGINE_COMPLEMENT_PROVIDER).toBe('deepseek-v41-flash')
+    expect(ENGINE_PAIR).toBe('engine-pair')
   })
 
-  afterEach(() => {
-    for (const k of envKeys) {
-      if (saved[k] == null) delete process.env[k]
-      else process.env[k] = saved[k]
-    }
-  })
-
-  it('exports the Entrim DeepSeek family as the engine fallback (Grok retired)', () => {
-    expect(ENGINE_FALLBACK_PROVIDER).toBe('entrim-deepseek')
-  })
-
-  it('routes an OpenAI pin without a key to the Entrim lead (Grok redirect retired)', () => {
-    delete process.env.OPENAI_API_KEY
-    delete process.env.ENTRIM_API_KEY
-    delete process.env.XAI_API_KEY
-    expect(resolveEngineAiProvider('openai')).toBe('entrim-qwen-27b')
-    process.env.OPENAI_API_KEY = 'sk-test'
-    expect(resolveEngineAiProvider('openai')).toBe('openai')
-  })
-
-  it('defaults an empty pin to the engine pair', () => {
+  it('resolveEngineAiProvider resolves the pair sentinel and commissioned pins only', () => {
     expect(resolveEngineAiProvider()).toBe(ENGINE_PAIR)
     expect(resolveEngineAiProvider('auto')).toBe(ENGINE_PAIR)
     expect(resolveEngineAiProvider('engine-pair')).toBe(ENGINE_PAIR)
+    expect(resolveEngineAiProvider('grok')).toBe('grok')
+    expect(resolveEngineAiProvider('grok-4.6')).toBe('grok')
+    expect(resolveEngineAiProvider('deepseek-v41-flash')).toBe('deepseek-v41-flash')
+  })
+
+  it('every legacy/retired pin is a typed selection-required failure — never a redirect', () => {
+    for (const pin of LEGACY_ENGINE_PINS) {
+      let caught: unknown
+      try {
+        resolveEngineAiProvider(pin)
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(ProviderSelectionRequiredError)
+      expect(caught as ProviderSelectionRequiredError).toMatchObject({
+        code: 'selection_required',
+        status: 409,
+        legacyValue: pin,
+      })
+    }
+  })
+
+  it('enginePairReady requires BOTH commissioned providers — no single-lead degradation', () => {
+    const envKeys = ['XAI_API_KEY', 'DEEPSEEK_API_KEY'] as const
+    const saved: Record<string, string | undefined> = {}
+    for (const k of envKeys) saved[k] = process.env[k]
+    try {
+      delete process.env.XAI_API_KEY
+      delete process.env.DEEPSEEK_API_KEY
+      expect(enginePairReady()).toBe(false)
+
+      process.env.XAI_API_KEY = 'test-xai-key'
+      expect(enginePairReady()).toBe(false) // Grok alone is not the pair
+
+      process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+      expect(enginePairReady()).toBe(true)
+
+      delete process.env.XAI_API_KEY
+      expect(enginePairReady()).toBe(false) // DeepSeek alone is not the pair either
+    } finally {
+      for (const k of envKeys) {
+        if (saved[k] == null) delete process.env[k]
+        else process.env[k] = saved[k]
+      }
+    }
   })
 })
 
-describe('Master Engine pair — Entrim Qwen lead + Entrim DeepSeek complement (Entrim-only live policy)', () => {
-  const envKeys = ['XAI_API_KEY', 'RUNBIOS_API_KEY', 'ENTRIM_API_KEY', 'OPENAI_API_KEY', 'CONTENT_AI_RETRY'] as const
+describe('Master Engine pair — Grok 4.6 + DeepSeek V4.1 Flash', () => {
+  const envKeys = ['XAI_API_KEY', 'DEEPSEEK_API_KEY', 'RUNBIOS_API_KEY', 'ENTRIM_API_KEY', 'OPENAI_API_KEY', 'CONTENT_AI_RETRY'] as const
   const saved: Record<string, string | undefined> = {}
   const originalFetch = global.fetch
 
   beforeAll(() => {
     for (const k of envKeys) saved[k] = process.env[k]
+  })
+
+  beforeEach(() => {
+    for (const k of envKeys) delete process.env[k]
+    process.env.CONTENT_AI_RETRY = '1'
   })
 
   afterEach(() => {
@@ -79,89 +138,84 @@ describe('Master Engine pair — Entrim Qwen lead + Entrim DeepSeek complement (
     }
   })
 
-  it('runs the pair — Entrim Qwen lead + Entrim DeepSeek complement on one vault key', async () => {
-    process.env.ENTRIM_API_KEY = 'test-entrim-key'
-    process.env.XAI_API_KEY = 'test-xai-key' // retired host — must never be contacted
-    process.env.CONTENT_AI_RETRY = '1'
-
-    const seen: Array<{ url: string; model?: string }> = []
-    global.fetch = jest.fn(async (input, init) => {
+  function pairFetch(seen: Array<{ url: string; model?: string }>) {
+    return jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
-      seen.push({ url, model: (body.model as string | undefined) || (body as { input?: string }).input as string | undefined })
+      seen.push({ url, model: (body.model as string | undefined) })
       const prompt = JSON.stringify(body)
-      // Both legs share the Entrim endpoint — distinguish them by model id.
-      // The complement drafts a DIFFERENT text so the pair disagrees and the
-      // harmony (merge) pass fires; its prompt carries 'COMPLEMENT DRAFT'.
-      const text = prompt.includes('COMPLEMENT DRAFT')
-        ? 'MERGED-ENGINE with extra statute INA 214'
-        : body.model === 'deepseek-ai/DeepSeek-V4-Flash'
-          ? 'DEEPSEEK-COMPLEMENT-ENGINE-DRAFT'
-          : 'QWEN-LEAD-ENGINE-DRAFT'
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
+      const text = url.includes('api.deepseek.com')
+        ? 'DEEPSEEK-COMPLEMENT-ENGINE-DRAFT'
+        : prompt.includes('COMPLEMENT DRAFT')
+          ? 'MERGED-ENGINE with extra statute INA 214'
+          : 'GROK-LEAD-ENGINE-DRAFT'
+      if (url.includes('api.deepseek.com')) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify({ output_text: text, status: 'completed' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+  }
+
+  it('runs both legs — Grok lead on api.x.ai + DeepSeek complement on api.deepseek.com with deepseek-flash', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = pairFetch(seen)
 
     const result = await generateEnginePairText({
       system: 'Score this cluster.',
       prompt: 'TOPIC: f1 visa',
     })
 
-    expect(result.provider).toBe('entrim-qwen-27b')
+    expect(result.provider).toBe('grok')
     expect(result.text).toContain('MERGED-ENGINE')
-    // Both legs hit Entrim — one endpoint, one vault key.
-    expect(seen.every((s) => s.url.includes('api.entrim.ai'))).toBe(true)
-    expect(seen.some((s) => s.model === 'Qwen/Qwen3.6-27B')).toBe(true)
-    expect(seen.some((s) => s.model === 'deepseek-ai/DeepSeek-V4-Flash')).toBe(true)
+    expect(result.pair?.leadModel).toContain('grok-4.6')
+    expect(result.pair?.complementModel).toContain('deepseek-flash')
+    expect(result.pair?.merged).toBe(true)
+
+    const deepseekCalls = seen.filter((s) => s.url.includes('api.deepseek.com'))
+    expect(deepseekCalls.length).toBeGreaterThan(0)
+    expect(deepseekCalls.every((s) => s.url.startsWith('https://api.deepseek.com/v1/'))).toBe(true)
+    expect(deepseekCalls.every((s) => s.model === 'deepseek-flash')).toBe(true)
+    expect(seen.some((s) => s.url.includes('api.x.ai'))).toBe(true)
     // Retired hosts are never contacted.
-    expect(seen.some((s) => s.url.includes('api.x.ai'))).toBe(false)
+    expect(seen.some((s) => s.url.includes('api.entrim.ai'))).toBe(false)
     expect(seen.some((s) => s.url.includes('api.runbios.ai'))).toBe(false)
-    expect(result.pair?.merged || result.pair?.leadOnly).toBe(true)
+    expect(seen.some((s) => s.url.includes('api.openai.com'))).toBe(false)
   })
 
-  it('generateEngineText with no pin uses the pair — OpenAI/Run BiOS never fire', async () => {
-    process.env.ENTRIM_API_KEY = 'test-entrim-key'
+  it('generateEngineText with no pin uses the pair — no retired host fires', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
     process.env.OPENAI_API_KEY = 'sk-should-not-be-called'
     process.env.RUNBIOS_API_KEY = 'test-runbios-key'
-    process.env.CONTENT_AI_RETRY = '1'
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
-      const url = String(input)
-      urls.push(url)
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'PAIR-LEAD' }, finish_reason: 'stop' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = pairFetch(seen)
 
     const result = await generateEngineText({
       system: 'Summarize.',
       prompt: 'IRCC notice',
     })
-    expect(result.text).toBe('PAIR-LEAD')
-    expect(urls.some((u) => u.includes('api.openai.com'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(false) // Claude out of commission
-    expect(urls.some((u) => u.includes('api.entrim.ai'))).toBe(true)
+    expect(result.text).toBeTruthy()
+    expect(result.provider).toBe('grok')
+    expect(seen.some((u) => u.url.includes('api.deepseek.com'))).toBe(true)
+    expect(seen.some((u) => u.url.includes('api.x.ai'))).toBe(true)
+    expect(seen.some((u) => u.url.includes('api.openai.com'))).toBe(false)
+    expect(seen.some((u) => u.url.includes('api.runbios.ai'))).toBe(false)
+    expect(seen.some((u) => u.url.includes('api.entrim.ai'))).toBe(false)
   })
 
-  it('fails CLOSED without ENTRIM_API_KEY — no retired host is contacted', async () => {
-    delete process.env.ENTRIM_API_KEY
-    delete process.env.XAI_API_KEY
-    process.env.RUNBIOS_API_KEY = 'test-runbios-key'
-    process.env.CONTENT_AI_RETRY = '1'
-
-    const urls: string[] = []
-    global.fetch = jest.fn(async (input) => {
-      urls.push(String(input))
-      return new Response(
-        JSON.stringify({
-          choices: [{ message: { content: 'SHOULD-NOT-HAPPEN' }, finish_reason: 'stop' }],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
+  it('fails CLOSED without the DeepSeek key — the pair is not degraded to a Grok-only lead', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    delete process.env.DEEPSEEK_API_KEY
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = pairFetch(seen)
 
     await expect(
       generateEnginePairText({
@@ -169,32 +223,82 @@ describe('Master Engine pair — Entrim Qwen lead + Entrim DeepSeek complement (
         prompt: 'TOPIC: f1 visa',
       }),
     ).rejects.toThrow(/Engine pair failed/)
-    // No retired host fired — the pair is Entrim-only.
-    expect(urls.some((u) => u.includes('api.runbios.ai'))).toBe(false)
-    expect(urls.some((u) => u.includes('api.x.ai'))).toBe(false)
+    expect(seen.length).toBe(0)
+    expect(seen.some((u) => u.url.includes('api.entrim.ai'))).toBe(false)
   })
 
-  it('degraded pair: when the complement fails the Qwen lead still carries the result (lead-only)', async () => {
-    process.env.ENTRIM_API_KEY = 'test-entrim-key'
-    process.env.CONTENT_AI_RETRY = '1'
+  it('fails CLOSED without the Grok key — never complement-only output', async () => {
+    delete process.env.XAI_API_KEY
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = pairFetch(seen)
 
-    global.fetch = jest.fn(async (_input, init) => {
-      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { model?: string } : {}
-      if (body.model === 'deepseek-ai/DeepSeek-V4-Flash') {
-        throw new Error('entrim 429 service overloaded')
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: 'QWEN-LEAD-ONLY' }, finish_reason: 'stop' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      )
-    }) as typeof fetch
+    await expect(
+      generateEnginePairText({
+        system: 'Score this cluster.',
+        prompt: 'TOPIC: f1 visa',
+      }),
+    ).rejects.toThrow(/Engine pair failed/)
+    expect(seen.length).toBe(0)
+  })
 
-    const result = await generateEnginePairText({
-      system: 'Score this cluster.',
-      prompt: 'TOPIC: f1 visa',
+  it('an explicit DeepSeek pin runs a single exclusive leg — api.x.ai is never contacted', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = pairFetch(seen)
+
+    const result = await generateEngineText({
+      aiProvider: 'deepseek-v41-flash',
+      system: 'Summarize.',
+      prompt: 'IRCC notice',
     })
-    expect(result.text).toBe('QWEN-LEAD-ONLY')
-    expect(result.pair?.leadOnly).toBe(true)
+
+    expect(result.provider).toBe('deepseek-v41-flash')
+    expect(result.text).toBe('DEEPSEEK-COMPLEMENT-ENGINE-DRAFT')
+    expect(seen.every((s) => s.url.includes('api.deepseek.com'))).toBe(true)
+    expect(seen.every((s) => s.model === 'deepseek-flash')).toBe(true)
+    expect(seen.some((u) => u.url.includes('api.x.ai'))).toBe(false)
+  })
+
+  it('a failing explicit Grok leg fails closed — it never falls back to DeepSeek', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    const seen: Array<{ url: string; model?: string }> = []
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      seen.push({ url: String(input) })
+      return new Response(JSON.stringify({ error: { message: 'quota exhausted' } }), { status: 402 })
+    }) as unknown as typeof fetch
+
+    await expect(generateEngineText({
+      aiProvider: 'grok',
+      system: 'Summarize.',
+      prompt: 'IRCC notice',
+    })).rejects.toThrow()
+
+    expect(seen.some((u) => u.url.includes('api.deepseek.com'))).toBe(false)
+  })
+
+  it('a legacy explicit pin rejects with zero outbound calls', async () => {
+    process.env.XAI_API_KEY = 'test-xai-key'
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    const fetchSpy = jest.fn(async () => {
+      throw new Error('outbound provider request is forbidden for a legacy pin')
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    let caught: unknown
+    try {
+      await generateEngineText({
+        aiProvider: 'entrim-qwen-27b',
+        system: 'Summarize.',
+        prompt: 'IRCC notice',
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(ProviderSelectionRequiredError)
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('extractEngineJsonObject recovers fenced JSON and rejects prose', () => {

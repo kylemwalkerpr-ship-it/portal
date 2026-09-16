@@ -5,6 +5,10 @@ import { runSeoFactoryPipeline, type RequestedShipMode, type PipelineInput } fro
 import { runContentStudioPipeline, type ContentStudioPipelineInput } from '@/lib/seoFactory/contentStudioPipeline'
 import { assembleMasterEngineFeed } from '@/lib/seoFactory/masterEngineFeed'
 import { parseKeywordPhrases, parseKeywordTerms } from '@/lib/seoFactory/keywordContract'
+import {
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+} from '@/lib/contentAiRegistry'
 
 /**
  * POST /api/seo-factory/generate
@@ -27,6 +31,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const topic = String(body.topic || '').trim()
     if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
+
+    // Provider boundary: an explicit legacy/unknown aiProvider fails closed
+    // with the typed selection-required payload BEFORE any pipeline/provider
+    // work. Missing/empty/'auto' proceed to the lane default.
+    const providerResolution = resolveExecutionProvider({
+      requestedPin: body.aiProvider != null ? String(body.aiProvider) : null,
+      lane: 'draft',
+    })
+    if (providerResolution.kind === 'needs_selection') {
+      return NextResponse.json(
+        new ProviderSelectionRequiredError(providerResolution.legacyValue).toPayload(),
+        { status: 409 },
+      )
+    }
 
     const userId =
       (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile?.clerk_user_id ||
@@ -133,6 +151,9 @@ export async function POST(request: NextRequest) {
       error: result.shipError || undefined,
     }, { status: result.shipError ? 422 : 200 })
   } catch (err) {
+    if (err instanceof ProviderSelectionRequiredError) {
+      return NextResponse.json(err.toPayload(), { status: err.status })
+    }
     console.error('[seo-factory/generate]', err)
     const message = err instanceof Error ? err.message : 'Generate failed'
     const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)

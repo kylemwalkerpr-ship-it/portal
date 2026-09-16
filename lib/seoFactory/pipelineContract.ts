@@ -1,5 +1,9 @@
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  assertCommissionedPin,
+  canonicalCommissionedPin,
+} from '@/lib/contentAiRegistry'
 import type { WritingContractV2 } from './writingContract'
 import {
   loadJobWritingContract,
@@ -117,8 +121,19 @@ export function applyWritingContractToInput<T extends ContractAwarePipelineInput
   if (input.maxWords != null) assertClientFieldMatches('maxWords', input.maxWords, contract.wordBudget.maxWords)
   assertClientFieldMatches('targetSlug', input.targetSlug, contract.metadata.targetSlug)
   assertClientFieldMatches('slug', input.slug, contract.metadata.targetSlug)
-  if (contract.requestedModel && input.aiProvider && input.aiProvider !== 'auto') {
-    assertClientFieldMatches('aiProvider', input.aiProvider, contract.requestedModel)
+  // Provider pin equality: the contract owner pin (a commissioned pin) is the
+  // authority; a client pin is accepted only when it canonicalizes to the
+  // SAME commissioned provider. A legacy contract pin fails closed, and a
+  // client can never override the contract with another provider.
+  const contractPin = contract.requestedModel ? assertCommissionedPin(contract.requestedModel) : null
+  if (input.aiProvider && input.aiProvider !== 'auto') {
+    if (contractPin) {
+      if (canonicalCommissionedPin(input.aiProvider) !== contractPin) {
+        throw new WritingContractMismatchError('client aiProvider conflicts with immutable writing contract')
+      }
+    } else {
+      assertCommissionedPin(input.aiProvider)
+    }
   }
 
   if (input.contractId && input.contractId !== contract.contractId) throw new WritingContractMismatchError('client contractId conflicts with stored writing contract')
@@ -154,7 +169,7 @@ export function applyWritingContractToInput<T extends ContractAwarePipelineInput
     maxWords: contract.wordBudget.maxWords,
     targetSlug: contract.metadata.targetSlug,
     slug: contract.metadata.targetSlug,
-    aiProvider: contract.requestedModel || input.aiProvider,
+    aiProvider: contractPin || canonicalCommissionedPin(input.aiProvider) || input.aiProvider,
     indexable: true,
     // Cluster/runtime target hints are discovery inputs, not contract authority.
     cluster: undefined,

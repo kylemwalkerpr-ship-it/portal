@@ -1,76 +1,48 @@
 /**
- * Brief-stage model policy — THREE families (Grok-first studio default):
- *   1. Grok 4.6 (`grok`) — the DEFAULT (paid SuperGrok / xAI).
- *   2. Entrim Qwen3.6 27B (`entrim-qwen-27b`) — second live brief family.
- *   3. Entrim DeepSeek V4 Flash (`entrim-deepseek`) — third / fallback family.
- * 'auto', empty, stale, or unrecognized pins coerce to Grok. No other brief
- * choice exists.
+ * Brief-stage model policy — COMMISSIONED PAIR (P2, 2026-09-15).
+ *
+ * Exactly two brief owners exist, resolved through the canonical registry:
+ *   1. Grok 4.6 (`grok`) — the lane DEFAULT when the job has no requested
+ *      provider (empty / 'auto').
+ *   2. DeepSeek V4.1 Flash (`deepseek-v41-flash`) — first-party
+ *      `api.deepseek.com` only.
+ *
+ * Every other value — retired pins (Entrim, NVIDIA, Baseten, Parasail,
+ * Run BiOS, GPT aliases, …) and stale drafting ids — raises a typed
+ * `ProviderSelectionRequiredError`; there is NO coercion to a default.
  *
  * The model chosen at Generate Full Brief is the contract OWNER for that
- * article until ship-ready. Retired pins (Claude Opus via Run BiOS, GLM,
- * MiniMax, Nemotron, GPT-5.6, Run BiOS/Baseten DeepSeek) are kept as
- * recognized aliases only so a stale picker selection still RESOLVES — but
- * every non-live resolution redirects to the Grok default, because
- * generateContentText enforces the same live provider policy.
- *
- * FALLBACK: when the chosen brief family fails, the fallback is the Entrim
- * DeepSeek family (same vault key). All legs run exclusively.
+ * article until ship-ready, and the owner leg is EXCLUSIVE: a failure of the
+ * owner provider fails the brief — it never cross-falls back to the other
+ * commissioned provider.
  */
 
-import { generateContentText, isEntrimConfigured, type ContentAiResult } from '@/lib/contentAiProvider'
+import { generateContentText, type ContentAiResult } from '@/lib/contentAiProvider'
+import {
+  GROK_PIN,
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+  type CommissionedProviderPin,
+} from '@/lib/contentAiRegistry'
 
-/**
- * Legacy fallback constant — the brief fallback leg. Grok owners fall back to
- * the Entrim default rather than a second Grok leg.
- */
-export const BRIEF_FALLBACK_PROVIDER = 'entrim-deepseek' as const
+/** Brief lane default pin — Grok 4.6 (paid SuperGrok studio default). */
+export const BRIEF_DEFAULT_PROVIDER = GROK_PIN
 
-/** Brief lead pin — Grok 4.6 (paid SuperGrok studio default). */
-export const BRIEF_DEFAULT_PROVIDER = 'grok' as const
-
-/** Retired: Claude Opus 5 via Run BiOS. Kept as a recognized legacy alias. */
-export const BRIEF_CLAUDE_PROVIDER = 'runbios-claude-opus' as const
-
-/** Entrim Qwen3.6 27B — first brief family (api.entrim.ai/v1). */
-export const BRIEF_ENTRIM_QWEN_PROVIDER = 'entrim-qwen-27b' as const
-
-export type BriefProviderChoice =
-  | { aiProvider: 'grok'; model?: undefined }
-  | { aiProvider: 'entrim-qwen-27b'; model?: undefined }
-  | { aiProvider: 'entrim-deepseek'; model?: undefined }
+export type BriefProviderChoice = { aiProvider: CommissionedProviderPin; model?: undefined }
 
 export function resolveBriefAiProvider(rawProvider: string): BriefProviderChoice {
-  const pin = String(rawProvider || '').trim().toLowerCase()
-  // Entrim DeepSeek V4 Flash — second live brief family (live policy).
-  if (pin === 'entrim-deepseek') {
-    return { aiProvider: 'entrim-deepseek' }
-  }
-  // Grok 4.6 / xAI / SuperGrok — the third live brief family.
-  if (pin === 'grok' || pin === 'grok-4.6' || pin === 'xai' || pin === 'supergrok' || pin === 'super-grok') {
-    return { aiProvider: 'grok' }
-  }
-  // Entrim Qwen3.6 27B — the graduated brief default (api.entrim.ai/v1).
-  if (pin === BRIEF_ENTRIM_QWEN_PROVIDER || pin === 'qwen3.6-27b' || pin === 'qwen') {
-    return { aiProvider: BRIEF_ENTRIM_QWEN_PROVIDER }
-  }
-  // EVERY other pin — Claude Opus (Run BiOS), Run BiOS/Baseten DeepSeek,
-  // GLM, MiniMax, Nemotron, GPT aliases, 'auto', empty, stale drafting ids —
-  // is out of commission and coerces to the Grok default.
-  return { aiProvider: BRIEF_DEFAULT_PROVIDER }
-}
-
-/**
- * The fallback brief family — Entrim DeepSeek V4 Flash (the other live
- * Entrim model). Used for a Qwen primary; a Grok primary also falls back to
- * the Entrim default.
- */
-export function resolveBriefFallback(): { aiProvider: typeof BRIEF_FALLBACK_PROVIDER } {
-  return { aiProvider: BRIEF_FALLBACK_PROVIDER }
+  // Canonical registry selector: explicit commissioned pin wins; ONLY
+  // missing/empty/'auto' take the recorded lane default. Explicit sentinels
+  // ('default', 'primary') and every legacy/retired/unknown value fail closed
+  // with a typed selection-required error — there is no second default policy.
+  const resolution = resolveExecutionProvider({ requestedPin: rawProvider, lane: 'brief' })
+  if (resolution.kind === 'needs_selection') throw new ProviderSelectionRequiredError(resolution.legacyValue)
+  return { aiProvider: resolution.pin }
 }
 
 export interface BriefTextResult {
   ai: ContentAiResult
-  /** True when the primary failed and Grok drafted the brief. */
+  /** Retained for callers: a commissioned owner is exclusive, so never true. */
   fallbackUsed: boolean
 }
 
@@ -165,15 +137,11 @@ export function parseBriefJson(raw: string): Record<string, unknown> {
 }
 
 /**
- * Generate the brief text with the model policy enforced:
- *   1. PRIMARY — the operator's choice: Entrim Qwen3.6 27B (default), Entrim
- *      DeepSeek V4 Flash, or Grok 4.6. Exclusive (no cascade).
- *   2. FALLBACK — when the primary is Grok, fall back to the Entrim Qwen
- *      default; when the primary is an Entrim family, fall back to the other
- *      Entrim family (DeepSeek V4 Flash).
- *
- * Both attempts are `exclusive`. When both legs fail, the combined error
- * names each provider's reason.
+ * Generate the brief text through the single commissioned OWNER pin:
+ * `resolveBriefAiProvider` rejects every legacy/unknown pin with a typed
+ * `ProviderSelectionRequiredError` before any provider work. Exactly one leg
+ * runs, exclusively (`exclusive: true`, `cascadeOnCapacity: false`) — an
+ * owner failure throws; there is no Grok↔DeepSeek fallback leg.
  */
 export async function generateBriefText(opts: {
   aiProvider: string
@@ -185,90 +153,33 @@ export async function generateBriefText(opts: {
   timeoutMs?: number
   skipQualityContract?: boolean
 }): Promise<BriefTextResult> {
-  // Normalize the primary through the live-policy resolver FIRST: any
-  // retired pin (Claude, GLM, MiniMax, GPT aliases, Run BiOS/Baseten DeepSeek)
-  // lands on the Entrim Qwen default here, so the exclusive primary leg and
-  // the fallback legs below only ever name the three live families.
   const resolved = resolveBriefAiProvider(opts.aiProvider)
-  const primaryPin = resolved.aiProvider
-  // When the operator explicitly selected the DeepSeek family, the fallback
-  // and the primary are the same backend — there is no second leg to try.
-  const primaryIsFallback = primaryPin === BRIEF_FALLBACK_PROVIDER
-  const isGrokPrimary = primaryPin === 'grok'
-  const primaryLabel = primaryPin === 'entrim-deepseek'
-    ? 'DeepSeek V4 Flash (Entrim)'
-    : primaryPin === 'grok'
-      ? 'Grok 4.6 (xAI)'
-      : 'Qwen3.6 27B (Entrim)'
-  // A Grok brief needs a real reasoning floor (1–3 minutes+); Entrim families
-  // get 180s+ too. Non-live legs keep the caller's timeout.
-  const ownerTimeoutMs = (primaryPin === 'grok' || primaryPin.startsWith('entrim-'))
-    ? Math.max(opts.timeoutMs ?? 0, 180_000)
-    : opts.timeoutMs
+  const ownerPin = resolved.aiProvider
+  const ownerLabel = ownerPin === 'grok' ? 'Grok 4.6 (xAI)' : 'DeepSeek V4.1 Flash (first-party)'
+  // A commissioned brief needs a real reasoning floor (1–3 minutes+).
+  const ownerTimeoutMs = Math.max(opts.timeoutMs ?? 0, 180_000)
   try {
     const ai = await generateContentText({
-      aiProvider: primaryPin,
-      // NEVER forward a model that a leg does not own — a stale primary
-      // model pin leaked into the Entrim leg on the deployed worker
-      // (model=grok-4.6 → 400). Legs run on their provider defaults only.
+      aiProvider: ownerPin,
+      // NEVER forward a model that the owner leg does not set — the adapters
+      // run on their registry API model only.
       system: opts.system,
       prompt: opts.prompt,
       maxTokens: opts.maxTokens,
       temperature: opts.temperature,
       timeoutMs: ownerTimeoutMs,
-      // Owner mode: strictly exclusive — NO capacity cascade inside the
-      // provider chain (the designated fallback leg below is the only
-      // recovery path, so an Entrim owner is never silently served by Grok
-      // or vice versa).
       exclusive: true,
+      cascadeOnCapacity: false,
       skipQualityContract: opts.skipQualityContract,
     })
     return {
       ai,
       fallbackUsed: false,
     }
-  } catch (primaryErr) {
-    const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
-    if (primaryIsFallback) {
-      throw new Error(
-        `Brief generation failed (DeepSeek V4 Flash on Entrim): ${primaryMsg.slice(0, 300)}.`,
-      )
-    }
-    // Fallback legs. A Grok owner falls back to the Entrim Qwen default; an
-    // Entrim Qwen owner falls back to the DeepSeek family. The leg runs
-    // exclusively; failures accumulate into one combined error so the
-    // operator sees exactly which backend died and why.
-    const legs: Array<{ aiProvider: string; label: string }> = []
-    if (isGrokPrimary) {
-      if (isEntrimConfigured()) {
-        legs.push({ aiProvider: 'entrim-qwen-27b', label: 'Qwen3.6 27B (Entrim)' })
-      }
-    } else if (isEntrimConfigured()) {
-      legs.push({ aiProvider: 'entrim-deepseek', label: 'DeepSeek V4 Flash (Entrim)' })
-    }
-    const msgs: string[] = []
-    for (const leg of legs) {
-      try {
-        const ai = await generateContentText({
-          aiProvider: leg.aiProvider,
-          system: opts.system,
-          prompt: opts.prompt,
-          maxTokens: opts.maxTokens,
-          temperature: opts.temperature,
-          timeoutMs: leg.aiProvider.startsWith('entrim-')
-            ? Math.max(opts.timeoutMs ?? 0, 180_000)
-            : opts.timeoutMs,
-          exclusive: true,
-          skipQualityContract: opts.skipQualityContract,
-        })
-        return { ai, fallbackUsed: true }
-      } catch (legErr) {
-        const legMsg = legErr instanceof Error ? legErr.message : String(legErr)
-        msgs.push(`Fallback (${leg.label}): ${legMsg.slice(0, 300)}.`)
-      }
-    }
+  } catch (ownerErr) {
+    const ownerMsg = ownerErr instanceof Error ? ownerErr.message : String(ownerErr)
     throw new Error(
-      `Brief generation failed. Primary (${primaryLabel}): ${primaryMsg.slice(0, 300)}. ${msgs.join(' ')}`,
+      `Brief generation failed. Owner (${ownerLabel}): ${ownerMsg.slice(0, 300)}.`,
     )
   }
 }

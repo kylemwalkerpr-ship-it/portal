@@ -16,6 +16,10 @@ export type StoredContentJob = {
   content?: string | null
   ship_mode?: string | null
   user_id?: string | null
+  /** Requested/owner provider pin persisted on the job — carried explicitly. */
+  ai_provider?: string | null
+  /** Requested model identity persisted on the job (read-only lineage). */
+  requested_model?: string | null
   opportunity_id?: string | null
   contract_id?: string | null
   contract_version?: number | null
@@ -36,6 +40,10 @@ export async function runStoredContentJob(
   const contentType = job.content_type === 'article'
     ? 'legal_guide'
     : String(job.content_type || 'legal_guide')
+  // Carry the persisted requested pin explicitly. A legacy value is passed
+  // verbatim — the provider boundary fails closed on it; it is never
+  // defaulted, re-resolved to a retired provider, or silently redirected.
+  const requestedPin = String(job.ai_provider ?? '').trim()
   const input: PipelineInput & Record<string, unknown> = {
     topic,
     title: String(job.title || topic),
@@ -47,6 +55,7 @@ export async function runStoredContentJob(
     shipMode: (job.ship_mode || 'pr') as PipelineResult['shipMode'],
     userId: job.user_id || 'system:stored-job',
     existingJobId: job.id,
+    ...(requestedPin ? { aiProvider: requestedPin } : {}),
     requiredShortKeywords: Array.isArray(job.required_short_keywords) ? job.required_short_keywords.map(String) : undefined,
     requiredLongTailKeywords: Array.isArray(job.required_long_tail_keywords) ? job.required_long_tail_keywords.map(String) : undefined,
     shortKeywordTerms: Array.isArray(job.short_keyword_terms) ? job.short_keyword_terms : undefined,

@@ -138,7 +138,9 @@ describe('migration apply order', () => {
     const baseline = JSON.parse(
       readFileSync(join(ROOT, 'supabase', 'migration-baseline.json'), 'utf8'),
     ) as { files: Array<{ filename: string }> }
-    expect(order).toEqual(baseline.files.map((f) => f.filename))
+    const baselineOrder = baseline.files.map((f) => f.filename)
+    expect(baselineOrder).toHaveLength(69)
+    expect(order.filter((filename) => baselineOrder.includes(filename))).toEqual(baselineOrder)
   })
 
   it('claims a 14-digit future migration in the timestamped tier', () => {

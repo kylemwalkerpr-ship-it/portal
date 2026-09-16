@@ -16,11 +16,18 @@ import * as React from 'react'
 import { applyReadabilityFixes, computeEditorMetrics, expandMetaToBriefTarget, injectMissingBriefKeywords, missingBriefKeywords, listBriefKeywords, type EditorMetrics, type EditorSeoHint } from '@/lib/editorMetrics'
 import { runHarperGrammar, fixHarperIssues, applyHarperProblem, harperKindAutofixable, type HarperLintSummary } from '@/lib/harperBrowser'
 import { applyQuotedStyleFixes } from '@/lib/seoFactory/styleApply'
-import { GROK_PIN } from '@/lib/contentAiCatalog'
+import { parseStudioPin } from '@/lib/contentAiCatalog'
 
-/** Style Review is Grok-only — ignore Genesis Review / other picker pins. */
-function resolveStyleReviewPin(_reviewModel?: string): string {
-  return GROK_PIN
+/**
+ * Style Review follows the job/contract review pin from the registry — both
+ * commissioned providers are selectable. Missing/empty/`auto` use the lane
+ * default (Grok). A legacy/unknown explicit saved pin is forwarded VERBATIM
+ * so the hardened route fails closed with a typed 409 selection_required; it
+ * is never dropped to '' (which the route would treat as missing → Grok).
+ */
+export function resolveStyleReviewPin(reviewModel?: string): string {
+  const parsed = parseStudioPin(reviewModel)
+  return parsed.kind === 'commissioned' ? parsed.pin : parsed.legacyValue
 }
 
 /**
