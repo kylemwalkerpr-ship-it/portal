@@ -124,9 +124,61 @@ describe('migration apply order', () => {
 
   it('auto-registers a new timestamped migration without touching any list', () => {
     const pattern = new RegExp(meta.timestampedPattern)
+    // 8-digit names are the grandfathered baseline-only shape.
     expect(pattern.test('20270101_brand_new_thing.sql')).toBe(true)
+    // 14-digit names are the required future shape.
+    expect(pattern.test('20270101120000_brand_new_thing.sql')).toBe(true)
     // Non-conforming names are rejected rather than silently skipped.
+    expect(pattern.test('2027010112000_brand_new_thing.sql')).toBe(false)
+    expect(pattern.test('202701011200001_brand_new_thing.sql')).toBe(false)
     expect(pattern.test('brand_new_thing.sql')).toBe(false)
+  })
+
+  it('keeps the frozen 69-file order byte-for-byte', () => {
+    const baseline = JSON.parse(
+      readFileSync(join(ROOT, 'supabase', 'migration-baseline.json'), 'utf8'),
+    ) as { files: Array<{ filename: string }> }
+    expect(order).toEqual(baseline.files.map((f) => f.filename))
+  })
+
+  it('claims a 14-digit future migration in the timestamped tier', () => {
+    const dir = join(
+      require('node:os').tmpdir(),
+      `migorder-future-${process.pid}-${Math.random().toString(36).slice(2)}`,
+    )
+    const fs = require('node:fs') as typeof import('node:fs')
+    fs.mkdirSync(dir, { recursive: true })
+    try {
+      for (const f of [...meta.base, ...meta.indexes]) fs.writeFileSync(join(dir, f), '-- stub\n')
+      fs.writeFileSync(join(dir, '20270101120000_brand_new_thing.sql'), '-- stub\n')
+      const out = execFileSync('node', ['--input-type=module', '-e', `
+        import { migrationOrder } from ${JSON.stringify(SCRIPT)}
+        console.log(JSON.stringify(migrationOrder({ dir: ${JSON.stringify(dir)} })))
+      `], { encoding: 'utf8', stdio: 'pipe' })
+      expect(JSON.parse(out)).toEqual([
+        ...meta.base,
+        '20270101120000_brand_new_thing.sql',
+        ...meta.indexes,
+      ])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('agrees with the ledger policy ordering pattern', () => {
+    const POLICY = join(ROOT, 'scripts', 'migration-ledger-policy.mjs')
+    const out = execFileSync('node', ['--input-type=module', '-e', `
+      const policy = await import(${JSON.stringify(POLICY)})
+      const { TIMESTAMPED_RE } = await import(${JSON.stringify(SCRIPT)})
+      console.log(JSON.stringify({
+        agreement: TIMESTAMPED_RE.source === policy.ORDERING_TIMESTAMPED_RE.source,
+        ordering: TIMESTAMPED_RE.source,
+        policy: policy.ORDERING_TIMESTAMPED_RE.source,
+      }))
+    `], { encoding: 'utf8' })
+    const result = JSON.parse(out) as { agreement: boolean; ordering: string; policy: string }
+    expect(result.agreement).toBe(true)
+    expect(result.ordering).toBe(result.policy)
   })
 
   it('fails loudly on a migration that no tier claims', () => {

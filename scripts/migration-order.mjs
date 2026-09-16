@@ -61,8 +61,12 @@ export const INDEX_ORDER = [
   'content_jobs_fts_index.sql',
 ]
 
-/** A timestamped migration self-registers: `20260831_keyword_provenance.sql`. */
-export const TIMESTAMPED_RE = /^\d{8}_[A-Za-z0-9_]+\.sql$/
+/**
+ * A timestamped migration self-registers: `20260831120000_new_thing.sql`.
+ * 14-digit names are the future rule; the frozen baseline's 8-digit names
+ * (`20260831_keyword_provenance.sql`) are grandfathered and baseline-only.
+ */
+export const TIMESTAMPED_RE = /^(?:\d{8}|\d{14})_[A-Za-z0-9_]+\.sql$/
 
 /**
  * Resolve the full ordered list.
