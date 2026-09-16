@@ -12,13 +12,15 @@
  * may match an existing Legal registry row while `resolveOwner` intentionally
  * routes an explicit non-Legal destination to a different, net-new URL
  * (stealLegalPillar). There `matched` is non-null but the destination is still
- * unowned, so it stays frozen.
+ * unowned, so it stays frozen. The same applies to `registry_host`, which is
+ * emitted only when a matched row's `owner_url` cannot be parsed and
+ * `resolveOwner` invents a fallback path — a fabricated destination, not an
+ * existing owner, so `expand` / `keep` labels on it are not proof either.
  *
  * Existing authoritative destinations keep working:
- *   - exact registry owner URLs / registry hosts (authoritative routing),
- *   - strike-seed existing owners (keep / expand),
- *   - explicit existing cluster `ownerUrlHint` destinations (registry_owner_url),
- *   - any normal refresh / expand / keep flow.
+ *   - exact registry owner URLs / explicit cluster `ownerUrlHint` destinations
+ *     (registry_owner_url),
+ *   - strike-seed existing owners (keep / expand).
  *
  * Future P13 unlock: set `SEO_FACTORY_UNLOCK_BROAD_CREATE=1` (or `true`) once
  * the cleanup-to-expansion parity gates are proven. The default is frozen and
@@ -33,37 +35,43 @@ import type { OwnerPlan } from './ownership'
 export const BROAD_CREATE_UNLOCK_ENV = 'SEO_FACTORY_UNLOCK_BROAD_CREATE'
 
 /**
- * The OwnerPlan fields accepted by the gate. `matched` is accepted for call-site
- * compatibility but deliberately NOT consulted: a keyword match is not proof
- * that the final destination exists.
+ * The OwnerPlan fields accepted by the gate. `matched` and `action` are
+ * accepted for call-site compatibility but deliberately NOT consulted: a
+ * keyword match or an `expand` / `keep` label is not proof that the final
+ * destination exists.
  */
 export type BroadCreatePlan = Pick<OwnerPlan, 'matched' | 'action' | 'routingSource'>
 
 /**
- * Routing sources that already point at an authoritative existing destination
- * (registry owner URL, registry host row, or strike-seed owner). Any routing
- * source NOT listed here is treated as an unowned fallback and stays frozen by
- * default — including future sources (fail-closed).
+ * Routing sources that prove the FINAL DESTINATION already exists:
+ *   - `registry_owner_url`: a matched row with a usable owner URL (or an
+ *     explicit cluster `ownerUrlHint` naming an existing canonical),
+ *   - `strike_seed`: a locked existing GSC seed page.
+ *
+ * `registry_host` is deliberately NOT here: it is emitted only when the
+ * matched row's `owner_url` is unusable and `resolveOwner` invents a fallback
+ * path, so it is an unowned fallback despite carrying a keyword match. Any
+ * routing source NOT listed here is treated as an unowned fallback and stays
+ * frozen by default — including future sources (fail-closed).
  */
 const AUTHORITATIVE_EXISTING_ROUTING: ReadonlySet<OwnerPlan['routingSource']> = new Set([
   'registry_owner_url',
-  'registry_host',
   'strike_seed',
 ])
 
 /**
- * True when the plan's FINAL DESTINATION is a genuinely net-new broad CREATE:
- * the action is `build` (not keep/expand) and the destination came from a
- * fallback route rather than an authoritative existing owner.
+ * True when the plan's FINAL DESTINATION is not proven to already exist. The
+ * action label is deliberately NOT consulted: `resolveOwner` can carry an
+ * `expand` / `keep` action on a fallback route (e.g. `registry_host` after an
+ * unusable owner URL) while still inventing a net-new URL, so only
+ * authoritative routing proves an existing owner.
  *
- * A non-null `matched` row is NOT proof the destination exists: `resolveOwner`
- * can match a registry keyword yet deliberately route an explicit non-legal
- * destination to a different, net-new standing-rules URL (stealLegalPillar).
- * There `matched` describes the keyword match, not the final destination, so
- * only the authoritative routing sources prove an existing owner.
+ * A non-null `matched` row is NOT proof either: `resolveOwner` can match a
+ * registry keyword yet deliberately route an explicit non-legal destination to
+ * a different, net-new standing-rules URL (stealLegalPillar). There `matched`
+ * describes the keyword match, not the final destination.
  */
 export function isBroadNetNewCreate(plan: BroadCreatePlan): boolean {
-  if (plan.action !== 'build') return false
   return !AUTHORITATIVE_EXISTING_ROUTING.has(plan.routingSource)
 }
 
@@ -95,6 +103,7 @@ export function broadCreateFreezeMessage(
   return [
     'Broad net-new CREATE is frozen pending cleanup-to-expansion parity (P13 controlled expansion not yet started).',
     `Refused plan for ${keyword}(action=${plan.action}, routingSource=${plan.routingSource})${destination ? ` → ${destination}` : ''}.`,
+    'That routing source does not prove the final destination already exists — an action label alone is not an existing owner.',
     'No drafting job was created and no AI generation was started.',
     'Resolve this keyword to an existing owner (exact registry owner URL, strike-seed owner, or explicit cluster ownerUrlHint), or deliberately unlock '
       + `${BROAD_CREATE_UNLOCK_ENV}=1 once the P13 expansion gates are proven.`,

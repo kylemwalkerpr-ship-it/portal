@@ -4,13 +4,15 @@
  * Cleanup-to-expansion parity is not yet proven (P13 controlled expansion is
  * still PENDING), so an unmatched keyword routed by standing rules /
  * content-type defaults must not become permission to author and ship a
- * net-new public page. Existing authoritative destinations (exact registry
- * owner URLs, strike-seed owners, explicit cluster ownerUrlHints) and normal
- * refresh/expand/keep flows must keep working.
+ * net-new public page. Only routing that proves the FINAL DESTINATION already
+ * exists (exact registry owner URLs, strike-seed owners, explicit cluster
+ * ownerUrlHints) keeps working; fallback routes stay frozen whatever action
+ * label they carry. `registry_host` in particular is invented when a matched
+ * row's owner_url is unusable, so it must NOT be treated as authoritative.
  *
  * These tests use the REAL `resolveOwner` output and the REAL pipeline entry
  * points (no mocked gate) so the frozen default, the explicit P13 unlock and
- * the authoritative-existing allow-list are all proven end to end.
+ * the destination-authority allow-list are all proven end to end.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -66,37 +68,60 @@ const plan = (over: Partial<GatePlan>): GatePlan => ({
 })
 
 describe('broad-create freeze · gate predicate', () => {
-  it('freezes unmatched fallback builds (standing_rules and content_type_default)', () => {
-    expect(isBroadNetNewCreate(plan({ routingSource: 'standing_rules' }))).toBe(true)
-    expect(isBroadNetNewCreate(plan({ routingSource: 'content_type_default' }))).toBe(true)
+  it('freezes every fallback route regardless of action label', () => {
+    // A fallback route invents a destination. `registry_host` is emitted when a
+    // matched row's owner_url cannot be parsed and the resolver fabricates a
+    // pathForHostFallback destination, so it is NOT an existing owner — and an
+    // `expand`/`keep` label on it is not proof either.
+    expect(
+      isBroadNetNewCreate(plan({
+        matched: { id: 1, owner_url: '' } as OwnerPlan['matched'],
+        routingSource: 'registry_host',
+      })),
+    ).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'build', routingSource: 'registry_host' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'registry_host' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'registry_host' }))).toBe(true)
+    // Unmatched fallbacks, including mislabeled expand/keep flows.
+    expect(isBroadNetNewCreate(plan({ action: 'build', routingSource: 'standing_rules' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'standing_rules' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'standing_rules' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'build', routingSource: 'content_type_default' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'content_type_default' }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'content_type_default' }))).toBe(true)
   })
 
-  it('does not freeze plans that already have an authoritative existing destination', () => {
-    // Exact registry owner URL / host (registry row matched).
+  it('does not freeze plans whose routing proves an existing destination', () => {
+    // Exact registry owner URL / explicit cluster ownerUrlHint.
     expect(
       isBroadNetNewCreate(plan({
         matched: { id: 1, owner_url: 'https://legal.yousafeconsultancy.com/uk/x/' } as OwnerPlan['matched'],
         routingSource: 'registry_owner_url',
       })),
     ).toBe(false)
-    expect(
-      isBroadNetNewCreate(plan({
-        matched: { id: 1, owner_url: '' } as OwnerPlan['matched'],
-        routingSource: 'registry_host',
-      })),
-    ).toBe(false)
+    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'registry_owner_url' }))).toBe(false)
+    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'registry_owner_url' }))).toBe(false)
     // Strike-seed existing owner (expand/keep).
     expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'strike_seed' }))).toBe(false)
     expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'strike_seed' }))).toBe(false)
-    // Explicit existing cluster ownerUrlHint.
-    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'registry_owner_url' }))).toBe(false)
-    // Normal refresh/expand/keep flows never carry action=build.
-    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'standing_rules' }))).toBe(false)
-    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'standing_rules' }))).toBe(false)
   })
 
-  it('is fail-closed for unknown future routing sources', () => {
+  it('is fail-closed for unknown future routing sources, whatever the action', () => {
     expect(isBroadNetNewCreate(plan({ routingSource: 'some_future_fallback' as OwnerPlan['routingSource'] }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'expand', routingSource: 'some_future_fallback' as OwnerPlan['routingSource'] }))).toBe(true)
+    expect(isBroadNetNewCreate(plan({ action: 'keep', routingSource: 'some_future_fallback' as OwnerPlan['routingSource'] }))).toBe(true)
+  })
+
+  it('freezes a registry_host fallback through assertBroadCreateAllowed unless P13 unlocks', () => {
+    const fallbackExpand = plan({
+      matched: { id: 1, owner_url: '' } as OwnerPlan['matched'],
+      action: 'expand',
+      routingSource: 'registry_host',
+    })
+    expect(() => assertBroadCreateAllowed(fallbackExpand, { env: {} })).toThrow(/broad net-new CREATE/i)
+    expect(() => assertBroadCreateAllowed({ ...fallbackExpand, action: 'keep' }, { env: {} })).toThrow(/broad net-new CREATE/i)
+    expect(() => assertBroadCreateAllowed({ ...fallbackExpand, action: 'build' }, { env: {} })).toThrow(/broad net-new CREATE/i)
+    expect(() => assertBroadCreateAllowed(fallbackExpand, { env: { [BROAD_CREATE_UNLOCK_ENV]: '1' } })).not.toThrow()
   })
 })
 
