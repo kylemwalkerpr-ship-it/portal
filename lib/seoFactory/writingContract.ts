@@ -344,8 +344,13 @@ export function assertSameContract(
 }
 
 function stableStringify(value: unknown): string {
-  if (value == null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value === undefined) return 'null'
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${Array.from(value, (item) => stableStringify(item)).join(',')}]`
   const obj = value as Record<string, unknown>
-  return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`
+  return `{${Object.keys(obj)
+    .filter((key) => obj[key] !== undefined)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`)
+    .join(',')}}`
 }
