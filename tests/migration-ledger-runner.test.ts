@@ -6,7 +6,7 @@
  * what is tested. Every request the runner sends goes through the injected
  * `runSql`; apply bodies are identified by their `BEGIN;` prefix.
  */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,6 +15,8 @@ const ROOT = join(__dirname, '..')
 const RUNNER = join(ROOT, 'scripts', 'migration-ledger-runner.mjs')
 const ORDER = join(ROOT, 'scripts', 'migration-order.mjs')
 const MANIFEST = join(ROOT, 'supabase', 'migration-baseline.json')
+const CLI = join(ROOT, 'scripts', 'apply-migrations.mjs')
+const APPLY_WORKFLOW = join(ROOT, '.github', 'workflows', 'apply-seo-factory-migrations.yml')
 
 const manifestJson = JSON.parse(readFileSync(MANIFEST, 'utf8')) as {
   generatedFrom: { gitSha: string }
@@ -489,6 +491,7 @@ describe('ledger runner — naming, modes, interface (T3/T17)', () => {
     expect(badAuthenticated.result.status).toBe('BLOCKED')
     expect(badAuthenticated.result.summaryLine).toContain('runtime role not postgres')
     expect(applyBodies(badAuthenticated.requests)).toHaveLength(0)
+    expect(badAuthenticated.logs.some((line) => line.startsWith('RUNTIME ROLE VERIFIED'))).toBe(false)
 
     const badSession = runRunner({
       order: [...BASELINE_ORDER, PENDING],
@@ -498,6 +501,7 @@ describe('ledger runner — naming, modes, interface (T3/T17)', () => {
     expect(badSession.result.status).toBe('BLOCKED')
     expect(badSession.result.summaryLine).toContain('runtime role not postgres')
     expect(applyBodies(badSession.requests)).toHaveLength(0)
+    expect(badSession.logs.some((line) => line.startsWith('RUNTIME ROLE VERIFIED'))).toBe(false)
 
     const noPending = runRunner({ role: { current_user: 'postgres', session_user: 'postgres', role: 'none' } })
     expect(noPending.result.status).toBe('OK')
@@ -574,5 +578,91 @@ describe('ledger runner — naming, modes, interface (T3/T17)', () => {
       'runner: invalid sha256 for 20270101120000_ok.sql',
       'runner: invalid sourceGitSha',
     ])
+  })
+})
+
+describe('apply cutover — workflow contract (T14)', () => {
+  let yaml = ''
+
+  beforeAll(() => {
+    yaml = readFileSync(APPLY_WORKFLOW, 'utf8')
+  })
+
+  it('stays enabled and triggers on every runtime dependency of the ledger-aware apply path', () => {
+    expect(yaml).toMatch(/^on:/m)
+    expect(yaml).toMatch(/^\s*push:/m)
+    expect(yaml).toContain('branches: [main]')
+    expect(yaml).toMatch(/^\s*workflow_dispatch:\s*$/m)
+    for (const entry of [
+      'supabase/migrations/**',
+      'supabase/migration-baseline.json',
+      'scripts/migration-order.mjs',
+      'scripts/migration-ledger-policy.mjs',
+      'scripts/migration-ledger-runner.mjs',
+      'scripts/supabase-management-sql.mjs',
+      'scripts/apply-migrations.mjs',
+      '.github/workflows/apply-seo-factory-migrations.yml',
+    ]) {
+      expect(yaml).toContain(`- '${entry}'`)
+    }
+  })
+
+  it('orders the gates exactly: order check, policy check, read-only preflight, ledger apply', () => {
+    const order = yaml.indexOf('node scripts/migration-order.mjs --check')
+    const policy = yaml.indexOf('node scripts/migration-ledger-policy.mjs --check')
+    const preflight = yaml.indexOf('node scripts/apply-migrations.mjs --preflight')
+    const apply = yaml.search(/node scripts\/apply-migrations\.mjs[\r\n]/)
+    expect(order).toBeGreaterThanOrEqual(0)
+    expect(policy).toBeGreaterThan(order)
+    expect(preflight).toBeGreaterThan(policy)
+    expect(apply).toBeGreaterThan(preflight)
+    expect(yaml).toContain('name: Preflight ledger gate (read-only)')
+    expect(yaml).toContain('name: Apply pending migrations (ledger-guarded)')
+  })
+
+  it('keeps the concurrency group, contents: read, and no-cancel semantics unchanged', () => {
+    expect(yaml).toContain('group: seo-factory-migrations-${{ github.ref }}')
+    expect(yaml).toContain('cancel-in-progress: false')
+    expect(yaml).toContain('permissions:\n  contents: read')
+  })
+
+  it('passes secrets through step env and never echoes a token value', () => {
+    expect(yaml.match(/SUPABASE_ACCESS_TOKEN: \$\{\{ secrets\.SUPABASE_ACCESS_TOKEN \}\}/g) ?? []).toHaveLength(2)
+    expect(yaml.match(/SUPABASE_PROJECT_REF: \$\{\{ secrets\.SUPABASE_PROJECT_REF \}\}/g) ?? []).toHaveLength(2)
+    const tokenMentions = yaml.match(/echo[^\n]*SUPABASE_ACCESS_TOKEN[^\n]*/gi) ?? []
+    for (const line of tokenMentions) {
+      expect(line).not.toContain('$')
+    }
+  })
+
+  it('has no inline migration list and cannot be silently disabled', () => {
+    expect(yaml.match(/supabase\/migrations\/[a-z0-9_]+\.sql/gi)).toBeNull()
+    expect(yaml).not.toContain('[skip ci]')
+    expect(yaml).not.toMatch(/^\s*if: false\s*$/m)
+  })
+})
+
+describe('apply cutover — CLI contract (T14)', () => {
+  const runCli = (args: string[]) => {
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    delete env.SUPABASE_ACCESS_TOKEN
+    delete env.SUPABASE_PROJECT_REF
+    delete env.GITHUB_ACTIONS
+    delete env.GITHUB_SHA
+    return spawnSync('node', [CLI, ...args], { encoding: 'utf8', env })
+  }
+
+  it('default local apply refuses before any network call', () => {
+    const out = runCli([])
+    expect(out.status).toBe(1)
+    expect(out.stderr).toContain('Refusing local apply')
+  })
+
+  it('local --preflight and --dry-run are the only local modes and still require the token', () => {
+    for (const args of [['--preflight'], ['--dry-run']]) {
+      const out = runCli(args)
+      expect(out.status).toBe(1)
+      expect(out.stderr).toContain('Missing SUPABASE_ACCESS_TOKEN.')
+    }
   })
 })

@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      - 'supabase/migration-baseline.json'
       - 'scripts/migration-order.mjs'
+      - 'scripts/migration-ledger-policy.mjs'
+      - 'scripts/migration-ledger-runner.mjs'
+      - 'scripts/supabase-management-sql.mjs'
       - 'scripts/apply-migrations.mjs'
       - '.github/workflows/apply-seo-factory-migrations.yml'
   workflow_dispatch:
@@ -31,7 +35,10 @@ jobs:
       - name: Verify migration order covers every file
         run: node scripts/migration-order.mjs --check
 
-      - name: Apply supabase/migrations in dependency order
+      - name: Validate manifest, naming policy, and transaction safety
+        run: node scripts/migration-ledger-policy.mjs --check
+
+      - name: Preflight ledger gate (read-only)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -41,4 +48,12 @@ jobs:
             echo "::error::Missing SUPABASE_ACCESS_TOKEN repository secret"
             exit 1
           fi
+          node scripts/apply-migrations.mjs --preflight
+
+      - name: Apply pending migrations (ledger-guarded)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
           node scripts/apply-migrations.mjs
