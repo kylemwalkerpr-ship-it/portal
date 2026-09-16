@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import {
-  isCloudflareAiConfigured,
   generateContentText,
   listConfiguredContentProviders,
   refreshAiVault,
@@ -35,7 +34,8 @@ export async function GET() {
       missing?: string[]
     }> = []
 
-    // Content AI chain: DeepSeek (NVIDIA) primary → Cloudflare fallback → free tiers
+    // Content AI chain: exactly the two commissioned providers (Grok 4.6 and
+    // first-party DeepSeek V4.1 Flash). No cross-provider cascade.
     const providers = listConfiguredContentProviders()
     const anyAi = providers.some((p) => p.configured)
     if (!anyAi) {
@@ -44,7 +44,7 @@ export async function GET() {
         label: 'Content AI chain',
         ok: false,
         detail:
-          'No providers configured. Set XAI_API_KEY (Grok primary), OPENAI_API_KEY (secondary), NVIDIA_API_KEY, or Cloudflare AI token.',
+          'No commissioned providers configured. Set XAI_API_KEY (Grok 4.6) and/or DEEPSEEK_API_KEY (DeepSeek V4.1 Flash).',
       })
     } else {
       try {
@@ -74,21 +74,9 @@ export async function GET() {
         id: `ai_${p.id}`,
         label: `AI · ${p.label}`,
         ok: p.configured,
-        detail: p.configured
-          ? `${p.role === 'primary' ? 'Primary' : 'Fallback'} · credentials present`
-          : 'Not configured',
+        detail: p.configured ? 'Commissioned · credentials present' : 'Not configured',
       })
     }
-    // Keep legacy id for UI that still looks for cloudflare_ai
-    checks.push({
-      id: 'cloudflare_ai',
-      label: 'Cloudflare Workers AI (fallback)',
-      ok: isCloudflareAiConfigured(),
-      detail: isCloudflareAiConfigured()
-        ? 'Configured as first fallback after DeepSeek'
-        : 'Missing CLOUDFLARE_ACCOUNT_ID or AI token (optional if NVIDIA_API_KEY is set)',
-    })
-
     // GitHub
     const ghToken = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
     if (!ghToken) {
@@ -207,17 +195,17 @@ export async function GET() {
       })
     }
 
-    // Gig-style fallbacks summary (credentials present)
-    const fb = listConfiguredContentProviders().filter((p) => p.role === 'fallback' && p.configured)
+    // Legacy aggregate id kept for backward-compatible UI shape. It only
+    // summarizes the two commissioned providers — it never advertises a
+    // cross-provider cascade or a retired executable provider.
+    const configuredAi = providers.filter((p) => p.configured)
     checks.push({
       id: 'ai_fallbacks',
-      label: 'AI fallbacks (gig chain)',
-      ok: fb.length > 0 || isCloudflareAiConfigured(),
-      detail: fb.length
-        ? fb.map((p) => p.id).join(', ')
-        : isCloudflareAiConfigured()
-          ? 'None configured — CF AI only (add GROQ/GEMINI/OPENROUTER like gigs)'
-          : 'None',
+      label: 'AI provider readiness',
+      ok: configuredAi.length > 0,
+      detail: configuredAi.length
+        ? `Commissioned only: ${configuredAi.map((p) => p.id).join(', ')}`
+        : 'No commissioned providers configured',
     })
 
     // SEO strategies corpus
@@ -242,7 +230,7 @@ export async function GET() {
     }
 
     const ready = checks
-      .filter((c) => ['cloudflare_ai', 'github', 'supabase'].includes(c.id))
+      .filter((c) => ['github', 'supabase'].includes(c.id))
       .every((c) => c.ok)
 
     return NextResponse.json({
