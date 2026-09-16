@@ -8,11 +8,12 @@ const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp'])
  * POST /api/images/resize
  *
  * Accepts a multipart upload with a single image file and optional metadata.
- * The image is uploaded to the gig-gallery storage bucket as-is.
- * Supabase Storage supports on-the-fly image transformation via URL query
- * params (?width=...&resize=cover&format=webp), so server-side sharp
- * processing is not needed — clients can request different sizes at render
- * time via the responsiveImageProps utility in lib/responsiveImage.ts.
+ * The image is uploaded to the gig-gallery storage bucket as-is — this endpoint
+ * performs no server-side image processing. Supabase Storage image transforms
+ * are not enabled on this project (the render endpoint returns 403
+ * FeatureNotEnabled), so the stored bytes are served unchanged.
+ * Marketplace uploads are optimized client-side before reaching this endpoint
+ * (lib/marketplaceImageOptimization.ts).
  *
  * Body (multipart/form-data):
  *   - file: File (required) — JPG, PNG, or WEBP, max 10 MB
