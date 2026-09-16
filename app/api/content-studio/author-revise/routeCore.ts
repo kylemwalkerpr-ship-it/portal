@@ -3,6 +3,10 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { DEFAULT_REVIEW_PIN } from '@/lib/contentAiCatalog'
+import {
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+} from '@/lib/contentAiRegistry'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { acceptRewriteCandidate } from '@/lib/seoFactory/rewriteAcceptance'
 import { clampBriefWordBudget, countBodyWords } from '@/lib/seoFactory/contentDepth'
@@ -113,8 +117,16 @@ export async function POST(request: NextRequest) {
       priorAuditJson = job.audit_json && typeof job.audit_json === 'object' ? job.audit_json : {}
 
       const explicitReviewModel = typeof body.reviewModel === 'string' ? body.reviewModel.trim() : ''
-      if (contractRequestedModel && explicitReviewModel && explicitReviewModel !== contractRequestedModel) {
-        throw new WritingContractMismatchError('review model conflicts with immutable writing contract')
+      if (contractRequestedModel && explicitReviewModel) {
+        // Contract owner pin is the authority. Both are compared as canonical
+        // commissioned pins, so aliases of the same provider agree while any
+        // other value (including a legacy pin) is a contract conflict. A
+        // legacy CONTRACT pin fails closed as selection-required.
+        const contractPin = canonicalCommissionedPin(contractRequestedModel)
+        if (!contractPin) throw new ProviderSelectionRequiredError(contractRequestedModel)
+        if (canonicalCommissionedPin(explicitReviewModel) !== contractPin) {
+          throw new WritingContractMismatchError('review model conflicts with immutable writing contract')
+        }
       }
 
       executionClaim = await claimContentStudioExecution(db, {
@@ -157,7 +169,12 @@ export async function POST(request: NextRequest) {
     const clientReviewPin = typeof body.reviewModel === 'string' && body.reviewModel.trim()
       ? body.reviewModel.trim()
       : DEFAULT_REVIEW_PIN
-    const reviewPin = contractBound && contractRequestedModel ? contractRequestedModel : clientReviewPin
+    // The reviewer is the contract owner pin when bound, else the client pin
+    // (or the lane default). It must be one of the two commissioned pins; a
+    // legacy pin fails closed BEFORE any revision authoring.
+    const requestedReviewPin = contractBound && contractRequestedModel ? contractRequestedModel : clientReviewPin
+    const reviewPin = canonicalCommissionedPin(requestedReviewPin)
+    if (!reviewPin) throw new ProviderSelectionRequiredError(requestedReviewPin)
 
     const runAudit = (draft: string) => auditContent({
       content: draft,
@@ -322,6 +339,9 @@ export async function POST(request: NextRequest) {
       denoiseApplied: result.denoiseApplied,
     })
   } catch (error) {
+    if (error instanceof ProviderSelectionRequiredError) {
+      return NextResponse.json(error.toPayload(), { status: error.status })
+    }
     const message = error instanceof Error ? error.message : 'Author revise failed'
     const contractError = /writing contract|contract identity|client draft is stale|evidence.*mismatch|execution already active|lease|review model conflicts/i.test(message)
     return NextResponse.json({ error: message }, { status: contractError ? 409 : 502 })

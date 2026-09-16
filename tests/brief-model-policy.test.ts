@@ -57,6 +57,8 @@ const LEGACY_BRIEF_PINS = [
   'deepseek-flash',
   'deepseek-pro',
   'deepseek-v4-flash',
+  'default',
+  'primary',
 ] as const
 
 const ENV_KEYS = ['OPENAI_API_KEY', 'XAI_API_KEY', 'DEEPSEEK_API_KEY', 'ENTRIM_API_KEY', 'CONTENT_AI_RETRY'] as const
@@ -87,8 +89,8 @@ const json = (payload: unknown, status = 200) =>
   })
 
 describe('resolveBriefAiProvider — commissioned brief pin policy', () => {
-  it('empty / auto / default resolve to the recorded Grok lane default', () => {
-    for (const raw of ['', '   ', 'auto', 'default', 'primary']) {
+  it('missing / empty / auto resolve to the recorded Grok lane default', () => {
+    for (const raw of ['', '   ', 'auto']) {
       expect({ raw, resolved: resolveBriefAiProvider(raw) }).toEqual({ raw, resolved: { aiProvider: 'grok' } })
     }
   })

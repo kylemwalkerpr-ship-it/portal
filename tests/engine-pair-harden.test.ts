@@ -7,6 +7,7 @@ import {
 import {
   ENGINE_PAIR_BREAKER_THRESHOLD,
   engineLegBreakerLabel,
+  enginePairBreakerStatus,
   isEngineLegOpen,
   recordEngineLegFailure,
   recordEngineLegSuccess,
@@ -37,6 +38,10 @@ describe('harvestComplementExtras', () => {
 
 describe('engine pair circuit breaker', () => {
   afterEach(() => resetEnginePairBreaker())
+
+  it('reports the current commissioned pair (grok, deepseek-v41-flash)', () => {
+    expect(enginePairBreakerStatus().map((slot) => slot.leg)).toEqual(['grok', 'deepseek-v41-flash'])
+  })
 
   it('opens after two failures and stays closed after a success', () => {
     expect(isEngineLegOpen('parasail-glm')).toBe(false)

@@ -3,9 +3,17 @@ import { createHash } from 'node:crypto'
 import type { SeoFactoryAudit } from './audit'
 import type { SealedBrief } from './sealedBrief'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
+import {
+  ProviderSelectionRequiredError,
+  canonicalCommissionedPin,
+  commissionedProvider,
+  type CommissionedProviderPin,
+} from '@/lib/contentAiRegistry'
 
 export type ContentStudioDeskState = 'not_started' | 'running' | 'completed' | 'failed'
 export type ContentStudioRevisionState = 'not_started' | 'running' | 'completed' | 'failed'
+/** Where the execution's commissioned provider pin came from. */
+export type ContentStudioProviderPinSource = 'contract' | 'request'
 export type ContentStudioContractOwnership = {
   host: string
   repo: string
@@ -33,6 +41,8 @@ export type ContentStudioExecutionState = {
   contractOwnership: ContentStudioContractOwnership | null
   contractQueryCoverage: ContentStudioContractQueryCoverage | null
   requestedModel: string | null
+  /** Commissioned pin provenance: contract owner pin or request-selected pin. */
+  providerPinSource: ContentStudioProviderPinSource | null
   executionJobId: string | null
   executionOwner: string | null
   executionAttempt: number | null
@@ -90,6 +100,7 @@ export function createContentStudioExecutionState(
       longTailKeywordTerms: identity.contractQueryCoverage.longTailKeywordTerms.map((term) => ({ ...term })),
     } : null,
     requestedModel: String(identity?.requestedModel || '').trim() || null,
+    providerPinSource: String(identity?.requestedModel || '').trim() ? 'contract' : null,
     executionJobId: String(identity?.executionJobId || '').trim() || null,
     executionOwner: String(identity?.executionOwner || '').trim() || null,
     executionAttempt: Number.isInteger(identity?.executionAttempt) ? Number(identity?.executionAttempt) : null,
@@ -230,15 +241,48 @@ export function assertIsolatedAuthoringAllowed(): void {
   throw new Error('strict Content Studio execution forbids AI authoring before the validated writing stage starts')
 }
 
+/**
+ * Contract/request provider boundary for strict executions.
+ *
+ * The contract owner pin (or, for request-selected executions, the request
+ * pin) must be one of the two commissioned pins. A non-commissioned pin is
+ * rejected with a typed `ProviderSelectionRequiredError` (409, fail closed)
+ * BEFORE any provider work, and the pin's provenance is recorded on the
+ * execution state (`providerPinSource`).
+ */
 export function assertContractProviderSelection(opts: { aiProvider?: string | null; model?: string | null }): void {
   const state = activeState()
-  if (!state?.strict || !state.requestedModel) return
+  if (!state?.strict) return
   assertLocalContentStudioExecutionLease()
-  const requested = state.requestedModel.trim().toLowerCase()
-  const runtimeProvider = String(opts.aiProvider || '').trim().toLowerCase()
+  const runtimeRaw = String(opts.aiProvider || '').trim()
+  const requestedRaw = String(state.requestedModel || '').trim()
+
+  let runtimePin: CommissionedProviderPin | null = null
+  if (runtimeRaw && runtimeRaw.toLowerCase() !== 'auto') {
+    runtimePin = canonicalCommissionedPin(runtimeRaw)
+    if (!runtimePin) throw new ProviderSelectionRequiredError(runtimeRaw)
+  }
+
+  if (!requestedRaw) {
+    // Request-selected execution (no contract owner pin): the call pin must
+    // still be commissioned — the provenance is recorded.
+    if (runtimePin) state.providerPinSource = 'request'
+    return
+  }
+
+  const contractPin = canonicalCommissionedPin(requestedRaw)
+  if (!contractPin) throw new ProviderSelectionRequiredError(requestedRaw)
+  state.providerPinSource = 'contract'
+  if (runtimePin && runtimePin !== contractPin) {
+    throw new Error(`strict Content Studio provider conflicts with immutable contract: ${runtimeRaw} != ${requestedRaw}`)
+  }
   const runtimeModel = String(opts.model || '').trim().toLowerCase()
-  if (runtimeProvider && runtimeProvider !== 'auto' && runtimeProvider !== requested) throw new Error(`strict Content Studio provider conflicts with immutable contract: ${runtimeProvider} != ${requested}`)
-  if (runtimeModel && runtimeModel !== requested) throw new Error(`strict Content Studio model conflicts with immutable contract: ${runtimeModel} != ${requested}`)
+  if (runtimeModel) {
+    const owner = commissionedProvider(contractPin)
+    if (runtimeModel !== requestedRaw.toLowerCase() && runtimeModel !== owner.apiModel.toLowerCase()) {
+      throw new Error(`strict Content Studio model conflicts with immutable contract: ${runtimeModel} != ${requestedRaw}`)
+    }
+  }
 }
 
 export function assertStrictOwnerTarget(actual: ContentStudioContractOwnership): void {

@@ -10,6 +10,10 @@ import {
 } from '@/lib/seoFactory/contentStudioPipeline'
 import { generationRequiresWritingContract } from '@/lib/seoFactory/pipelineContract'
 import type { PipelineStreamEvent } from '@/lib/seoFactory/pipelineStream'
+import {
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+} from '@/lib/contentAiRegistry'
 import { POST as legacyUncontractedPOST } from './legacy'
 
 export const maxDuration = 300
@@ -118,6 +122,21 @@ export async function POST(request: Request) {
     }
   }
   if (!contractBound) return legacyUncontractedPOST(request)
+
+  // Provider boundary: an explicit legacy/unknown aiProvider fails closed
+  // with the typed selection-required JSON BEFORE the SSE stream is
+  // constructed or the pipeline runner is invoked. Missing/empty/'auto'
+  // proceed to the lane default.
+  const providerResolution = resolveExecutionProvider({
+    requestedPin: body.aiProvider != null ? String(body.aiProvider) : null,
+    lane: 'draft',
+  })
+  if (providerResolution.kind === 'needs_selection') {
+    return NextResponse.json(
+      new ProviderSelectionRequiredError(providerResolution.legacyValue).toPayload(),
+      { status: 409 },
+    )
+  }
 
   const topic = String(body.topic || body.title || '').trim()
   if (!topic && !existingJobId) {

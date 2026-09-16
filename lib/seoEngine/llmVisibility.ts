@@ -32,17 +32,13 @@
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { generateContentText } from '@/lib/contentAiProvider'
 import {
-  contentAiEnv,
-  generateContentText,
-  isBasetenConfigured,
-  isNvidiaGlmConfigured,
-  isNvidiaDeepseekConfigured,
-  isAihubmixGlmFastConfigured,
-  isGrokConfigured,
-  isOpenaiConfigured,
-  isParasailConfigured,
-} from '@/lib/contentAiProvider'
+  COMMISSIONED_PROVIDERS,
+  LANE_DEFAULT_PIN,
+  commissionedProvider,
+  type CommissionedProviderPin,
+} from '@/lib/contentAiRegistry'
 import {
   scoreAuditCandidates,
   selectAuditQueries,
@@ -337,40 +333,31 @@ export function parseAuditResponse(text: string): ParsedAuditResponse {
 // ── Engine matrix ───────────────────────────────────────────────────────────
 
 interface AuditEngineCandidate {
-  pin: string
+  pin: CommissionedProviderPin
   label: string
   configured: () => boolean
 }
 
-/** Answer engines the estate can actually query. Deduped by model family so
- *  the matrix measures DISTINCT engines, not the same model twice. */
+/** Answer engines the estate can actually query — the two commissioned
+ *  providers only (design §3.1). Deduped by model family so the matrix
+ *  measures DISTINCT engines, not the same model twice. No retired
+ *  candidate can ever appear. */
 function auditEngineCandidates(): AuditEngineCandidate[] {
-  return [
-    // Graduated default: Entrim serves both families with one key.
-    { pin: 'entrim-qwen-27b', label: 'entrim-qwen', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
-    { pin: 'entrim-deepseek', label: 'entrim-deepseek', configured: () => Boolean(contentAiEnv('ENTRIM_API_KEY')) },
-    { pin: 'baseten-glm-fast', label: 'glm-fast', configured: () => isBasetenConfigured() },
-    { pin: 'baseten-deepseek', label: 'deepseek', configured: () => isBasetenConfigured() },
-    { pin: 'nvidia-glm', label: 'glm', configured: () => isNvidiaGlmConfigured() },
-    { pin: 'nvidia-deepseek', label: 'deepseek', configured: () => isNvidiaDeepseekConfigured() },
-    { pin: 'aihubmix-glm-fast', label: 'glm-fast', configured: () => isAihubmixGlmFastConfigured() },
-    { pin: 'parasail-deepseek', label: 'deepseek', configured: () => isParasailConfigured() },
-    { pin: 'parasail-deepseek-pro', label: 'deepseek', configured: () => isParasailConfigured() },
-    { pin: 'parasail-glm', label: 'glm', configured: () => isParasailConfigured() },
-    { pin: 'grok', label: 'grok', configured: () => isGrokConfigured() || Boolean(contentAiEnv('GROK_API_KEY')) },
-    { pin: 'gemini', label: 'gemini', configured: () => Boolean(contentAiEnv('GEMINI_API_KEY') || contentAiEnv('GOOGLE_GEMINI_API_KEY')) },
-    { pin: 'groq', label: 'groq', configured: () => Boolean(contentAiEnv('GROQ_API_KEY')) },
-    { pin: 'openai', label: 'openai', configured: () => isOpenaiConfigured() },
-  ]
+  return COMMISSIONED_PROVIDERS.map((provider) => ({
+    pin: provider.pin,
+    label: provider.pin,
+    configured: () => provider.isConfigured(),
+  }))
 }
 
 /**
- * Resolve up to `maxEngines` configured answer engines (distinct model family
- * per slot). Returns [] when nothing is configured — the caller then falls
- * back to the un-pinned cascade so an audit still runs.
+ * Resolve up to `maxEngines` configured commissioned answer engines (distinct
+ * family per slot). Returns [] when nothing is configured — the caller then
+ * runs the un-pinned lane default so an audit still executes (recorded
+ * `pinSource:'lane_default'`), never a retired cascade.
  */
-export function resolveAuditEngines(maxEngines = 3): string[] {
-  const out: string[] = []
+export function resolveAuditEngines(maxEngines = 3): CommissionedProviderPin[] {
+  const out: CommissionedProviderPin[] = []
   const seen = new Set<string>()
   for (const c of auditEngineCandidates()) {
     if (out.length >= maxEngines) break
@@ -577,20 +564,25 @@ export function buildCitationActions(evidence: {
 
 // ── Audit entry points ──────────────────────────────────────────────────────
 
+/** Recorded label for the un-pinned lane default (registry-owned). */
+const DEFAULT_AUDIT_ENGINE_LABEL = commissionedProvider(LANE_DEFAULT_PIN).pin
+
 /**
  * Run one audit for a single query across the multi-engine matrix. Never
  * throws — returns a partial record with per-engine failures on error.
  */
-export async function auditQuery(query: string, engineLabel = 'deepseek', model: string | null = null, maxEngines = 2): Promise<VisibilityAuditResult> {
+export async function auditQuery(query: string, engineLabel: string = DEFAULT_AUDIT_ENGINE_LABEL, model: string | null = null, maxEngines = 2): Promise<VisibilityAuditResult> {
   const empty: VisibilityAuditResult = {
     query, engine: engineLabel, model, cited: false, citedUrls: [], brandMentions: [],
     competitorDomains: [], snippet: '', rawScore: 0, shareOfVoice: 0, stage: null, country: null,
     engines: [], topCompetitor: null, actions: [],
   }
-  let pins = resolveAuditEngines(Math.max(1, Math.min(3, maxEngines)))
+  let pins: string[] = resolveAuditEngines(Math.max(1, Math.min(3, maxEngines)))
   if (!pins.length) {
-    // No configured engine — try the un-pinned cascade once so the audit still
-    // produces something on estates with a minimal provider set.
+    // No commissioned engine configured — run the un-pinned lane default once
+    // so the audit still produces something on estates with a minimal
+    // provider set. The core records `pinSource:'lane_default'`; nothing
+    // retired can be selected here.
     try {
       const ai = await generateContentText({
         system: AUDIT_SYSTEM_PROMPT,
@@ -601,7 +593,7 @@ export async function auditQuery(query: string, engineLabel = 'deepseek', model:
         strictTimeout: true,
         timeoutMs: AUDIT_ENGINE_TIMEOUT_MS,
       })
-      pins = [ai.provider || 'cascade']
+      pins = [ai.provider || LANE_DEFAULT_PIN]
     } catch {
       return empty
     }
@@ -642,7 +634,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     )
   }
   if (!queries.length) queries = DEFAULT_AUDIT_QUERIES.slice(0, cap)
-  const engine = opts.engineLabel || 'deepseek'
+  const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
   const audits: VisibilityAuditResult[] = []
 
   for (const q of queries) {
@@ -947,7 +939,7 @@ export async function runFanOutVisibilityAudits(opts: {
   maxAudits?: number
   engineLabel?: string
 } = {}): Promise<FanOutAuditRunResult> {
-  const engine = opts.engineLabel || 'deepseek'
+  const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
   const empty: FanOutAuditRunResult = { audits: [], clusters: 0, cited: 0, total: 0, shareOfVoice: 0, byCluster: {} }
   try {
     const { loadPlansDashboard } = await import('./planner')

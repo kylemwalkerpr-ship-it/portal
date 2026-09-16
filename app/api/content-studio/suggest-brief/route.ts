@@ -15,6 +15,10 @@ import {
 import type { SealedBrief } from '@/lib/seoFactory/sealedBrief'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { assertBriefReady } from '@/lib/seoFactory/briefReadiness'
+import {
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+} from '@/lib/contentAiRegistry'
 
 export async function POST(req: NextRequest) {
   let session: SuggestBriefContractSession | null = null
@@ -25,6 +29,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({})) as Record<string, any>
     const topic = String(body.topic || '').trim()
     if (!topic) return NextResponse.json({ error: 'topic is required' }, { status: 400 })
+
+    // Provider boundary: an explicit legacy/unknown aiProvider fails closed
+    // with the typed selection-required payload BEFORE the brief contract is
+    // started or the brief core is forwarded. Missing/empty/'auto' proceed to
+    // the lane default semantics inside the core.
+    const providerResolution = resolveExecutionProvider({
+      requestedPin: body.aiProvider != null ? String(body.aiProvider) : null,
+      lane: 'brief',
+    })
+    if (providerResolution.kind === 'needs_selection') {
+      return NextResponse.json(
+        new ProviderSelectionRequiredError(providerResolution.legacyValue).toPayload(),
+        { status: 409 },
+      )
+    }
 
     const primaryKeyword = String(body.primaryKeyword || topic).trim()
     const contentType = String(body.contentType || 'article')
@@ -111,6 +130,9 @@ export async function POST(req: NextRequest) {
     }, { status: coreResponse.status })
   } catch (error) {
     if (session) await failSuggestBriefContract(session, error)
+    if (error instanceof ProviderSelectionRequiredError) {
+      return NextResponse.json(error.toPayload(), { status: error.status })
+    }
     if (error instanceof OpportunityAlreadyReservedError) {
       return NextResponse.json({
         ok: false, error: error.message, code: 'opportunity_reserved', jobId: error.jobId,

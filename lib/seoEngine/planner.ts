@@ -30,6 +30,10 @@ import {
   type EnginePairRollup,
 } from '@/lib/seoEngine/engineAi'
 import {
+  ProviderSelectionRequiredError,
+  resolveExecutionProvider,
+} from '@/lib/contentAiRegistry'
+import {
   LIFECYCLE_STAGES,
   COUNTRIES,
   getStage,
@@ -1159,9 +1163,19 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
     let brief = ''
     if (draft) {
+      // Registry resolution: an explicit pin must be commissioned; a
+      // legacy/unknown value fails closed BEFORE any provider work. No
+      // requested pin keeps the pair/lane-default behavior (undefined).
+      const requestedEnginePin = String(req.aiProvider || '').trim()
+      const engineSelection = requestedEnginePin
+        ? resolveExecutionProvider({ requestedPin: requestedEnginePin, lane: 'command' })
+        : null
+      if (engineSelection?.kind === 'needs_selection') {
+        throw new ProviderSelectionRequiredError(engineSelection.legacyValue)
+      }
       try {
         const ai = await generateEngineText({
-          aiProvider: req.aiProvider,
+          aiProvider: engineSelection?.kind === 'commissioned' ? engineSelection.pin : undefined,
           system: [
             editorialBriefPromptBlock(),
             `You are the chief SEO strategist for an immigration marketplace. Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,
