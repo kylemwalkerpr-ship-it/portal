@@ -4,6 +4,7 @@ import {
   fetchAhrefsSiteAudit,
   loadLatestAhrefsSnapshot,
   persistAhrefsSnapshot,
+  resolveAhrefsProjectId,
 } from '@/lib/seoEngine/ahrefsAudit'
 
 export const dynamic = 'force-dynamic'
@@ -11,10 +12,14 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const auth = await requireAdminUser()
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
-  const snap = await loadLatestAhrefsSnapshot()
+  const expectedProjectId = resolveAhrefsProjectId()
+  const snap = await loadLatestAhrefsSnapshot({ projectId: expectedProjectId })
   return NextResponse.json({
     ok: true,
     configured: Boolean(process.env.AHREFS_API_KEY),
+    expectedProjectId,
+    identityMatch: snap ? snap.projectId === expectedProjectId : false,
+    snapshotIsFallback: snap ? snap.source === 'fallback' : true,
     snapshot: snap,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (Array.isArray(body.issues) && body.issues.length) {
       const { snapshotFromOverview } = await import('@/lib/seoEngine/ahrefsAudit')
       const snap = snapshotFromOverview(body.issues, {
-        projectId: String(body.projectId || '9902912'),
+        projectId: resolveAhrefsProjectId(body.projectId),
         date: body.date || new Date().toISOString(),
         dateCompared: body.dateCompared || null,
         source: 'manual',
