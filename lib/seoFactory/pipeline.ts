@@ -37,7 +37,7 @@ import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } 
 import { resolveProviderAuthors, mergeMarketplaceServiceLinks } from './providerAuthors'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
-import { isJunkTopic } from './queryNoise'
+import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
 import { persistPipelineJob } from './persistContentJob'
@@ -294,9 +294,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     throw new Error('topic required')
   }
 
-  // Refuse junk-query jobs before they generate — GSC/autocomplete leaks
-  // ("rates final.pdf …/files/user2983", quoted document stamps, brand pastes)
-  // can never resolve into a real content page. Long-tail topics stay allowed.
+  // Real off-mission GSC demand remains observable, but it is not a content
+  // mission. Report that truth separately from malformed/file-path junk.
+  if (isOffMissionDemandQuery(topic) || isOffMissionDemandQuery(primaryKeyword)) {
+    throw new Error(
+      `Rejected off-mission keyword: "${primaryKeyword || topic}" is observable search demand but is not actionable content`,
+    )
+  }
+  // Refuse malformed junk-query jobs before they generate — PDF/CMS leaks,
+  // quoted document stamps and brand pastes can never resolve into a real page.
   if (isJunkTopic(topic) || isJunkTopic(primaryKeyword)) {
     throw new Error(
       `Rejected junk keyword: "${primaryKeyword || topic}" is not a valid search topic`,

@@ -53,11 +53,17 @@ import {
   scoreSecurityHeaders,
   snippetEligibility,
 } from './observedSignals'
-import { computeGscMix, junkSharePenalty, type GscMix, type GscMixInput } from './gscMix'
+import {
+  computeGscMix,
+  junkSharePenalty,
+  type ComputedGscMix,
+  type GscMix,
+  type GscMixInput,
+} from './gscMix'
 import { backlinkSignals, type BacklinkSnapshot } from './backlinkProvider'
 
 /** Build the GSC mix from the engine's gsc shape (queries count vs queryRows). */
-function gscMixOf(gsc: MasterEngineInput['gsc']): GscMix {
+function gscMixOf(gsc: MasterEngineInput['gsc']): ComputedGscMix {
   const input: GscMixInput = {
     impressions: gsc?.impressions,
     clicks: gsc?.clicks,
@@ -1286,14 +1292,17 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
 
   // ══ SERP / GSC ══
   const g = input.gsc || {}
-  // GSC push-through Phase B: score the ELIGIBLE aggregate only. Junk
-  // (PDF/URL/brand queries) and deep-tail rows never count as demand, and a
-  // junk-share penalty dampens every gsc-driven SERP signal so a property
-  // drowning in PDF queries cannot look healthy. Without a per-query
-  // breakdown the aggregate passes through unchanged (junk share 0).
+  // GSC push-through Phase B + P1: score the QUALIFIED aggregate only. Junk
+  // (PDF/URL/brand queries), off-mission real demand and deep-tail rows never
+  // count as demand, and a junk-share penalty dampens every gsc-driven SERP
+  // signal so a property drowning in PDF queries cannot look healthy. Without a
+  // per-query breakdown the aggregate passes through as qualified (junk share
+  // 0, off-mission 0) — a documented limitation of the aggregate-only path.
   const gscMix = gscMixOf(g)
-  const eg = gscMix.eligible
-  const junkPenalty = junkSharePenalty(gscMix.junk.share)
+  // `qualified` when present, else the pre-P1 `eligible` alias (same object);
+  // a missing junk share counts as 0.
+  const eg = gscMix.qualified ?? gscMix.eligible
+  const junkPenalty = junkSharePenalty(gscMix.junk?.share ?? 0)
   out.g_impressions = g.impressions == null && eg.impressions === 0
     ? null
     : normalizeRange(Math.log10(Math.max(1, eg.impressions)), 1.5, 4.5, true)! * junkPenalty
@@ -1566,7 +1575,8 @@ export function computeSignals(input: MasterEngineInput): Record<string, number 
   out.sc_webpage = (hasType('WebPage') || hasType('WebSite')) ? 1 : 0
   out.sc_sameas = /"sameAs"\s*:/.test(ldText) ? 1 : 0
 
-  // serp depth — eligible aggregate only (junk clicks/impressions excluded)
+  // serp depth — qualified aggregate only (junk / off-mission / deep-tail
+  // clicks and impressions excluded)
   out.g_impression_ctr_eff = g.impressions != null && g.clicks != null
     ? normalizeRange(eg.impressions > 0 ? eg.clicks / eg.impressions : 0, 0, 0.2, true)! * junkPenalty
     : null
@@ -1831,23 +1841,30 @@ function recommend(
 
   const ymyl = isYmyLQuery(input)
 
-  // GSC push-through Phase B: eligible-rank vs CTR diagnosis. A property at
-  // pos 32 with 0.3% CTR is ON-CURVE for eligible queries — a rank problem,
-  // not a title problem. Never recommend "fix CTR" past #20.
+  // GSC push-through Phase B + P1: QUALIFIED-rank vs CTR diagnosis. A property
+  // at pos 32 with 0.3% CTR is ON-CURVE for on-mission queries — a rank
+  // problem, not a title problem. Never recommend "fix CTR" past #20, and
+  // never diagnose from junk, off-mission real demand or the deep tail: an
+  // off-mission-only property reads exactly like a property with no GSC data.
   const gscMix = gscMixOf(input.gsc)
-  if (gscMix.eligible.impressions > 0 && gscMix.eligible.position > 0) {
-    if (gscMix.eligible.position > 20) {
+  // `qualified` when present, else the pre-P1 `eligible` alias; a missing
+  // off-mission / junk share defaults to 0.
+  const gq = gscMix.qualified ?? gscMix.eligible
+  const junkShare = gscMix.junk?.share ?? 0
+  const offMissionShare = gscMix.offMission?.share ?? 0
+  if (gq.impressions > 0 && gq.position > 0) {
+    if (gq.position > 20) {
       push('serp_eligible_rank', 'serp',
-        `Improve eligible rank — eligible queries average #${gscMix.eligible.position.toFixed(0)}, a rank problem not a CTR problem`,
+        `Improve eligible rank — qualified (on-mission) queries average #${gq.position.toFixed(0)}, a rank problem not a CTR problem`,
         0.1, 0.8, 'medium', 2,
-        `eligible position ${gscMix.eligible.position.toFixed(1)} > 20 · junk share ${Math.round(gscMix.junk.share * 100)}% — CTR gap suppressed`)
+        `eligible position ${gq.position.toFixed(1)} > 20 · junk share ${Math.round(junkShare * 100)}% · off-mission share ${Math.round(offMissionShare * 100)}% — CTR gap suppressed`)
     } else {
-      const expected = expectedCtrForPosition(gscMix.eligible.position)
-      if (expected != null && gscMix.eligible.ctr < expected * 0.8) {
+      const expected = expectedCtrForPosition(gq.position)
+      if (expected != null && gq.ctr < expected * 0.8) {
         push('serp_ctr_gap', 'serp',
-          `Fix CTR — eligible queries average #${gscMix.eligible.position.toFixed(0)} but earn ${(gscMix.eligible.ctr * 100).toFixed(1)}% CTR (expected ~${(expected * 100).toFixed(1)}%)`,
+          `Fix CTR — qualified (on-mission) queries average #${gq.position.toFixed(0)} but earn ${(gq.ctr * 100).toFixed(1)}% CTR (expected ~${(expected * 100).toFixed(1)}%)`,
           0.1, 0.8, 'medium', 2,
-          `eligible position ${gscMix.eligible.position.toFixed(1)} · eligible CTR ${(gscMix.eligible.ctr * 100).toFixed(1)}% vs expected ${(expected * 100).toFixed(1)}%`)
+          `eligible position ${gq.position.toFixed(1)} · qualified CTR ${(gq.ctr * 100).toFixed(1)}% vs expected ${(expected * 100).toFixed(1)}%`)
       }
     }
   }
@@ -2087,10 +2104,11 @@ export function predict(
   const top3 = sigmoid((composite - 66) / 12 + positiveDeltaSum * 0.4)
   const top1 = sigmoid((composite - 80) / 10 + positiveDeltaSum * 0.3)
   const expectedLift = SUBSYSTEMS.reduce((a, s) => a + Math.max(0, -(deltas[s] ?? 0)) * (weights[s] ?? 0), 0)
-  // GSC push-through Phase B: forecast from the ELIGIBLE aggregate only — a
-  // mountain of PDF-query impressions must never inflate the traffic forecast.
+  // GSC push-through Phase B + P1: forecast from the QUALIFIED aggregate only —
+  // neither a mountain of PDF-query impressions nor off-mission campus demand
+  // may inflate the traffic forecast.
   const gscMix = gscMixOf(gsc)
-  const eg = gscMix.eligible
+  const eg = gscMix.qualified ?? gscMix.eligible
   let expectedTrafficLift: number | null = null
   if (gsc?.impressions != null || eg.impressions > 0) {
     expectedTrafficLift = Math.round(eg.impressions * expectedLift * 0.5)
@@ -2365,8 +2383,9 @@ export interface MasterEngineReport {
   recommendations: MasterRecommendation[]
   prediction: MasterPrediction
   derived: DerivedFeatures
-  /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
-   *  0.3% CTR when the eligible position is 50 and junk share is 40%. */
+  /** Raw vs qualified vs off-mission vs junk vs deep-tail GSC mix — the studio
+   *  cannot hide behind a 0.3% CTR when the qualified position is 50, the junk
+   *  share is 40%, or the raw impressions are off-mission campus demand. */
   gscMix: GscMix
   governance: EngineGovernance
   /** Whether the weights were adapted from learned outcomes or kept the fixed prior. */

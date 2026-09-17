@@ -35,7 +35,7 @@ import { evaluateContentQuality, qualityToRefineNotes, missingOutlineSections } 
 import { canonicalOutlineForGate, completeMissingOutlineSections, generateOutlineSection, outlineCompletionErrorMessage, outlineHeadings, isBlogLikeContentType } from './outlineCompletion'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolveShipMode'
-import { isJunkTopic } from './queryNoise'
+import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
 import { stripNoIndex } from './siteHealthFixes'
@@ -136,8 +136,15 @@ export async function* runSeoFactoryPipelineStream(
       return
     }
 
-    // Refuse junk-query jobs before they generate — same guard as the
-    // non-streaming pipeline entry. Long-tail topics stay allowed.
+    // Keep real off-mission visibility distinct from malformed junk while
+    // refusing both before generation.
+    if (isOffMissionDemandQuery(topic) || isOffMissionDemandQuery(primaryKeyword)) {
+      yield {
+        type: 'error',
+        error: `Rejected off-mission keyword: "${primaryKeyword || topic}" is observable search demand but is not actionable content`,
+      }
+      return
+    }
     if (isJunkTopic(topic) || isJunkTopic(primaryKeyword)) {
       yield {
         type: 'error',

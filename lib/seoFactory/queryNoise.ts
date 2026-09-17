@@ -54,10 +54,26 @@ const QUOTED_HOUSING_DOC_RE =
  * admissions, or tenancy/legal intent is also present.
  */
 const CAMPUS_LIFESTYLE_RE =
-  /\b(?:student housing|campus housing|housing rates?|dorms?|residence halls?|meal plans?|dining plans?|campus dining|parking rates?|student neighborhoods?|student neighbourhoods?|campus life|commute|accommodation|apartments?|rent ranges?)\b/i
+  /\b(?:student housing|campus housing|housing|housing rates?|dorms?|dormitor(?:y|ies)|residence halls?|halls? of residence|student residences?|residence life|homestays?|roommates?|housemates?|flatshares?|meal plans?|dining plans?|campus dining|parking|student neighborhoods?|student neighbourhoods?|campus life|student life|commute|accommodation|apartments?|rent ranges?)\b/i
 
+/**
+ * Topical YouSafe anchors — immigration, visa, F-1/I-20/SEVIS/CAS, study-or-
+ * work permit, PGWP/OPT/CPT, Express Entry/PNP, permanent residence,
+ * sponsorship, proof of funds, university admission as such, or tenancy-legal
+ * rights (see TENANCY_LEGAL_RE).
+ *
+ * Deliberately EXCLUDES the generic process nouns that used to launder
+ * off-mission campus demand into the mission: bare `permit`, `application`,
+ * `status`, `documents`, `checklist`, `eligibility`. They describe HOW campus
+ * housing / dining / parking demand is processed, not YouSafe intent —
+ * "student housing application", "dorm application deadline", "meal plan
+ * status", "student housing eligibility requirements", "university dorm move
+ * in checklist", "student apartments application" and "parking permit
+ * application" are all off-mission unless a genuinely topical anchor above is
+ * present alongside them ("f-1 student housing proof of address").
+ */
 const MISSION_ANCHOR_RE =
-  /\b(?:visa|permit|immigration|f-?1|student route|i-?20|cas|sevis|cpt|opt|stem opt|pgwp|work authorization|work authorisation|work permit|express entry|pnp|permanent residence|permanent resident|sponsor(?:ship)?|admission|application|documents?|checklist|proof of funds|loa|pal|caq|status|eligibility|arrival documents?)\b/i
+  /\b(?:visa|immigration|f-?1|i-?20|sevis|cas|student route|(?:study|work|student|graduate|post-?graduation|residence|temporary resident)\s+permit|pgwp|post-?graduation work permit|work authorization|work authorisation|cpt|curricular practical training|stem opt|optional practical training|express entry|pnp|permanent residen(?:ce|t)|sponsor(?:ship)?|admission(?:s)?|proof of funds|loa|pal|caq|arrival documents?)\b/i
 
 const TENANCY_LEGAL_RE =
   /\b(?:tenant|tenancy|landlord|lease|eviction|discrimination|fair housing|rights?|deposit dispute|rental dispute)\b/i
@@ -198,4 +214,55 @@ export function classifyGscQuery(
   const clicks = Math.max(0, row.clicks || 0)
   if (impressions < 10 && position > 20 && clicks === 0) return 'deep_tail'
   return 'eligible'
+}
+
+/**
+ * P1 measurement integrity — four-bucket visibility class for persisted GSC
+ * rows.
+ *
+ * `classifyGscQuery` above keeps its shipped 3-class contract (`eligible` =
+ * pre-qualification, so off-mission real demand still reads as "eligible" for
+ * legacy callers). This is the stricter, action-facing split:
+ *
+ * - `junk`       — malformed input (PDF/URL/brand/stamp leftovers). Never
+ *                  counted as demand, never actioned.
+ * - `off_mission`— REAL search demand outside the YouSafe mission (campus
+ *                  housing / lifestyle / parking with no immigration,
+ *                  document, admissions or tenancy-legal anchor). Stays
+ *                  observable so topical pollution is measurable, but is
+ *                  never actionable.
+ * - `deep_tail`  — on-mission query with negligible signal.
+ * - `qualified`  — on-mission, signal-bearing. The ONLY bucket allowed to
+ *                  drive strike distance, plays, demand scoring or SERP action.
+ *
+ * Precedence is deliberately `junk -> off_mission -> deep_tail -> qualified`:
+ * malformed input wins (a leaked document title stays junk), and topical
+ * off-mission-ness is a fact about the term — not a signal-strength fact — so
+ * it can never be laundered into the deep tail.
+ */
+export type GscVisibilityClass = 'junk' | 'off_mission' | 'deep_tail' | 'qualified'
+
+export function classifyGscVisibility(
+  term: string,
+  row: { impressions: number; position: number; clicks: number },
+): GscVisibilityClass {
+  const t = sanitizeDemandTerm(term)
+  if (!t || isJunkQuery(t) || isFileOrUrlLikeTerm(t)) return 'junk'
+  if (isOffMissionDemandQuery(t)) return 'off_mission'
+  if (classifyGscQuery(t, row) === 'deep_tail') return 'deep_tail'
+  return 'qualified'
+}
+
+
+/**
+ * Metric-aware action boundary for persisted/live GSC rows. Unlike the generic
+ * semantic `isActionableDemandQuery` guard, this also excludes on-mission
+ * `deep_tail` observations. Only the four-class `qualified` bucket may drive a
+ * GSC-derived action, score, opportunity, or writer brief.
+ */
+export function isQualifiedGscDemandQuery(
+  term: string,
+  row: { impressions: number; position: number; clicks: number },
+): boolean {
+  return classifyGscVisibility(term, row) === 'qualified'
 }

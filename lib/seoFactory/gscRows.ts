@@ -207,6 +207,289 @@ export async function loadPersistedGscWindow(
   }
 }
 
+/**
+ * P1 measurement integrity — bounded FULL-WINDOW scan of persisted rows.
+ *
+ * `loadPersistedGscWindow` above keeps its display semantics (junk dropped,
+ * `limit` eligible rows) and is deliberately untouched. MEASUREMENT cannot use
+ * that slice: a top-40 read used as the denominator turns topical pollution
+ * into an invisible rounding error. This helper reads the persisted window for
+ * measurement only:
+ *
+ *   - an EXACT count (`count: 'exact', head: true`) for the resolved window;
+ *   - a bounded scan capped at `GSC_VISIBILITY_SCAN_CAP` (25 000, aligned to the
+ *     upstream Search Analytics cap), paged deterministically through PostgREST
+ *     page limits instead of trusting one huge `limit`;
+ *   - the same latest-stored-window fallback as the display loader;
+ *   - a TRUTHFUL scope: `complete` is false whenever the exact count is unknown
+ *     or rows were left unscanned, so a bounded read can never masquerade as the
+ *     whole window.
+ *
+ * Raw rows are returned as stored — classification happens later and is
+ * derived, never destructive.
+ */
+export const GSC_VISIBILITY_SCAN_CAP = 25_000
+/** PostgREST/Supabase default page limit — page deterministically under it. */
+export const GSC_VISIBILITY_SCAN_PAGE_SIZE = 1_000
+
+export const GSC_VISIBILITY_SCAN_SELECT =
+  'query, page, clicks, impressions, ctr, position, start_date, end_date, site_url'
+
+/**
+ * M3 — deterministic TOTAL order for the paged scan.
+ *
+ * `impressions` alone is not a total order: equal-impression rows come back in
+ * whatever order PostgREST happens to produce, so `range(offset, …)` paging can
+ * duplicate one row and skip another, silently losing rows from a "full window"
+ * measurement. Highest impressions stay first (a capped scan keeps the material
+ * part of the mix), then the row's unique-key fields break every tie — the
+ * window is already fixed by the `start_date`/`end_date` filters, and
+ * `GSC_VISIBILITY_SCAN_SELECT` carries the rest of the key (`site_url`, `query`,
+ * `page`). PostgREST applies these as a single stable `order=` chain.
+ */
+export const GSC_VISIBILITY_SCAN_ORDER: ReadonlyArray<readonly [string, boolean]> = [
+  ['impressions', false],
+  ['site_url', true],
+  ['query', true],
+  ['page', true],
+]
+
+export type GscWindowScan = {
+  rows: Array<Record<string, unknown>>
+  scannedRows: number
+  /** Exact persisted row count for the resolved window, when it could be read. */
+  windowRowCount: number | null
+  countKnown: boolean
+  /** windowRowCount − scannedRows when the exact count is known, else null. */
+  unscannedRows: number | null
+  truncated: boolean
+  /** True only with a known exact count and nothing left unscanned. */
+  complete: boolean
+  cap: number
+  usedFallback: boolean
+  range: { startDate: string; endDate: string }
+}
+
+type ScanDb = {
+  from: (table: string) => {
+    select: (cols: string, opts?: { count?: 'exact'; head?: boolean }) => any
+  }
+}
+
+type ScanPage = {
+  rows: Array<Record<string, unknown>>
+  /** True when the builder supports offset paging (`range`). */
+  paged: boolean
+}
+
+/** Exact row count for one stored window; null when the backend cannot say. */
+async function exactWindowRowCount(
+  db: ScanDb,
+  siteUrl: string | null,
+  startDate: string,
+  endDate: string,
+): Promise<number | null> {
+  let q = db
+    .from('seo_gsc_rows')
+    .select('query', { count: 'exact', head: true })
+    .eq('start_date', startDate)
+    .eq('end_date', endDate)
+  if (siteUrl) q = q.eq('site_url', siteUrl)
+  const res = await q
+  if (res?.error) throw new Error(res.error.message)
+  const count = res?.count
+  return typeof count === 'number' && Number.isFinite(count) ? count : null
+}
+
+/** Latest stored window (probed with the same fallback rule as the loader). */
+async function latestStoredWindow(
+  db: ScanDb,
+  siteUrl: string | null,
+): Promise<{ startDate: string; endDate: string } | null> {
+  let q = db.from('seo_gsc_rows').select('start_date, end_date')
+  if (siteUrl) q = q.eq('site_url', siteUrl)
+  const res = await q.order('end_date', { ascending: false }).limit(1)
+  if (res?.error) throw new Error(res.error.message)
+  const row = res?.data?.[0] as { start_date?: string; end_date?: string } | undefined
+  if (!row?.start_date || !row?.end_date) return null
+  return { startDate: row.start_date, endDate: row.end_date }
+}
+
+/**
+ * Bounded, deterministically paged scan of one stored window. Rows are read in
+ * a deterministic total order (`GSC_VISIBILITY_SCAN_ORDER`): highest impression
+ * rows first, so a capped scan keeps the material part of the mix, with a
+ * unique-key tie-break so offsets cannot drift between pages — the scope flags
+ * are what keep the bounded read honest.
+ */
+async function scanStoredWindow(
+  db: ScanDb,
+  opts: {
+    siteUrl: string | null
+    startDate: string
+    endDate: string
+    select: string
+    cap: number
+    pageSize: number
+    knownCount: number | null
+  },
+): Promise<ScanPage> {
+  const rows: Array<Record<string, unknown>> = []
+  let offset = 0
+  let paged: boolean | null = null
+  const makeQuery = () => {
+    let q = db
+      .from('seo_gsc_rows')
+      .select(opts.select)
+      .eq('start_date', opts.startDate)
+      .eq('end_date', opts.endDate)
+    if (opts.siteUrl) q = q.eq('site_url', opts.siteUrl)
+    // Every page is requested with the SAME order chain, or a range-based page
+    // could re-read (or skip) rows that tie on the primary sort key.
+    for (const [column, ascending] of GSC_VISIBILITY_SCAN_ORDER) {
+      q = q.order(column, { ascending })
+    }
+    return q
+  }
+
+  while (rows.length < opts.cap) {
+    let q = makeQuery()
+    if (paged == null) paged = typeof q?.range === 'function'
+    // With `range` we page in deterministic offsets; a builder without offset
+    // support (test doubles) can only take one bounded cap-sized request.
+    const want = paged ? Math.min(opts.pageSize, opts.cap - rows.length) : opts.cap
+    q = paged ? q.range(offset, offset + want - 1) : q.limit(want)
+    const res = await q
+    if (res?.error) throw new Error(res.error.message)
+    const chunk = (res?.data || []) as Array<Record<string, unknown>>
+    if (!chunk.length) break
+    rows.push(...chunk)
+    // Without offsets a second request would re-read the same page.
+    if (!paged) break
+    if (chunk.length < want) break
+    if (opts.knownCount != null && rows.length >= Math.min(opts.knownCount, opts.cap)) break
+    offset += chunk.length
+  }
+
+  return { rows: rows.slice(0, opts.cap), paged: paged === true }
+}
+
+export async function loadPersistedGscWindowScan(
+  db: GscDb,
+  opts: {
+    siteUrl: string | null
+    startDate: string
+    endDate: string
+    cap?: number
+    pageSize?: number
+    select?: string
+  },
+): Promise<GscWindowScan> {
+  const scanDb: ScanDb = db
+  const cap = Math.min(GSC_VISIBILITY_SCAN_CAP, Math.max(1, Math.floor(opts.cap ?? GSC_VISIBILITY_SCAN_CAP)))
+  const pageSize = Math.min(cap, Math.max(1, Math.floor(opts.pageSize ?? GSC_VISIBILITY_SCAN_PAGE_SIZE)))
+  const select = opts.select || GSC_VISIBILITY_SCAN_SELECT
+
+  const finish = (input: {
+    rows: Array<Record<string, unknown>>
+    windowRowCount: number | null
+    countKnown: boolean
+    usedFallback: boolean
+    range: { startDate: string; endDate: string }
+  }): GscWindowScan => {
+    const scannedRows = input.rows.length
+    const truncated = input.countKnown
+      ? (input.windowRowCount ?? 0) > scannedRows
+      : scannedRows >= cap
+    return {
+      rows: input.rows,
+      scannedRows,
+      windowRowCount: input.windowRowCount,
+      countKnown: input.countKnown,
+      unscannedRows:
+        input.countKnown && input.windowRowCount != null
+          ? Math.max(0, input.windowRowCount - scannedRows)
+          : null,
+      truncated,
+      // Truthful completeness: a bounded scan and an unknown exact count are
+      // both incomplete, whatever the rows happened to look like.
+      complete: input.countKnown && !truncated,
+      cap,
+      usedFallback: input.usedFallback,
+      range: input.range,
+    }
+  }
+
+  const windowCount = await exactWindowRowCount(scanDb, opts.siteUrl, opts.startDate, opts.endDate)
+  const windowCountKnown = windowCount != null
+  const windowScan = await scanStoredWindow(scanDb, {
+    siteUrl: opts.siteUrl,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    select,
+    cap,
+    pageSize,
+    knownCount: windowCount,
+  })
+  // The exact count is the authority on emptiness — the display loader falls
+  // back on an empty window, and measurement must agree with it.
+  const windowEmpty = windowCountKnown ? windowCount === 0 : windowScan.rows.length === 0
+
+  if (!windowEmpty) {
+    return finish({
+      rows: windowScan.rows,
+      windowRowCount: windowCount,
+      countKnown: windowCountKnown,
+      usedFallback: false,
+      range: { startDate: opts.startDate, endDate: opts.endDate },
+    })
+  }
+
+  // Latest-stored-window fallback (preserved from the display loader): the
+  // rolling window may simply not be synced yet.
+  const latest = await latestStoredWindow(scanDb, opts.siteUrl)
+  if (!latest) {
+    return finish({
+      rows: [],
+      windowRowCount: windowCount,
+      countKnown: windowCountKnown,
+      usedFallback: false,
+      range: { startDate: opts.startDate, endDate: opts.endDate },
+    })
+  }
+
+  const fallbackCount = await exactWindowRowCount(scanDb, opts.siteUrl, latest.startDate, latest.endDate)
+  const fallbackScan = await scanStoredWindow(scanDb, {
+    siteUrl: opts.siteUrl,
+    startDate: latest.startDate,
+    endDate: latest.endDate,
+    select,
+    cap,
+    pageSize,
+    knownCount: fallbackCount,
+  })
+
+  if (!fallbackScan.rows.length) {
+    // Nothing stored in the latest window either — report the requested window
+    // honestly instead of pretending a fallback happened.
+    return finish({
+      rows: [],
+      windowRowCount: windowCount,
+      countKnown: windowCountKnown,
+      usedFallback: false,
+      range: { startDate: opts.startDate, endDate: opts.endDate },
+    })
+  }
+
+  return finish({
+    rows: fallbackScan.rows,
+    windowRowCount: fallbackCount,
+    countKnown: fallbackCount != null,
+    usedFallback: true,
+    range: latest,
+  })
+}
+
 /** Query-level demand shaped from persisted query×page rows. */
 export type PersistedDemandQuery = {
   term: string

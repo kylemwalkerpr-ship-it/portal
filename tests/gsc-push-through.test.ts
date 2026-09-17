@@ -6,7 +6,7 @@
  * junk; Bristol / lease-break rows are strike-distance plays, never content
  * gaps. No live GSC calls in CI — rows are injected.
  */
-import { isJunkQuery, classifyGscQuery } from '@/lib/seoFactory/queryNoise'
+import { classifyGscQuery, classifyGscVisibility, isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { scoreOpportunities, GSC_STRIKE_SEEDS_2026_08 } from '@/lib/seoFactory/opportunityEngine'
 import { loadFactoryOpportunities } from '@/lib/seoFactory/opportunities'
 import { getGscAccess } from '@/lib/gscAuth'
@@ -110,17 +110,28 @@ describe('opportunity play table — locked snapshot rows', () => {
 })
 
 describe('GSC_STRIKE_SEEDS_2026_08 — fixture classification', () => {
-  it('classifies every non-apex seed as eligible and strike-distance (quick_win) at snapshot metrics', () => {
+  it('uses real seed keywords: qualified seeds act, Pacific housing stays owned but off-mission', () => {
     const seeds = GSC_STRIKE_SEEDS_2026_08.filter((s) => s.path !== '/')
     expect(seeds.length).toBe(4)
     for (const seed of seeds) {
-      expect(classifyGscQuery(seed.path, seed)).toBe('eligible')
+      const term = seed.keywords[0]
+      // Preserve the legacy three-class compatibility contract: Pacific housing
+      // is a real query, not malformed junk/deep-tail.
+      expect(classifyGscQuery(term, seed)).toBe('eligible')
+      const visibility = classifyGscVisibility(term, seed)
       const result = scoreOpportunities({
-        queries: [{ term: seed.path, impressions: seed.impressions, clicks: seed.clicks, ctr: seed.clicks / seed.impressions, position: seed.position }],
+        queries: [{ term, impressions: seed.impressions, clicks: seed.clicks, ctr: seed.clicks / seed.impressions, position: seed.position }],
         limit: 10,
       })
-      expect(result.opportunities[0].play).toBe('quick_win')
-      expect(result.opportunities[0].coverage.matched).toBe(false)
+      if (/pacific student housing/i.test(term)) {
+        expect(visibility).toBe('off_mission')
+        expect(result.opportunities).toEqual([])
+      } else {
+        expect(visibility).toBe('qualified')
+        expect(result.opportunities[0].play).toBe('quick_win')
+        expect(result.opportunities[0].coverage.matched).toBe(true)
+        expect(result.opportunities[0].sourcePage).toBe(seed.canonicalUrl)
+      }
     }
   })
 })
