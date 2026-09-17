@@ -29,6 +29,8 @@ export interface GscRow {
 
 export interface GscAnalytics {
   configured: boolean
+  /** GSC property the live queries targeted (null when unresolved). */
+  siteUrl: string | null
   range: { startDate: string; endDate: string; days: number }
   totals: { clicks: number; impressions: number; ctr: number; position: number }
   totalsPrev: { clicks: number; impressions: number } | null
@@ -64,9 +66,14 @@ async function query(token: string, site: string, body: Record<string, unknown>)
 
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
-export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics> {
+export async function fetchSiteSearchAnalytics(
+  days = 28,
+  opts?: { siteUrl?: string | null },
+): Promise<GscAnalytics> {
   const access = await getGscAccess()
-  const site = access?.siteUrl ?? process.env.GSC_SITE_URL ?? null
+  // An explicit caller property wins so the rows and the reported siteUrl are
+  // the same GSC property; otherwise keep the existing access/env default.
+  const site = opts?.siteUrl || access?.siteUrl || process.env.GSC_SITE_URL || null
   const warnings: string[] = []
   const endMs = Date.now()
   const startMs = endMs - days * 86400_000
@@ -75,6 +82,7 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
 
   const empty: GscAnalytics = {
     configured: false,
+    siteUrl: site,
     range,
     totals: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
     totalsPrev: null,
@@ -121,6 +129,7 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
 
   return {
     configured: true,
+    siteUrl: site,
     range,
     totals: {
       clicks: t.clicks ?? 0,

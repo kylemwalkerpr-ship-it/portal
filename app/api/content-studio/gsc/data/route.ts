@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Prefer full analytics when credentials + site work
-    const live = await fetchSiteSearchAnalytics(days)
+    const live = await fetchSiteSearchAnalytics(days, { siteUrl })
 
     if (live.configured && live.topQueries.length > 0) {
       const shape = (q: { key: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         source: 'live',
         mode: access?.mode ?? 'unknown',
-        siteUrl: siteUrl,
+        siteUrl: live.siteUrl,
         range: live.range,
         dateRange: live.range,
         totals: live.totals,
