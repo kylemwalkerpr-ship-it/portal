@@ -310,8 +310,65 @@ export function classifyIndexStatus(url: string, s: GscRawIndexStatus | null | u
 
 // ── API calls ───────────────────────────────────────────────────────────────
 
-/** Inspect a single URL. Returns the raw index status result, or null on error. */
-export async function inspectGscUrl(url: string, access: GscAccess): Promise<GscRawIndexStatus | null> {
+export type GscIndexCoverageState = 'complete' | 'partial' | 'unavailable' | 'failed'
+
+export interface GscPriorInspection {
+  url: string
+  inspectedAt: string | null
+}
+
+export interface GscIndexCoverageResult {
+  state: GscIndexCoverageState
+  observations: GscIndexIssue[]
+  issues: GscIndexIssue[]
+  requested: number
+  attempted: number
+  inspected: number
+  failed: number
+  skipped: number
+  errors: Array<{ url: string; error: string }>
+  configured: boolean
+  siteUrl: string | null
+  attemptedAt: string
+  completedAt: string | null
+  successfulAt: string | null
+}
+
+/**
+ * Choose a quota-bounded inspection sample without repeatedly checking the
+ * same alphabetical prefix. Never-inspected URLs come first; previously
+ * inspected URLs are oldest-first. URL is the deterministic tie-breaker.
+ */
+export function prioritizeIndexCoverageUrls(
+  urls: string[],
+  prior: GscPriorInspection[],
+  maxUrls: number,
+): string[] {
+  const unique = [...new Set(urls.map((url) => String(url || '').trim()).filter(Boolean))]
+  const seen = new Map(prior.map((row) => [row.url, row.inspectedAt]))
+  unique.sort((a, b) => {
+    const aAt = seen.get(a) ?? null
+    const bAt = seen.get(b) ?? null
+    if (!aAt && bAt) return -1
+    if (aAt && !bAt) return 1
+    if (aAt && bAt) {
+      const aTime = Date.parse(aAt)
+      const bTime = Date.parse(bAt)
+      const safeA = Number.isFinite(aTime) ? aTime : 0
+      const safeB = Number.isFinite(bTime) ? bTime : 0
+      if (safeA !== safeB) return safeA - safeB
+    }
+    return a.localeCompare(b)
+  })
+  return unique.slice(0, Math.max(0, maxUrls))
+}
+
+/** Inspect a single URL. A successful response without indexStatusResult is not evidence. */
+export async function inspectGscUrl(
+  url: string,
+  access: GscAccess,
+  timeoutMs = 12_000,
+): Promise<GscRawIndexStatus> {
   const res = await fetch(INSPECT_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -319,41 +376,52 @@ export async function inspectGscUrl(url: string, access: GscAccess): Promise<Gsc
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ inspectionUrl: url, siteUrl: access.siteUrl, languageCode: 'en-US' }),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`GSC inspect ${res.status}: ${body.slice(0, 200)}`)
   }
   const json = (await res.json()) as GscRawInspection
-  return json.inspectionResult?.indexStatusResult ?? null
+  const status = json.inspectionResult?.indexStatusResult
+  if (!status) throw new Error('GSC inspect response missing indexStatusResult')
+  return status
 }
 
 /**
- * Batch-inspect a list of URLs with bounded concurrency and inter-request
- * delay (the URL Inspection API is quota-limited and throttles bursts).
- * Returns only the NON-indexed issues (and the "indexed but robots-blocked"
- * informational case) so the caller sees exactly what needs fixing.
+ * Batch-inspect a quota-bounded URL list. `observations` contains every
+ * successful inspection (indexed or not); `issues` remains the backward-
+ * compatible actionable subset used by the dashboard/fix flow.
  */
 export async function fetchGscIndexCoverage(
   urls: string[],
-  opts: { concurrency?: number; delayMs?: number; maxUrls?: number } = {},
-): Promise<{
-  issues: GscIndexIssue[]
-  inspected: number
-  skipped: number
-  errors: Array<{ url: string; error: string }>
-  configured: boolean
-}> {
-  const access = await getGscAccess()
+  opts: {
+    concurrency?: number
+    delayMs?: number
+    maxUrls?: number
+    timeoutMs?: number
+    access?: GscAccess | null
+  } = {},
+): Promise<GscIndexCoverageResult> {
+  const attemptedAt = new Date().toISOString()
+  const maxUrls = Math.max(0, opts.maxUrls ?? 250)
+  const targets = [...new Set(urls.map((url) => String(url || '').trim()).filter(Boolean))].slice(0, maxUrls)
+  const access = opts.access === undefined ? await getGscAccess() : opts.access
   if (!access || !access.accessToken || !access.siteUrl) {
-    return { issues: [], inspected: 0, skipped: urls.length, errors: [], configured: false }
+    return {
+      state: 'unavailable', observations: [], issues: [], requested: targets.length,
+      attempted: 0, inspected: 0, failed: 0, skipped: urls.length,
+      errors: [], configured: false, siteUrl: access?.siteUrl ?? null,
+      attemptedAt, completedAt: null, successfulAt: null,
+    }
   }
+
   const concurrency = Math.max(1, Math.min(5, opts.concurrency ?? 3))
-  const delayMs = opts.delayMs ?? 400
-  const maxUrls = opts.maxUrls ?? 250
-  const targets = urls.slice(0, maxUrls)
+  const delayMs = Math.max(0, opts.delayMs ?? 400)
   const errors: Array<{ url: string; error: string }> = []
+  const observations: GscIndexIssue[] = []
   const issues: GscIndexIssue[] = []
+  let attempted = 0
   let inspected = 0
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -361,22 +429,48 @@ export async function fetchGscIndexCoverage(
   async function worker() {
     while (cursor < targets.length) {
       const url = targets[cursor++]
+      attempted++
       try {
-        const raw = await inspectGscUrl(url, access)
+        const raw = await inspectGscUrl(url, access, opts.timeoutMs)
         inspected++
-        const issue = classifyIndexStatus(url, raw)
-        // Only surface pages that are NOT indexed (plus the robots-blocked edge).
-        if (!issue.indexed || issue.reasonCode === 'INDEXED_BLOCKED_ROBOTS') {
-          issues.push(issue)
+        const observation = classifyIndexStatus(url, raw)
+        observations.push(observation)
+        if (!observation.indexed || observation.reasonCode === 'INDEXED_BLOCKED_ROBOTS') {
+          issues.push(observation)
         }
       } catch (e) {
-        errors.push({ url, error: e instanceof Error ? e.message.slice(0, 160) : String(e) })
+        errors.push({ url, error: e instanceof Error ? e.message.slice(0, 240) : String(e).slice(0, 240) })
       }
-      await sleep(delayMs)
+      if (delayMs > 0) await sleep(delayMs)
     }
   }
-  await Promise.all(Array.from({ length: concurrency }, worker))
+  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, targets.length)) }, worker))
 
+  observations.sort((a, b) => a.url.localeCompare(b.url))
   issues.sort((a, b) => a.url.localeCompare(b.url))
-  return { issues, inspected, skipped: urls.length - inspected, errors, configured: true }
+  errors.sort((a, b) => a.url.localeCompare(b.url))
+  const completedAt = new Date().toISOString()
+  const failed = errors.length
+  const state: GscIndexCoverageState = inspected === 0 && attempted > 0
+    ? 'failed'
+    : failed > 0
+      ? 'partial'
+      : 'complete'
+
+  return {
+    state,
+    observations,
+    issues,
+    requested: targets.length,
+    attempted,
+    inspected,
+    failed,
+    skipped: Math.max(0, urls.length - attempted),
+    errors,
+    configured: true,
+    siteUrl: access.siteUrl,
+    attemptedAt,
+    completedAt,
+    successfulAt: inspected > 0 ? completedAt : null,
+  }
 }
