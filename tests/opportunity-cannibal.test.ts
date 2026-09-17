@@ -122,16 +122,23 @@ describe('opportunity engine — editorial value discipline', () => {
     expect(result.opportunities[0].title).not.toMatch(/How to Apply for How to Apply/i)
   })
 
-  it('demotes thin greenfield ideas instead of feeding a content mill', () => {
+  it('demotes thin qualified ideas while excluding true deep-tail demand', () => {
     const result = scoreOpportunities({
       queries: [
-        { term: 'obscure visa phrase', impressions: 2, clicks: 0, ctr: 0, position: 80 },
+        // Signal-bearing but weak: remains qualified, so editorial-value
+        // discipline should demote it rather than silently discard it.
+        { term: 'obscure visa fee phrase', impressions: 12, clicks: 0, ctr: 0, position: 80 },
+        // Four-class P1 contract: this row is deep_tail and must never become
+        // an actionable opportunity, even as a low-priority card.
+        { term: 'ultra obscure visa phrase', impressions: 2, clicks: 0, ctr: 0, position: 80 },
         { term: 'uk graduate visa requirements', impressions: 700, clicks: 15, ctr: 0.021, position: 14 },
       ],
       limit: 5,
     })
-    const thin = result.opportunities.find((item) => item.topic === 'obscure visa phrase')!
-    expect(thin.priorityTier).toBe('low')
+    const thin = result.opportunities.find((item) => item.topic === 'obscure visa fee phrase')
+    expect(thin).toBeDefined()
+    expect(thin!.priorityTier).toBe('low')
+    expect(result.opportunities.some((item) => item.topic === 'ultra obscure visa phrase')).toBe(false)
     expect(result.opportunities[0].topic).toBe('uk graduate visa requirements')
   })
 })
