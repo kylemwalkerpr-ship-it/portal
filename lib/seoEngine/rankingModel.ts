@@ -240,11 +240,16 @@ function expectedCtr(position: number): number {
 /** Demand: eligible-only log-scaled volume + CTR gap (suppressed past #20) + position headroom, with a junk-share penalty. */
 function scoreDemand(gsc?: RankingModelInput['gsc']): FamilyScore {
   const reasons: string[] = []
-  // GSC push-through Phase B: score the ELIGIBLE aggregate only — junk
-  // (PDF/URL/brand) rows never count as demand, and a property drowning in
-  // PDF queries takes the junk-share penalty.
+  // GSC push-through Phase B + P1: score the QUALIFIED aggregate only — junk
+  // (PDF/URL/brand) rows, off-mission real demand (campus housing/lifestyle
+  // with no immigration-document anchor) and the deep tail never count as
+  // demand, and a property drowning in PDF queries takes the junk-share
+  // penalty. An off-mission-only property therefore reads exactly like a
+  // property with no GSC data.
+  // `qualified` when present; a pre-P1 mix shape only carries the `eligible`
+  // alias (same aggregate), and a missing junk share defaults to 0.
   const gscMix = computeGscMix(gsc)
-  const eg = gscMix.eligible
+  const eg = gscMix.qualified ?? gscMix.eligible
   const impressions = eg.impressions
   const position = eg.position || 100
   const ctr = eg.ctr
@@ -253,7 +258,8 @@ function scoreDemand(gsc?: RankingModelInput['gsc']): FamilyScore {
     reasons.push('No GSC demand observed — treat as exploratory.')
     return { score: 18, weight: FAMILY_WEIGHTS.demand, reasons }
   }
-  const junkPenalty = junkSharePenalty(gscMix.junk.share)
+  const junkShare = gscMix.junk?.share ?? 0
+  const junkPenalty = junkSharePenalty(junkShare)
   const imp = Math.log10(Math.max(1, impressions) + 9) // ~1–3+
   const posW = position <= 20 ? 1.25 : position <= 40 ? 1.05 : 0.85
   // CTR gap is meaningless past #20 (a pos-32 0.3% CTR is on-curve) — suppress.
@@ -263,7 +269,7 @@ function scoreDemand(gsc?: RankingModelInput['gsc']): FamilyScore {
   else if (impressions > 0) reasons.push(`${impressions.toLocaleString()} impressions/mo on eligible queries (long-tail)`)
   if (ctrGap > 0.02) reasons.push(`CTR gap vs expected at #${Math.round(position)} — headline/intro rewrite upside`)
   if (position > 20) reasons.push(`Deep rank #${Math.round(position)} on eligible queries — headroom to climb`)
-  if (gscMix.junk.share > 0.2) reasons.push(`Junk query share ${Math.round(gscMix.junk.share * 100)}% — demand penalized`)
+  if (junkShare > 0.2) reasons.push(`Junk query share ${Math.round(junkShare * 100)}% — demand penalized`)
   return { score, weight: FAMILY_WEIGHTS.demand, reasons }
 }
 

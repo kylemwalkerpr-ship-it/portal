@@ -54,3 +54,64 @@ describe('off-mission demand guard', () => {
     ])
   })
 })
+
+/**
+ * H1 — generic process words are NOT mission anchors.
+ *
+ * `application`, `application deadline`, `status`, `eligibility`,
+ * `requirements`, `move in checklist` and bare `permit` describe the PROCESS of
+ * campus housing / dining / parking demand. They used to satisfy the mission
+ * anchor regex and launder off-mission demand into the factory as if it were
+ * immigration intent. Only genuinely topical anchors (immigration / visa /
+ * F-1 / I-20 / SEVIS / study-or-work permit / PGWP / Express Entry / PNP /
+ * permanent residence / sponsorship / university admission as such, or
+ * tenancy-legal rights) may do that.
+ */
+describe('generic process words are never mission anchors (H1)', () => {
+  const processOffMission = [
+    'student housing application',
+    'dorm application deadline',
+    'meal plan status',
+    'student housing eligibility requirements',
+    'university dorm move in checklist',
+    'student apartments application',
+    'parking permit application',
+  ]
+
+  it('keeps campus-housing process demand off-mission but observable (not junk)', () => {
+    for (const term of processOffMission) {
+      expect(isJunkQuery(term)).toBe(false)
+      expect(isOffMissionDemandQuery(term)).toBe(true)
+      expect(isActionableDemandQuery(term)).toBe(false)
+      expect(isJunkTopic(term)).toBe(true)
+    }
+  })
+
+  it('still lets genuinely topical anchors qualify housing-adjacent demand', () => {
+    const topical = [
+      'f-1 student housing proof of address',
+      'student housing discrimination rights',
+      'canada study permit housing documents',
+      'student visa accommodation evidence',
+      'international student lease break rights',
+      'university admission requirements for international students',
+      'pgwp permanent residence student housing application',
+    ]
+    for (const term of topical) {
+      expect(isOffMissionDemandQuery(term)).toBe(false)
+      expect(isActionableDemandQuery(term)).toBe(true)
+    }
+  })
+
+  it('keeps the process words from rescuing a bare off-mission row in the signal filter', () => {
+    const signals = [
+      { term: 'student housing application', impressions: 900 },
+      { term: 'parking permit application', impressions: 300 },
+      { term: 'meal plan status', impressions: 250 },
+      { term: 'f-1 student housing proof of address', impressions: 120 },
+    ]
+    expect(filterActionableDemandSignals(signals).map((s) => s.term)).toEqual([
+      'f-1 student housing proof of address',
+    ])
+  })
+})

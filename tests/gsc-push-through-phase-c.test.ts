@@ -1,11 +1,12 @@
 /**
  * GSC push-through — Phase C: route the factory at the five seed URLs.
  *
- * The five locked snapshot pages (Bristol, Pacific housing, Warwick,
- * lease-break, apex homepage) must expand/defend their EXISTING owner URL —
- * never a sibling, never a new Pacific-PDF article. Junk is dropped before
- * scoring, the keyword planner drops junk before clustering, auto-run never
- * opens a content_gap, and the pipeline refuses junk-query jobs.
+ * The locked snapshot routing table still knows the existing owner URLs, but
+ * P1 qualified visibility now suppresses real-but-off-mission Pacific housing
+ * demand before opportunity scoring. Bristol, Warwick and lease-break remain
+ * actionable and must expand/defend their EXISTING owner URL — never a sibling.
+ * Junk is dropped before scoring, auto-run never opens a junk/off-mission gap,
+ * and the pipeline refuses junk/off-mission GSC-driven jobs.
  *
  * No live GSC calls in CI — rows are injected.
  */
@@ -66,7 +67,7 @@ describe('matchStrikeSeed — locked seed routing table', () => {
 })
 
 describe('opportunity engine — seed routing beats content_gap', () => {
-  it('routes the four non-homepage seeds to quick_win (strike distance) with the owner URL set', () => {
+  it('routes qualified strike-distance seeds but suppresses the off-mission Pacific housing seed', () => {
     const result = scoreOpportunities({
       queries: [...SEED_QUERIES, { term: PDF_JUNK, impressions: 40, clicks: 0, ctr: 0, position: 9 }],
       limit: 10,
@@ -75,16 +76,22 @@ describe('opportunity engine — seed routing beats content_gap', () => {
     // Zero junk terms.
     expect(topics).not.toContain(PDF_JUNK.toLowerCase())
     expect(result.opportunities.some((o) => o.topic.includes('pacific.edu') || o.topic.includes('user2983'))).toBe(false)
-    // Every non-homepage seed appears as a quick_win with its canonical owner URL.
-    for (const q of SEED_QUERIES) {
+
+    // P1: the historical Pacific housing seed remains in the routing table for
+    // observability/ownership, but real campus-housing demand is off-mission and
+    // can no longer become an actionable opportunity.
+    const pacificHousing = SEED_QUERIES.find((q) => /pacific student housing/i.test(q.term))!
+    expect(matchStrikeSeed(pacificHousing.term)).not.toBeNull()
+    expect(topics).not.toContain(pacificHousing.term)
+
+    // The remaining on-mission strike-distance seeds still expand their owner.
+    for (const q of SEED_QUERIES.filter((q) => q !== pacificHousing)) {
       const hit = result.opportunities.find((o) => o.topic === q.term)
       expect(hit).toBeDefined()
       expect(hit!.play).toBe('quick_win')
       expect(hit!.sourcePage).toBe(matchStrikeSeed(q.term)!.canonicalUrl)
-      // Coverage is the existing owner page (expand), never a content gap.
       expect(hit!.coverage.matched).toBe(true)
     }
-    // None of the seeds is a content_gap.
     expect(result.opportunities.some((o) => o.play === 'content_gap')).toBe(false)
   })
 })

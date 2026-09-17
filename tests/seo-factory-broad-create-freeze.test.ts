@@ -422,6 +422,18 @@ describe('broad-create freeze · non-stream pipeline boundary', () => {
     ).rejects.toThrow(/broad net-new CREATE/i)
   })
 
+  it('reports an off-mission strike seed as non-actionable demand, not malformed junk', async () => {
+    await expect(
+      runSeoFactoryPipeline({
+        topic: 'university of the pacific student housing',
+        primaryKeyword: 'university of the pacific student housing',
+        contentType: 'legal_guide',
+        region: 'US',
+        shipMode: 'none',
+      }),
+    ).rejects.toThrow(/Rejected off-mission keyword/i)
+  })
+
   it('permits the same plan once the explicit unlock is configured', async () => {
     process.env[BROAD_CREATE_UNLOCK_ENV] = '1'
     // The stubbed GSC brief is the first downstream step after the gate, so
@@ -463,6 +475,21 @@ describe('broad-create freeze · stream pipeline boundary', () => {
     expect(events.some((e) => e.type === 'job')).toBe(false)
     expect(events.some((e) => e.type === 'delta')).toBe(false)
     expect(events.some((e) => e.type === 'final')).toBe(false)
+  })
+
+  it('emits an explicit off-mission reason for the historical Pacific housing seed', async () => {
+    const events: PipelineStreamEvent[] = []
+    for await (const event of runSeoFactoryPipelineStream({
+      topic: 'university of the pacific student housing',
+      primaryKeyword: 'university of the pacific student housing',
+      contentType: 'legal_guide',
+      region: 'US',
+      shipMode: 'none',
+    })) events.push(event)
+    expect(events.filter((e) => e.type === 'error')).toEqual([
+      expect.objectContaining({ type: 'error', error: expect.stringMatching(/Rejected off-mission keyword/i) }),
+    ])
+    expect(events.some((e) => e.type === 'job' || e.type === 'delta' || e.type === 'final')).toBe(false)
   })
 
   it('permits the same plan once the explicit unlock is configured', async () => {

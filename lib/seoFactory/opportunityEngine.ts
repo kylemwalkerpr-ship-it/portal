@@ -22,7 +22,7 @@
  */
 
 import { classifyCoverageIntent, collapseParaphraseDemand, isSameIntentOwner, type CoverageKind } from '@/lib/seoEngine/coverageIntent'
-import { isJunkQuery, classifyGscQuery, sanitizeDemandTerm } from './queryNoise'
+import { isJunkQuery, isQualifiedGscDemandQuery, sanitizeDemandTerm } from './queryNoise'
 import { matchStrikeSeed } from './strikeSeeds'
 import { discoverCardTitle, isFillerTitle } from '@/lib/seoEngine/titleLab'
 import { collapseOpportunityAgainstJobs, type OccupyingJob } from './cannibalDetect'
@@ -261,16 +261,17 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     limit = 60,
   } = input
 
-  // Deduplicate queries — keep the strongest signal per term. Junk rows are
-  // dropped here (never scored, never queued, never briefed): the engine plays
-  // `ignore` for them by exclusion. deep_tail rows stay — they are real
-  // queries, just low-signal, and count toward the mix (Phase B scoring).
+  // Deduplicate queries — keep the strongest signal per term. This is an ACTION
+  // boundary: only four-class `qualified` GSC rows may enter scoring or
+  // cannibalization. Junk, real-but-off-mission demand, and on-mission deep-tail
+  // observations remain measurable upstream but cannot become Quick Create /
+  // Opportunity Radar actions.
   const byTerm = new Map<string, OpportunityQuery>()
   for (const q of queries) {
     const term = sanitizeDemandTerm(q.term || '').toLowerCase()
     if (!term || term.length < 3) continue
     if (/\byousafe\b/i.test(term)) continue
-    if (classifyGscQuery(term, { impressions: q.impressions, clicks: q.clicks, position: q.position }) === 'junk') continue
+    if (!isQualifiedGscDemandQuery(term, { impressions: q.impressions, clicks: q.clicks, position: q.position })) continue
     const existing = byTerm.get(term)
     const next = { ...q, term }
     if (!existing || q.impressions > existing.impressions) byTerm.set(term, next)

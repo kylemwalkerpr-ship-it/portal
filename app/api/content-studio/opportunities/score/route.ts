@@ -8,11 +8,20 @@ import {
 import { scoreAndClassify } from '@/lib/seoFactory/opportunityAction'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
 import { loadPersistedGscWindow } from '@/lib/seoFactory/gscRows'
+import { isQualifiedGscDemandQuery } from '@/lib/seoFactory/queryNoise'
 
 /**
  * GET/POST /api/content-studio/opportunities/score
  * First-party scores from seo_gsc_rows. No invented volume/KD/CPC.
  * Falls back to the latest stored window when the rolling UTC window is empty.
+ *
+ * P1 qualified visibility: this is an ACTION surface, so only qualified demand
+ * may reach `scoreAndClassify`. Real-but-off-mission rows (campus housing /
+ * dining / parking process queries with no immigration-document or
+ * tenancy-legal anchor) are dropped here and stay observable in the
+ * /api/content-studio/gsc/performance visibility summary instead of becoming
+ * opportunities. `excludedNonActionable` reports how many rows were dropped so
+ * the exclusion is auditable rather than silent.
  */
 async function loadRows(db: { from: (t: string) => any }, siteUrl: string | null, range: { startDate: string; endDate: string }, limit: number) {
   const persisted = await loadPersistedGscWindow(db, {
@@ -29,6 +38,22 @@ async function loadRows(db: { from: (t: string) => any }, siteUrl: string | null
   }
 }
 
+/**
+ * GSC action boundary: the persisted read already drops malformed junk, and
+ * this metric-aware guard additionally removes off-mission and deep-tail rows.
+ * Only the four-class `qualified` bucket may reach opportunity scoring.
+ */
+function filterActionableOpportunityRows<T extends { query?: unknown; impressions?: unknown; clicks?: unknown; position?: unknown }>(
+  rows: T[],
+): { rows: T[]; excludedNonActionable: number } {
+  const actionable = (rows || []).filter((row) => isQualifiedGscDemandQuery(String(row?.query || ''), {
+    impressions: Number(row?.impressions) || 0,
+    clicks: Number(row?.clicks) || 0,
+    position: Number(row?.position) || 0,
+  }))
+  return { rows: actionable, excludedNonActionable: (rows || []).length - actionable.length }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminUser()
@@ -41,7 +66,8 @@ export async function GET(request: NextRequest) {
     const siteUrl = sp.get('siteUrl') || process.env.GSC_SITE_URL || null
     const limit = Math.min(200, Math.max(10, Number(sp.get('limit') || '50')))
     const loaded = await loadRows(auth.db, siteUrl, range, limit)
-    const evidence: OpportunityEvidence[] = loaded.rows.map((r) => ({
+    const { rows, excludedNonActionable } = filterActionableOpportunityRows(loaded.rows)
+    const evidence: OpportunityEvidence[] = rows.map((r) => ({
       query: r.query,
       page: r.page,
       impressions: r.impressions,
@@ -55,6 +81,7 @@ export async function GET(request: NextRequest) {
       weights: DEFAULT_OPPORTUNITY_WEIGHTS,
       range: { ...range, ...loaded.range },
       usedFallback: loaded.usedFallback,
+      excludedNonActionable,
       count: opportunities.length,
       opportunities,
     })
@@ -74,8 +101,17 @@ export async function POST(request: NextRequest) {
     const weights = { ...DEFAULT_OPPORTUNITY_WEIGHTS, ...(body.weights && typeof body.weights === 'object' ? body.weights as Partial<OpportunityWeights> : {}) }
     const rows = Array.isArray(body.rows) ? (body.rows as OpportunityEvidence[]) : null
     if (rows) {
-      const opportunities = scoreAndClassify(rows, weights as OpportunityWeights)
-      return NextResponse.json({ ok: true, weights, count: opportunities.length, opportunities })
+      const { rows: actionable, excludedNonActionable } = filterActionableOpportunityRows(
+        rows as Array<OpportunityEvidence & { query?: unknown }>,
+      )
+      const opportunities = scoreAndClassify(actionable as OpportunityEvidence[], weights as OpportunityWeights)
+      return NextResponse.json({
+        ok: true,
+        weights,
+        excludedNonActionable,
+        count: opportunities.length,
+        opportunities,
+      })
     }
     return GET(request)
   } catch (err) {

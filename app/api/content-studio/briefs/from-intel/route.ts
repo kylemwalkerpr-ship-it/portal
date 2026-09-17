@@ -7,6 +7,7 @@ import { pickOpportunityForSeed, scoreAndClassify } from '@/lib/seoFactory/oppor
 import { detectCannibalization } from '@/lib/seoFactory/cannibalDetect'
 import { buildSeoBrief, formatSeoBriefForWriter } from '@/lib/seoFactory/seoBrief'
 import { resolveGscDayWindow } from '@/lib/gscAnalytics'
+import { isQualifiedGscDemandQuery } from '@/lib/seoFactory/queryNoise'
 
 /**
  * POST /api/content-studio/briefs/from-intel
@@ -32,6 +33,14 @@ export async function POST(request: NextRequest) {
       if (siteUrl) q = q.eq('site_url', siteUrl)
       const { data } = await q
       gscHits = (data || []) as typeof gscHits
+      // P1 qualified-visibility boundary: persisted GSC remains observable in
+      // seo_gsc_rows/performance, but only qualified on-mission rows may drive
+      // discovery, opportunity actions, cannibal decisions, or writer evidence.
+      gscHits = gscHits.filter((row) => isQualifiedGscDemandQuery(String(row.query || ''), {
+        impressions: Number(row.impressions) || 0,
+        clicks: Number(row.clicks) || 0,
+        position: Number(row.position) || 0,
+      }))
       gscQueries = [...new Set(gscHits.map((r) => r.query).filter(Boolean))]
     } catch { /* intel degrades without GSC rows */ }
 

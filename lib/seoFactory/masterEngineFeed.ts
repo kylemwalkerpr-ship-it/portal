@@ -93,8 +93,9 @@ export interface MasterEngineFeed {
   computedSignals?: number | null
   totalSignals?: number | null
   phase?: 'plan' | 'page'
-  /** Eligible vs junk vs deep-tail GSC mix — the studio cannot hide behind a
-   *  0.3% CTR when the eligible position is deep and junk share is high. */
+  /** Raw vs qualified vs off-mission vs junk vs deep-tail GSC mix — the studio
+   *  cannot hide behind a 0.3% CTR when the qualified position is deep, the
+   *  junk share is high, or the raw impressions are off-mission campus demand. */
   gscMix: GscMix
   llmQuality?: MasterEngineLlmQuality
   lineage: Record<string, unknown>
@@ -261,12 +262,19 @@ export function renderMasterEnginePromptBlock(
     .slice(0, 5)
     .map(([id, v]) => `${id} ${fmtPct(v.score)}`)
   if (weak.length) lines.push(`- Weak subsystems: ${weak.join(' · ')}`)
-  // GSC push-through Phase B: surface the eligible vs junk mix so Autopilot
-  // and briefs cannot hide behind a site-wide 0.3% CTR.
+  // GSC push-through Phase B + P1: surface the RAW window, the QUALIFIED
+  // (on-mission) position and the observable-but-non-actionable off-mission
+  // share, so Autopilot and briefs cannot hide behind a site-wide 0.3% CTR or
+  // mistake campus-lifestyle demand for mission demand.
+  // A persisted pre-P1 snapshot carries only the `eligible` alias and no
+  // `offMission`, so read qualified when present and default its share to 0.
   const gscMix = report.gscMix
-  if (gscMix && (gscMix.eligible.impressions > 0 || gscMix.junk.share > 0 || gscMix.strikeDistance.length)) {
+  const gq = gscMix?.qualified ?? gscMix?.eligible
+  const junkShare = gscMix?.junk?.share ?? 0
+  const offMissionShare = gscMix?.offMission?.share ?? 0
+  if (gscMix && gq && (gq.impressions > 0 || junkShare > 0 || offMissionShare > 0 || gscMix.strikeDistance.length)) {
     lines.push(
-      `- GSC mix: eligible position ${gscMix.eligible.position.toFixed(1)} · junk share ${Math.round(gscMix.junk.share * 100)}% · ${gscMix.strikeDistance.length} strike-distance URL(s)`,
+      `- GSC mix: eligible position ${gq.position.toFixed(1)} (qualified on-mission queries only) · junk share ${Math.round(junkShare * 100)}% · off-mission share ${Math.round(offMissionShare * 100)}% (observable, never actioned) · ${gscMix.strikeDistance.length} strike-distance URL(s)`,
     )
   }
   const gapBits = [
@@ -426,7 +434,7 @@ export function renderLlmQualityBlock(q: Exclude<MasterEngineLlmQuality, null>):
  *
  * Production callers (generate-stream, suggest-brief, jobToMasterInput) pass
  * aggregates only or nothing, so without this the classifier in computeGscMix
- * never sees a single row: 10.3K impressions at pos 33 get scored as eligible
+ * never sees a single row: 10.3K impressions at pos 33 get scored as qualified
  * volume and the studio can still hide behind a site-wide 0.3% CTR. No new
  * table, no new GSC client — reuses loadGscSnapshot / gscAnalytics.
  */
@@ -485,7 +493,7 @@ export async function assembleMasterEngineFeed(
       clicks: req.gsc?.clicks,
       ctr: req.gsc?.ctr,
       position: req.gsc?.position,
-      queries: req.gsc?.queryRows,
+      queryRows: req.gsc?.queryRows,
     }),
     llmQuality: null,
     lineage: { modelVersion: 'seo-master-engine-feed-v1', ok: false },

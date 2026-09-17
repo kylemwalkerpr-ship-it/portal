@@ -237,9 +237,11 @@ function pickAngle(
  */
 export function scoreTopicAuthority(input: AuthorityInputs): AuthorityBreakdown {
   const term = (input.term || '').trim()
-  // GSC push-through Phase B: demand scores the ELIGIBLE aggregate only — junk
-  // (PDF/URL/brand) rows never count as volume, and a junk-share penalty stops
-  // a property drowning in PDF queries from looking like strong demand.
+  // GSC push-through Phase B + P1: demand scores the QUALIFIED aggregate only —
+  // junk (PDF/URL/brand) rows, off-mission real demand (campus housing /
+  // lifestyle) and the deep tail never count as volume, and a junk-share
+  // penalty stops a property drowning in PDF queries from looking like strong
+  // demand. Aggregate-only callers pass through as qualified (documented).
   const gscMix = input.queryRows?.length
     ? computeGscMix({
         queries: input.queryRows,
@@ -249,13 +251,16 @@ export function scoreTopicAuthority(input: AuthorityInputs): AuthorityBreakdown 
         position: input.position,
       })
     : null
-  const eg = gscMix?.eligible ?? {
-    impressions: input.impressions,
-    clicks: input.clicks,
-    ctr: input.ctr,
-    position: input.position,
-  }
-  const demand = demandComponent({ ...eg, junkShare: gscMix?.junk.share ?? 0 })
+  // `qualified` when present, then the pre-P1 `eligible` alias, then the raw
+  // aggregate input — so a legacy mix shape still conserves demand.
+  const eg = gscMix?.qualified ??
+    gscMix?.eligible ?? {
+      impressions: input.impressions,
+      clicks: input.clicks,
+      ctr: input.ctr,
+      position: input.position,
+    }
+  const demand = demandComponent({ ...eg, junkShare: gscMix?.junk?.share ?? 0 })
   const aeoIntent = patternScore(term, AEO_PATTERNS)
   const geoCitation = patternScore(term, GEO_CITATION_PATTERNS)
   const disciplineAuth = disciplineScore(term)

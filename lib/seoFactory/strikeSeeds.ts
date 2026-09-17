@@ -1,9 +1,11 @@
 /**
  * Strike-seed routing — the five locked GSC pages from the 2026-08-18 snapshot.
  *
- * These pages already earn impressions at positions ~8–14 with proven click
- * intent. The factory must EXPAND these owners (canonicalUrl set, never a
- * sibling) — never open a new sibling, never write a Pacific-PDF article.
+ * These pages already earned impressions at positions ~8–14 in the locked
+ * snapshot. This table is authoritative for OWNERSHIP/routing only: when a
+ * query is actionable, expand the canonical owner and never open a sibling.
+ * P1 visibility classification is a separate gate and may keep an owned seed
+ * (notably Pacific student housing) observable while refusing it as off-mission.
  *
  * Deterministic and pure — no network, no AI. Consumed by the opportunity
  * engine, the war room / auto-run, and the keyword planner.

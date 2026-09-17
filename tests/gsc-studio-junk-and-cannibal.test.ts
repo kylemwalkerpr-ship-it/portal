@@ -94,6 +94,33 @@ describe('GSC read boundary — junk never surfaces', () => {
   })
 })
 
+
+describe('GSC opportunity engine — only qualified visibility is actionable', () => {
+  it('drops off-mission and deep-tail rows before opportunity/cannibal scoring while retaining qualified demand', () => {
+    const offMission = 'student housing application'
+    const deepTail = 'canada study permit biometrics ottawa'
+    const qualified = 'canada study permit processing time'
+    const scored = scoreOpportunities({
+      queries: [
+        { term: offMission, impressions: 5000, clicks: 120, ctr: 0.024, position: 4 },
+        { term: deepTail, impressions: 5, clicks: 0, ctr: 0, position: 30 },
+        { term: qualified, impressions: 248, clicks: 4, ctr: 0.016, position: 10.2 },
+      ],
+      coverage: [
+        { title: 'Student Housing Application', url: 'https://example.com/housing-a' },
+        { title: 'Student Housing Application Checklist', url: 'https://example.com/housing-b' },
+      ],
+      limit: 10,
+    })
+
+    expect(scored.opportunities.some((o) => o.topic === offMission)).toBe(false)
+    expect(scored.cannibalization.some((c) => c.term === offMission)).toBe(false)
+    expect(scored.opportunities.some((o) => o.topic === deepTail)).toBe(false)
+    expect(scored.cannibalization.some((c) => c.term === deepTail)).toBe(false)
+    expect(scored.opportunities.some((o) => o.topic === qualified)).toBe(true)
+  })
+})
+
 describe('in-flight jobs collapse GAP cards', () => {
   const spousalJob = {
     title: 'Canada Spousal Sponsorship',
