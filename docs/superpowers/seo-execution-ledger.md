@@ -196,3 +196,51 @@ Phase 3 G3 docs-only evidence for the Forward-Only Migration Ledger Adoption rol
 ### Scope
 
 - Docs-only: the Phase 3 evidence change touches only `docs/superpowers/seo-execution-ledger.md`; no source, workflow, or migration file changed, and no push, PR, merge, deploy, or Phase 4 work was performed by this task.
+
+## 2026-09-17 — P1 base-table least-privilege production acceptance (PR #222)
+
+Docs-only evidence pass. No commit, push, PR, merge, deploy, migration dispatch, or production DDL was performed by this task; every production statement below is recorded evidence from the implementation and its CI/production runs. This section supersedes the 2026-09-15 pre-state for the P1 base-table follow-up row (see `Supervisor scope correction (2026-09-15, post-review)`). Prior entries are unchanged.
+
+**Scope of the PASS:** exactly `public.content_jobs`, `public.seo_backlink_targets`, `public.seo_backlink_outreach`, `public.support_audit_log`, delivered by `supabase/migrations/20260917173300_base_table_least_privilege.sql`. This row-level PASS does not complete P1.
+
+### Implementation PR and CI path
+
+- Implementation PR #222 head `d51a815f78fee2d8783caeb5dd15d69840014c08` passed `Content Studio Review` run #125 and the `Deploy YouSafe Portal` PR-context run #2894.
+- PR #222 merged to `main` as `5429e5a124aa25df7d771fada50741a234a21d3b` (squash message `security: harden P1 base table access (#222)`), which is the base of this documentation branch.
+- Main `Apply SEO Factory Migrations` run `35257551755` (run #33) completed success. Production ledger row (`supabase_migrations.yousafe_migration_ledger`): `20260917173300_base_table_least_privilege.sql`, applied by `ci-runner` at `2026-09-17T18:14:03.941539+00:00`, `source_git_sha = 5429e5a124aa25df7d771fada50741a234a21d3b`.
+- Main `Deploy YouSafe Portal` run `35257551736` completed success including typecheck, unit tests, build, SEO guard, Cloudflare deploy, secrets health, and post-deploy smoke.
+
+### Live SQL proof after the migration (read-only)
+
+- All four tables have RLS enabled.
+- Each table has exactly one policy, named `Service role full access`, cmd `ALL`, roles `{service_role}`, with `qual = true` and `with_check = true`.
+- Privilege/lookup shape per table: `anon_select=false`, `authenticated_select=false`, `anon_any_column_select=false`, `authenticated_any_column_select=false`.
+- Effective access: `service_role_select=true` and `service_role_write=true`.
+- Table grants list only `service_role`, with `DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE`; no `public`/`anon`/`authenticated` table privilege remains.
+- Effective role simulation as `anon` against `content_jobs` returned permission denied (the 2026-09-15 anon-readable state no longer reproduces).
+
+### Production behavioral proof after deploy
+
+- Authenticated production Content Studio at `/dashboard/admin/content` loaded 246 jobs into the table.
+- Network trace showed repeated `GET /api/content-studio/jobs?limit=100` => `200` and `GET /api/content-studio/jobs?limit=80&status=drafting,pending,publishing,pr_created,merged,failed` => `200`, demonstrating the authenticated API polling fallback is operational after removal of the direct browser `content_jobs` Realtime subscription.
+
+### Local acceptance from the implementation (reported; not re-run in this docs-only pass)
+
+- New regression `tests/p1-base-table-least-privilege.test.ts`: 16/16 pass.
+- Focused security/migration suites: 6 suites / 60 tests pass.
+- `npx tsc --noEmit`: pass.
+- `npm run build`: pass.
+- `git diff --check`: pass.
+- Independent DeepSeek review: NO BLOCKER / NO HIGH.
+
+### Preserved unrelated claim (code acceptance only)
+
+- `tests/p1-base-table-least-privilege.test.ts` pins the 7-table SEO telemetry browser Realtime subscription (`seo_knowledge`, `seo_cluster_plans`, `seo_interlinks`, `seo_llm_visibility`, `seo_gate_runs`, `seo_engine_runs`, `seo_ranking_scores`) from `components/design/admin-content-studio.tsx`.
+- That 7-table claim is recorded as code acceptance only. No production Realtime publication proof (for example, replication/publication membership of those tables) is claimed here.
+
+### Result and remaining P1 work
+
+- The P1 base-table grants/RLS follow-up row is now `PASS` in `docs/superpowers/seo-parity-matrix.md` for exactly the four named tables, with the 2026-09-15 evidence pre-state retained verbatim in the same cell as historical evidence.
+- This PASS is scoped to that row only. Overall P1 remains incomplete: `Qualified visibility separated from raw off-mission visibility`, `LLM audit failures excluded from genuine citation-loss math`, and `Reward/forecast inputs are tied to real observations` remain `PENDING`.
+- Older point-in-time documents (for example `docs/superpowers/specs/2026-09-15-forward-only-migration-ledger-design.md`, which records that the base-table backlog was left `PENDING` and out of scope for that project) were not edited by this pass; they remain accurate as statements about their own date and are superseded for current status by this section.
+- This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`; no source, workflow, migration, deploy, or production DDL is introduced by the documentation change itself.
