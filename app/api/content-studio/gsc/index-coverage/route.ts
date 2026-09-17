@@ -11,6 +11,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { detectGscAuthMode, getGscAccess } from '@/lib/gscAuth'
 import {
+  chunkUrlsForFilter,
   fetchGscIndexCoverage,
   prioritizeIndexCoverageUrls,
   type GscIndexCoverageResult,
@@ -111,17 +112,42 @@ async function readCache(): Promise<IndexCoverageRow[]> {
   }
 }
 
-async function readPriorInspections(): Promise<PriorInspection[]> {
+type PriorHistoryRead = { rows: PriorInspection[]; reads: number; error: string | null }
+
+/**
+ * Resolve prior inspection timestamps for exactly these candidates, chunked so
+ * no single PostgREST request serializes the whole estate into the query
+ * string. Each chunk returns at most one row per candidate (url is the cache
+ * primary key), so there is no truncating global row cap. A failed read is
+ * reported to the caller instead of degrading to "no history": an empty
+ * history would silently restart the rotation from the alphabetical prefix.
+ */
+async function readPriorInspections(candidateUrls: string[]): Promise<PriorHistoryRead> {
+  if (!candidateUrls.length) return { rows: [], reads: 0, error: null }
+  const chunks = chunkUrlsForFilter(candidateUrls)
+  const rows: PriorInspection[] = []
+  // `reads` counts DB reads actually attempted: 0 when the client cannot be
+  // created, incremented before each chunk await, so a failed read is
+  // reported as attempted rather than as the number of chunks that were planned.
+  let reads = 0
   try {
     const db = createSupabaseAdminClient()
-    const { data, error } = await db
-      .from('gsc_index_coverage')
-      .select('url,inspected_at')
-      .order('inspected_at', { ascending: true })
-      .limit(5000)
-    return error ? [] : ((data ?? []) as PriorInspection[])
-  } catch {
-    return []
+    for (const chunk of chunks) {
+      reads++
+      const { data, error } = await db
+        .from('gsc_index_coverage')
+        .select('url,inspected_at')
+        .in('url', chunk)
+      if (error) return { rows: [], reads, error: error.message }
+      for (const row of (data ?? []) as PriorInspection[]) rows.push(row)
+    }
+    return { rows, reads, error: null }
+  } catch (error) {
+    return {
+      rows: [],
+      reads,
+      error: error instanceof Error ? error.message : 'prior inspection history read failed',
+    }
   }
 }
 
@@ -138,7 +164,16 @@ async function readLatestScan(): Promise<Record<string, unknown> | null> {
 
 async function recordScanAttempt(
   result: Pick<GscIndexCoverageResult, 'state' | 'requested' | 'attempted' | 'inspected' | 'failed' | 'skipped' | 'errors' | 'siteUrl' | 'attemptedAt' | 'completedAt' | 'successfulAt'>,
-  extra: { candidateCount: number; scope: SiteHealthScope; maxUrls: number; cached: boolean },
+  extra: {
+    candidateCount: number
+    scope: SiteHealthScope
+    maxUrls: number
+    cached: boolean
+    selectionStrategy: string
+    priorHistoryAvailable: boolean | null
+    priorHistoryRows: number | null
+    priorHistoryReads: number | null
+  },
 ): Promise<CacheResult> {
   try {
     const status = result.state === 'complete' ? 'success' : result.state === 'partial' ? 'partial' : 'failed'
@@ -164,7 +199,10 @@ async function recordScanAttempt(
         skippedCount: result.skipped,
         scope: extra.scope,
         maxUrls: extra.maxUrls,
-        selectionStrategy: 'never-inspected-first_then_oldest-inspected',
+        selectionStrategy: extra.selectionStrategy,
+        priorHistoryAvailable: extra.priorHistoryAvailable,
+        priorHistoryRows: extra.priorHistoryRows,
+        priorHistoryReads: extra.priorHistoryReads,
         cachePersisted: extra.cached,
       },
       errors: result.errors.slice(0, 20).map((e) => `${e.url}: ${e.error}`),
@@ -207,7 +245,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       action?: string
       scope?: SiteHealthScope
-      maxUrls?: number
+      maxUrls?: unknown
     }
 
     if (body.action === 'list') {
@@ -215,8 +253,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, source: 'cache', issues: cached, scan, generatedAt: new Date().toISOString() })
     }
 
+    // Fail before inventory/inspection work on a malformed sample size. An
+    // explicit null/0/negative/fractional value is a caller error; only a
+    // missing maxUrls falls back to the 50-URL sample budget.
+    const rawMaxUrls: unknown = body.maxUrls
+    if (rawMaxUrls !== undefined && (typeof rawMaxUrls !== 'number' || !Number.isInteger(rawMaxUrls) || rawMaxUrls < 1)) {
+      return NextResponse.json({ ok: false, state: 'failed', error: 'maxUrls must be a positive integer' }, { status: 400 })
+    }
+
     const scope = scopeFrom(body.scope)
-    const maxUrls = Math.max(1, Math.min(50, Math.floor(body.maxUrls ?? 50)))
+    const maxUrls = rawMaxUrls === undefined ? 50 : Math.min(50, rawMaxUrls as number)
     const attemptedAt = new Date().toISOString()
 
     // Fail before repository inventory work when no usable provider access exists.
@@ -233,7 +279,11 @@ export async function POST(request: NextRequest) {
         configured: Boolean(authMode), siteUrl: access?.siteUrl ?? null,
         attemptedAt, completedAt: state === 'failed' ? new Date().toISOString() : null, successfulAt: null,
       }
-      const recorded = await recordScanAttempt(unavailable, { candidateCount: 0, scope, maxUrls, cached: false })
+      const recorded = await recordScanAttempt(unavailable, {
+        candidateCount: 0, scope, maxUrls, cached: false,
+        selectionStrategy: 'not-attempted',
+        priorHistoryAvailable: null, priorHistoryRows: null, priorHistoryReads: null,
+      })
       return NextResponse.json(
         { ok: false, source: 'live', ...unavailable, cached: false, recorded: recorded.ok },
         { status: state === 'failed' ? 502 : 503 },
@@ -250,17 +300,38 @@ export async function POST(request: NextRequest) {
         attemptedAt, completedAt: new Date().toISOString(), successfulAt: null,
         errors: [{ url: '', error: 'Estate inventory returned no public candidates' }],
       }
-      const recorded = await recordScanAttempt(failed, { candidateCount: 0, scope, maxUrls, cached: false })
+      const recorded = await recordScanAttempt(failed, {
+        candidateCount: 0, scope, maxUrls, cached: false,
+        selectionStrategy: 'not-attempted',
+        priorHistoryAvailable: null, priorHistoryRows: null, priorHistoryReads: null,
+      })
       return NextResponse.json({ ok: false, source: 'live', ...failed, cached: false, recorded: recorded.ok }, { status: 502 })
     }
 
     const byKey = new Map<string, SiteHealthPage>()
     for (const page of pages) byKey.set(indexUrlKey(page.url), page)
-    const prior = await readPriorInspections()
     const candidates = [...new Set(pages.map((p) => p.url))]
+    const prior = await readPriorInspections(candidates)
+    if (prior.error) {
+      // Without history the rotation is unknowable; fail closed instead of
+      // re-inspecting the same prefix and burning URL Inspection quota.
+      const failed: GscIndexCoverageResult = {
+        state: 'failed', observations: [], issues: [], requested: 0,
+        attempted: 0, inspected: 0, failed: 0, skipped: candidates.length,
+        configured: true, siteUrl: access.siteUrl,
+        attemptedAt, completedAt: new Date().toISOString(), successfulAt: null,
+        errors: [{ url: '', error: `Prior inspection history unavailable: ${prior.error}` }],
+      }
+      const recorded = await recordScanAttempt(failed, {
+        candidateCount: candidates.length, scope, maxUrls, cached: false,
+        selectionStrategy: 'unavailable',
+        priorHistoryAvailable: false, priorHistoryRows: null, priorHistoryReads: prior.reads,
+      })
+      return NextResponse.json({ ok: false, source: 'live', ...failed, cached: false, recorded: recorded.ok }, { status: 502 })
+    }
     const sample = prioritizeIndexCoverageUrls(
       candidates,
-      prior.map((row) => ({ url: row.url, inspectedAt: row.inspected_at })),
+      prior.rows.map((row) => ({ url: row.url, inspectedAt: row.inspected_at })),
       maxUrls,
     )
     const result = await fetchGscIndexCoverage(sample, { maxUrls: sample.length, access })
@@ -276,6 +347,10 @@ export async function POST(request: NextRequest) {
       scope,
       maxUrls,
       cached: cache.ok && observations.length > 0,
+      selectionStrategy: 'never-inspected-first_then_oldest-inspected',
+      priorHistoryAvailable: true,
+      priorHistoryRows: prior.rows.length,
+      priorHistoryReads: prior.reads,
     })
 
     if (!cache.ok) {

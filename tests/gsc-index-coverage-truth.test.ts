@@ -1,6 +1,9 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import {
+  chunkUrlsForFilter,
+  encodedFilterCost,
   fetchGscIndexCoverage,
+  INSPECTION_FILTER_BUDGET_BYTES,
   prioritizeIndexCoverageUrls,
 } from '@/lib/gscIndexCoverage'
 
@@ -52,6 +55,19 @@ describe('GSC index coverage measurement truth', () => {
     expect(result.inspected).toBe(0)
     expect(result.observations).toEqual([])
     expect(result.issues).toEqual([])
+  })
+
+  it('does not report complete when there are no URLs to inspect', async () => {
+    mockedGetGscAccess.mockResolvedValue(access)
+
+    const result = await fetchGscIndexCoverage([], { concurrency: 1, delayMs: 0, maxUrls: 0 })
+
+    expect(result.state).toBe('failed')
+    expect(result.requested).toBe(0)
+    expect(result.attempted).toBe(0)
+    expect(result.inspected).toBe(0)
+    expect(result.observations).toEqual([])
+    expect(result.errors[0]?.error).toMatch(/no urls available/i)
   })
 
   it('reports failed when every attempted inspection errors', async () => {
@@ -170,5 +186,29 @@ describe('prioritizeIndexCoverageUrls', () => {
   it('deduplicates candidate URLs before applying the quota', () => {
     const a = 'https://legal.yousafeconsultancy.com/a/'
     expect(prioritizeIndexCoverageUrls([a, a], [], 10)).toEqual([a])
+  })
+})
+
+
+describe('chunkUrlsForFilter', () => {
+  it('keeps every PostgREST filter chunk within the conservative encoded budget', () => {
+    const urls = Array.from({ length: 200 }, (_, i) => `https://legal.yousafeconsultancy.com/very-long-page-name-${i}/`)
+
+    const chunks = chunkUrlsForFilter(urls)
+
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.flat()).toEqual(urls)
+    for (const chunk of chunks) {
+      expect(encodedFilterCost(chunk)).toBeLessThanOrEqual(INSPECTION_FILTER_BUDGET_BYTES)
+    }
+  })
+
+  it('keeps the encoded filter budget small enough for a proxy request line', () => {
+    expect(INSPECTION_FILTER_BUDGET_BYTES).toBeLessThanOrEqual(2000)
+  })
+
+  it('never drops a URL that alone exceeds the budget', () => {
+    const huge = `https://legal.yousafeconsultancy.com/${'x'.repeat(3000)}/`
+    expect(chunkUrlsForFilter([huge])).toEqual([[huge]])
   })
 })

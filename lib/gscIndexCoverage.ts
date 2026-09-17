@@ -317,6 +317,44 @@ export interface GscPriorInspection {
   inspectedAt: string | null
 }
 
+/**
+ * Conservative per-request budget for the PostgREST `in.(...)` filter that
+ * resolves prior inspections. The filter travels in the GET query string, so
+ * a large candidate set must be split: each encoded chunk stays well inside
+ * proxy request-line limits instead of serializing the whole estate into one
+ * request.
+ */
+export const INSPECTION_FILTER_BUDGET_BYTES = 2_000
+
+/** Encoded size of the `in.(...)` payload for these URLs (quotes/commas included). */
+export function encodedFilterCost(urls: string[]): number {
+  return urls.reduce((total, url) => total + encodeURIComponent(url).length + 6, 2)
+}
+
+/**
+ * Split candidate URLs into bounded PostgREST filter chunks. Each chunk's
+ * result contains at most one row per requested URL (url is the cache primary
+ * key), so chunked reads cannot be truncated by a global row cap. A single URL
+ * larger than the budget is still returned in its own chunk rather than
+ * dropped.
+ */
+export function chunkUrlsForFilter(
+  urls: string[],
+  budgetBytes = INSPECTION_FILTER_BUDGET_BYTES,
+): string[][] {
+  const chunks: string[][] = []
+  let current: string[] = []
+  for (const url of urls) {
+    if (current.length && encodedFilterCost([...current, url]) > budgetBytes) {
+      chunks.push(current)
+      current = []
+    }
+    current.push(url)
+  }
+  if (current.length) chunks.push(current)
+  return chunks
+}
+
 export interface GscIndexCoverageResult {
   state: GscIndexCoverageState
   observations: GscIndexIssue[]
@@ -413,6 +451,17 @@ export async function fetchGscIndexCoverage(
       attempted: 0, inspected: 0, failed: 0, skipped: urls.length,
       errors: [], configured: false, siteUrl: access?.siteUrl ?? null,
       attemptedAt, completedAt: null, successfulAt: null,
+    }
+  }
+
+  // A measurement with nothing to inspect is not a successful measurement.
+  if (targets.length === 0) {
+    return {
+      state: 'failed', observations: [], issues: [], requested: 0,
+      attempted: 0, inspected: 0, failed: 0, skipped: Math.max(0, urls.length),
+      errors: [{ url: '', error: 'No URLs available to inspect' }],
+      configured: true, siteUrl: access.siteUrl,
+      attemptedAt, completedAt: new Date().toISOString(), successfulAt: null,
     }
   }
 
