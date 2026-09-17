@@ -50,7 +50,7 @@ import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudi
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
 import SeoIntelligenceDashboard, { type OppRow, type SeoIntelCluster, type SeoIntelHandle, type SeoIntelStats } from './seo-intelligence-dashboard'
 import EditorSeoIntelPanel from './editor-seo-intel-panel'
-import { subscribeToTable, subscribeToTables } from '@/lib/supabaseRealtime'
+import { subscribeToTables } from '@/lib/supabaseRealtime'
 import { applyEvidenceRegionFloor, collectDiscoverCitationUrls, isCitableSource, mergeCitationUrlLists, sourcesForBrief } from '@/lib/seoFactory/officialSources'
 import { buildSectionBudgets, ensureSectionBudgets, syncSectionBudgetsToOutline } from '@/lib/seoFactory/prompts'
 import { jobDetailShouldAutoLoadBody } from '@/lib/seoFactory/jobColumns'
@@ -7503,18 +7503,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     if (selectedJob || generating) return
     const id = setInterval(fetchJobs, 10_000)
     return () => clearInterval(id)
-  }, [fetchJobs, selectedJob, generating])
-
-  // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE refreshes the queue
-  // instantly — a draft finishing or a PR landing shows up without a poll.
-  React.useEffect(() => {
-    const off = subscribeToTable('content_jobs', 'public', () => {
-      if (selectedJob || generating) return
-      fetchJobs()
-    }, (status) => {
-      if (status === 'SUBSCRIBED') setDeskLive('live')
-    })
-    return off
   }, [fetchJobs, selectedJob, generating])
 
   // Coming back to the tab must pull a fresh desk, not the last hidden snapshot.
