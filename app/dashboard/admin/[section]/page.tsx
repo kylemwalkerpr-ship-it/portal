@@ -18,6 +18,8 @@ export const dynamic = 'force-dynamic'
 const VALID_SECTIONS = new Set([
   'dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics',
   'financials', 'gigs', 'settings',
+  // Search Console — GSC query/page/device/country + index coverage
+  'gsc',
   // Content Studio command center (deep-linkable)
   'content',
   // Admin Master Chats (oversight messenger)

@@ -26,9 +26,10 @@ interface GscTotals {
 }
 
 interface GscDashboardProps {
-  siteUrl: string
-  onConnect: () => void
-  onDisconnect: () => void
+  /** Optional explicit property; falls back to the Worker-configured GSC_SITE_URL. */
+  siteUrl?: string
+  onConnect?: () => void
+  onDisconnect?: () => void
 }
 
 type TabKey = 'query' | 'page' | 'device' | 'country' | 'indexing'
@@ -44,7 +45,7 @@ function GscConnect({
   setupHint,
 }: {
   siteUrl: string
-  onConnect: () => void
+  onConnect?: () => void
   oauthClientConfigured?: boolean
   saConfigured?: boolean
   saEmail?: string | null
@@ -402,7 +403,7 @@ function GscIndexingPanel() {
     try {
       const res = await fetch('/api/content-studio/gsc/index-coverage', {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'fetch', maxUrls: 250 }),
+        body: JSON.stringify({ action: 'fetch', maxUrls: 50 }),
       })
       const d = await res.json()
       if (!res.ok || d.ok === false) {
@@ -578,6 +579,7 @@ function GscIndexingPanel() {
 type GscStatus = {
   connected: boolean
   email?: string
+  siteUrl?: string | null
   mode?: string | null
   oauthClientConfigured?: boolean
   saConfigured?: boolean
@@ -606,6 +608,10 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
   const [tab, setTab] = React.useState<TabKey>('query')
   const [days, setDays] = React.useState(90)
   const [error, setError] = React.useState<string | null>(null)
+  // Worker-configured property (GSC_SITE_URL) returned by /gsc/status. Used
+  // only when no explicit siteUrl prop is supplied, so a bare mount still
+  // measures the configured estate instead of an empty override.
+  const [configuredSiteUrl, setConfiguredSiteUrl] = React.useState('')
 
   // Check GSC connection status
   React.useEffect(() => {
@@ -614,9 +620,14 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         const s = await r.json()
         if (!r.ok) throw new Error(s.error || 'Status failed')
         setStatus(s)
+        setConfiguredSiteUrl(typeof s.siteUrl === 'string' ? s.siteUrl : '')
       })
       .catch(() => setStatus({ connected: false, oauthClientConfigured: false, saConfigured: false }))
   }, [])
+
+  // A blank value still falls through to the data route's configured
+  // access/siteUrl fallback; it is never treated as a real property.
+  const effectiveSiteUrl = (siteUrl || configuredSiteUrl || '').trim()
 
   // Pull GSC data when connected
   const fetchData = React.useCallback(async () => {
@@ -629,7 +640,7 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          siteUrl,
+          siteUrl: effectiveSiteUrl,
           days,
           rowLimit: 100,
         }),
@@ -648,7 +659,7 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
     } finally {
       setLoading(false)
     }
-  }, [status?.connected, siteUrl, days])
+  }, [status?.connected, effectiveSiteUrl, days])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -663,7 +674,7 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
   if (!status.connected) {
     return (
       <GscConnect
-        siteUrl={siteUrl}
+        siteUrl={effectiveSiteUrl}
         onConnect={onConnect}
         oauthClientConfigured={status.oauthClientConfigured}
         saConfigured={status.saConfigured}
@@ -690,12 +701,14 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
             </span>
           )}
         </div>
-        <button onClick={onDisconnect} style={{
-          background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 11,
-          textDecoration: 'underline',
-        }}>
-          Disconnect
-        </button>
+        {onDisconnect && (
+          <button onClick={onDisconnect} style={{
+            background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 11,
+            textDecoration: 'underline',
+          }}>
+            Disconnect
+          </button>
+        )}
       </div>
 
       {/* Error */}
