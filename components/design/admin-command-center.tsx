@@ -34,7 +34,6 @@ import { StudioModelHostSelect } from './studio-model-host-select'
 import { ensureKeywordFloors } from '@/lib/seoEngine/keywordFloors'
 import { planEvidencePromptBlock, planEvidenceUrls, type PlanEvidence } from '@/lib/seoEngine/planEvidence'
 import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
-import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { JobSummary } from '@/lib/seoFactory/jobSummary'
 import GscConnectModal from './admin-gsc-connect-modal'
 
@@ -1581,44 +1580,8 @@ export default function AdminCommandCenter({
     return () => clearInterval(id)
   }, [loadJobs])
 
-  // Non-content columns safe to merge into the open workspace job on a
-  // realtime event. `content` and `event_log` are handled separately (content
-  // is never touched so in-progress editor edits can't be clobbered).
-  const LIVE_JOB_FIELDS = [
-    'status', 'pr_url', 'pr_number', 'branch_name', 'content_path',
-    'seo_score', 'word_count', 'error_message', 'merged_at', 'deployed_at',
-    'closed_at', 'deploy_sha', 'ai_provider', 'ai_model', 'title', 'topic',
-    'primary_keyword', 'region', 'target_repo', 'updated_at',
-  ] as const
-
-  // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE instantly refreshes the
-  // pipeline AND the open workspace job — an article finishing, a PR opening,
-  // a merge landing all propagate to the pills, KPIs, table and workspace
-  // status/PR panes without waiting for a poll.
-  React.useEffect(() => {
-    const off = subscribeToTable('content_jobs', 'public', (payload) => {
-      const live = (payload.new ?? {}) as Record<string, unknown>
-      const id = typeof live.id === 'string' ? live.id : null
-      if (id) {
-        // Side effects live outside the updater — React may double-invoke
-        // updaters in StrictMode dev.
-        if (Array.isArray(live.event_log)) {
-          setLogs((live.event_log as StudioLogEntry[]).slice(-150))
-        }
-        setSelectedJob((prev) => {
-          if (!prev || prev.id !== id) return prev
-          const patch: Record<string, unknown> = {}
-          for (const k of LIVE_JOB_FIELDS) {
-            const v = live[k]
-            if (v !== undefined) patch[k] = v
-          }
-          return { ...prev, ...patch }
-        })
-      }
-      loadJobs()
-    })
-    return off
-  }, [loadJobs])
+  // content_jobs browser Realtime intentionally removed: this deprecated client
+  // surface uses the authenticated jobs API polling above if it is ever remounted.
 
   // Radar auto-refresh (5 min) + refresh on window focus so the KPI strip and
   // radar always reflect the latest GSC pass while the center is open.
