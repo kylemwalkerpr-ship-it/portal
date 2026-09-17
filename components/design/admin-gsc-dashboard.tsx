@@ -318,6 +318,24 @@ type IndexIssueRow = {
   verdict?: string | null
 }
 
+type IndexCoverageScan = {
+  status?: string
+  started_at?: string
+  finished_at?: string
+  summary?: {
+    measurementState?: 'complete' | 'partial' | 'unavailable' | 'failed'
+    attemptedAt?: string | null
+    completedAt?: string | null
+    successfulAt?: string | null
+    candidateCount?: number
+    requestedUrlCount?: number
+    attemptedUrlCount?: number
+    inspectedUrlCount?: number
+    failedCount?: number
+    selectionStrategy?: string
+  }
+}
+
 type FixSummary = {
   fixed: number
   delegated: number
@@ -351,6 +369,7 @@ const REASON_COLOR: Record<string, string> = {
 
 function GscIndexingPanel() {
   const [rows, setRows] = React.useState<IndexIssueRow[] | null>(null)
+  const [scanMeta, setScanMeta] = React.useState<IndexCoverageScan | null>(null)
   const [scanning, setScanning] = React.useState(false)
   const [fixing, setFixing] = React.useState<string | 'all' | null>(null)
   const [summary, setSummary] = React.useState<FixSummary | null>(null)
@@ -368,6 +387,7 @@ function GscIndexingPanel() {
       const d = await res.json()
       if (d.error) throw new Error(d.error)
       setRows((d.issues ?? []) as IndexIssueRow[])
+      setScanMeta((d.scan ?? null) as IndexCoverageScan | null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load cached coverage')
     }
@@ -385,10 +405,29 @@ function GscIndexingPanel() {
         body: JSON.stringify({ action: 'fetch', maxUrls: 250 }),
       })
       const d = await res.json()
-      if (d.error) throw new Error(d.error)
-      if (!d.configured) throw new Error('GSC not configured — connect a property first')
+      if (!res.ok || d.ok === false) {
+        const firstError = Array.isArray(d.errors) && d.errors[0]?.error ? ` — ${d.errors[0].error}` : ''
+        throw new Error(d.error || `Index coverage ${d.state || 'failed'}${firstError}`)
+      }
       setRows((d.issues ?? []) as IndexIssueRow[])
-      setNote(`Scanned ${d.inspected} URLs · ${d.issues?.length ?? 0} not indexed · ${d.errors?.length ?? 0} inspect errors`)
+      setScanMeta({
+        status: d.state === 'complete' ? 'success' : d.state,
+        started_at: d.attemptedAt,
+        finished_at: d.completedAt,
+        summary: {
+          measurementState: d.state,
+          attemptedAt: d.attemptedAt,
+          completedAt: d.completedAt,
+          successfulAt: d.successfulAt,
+          candidateCount: d.scannedPages,
+          requestedUrlCount: d.requested,
+          attemptedUrlCount: d.attempted,
+          inspectedUrlCount: d.inspected,
+          failedCount: d.failed,
+          selectionStrategy: 'never-inspected-first_then_oldest-inspected',
+        },
+      })
+      setNote(`URL Inspection sample ${d.state}: ${d.inspected}/${d.requested} successful · ${d.issues?.length ?? 0} actionable issues · ${d.failed ?? d.errors?.length ?? 0} failed. Not an estate-wide coverage total.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Index coverage scan failed')
     } finally {
@@ -475,7 +514,15 @@ function GscIndexingPanel() {
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>Loading cached coverage…</div>
       ) : rows.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>
-          No cached issues. Run <strong>Scan index coverage</strong> to inspect the estate against GSC.
+          {scanMeta?.summary?.measurementState === 'complete' && (scanMeta.summary.inspectedUrlCount ?? 0) > 0 ? (
+            <>Latest URL Inspection <strong>sample</strong> completed with no actionable non-indexed issues in the inspected URLs. This is not an estate-wide coverage total.</>
+          ) : scanMeta?.summary?.measurementState === 'partial' ? (
+            <>Latest URL Inspection sample was <strong>partial</strong>; successful observations are cached, but failed URLs remain unknown.</>
+          ) : scanMeta?.summary?.measurementState === 'failed' || scanMeta?.summary?.measurementState === 'unavailable' ? (
+            <>Latest URL Inspection measurement is <strong>{scanMeta.summary.measurementState}</strong>. Missing evidence is unknown, not zero.</>
+          ) : (
+            <>No successful cached URL Inspection evidence yet. Run <strong>Scan index coverage</strong> to inspect a rotating sample.</>
+          )}
         </div>
       ) : (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>

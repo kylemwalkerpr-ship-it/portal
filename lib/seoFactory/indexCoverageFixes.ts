@@ -31,6 +31,7 @@ import {
 } from './siteHealthFixes'
 import {
   auditSiteHealthChunked,
+  listSiteHealthPageInventory,
   repairSiteHealth,
   type SiteHealthPage,
   type SiteHealthScope,
@@ -78,6 +79,12 @@ export interface ResolveResult {
  * content) by draining `auditSiteHealthChunked` batches. Used by the index
  * coverage routes to join GSC verdicts to the exact source file a fix must edit.
  */
+export async function collectEstatePageInventory(
+  scope: SiteHealthScope = 'all',
+): Promise<SiteHealthPage[]> {
+  return listSiteHealthPageInventory(scope)
+}
+
 export async function collectEstatePages(
   scope: SiteHealthScope = 'all',
   batchSize = 50,

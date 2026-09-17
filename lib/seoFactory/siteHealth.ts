@@ -535,6 +535,42 @@ export async function auditSiteHealth(scope: SiteHealthScope = 'all') {
 }
 
 /**
+ * Lightweight public-page inventory for measurement jobs. Unlike the full
+ * site-health audit this reads only repository trees (one request per repo)
+ * and never downloads page blobs. Indexability/content depth remain unknown
+ * here; URL Inspection supplies the measurement truth.
+ */
+export async function listSiteHealthPageInventory(
+  scope: SiteHealthScope = 'all',
+): Promise<SiteHealthPage[]> {
+  const configs = scope === 'all'
+    ? [CONFIGS.caseworks, CONFIGS['yousafe-consultancy'], CONFIGS.portal]
+    : [CONFIGS[scope]]
+  const pages: SiteHealthPage[] = []
+  for (const config of configs) {
+    const tree = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/trees/main?recursive=1`)
+    const items = (tree.tree || []) as TreeItem[]
+    for (const item of items) {
+      if (item.type !== 'blob' || !shouldScanPath(item.path)) continue
+      const mapped = configForFile(config.repo, item.path)
+      if (!mapped) continue
+      pages.push({
+        repo: config.repo,
+        host: mapped.host,
+        path: item.path,
+        url: `${mapped.baseUrl}${mapped.route}`,
+        title: titleFromContent('', mapped.route),
+        indexable: true,
+        inboundLinks: 0,
+        sampleSources: [],
+      })
+    }
+  }
+  pages.sort((a, b) => a.url.localeCompare(b.url))
+  return pages
+}
+
+/**
  * Chunked version of site health audit. Processes files in batches to stay
  * under the Cloudflare Workers 50-subrequest limit per invocation.
  * Returns partial results plus a cursor for the next batch.
