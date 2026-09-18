@@ -349,6 +349,51 @@ describe('campus-safety boundary: place safety vs activity safety (PR #224 revie
 })
 
 /**
+ * Final review finding M1 — the org-prefixed place-safety alternative
+ * (`(campus|student|university|college) safe`) was matched inside a genuine
+ * activity-safety question, so "is university safe for international students
+ * to work in the uk" was labelled campus lifestyle. The alternative now carries
+ * the same shared mission-activity lookahead as the unprefixed
+ * `safe for … students` branch.
+ */
+describe('campus-safety boundary: org-prefixed place safety vs activity safety (final review M1)', () => {
+  it('never classifies an org-prefixed activity-safety question as campus lifestyle', () => {
+    for (const term of [
+      'is university safe for international students to work in the uk',
+      'is campus safe for international students to study in canada',
+      'is college safety a concern for international students to look for a job in the uk',
+    ]) {
+      expect(isOffMissionDemandQuery(term)).toBe(false)
+      expect(isJunkQuery(term)).toBe(false)
+      expect(isActionableDemandQuery(term)).toBe(true)
+    }
+  })
+
+  it('still refuses org-prefixed place-safety questions as off-mission', () => {
+    for (const term of [
+      'is warwick safe for international students',
+      'is warwick campus safe for international students',
+      'university safety for international students',
+      'campus safety tips for international students',
+    ]) {
+      expect(isOffMissionDemandQuery(term)).toBe(true)
+    }
+    // Explicitly NOT solved by adding bare `work` / `study` mission anchors.
+    expect(isOffMissionDemandQuery('campus dining jobs for students')).toBe(true)
+  })
+
+  it('keeps the activity phrasing anchor-free: no new generic mission anchors', () => {
+    // A long non-safety campus query is still off-mission (and pasted-text junk
+    // via the untouched word-count guard).
+    expect(isOffMissionDemandQuery('student housing safety near the university of south carolina')).toBe(true)
+    // `student living expenses canada` (living-COST demand) is unchanged.
+    expect(isOffMissionDemandQuery('student living expenses canada')).toBe(false)
+    // Production residual unchanged.
+    expect(isOffMissionDemandQuery('student living university of south carolina')).toBe(true)
+  })
+})
+
+/**
  * PR #224 follow-up review — tenancy instruments are legitimate legal intent.
  * "rental agreement" / "rental deposit" are narrow anchored tenancy phrases,
  * not a licence for campus demand in general.

@@ -71,6 +71,30 @@ describe('opportunity engine — cannibal classification', () => {
     expect(topics).toContain('is it safe for international students on opt')
     expect(result.cannibalization.map((c) => c.term)).not.toContain('meal plan information on opt out')
   })
+
+  it('refuses self-brand locale nav forms and place safety while scoring org-prefixed activity safety (final review M1–M3)', () => {
+    // Final review findings: the shared queryNoise boundary now treats
+    // brand + service + locale self-searches as junk, keeps org-prefixed place
+    // safety off-mission, and scores org-prefixed activity-safety questions.
+    const result = scoreOpportunities({
+      queries: [
+        { term: 'you safe login england', impressions: 640, clicks: 0, ctr: 0, position: 3 },
+        { term: 'you safe portal wales', impressions: 210, clicks: 0, ctr: 0, position: 4 },
+        { term: 'university safety for international students', impressions: 170, clicks: 0, ctr: 0, position: 8 },
+        { term: 'is university safe for international students to work in the uk', impressions: 430, clicks: 3, ctr: 0.007, position: 7 },
+        { term: 'is it safe for international students to get a job in the uk', impressions: 300, clicks: 2, ctr: 0.007, position: 9 },
+      ],
+      coverage: [],
+      limit: 10,
+    })
+    const topics = result.opportunities.map((o) => o.topic)
+    expect(topics).not.toContain('you safe login england')
+    expect(topics).not.toContain('you safe portal wales')
+    expect(topics).not.toContain('university safety for international students')
+    expect(topics).toContain('is university safe for international students to work in the uk')
+    expect(topics).toContain('is it safe for international students to get a job in the uk')
+    expect(result.cannibalization.map((c) => c.term)).not.toContain('you safe login england')
+  })
 })
 
 describe('opportunity engine — monetary ranking', () => {

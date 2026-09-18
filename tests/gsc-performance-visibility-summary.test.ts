@@ -442,6 +442,103 @@ describe('persisted GSC visibility measurement', () => {
     expect(summary.qualified.rowCount + summary.offMission.rowCount + summary.junk.rowCount).toBe(summary.rowCount)
   })
 
+  it('measures the final-review boundaries honestly: org-prefixed activity safety qualified, locale self-brand junk', () => {
+    // Final review findings M1/M2/M3 — persisted rows are classified through
+    // the single shared queryNoise boundary, so the summary must reflect it:
+    // locale/service self-brand nav forms are junk, org-prefixed activity-safety
+    // questions and realistic long activity phrasings are qualified, and
+    // org-prefixed place safety stays off-mission.
+    const rows: FakeRow[] = [
+      {
+        query: 'you safe login england',
+        page: 'https://legal.yousafeconsultancy.com/login/',
+        clicks: 0,
+        impressions: 640,
+        ctr: 0,
+        position: 3,
+      },
+      {
+        query: 'you safe portal wales',
+        page: 'https://legal.yousafeconsultancy.com/portal/',
+        clicks: 0,
+        impressions: 210,
+        ctr: 0,
+        position: 4,
+      },
+      {
+        query: 'you safe reviews scotland',
+        page: 'https://legal.yousafeconsultancy.com/reviews/',
+        clicks: 0,
+        impressions: 90,
+        ctr: 0,
+        position: 5,
+      },
+      {
+        query: 'you safe login services',
+        page: 'https://legal.yousafeconsultancy.com/login/',
+        clicks: 0,
+        impressions: 60,
+        ctr: 0,
+        position: 6,
+      },
+      {
+        query: 'is university safe for international students to work in the uk',
+        page: 'https://legal.yousafeconsultancy.com/uk/work-while-on-visa/',
+        clicks: 3,
+        impressions: 430,
+        ctr: 0.007,
+        position: 7,
+      },
+      {
+        query: 'is it safe for international students to get a job in the uk',
+        page: 'https://legal.yousafeconsultancy.com/uk/work-while-on-visa/',
+        clicks: 2,
+        impressions: 300,
+        ctr: 0.007,
+        position: 9,
+      },
+      {
+        query: 'university safety for international students',
+        page: 'https://example.com/campus-safety',
+        clicks: 0,
+        impressions: 170,
+        ctr: 0,
+        position: 8,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(rows)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual([
+      'junk',
+      'junk',
+      'junk',
+      'junk',
+      'qualified',
+      'qualified',
+      'off_mission',
+    ])
+    // Raw observations are preserved exactly as GSC reported them.
+    expect(annotated.map((row) => row.query)).toEqual([
+      'you safe login england',
+      'you safe portal wales',
+      'you safe reviews scotland',
+      'you safe login services',
+      'is university safe for international students to work in the uk',
+      'is it safe for international students to get a job in the uk',
+      'university safety for international students',
+    ])
+
+    const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
+    expect(summary.rowCount).toBe(7)
+    expect(summary.junk.rowCount).toBe(4)
+    expect(summary.junk.impressions).toBe(1000)
+    expect(summary.qualified.rowCount).toBe(2)
+    expect(summary.qualified.impressions).toBe(730)
+    expect(summary.offMission.rowCount).toBe(1)
+    expect(summary.offMission.impressions).toBe(170)
+    expect(summary.qualified.rowCount + summary.offMission.rowCount + summary.junk.rowCount).toBe(summary.rowCount)
+  })
+
   it('keeps the latest-stored-window fallback semantics for an unsynced rolling window', async () => {
     const scan = await loadPersistedGscWindowScan(
       stubDb({
