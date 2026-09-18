@@ -170,6 +170,269 @@ describe('persisted GSC visibility measurement', () => {
     expect(summary.qualified.impressions).toBe(GSC_VISIBILITY_SCAN_CAP)
   })
 
+  it('keeps the PR #224 production residual observable: real campus demand off-mission, Pacific fiscal-year artifact junk', () => {
+    const residual: FakeRow[] = [
+      {
+        query: 'student rentals near university of south carolina',
+        page: 'https://example.com/sc-rentals',
+        clicks: 1,
+        impressions: 320,
+        ctr: 0.003,
+        position: 8,
+      },
+      {
+        query: 'student rentals near florida international university',
+        page: 'https://example.com/fiu-rentals',
+        clicks: 0,
+        impressions: 210,
+        ctr: 0,
+        position: 11,
+      },
+      {
+        query: 'student living university of south carolina',
+        page: 'https://example.com/sc-living',
+        clicks: 0,
+        impressions: 180,
+        ctr: 0,
+        position: 9,
+      },
+      {
+        query: 'international student storage cornell',
+        page: 'https://example.com/cornell-storage',
+        clicks: 0,
+        impressions: 140,
+        ctr: 0,
+        position: 12,
+      },
+      {
+        query: 'is warwick safe for international students',
+        page: 'https://example.com/warwick-safety',
+        clicks: 0,
+        impressions: 90,
+        ctr: 0,
+        position: 14,
+      },
+      {
+        query: '"fy27_stk_housing_rates" pacific',
+        page: 'https://pacific.edu/sites/default/files/users/user2983',
+        clicks: 0,
+        impressions: 400,
+        ctr: 0,
+        position: 3,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(residual)
+    expect(annotated).toHaveLength(residual.length)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual([
+      'off_mission',
+      'off_mission',
+      'off_mission',
+      'off_mission',
+      'off_mission',
+      'junk',
+    ])
+
+    const summary = buildGscVisibilitySummary({ rows: residual, displayLimit: 2, windowDays: 90 })
+    // Raw observations are preserved and reconcile back to the window totals.
+    expect(summary.rowCount).toBe(residual.length)
+    expect(summary.offMission.rowCount).toBe(5)
+    expect(summary.junk.rowCount).toBe(1)
+    expect(summary.qualified.rowCount).toBe(0)
+    expect(summary.totals.impressions).toBe(1340)
+    expect(summary.offMission.impressions).toBe(940)
+    expect(summary.junk.impressions).toBe(400)
+    expect(summary.offMission.impressions + summary.junk.impressions).toBe(summary.totals.impressions)
+  })
+
+  it('keeps the estate self-brand query `you safe` observable as junk, never as qualified demand', () => {
+    // PR #224 production proof (brand leak): the spaced self-brand query
+    // surfaced as an actionable opportunity. It must stay a RAW observation —
+    // counted in the junk bucket — while prose containing "you safe" keeps its
+    // genuine classification.
+    const rows: FakeRow[] = [
+      {
+        query: 'you safe',
+        page: 'https://legal.yousafeconsultancy.com/',
+        clicks: 0,
+        impressions: 1200,
+        ctr: 0,
+        position: 2,
+      },
+      {
+        query: 'are you safe to travel on a visa',
+        page: 'https://legal.yousafeconsultancy.com/uk/travel-while-on-visa/',
+        clicks: 1,
+        impressions: 400,
+        ctr: 0.003,
+        position: 9,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(rows)
+    expect(annotated).toHaveLength(rows.length)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual(['junk', 'qualified'])
+    // Raw rows stay raw: the brand observation is preserved for measurement.
+    expect(annotated[0].query).toBe('you safe')
+    expect(annotated[1].query).toBe('are you safe to travel on a visa')
+
+    const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
+    expect(summary.rowCount).toBe(2)
+    expect(summary.totals.impressions).toBe(1600)
+    expect(summary.junk.rowCount).toBe(1)
+    expect(summary.junk.impressions).toBe(1200)
+    expect(summary.qualified.rowCount).toBe(1)
+    expect(summary.qualified.impressions).toBe(400)
+    expect(summary.offMission.rowCount).toBe(0)
+  })
+
+  it('keeps bounded self-brand navigational rows observable as junk, never as qualified demand', () => {
+    // Review finding: the exact spaced brand was junk, but `you safe portal`
+    // still scored. Raw observations are preserved — counted in the junk
+    // bucket — while brand-like prose keeps its genuine classification.
+    const rows: FakeRow[] = [
+      {
+        query: 'you safe portal',
+        page: 'https://legal.yousafeconsultancy.com/portal/',
+        clicks: 0,
+        impressions: 700,
+        ctr: 0,
+        position: 3,
+      },
+      {
+        query: 'you safe to travel on a student visa',
+        page: 'https://legal.yousafeconsultancy.com/uk/travel-while-on-visa/',
+        clicks: 1,
+        impressions: 300,
+        ctr: 0.003,
+        position: 11,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(rows)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual(['junk', 'qualified'])
+    // Raw rows stay raw: the brand observation is preserved for measurement.
+    expect(annotated[0].query).toBe('you safe portal')
+
+    const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
+    expect(summary.rowCount).toBe(2)
+    expect(summary.totals.impressions).toBe(1000)
+    expect(summary.junk.rowCount).toBe(1)
+    expect(summary.junk.impressions).toBe(700)
+    expect(summary.qualified.rowCount).toBe(1)
+    expect(summary.qualified.impressions).toBe(300)
+    expect(summary.offMission.rowCount).toBe(0)
+  })
+
+  it('qualifies natural-length mission-safety questions and living-cost demand, keeping housing lifestyle off-mission', () => {
+    // Final review findings: mission-safety questions longer than the
+    // pasted-text guard are real demand (qualified), and `student living` is
+    // only campus lifestyle when housing/lodging context is present.
+    const rows: FakeRow[] = [
+      {
+        query: 'is it safe for international students to work in the uk',
+        page: 'https://legal.yousafeconsultancy.com/uk/work-while-on-visa/',
+        clicks: 3,
+        impressions: 420,
+        ctr: 0.007,
+        position: 7,
+      },
+      {
+        query: 'student living expenses canada',
+        page: 'https://legal.yousafeconsultancy.com/ca/living-costs/',
+        clicks: 1,
+        impressions: 180,
+        ctr: 0.006,
+        position: 11,
+      },
+      {
+        query: 'student living university of south carolina',
+        page: 'https://example.com/sc-living',
+        clicks: 0,
+        impressions: 150,
+        ctr: 0,
+        position: 9,
+      },
+      {
+        query: 'you safe login',
+        page: 'https://legal.yousafeconsultancy.com/login/',
+        clicks: 0,
+        impressions: 800,
+        ctr: 0,
+        position: 3,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(rows)
+    expect(annotated).toHaveLength(rows.length)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual(['qualified', 'qualified', 'off_mission', 'junk'])
+    // Raw rows stay raw, including the two self-brand/off-mission observations.
+    expect(annotated[2].query).toBe('student living university of south carolina')
+    expect(annotated[3].query).toBe('you safe login')
+
+    const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
+    expect(summary.rowCount).toBe(4)
+    expect(summary.totals.impressions).toBe(1550)
+    expect(summary.qualified.rowCount).toBe(2)
+    expect(summary.qualified.impressions).toBe(600)
+    expect(summary.offMission.rowCount).toBe(1)
+    expect(summary.offMission.impressions).toBe(150)
+    expect(summary.junk.rowCount).toBe(1)
+    expect(summary.junk.impressions).toBe(800)
+    expect(summary.qualified.rowCount + summary.offMission.rowCount + summary.junk.rowCount).toBe(summary.rowCount)
+  })
+
+  it('keeps opt-out / opt-in process rows observable as off-mission, never qualified', () => {
+    // Diff review finding: the `on opt` anchor matched the ordinary verb
+    // inside "opt out" / "opt-in", so dining/housing process rows were
+    // summarised as qualified demand. They stay raw and observable, but must
+    // land in the off-mission bucket; only the status phrase qualifies.
+    const rows: FakeRow[] = [
+      {
+        query: 'meal plan information on opt out',
+        page: 'https://example.com/dining-opt-out-info',
+        clicks: 0,
+        impressions: 320,
+        ctr: 0,
+        position: 6,
+      },
+      {
+        query: 'student housing details on opt-in',
+        page: 'https://example.com/housing-opt-in',
+        clicks: 1,
+        impressions: 140,
+        ctr: 0.007,
+        position: 12,
+      },
+      {
+        query: 'is it safe for international students on opt',
+        page: 'https://legal.yousafeconsultancy.com/us/opt/',
+        clicks: 2,
+        impressions: 260,
+        ctr: 0.008,
+        position: 8,
+      },
+    ]
+
+    const annotated = annotatePersistedGscRows(rows)
+    expect(annotated.map((row) => row.visibilityClass)).toEqual(['off_mission', 'off_mission', 'qualified'])
+    // Raw observations are preserved exactly as GSC reported them.
+    expect(annotated.map((row) => row.query)).toEqual([
+      'meal plan information on opt out',
+      'student housing details on opt-in',
+      'is it safe for international students on opt',
+    ])
+
+    const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
+    expect(summary.rowCount).toBe(3)
+    expect(summary.qualified.rowCount).toBe(1)
+    expect(summary.qualified.impressions).toBe(260)
+    expect(summary.offMission.rowCount).toBe(2)
+    expect(summary.offMission.impressions).toBe(460)
+    expect(summary.junk.rowCount).toBe(0)
+    expect(summary.qualified.rowCount + summary.offMission.rowCount + summary.junk.rowCount).toBe(summary.rowCount)
+  })
+
   it('keeps the latest-stored-window fallback semantics for an unsynced rolling window', async () => {
     const scan = await loadPersistedGscWindowScan(
       stubDb({
