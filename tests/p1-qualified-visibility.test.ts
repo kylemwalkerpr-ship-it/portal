@@ -195,6 +195,9 @@ describe('GSC visibility classification', () => {
       'you safe portal',
       'you safe contact',
       'you safe consultancy london',
+      'you safe login page',
+      'you safe app store',
+      'you safe official website',
     ]) {
       expect(classifyGscVisibility(term, strongSignal)).toBe('junk')
     }

@@ -547,6 +547,46 @@ const BRAND_NAV_ROWS: FakeRow[] = [
     ctr: 0,
     position: 6,
   },
+  {
+    query: 'you safe reviews',
+    page: 'https://legal.yousafeconsultancy.com/reviews/',
+    clicks: 0,
+    impressions: 120,
+    ctr: 0,
+    position: 4,
+  },
+  {
+    query: 'you safe app',
+    page: 'https://legal.yousafeconsultancy.com/app/',
+    clicks: 0,
+    impressions: 90,
+    ctr: 0,
+    position: 5,
+  },
+  {
+    query: 'you safe login page',
+    page: 'https://legal.yousafeconsultancy.com/login/',
+    clicks: 0,
+    impressions: 80,
+    ctr: 0,
+    position: 6,
+  },
+  {
+    query: 'you safe app store',
+    page: 'https://legal.yousafeconsultancy.com/app/',
+    clicks: 0,
+    impressions: 70,
+    ctr: 0,
+    position: 7,
+  },
+  {
+    query: 'you safe official website',
+    page: 'https://legal.yousafeconsultancy.com/',
+    clicks: 0,
+    impressions: 60,
+    ctr: 0,
+    position: 3,
+  },
 ]
 
 const BRAND_NAV_PROSE_ROW: FakeRow = {

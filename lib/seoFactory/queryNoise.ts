@@ -52,14 +52,15 @@ function normalizeSelfBrandView(term: string): string {
  *
  * The rule is deliberately BOUNDED — the brand phrase (plus the optional word
  * `consultancy`) and then at most two qualifiers from a CLOSED navigational
- * vocabulary. It is never an unbounded `^you safe\b.*`: ordinary prose that
- * merely contains or starts with the words ("you safe to travel on a student
- * visa", "are you safe to travel on a student visa", "is warwick safe for
- * international students") is real search demand and must never be junked by
- * the brand rule.
+ * vocabulary (login / reviews / app / portal / contact / website / page /
+ * store / download / official / country-city suffixes). It is never an
+ * unbounded `^you safe\b.*`: ordinary prose that merely contains or starts
+ * with the words ("you safe to travel on a student visa", "are you safe to
+ * travel on a student visa", "is warwick safe for international students") is
+ * real search demand and must never be junked by the brand rule.
  */
 const SPACED_SELF_BRAND_RE =
-  /^you safe(?: consultancy)?(?: (?:log ?in|sign ?in|reviews?|apps?|portals?|contacts?|websites?|sites?|homepages?|official|services?|uk|england|scotland|wales|london))?(?: (?:log ?in|sign ?in|reviews?|apps?|portals?|contacts?|uk|london|official))?$/
+  /^you safe(?: consultancy)?(?: (?:log ?in|sign ?in|reviews?|apps?|downloads?|portals?|contacts?|websites?|sites?|pages?|stores?|homepages?|official|services?|uk|england|scotland|wales|london))?(?: (?:log ?in|sign ?in|reviews?|apps?|downloads?|portals?|contacts?|websites?|sites?|pages?|stores?|homepages?|official|uk|london))?$/
 
 function isSpacedSelfBrandTerm(term: string): boolean {
   return SPACED_SELF_BRAND_RE.test(normalizeSelfBrandView(term))

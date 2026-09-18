@@ -300,6 +300,14 @@ describe('persisted GSC visibility measurement', () => {
         position: 3,
       },
       {
+        query: 'you safe app store',
+        page: 'https://legal.yousafeconsultancy.com/app/',
+        clicks: 0,
+        impressions: 200,
+        ctr: 0,
+        position: 4,
+      },
+      {
         query: 'you safe to travel on a student visa',
         page: 'https://legal.yousafeconsultancy.com/uk/travel-while-on-visa/',
         clicks: 1,
@@ -310,15 +318,16 @@ describe('persisted GSC visibility measurement', () => {
     ]
 
     const annotated = annotatePersistedGscRows(rows)
-    expect(annotated.map((row) => row.visibilityClass)).toEqual(['junk', 'qualified'])
+    expect(annotated.map((row) => row.visibilityClass)).toEqual(['junk', 'junk', 'qualified'])
     // Raw rows stay raw: the brand observation is preserved for measurement.
     expect(annotated[0].query).toBe('you safe portal')
+    expect(annotated[1].query).toBe('you safe app store')
 
     const summary = buildGscVisibilitySummary({ rows, displayLimit: 100, windowDays: 90 })
-    expect(summary.rowCount).toBe(2)
-    expect(summary.totals.impressions).toBe(1000)
-    expect(summary.junk.rowCount).toBe(1)
-    expect(summary.junk.impressions).toBe(700)
+    expect(summary.rowCount).toBe(3)
+    expect(summary.totals.impressions).toBe(1200)
+    expect(summary.junk.rowCount).toBe(2)
+    expect(summary.junk.impressions).toBe(900)
     expect(summary.qualified.rowCount).toBe(1)
     expect(summary.qualified.impressions).toBe(300)
     expect(summary.offMission.rowCount).toBe(0)

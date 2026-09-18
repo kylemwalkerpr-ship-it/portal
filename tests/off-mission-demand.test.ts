@@ -102,6 +102,9 @@ describe('spaced self-brand navigational junk (PR #224 brand leak)', () => {
       'you safe portal',
       'you safe contact',
       'you safe consultancy london',
+      'you safe login page',
+      'you safe app store',
+      'you safe official website',
     ]) {
       expect(isJunkQuery(term)).toBe(true)
       expect(isJunkTopic(term)).toBe(true)

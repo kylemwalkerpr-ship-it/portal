@@ -88,6 +88,11 @@ describe('isJunkQuery — GSC noise filter', () => {
       'you safe portal',
       'you safe contact',
       'you safe consultancy london',
+      // Same bounded genre, one qualifier slot further out: still a closed
+      // navigational vocabulary, never `^you safe\b.*`.
+      'you safe login page',
+      'you safe app store',
+      'you safe official website',
       'YOU SAFE PORTAL',
     ]) {
       expect(isJunkQuery(term)).toBe(true)
@@ -118,6 +123,18 @@ describe('isJunkQuery — GSC noise filter', () => {
       expect(isJunkQuery(term)).toBe(false)
       expect(isJunkTopic(term)).toBe(false)
       expect(isActionableDemandQuery(term)).toBe(true)
+    }
+    // The exemption bypasses ONLY the pasted-text word-count guard: the same
+    // sentence family is still junk when it carries a brand / URL / file /
+    // document marker.
+    for (const term of [
+      'is it safe for international students to work in the uk yousafe',
+      'is it safe for international students to work in the uk pacific.edu/sites/default/files',
+      'is it safe for international students to work in the uk rates final.pdf',
+      'is it safe for international students to work in the uk "fy27 stk housing rates"',
+    ]) {
+      expect(isJunkQuery(term)).toBe(true)
+      expect(isActionableDemandQuery(term)).toBe(false)
     }
     // Safety question + explicit visa context, without the student frame.
     expect(isJunkQuery('are you safe to travel on a student visa')).toBe(false)
