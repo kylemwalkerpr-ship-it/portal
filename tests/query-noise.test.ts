@@ -150,6 +150,73 @@ describe('isJunkQuery — GSC noise filter', () => {
     ).toBe(true)
   })
 
+  it('flags self-brand navigational forms in EITHER qualifier slot (final review finding M3)', () => {
+    // Final review finding M3: the second qualifier slot used a smaller
+    // vocabulary than the first, so `you safe login england` / `you safe portal
+    // wales` / `you safe reviews scotland` / `you safe login services` stayed
+    // actionable. Both slots now share ONE closed navigational vocabulary —
+    // still a bounded brand rule, never an unbounded `^you safe\b.*`.
+    for (const term of [
+      'you safe login england',
+      'you safe portal wales',
+      'you safe reviews scotland',
+      'you safe login services',
+    ]) {
+      expect(isJunkQuery(term)).toBe(true)
+      expect(isJunkTopic(term)).toBe(true)
+    }
+    // Arbitrary prose that merely starts with the brand words stays real
+    // demand: its trailing words are not navigational qualifiers.
+    expect(isJunkQuery('you safe to travel on a student visa')).toBe(false)
+    expect(isJunkTopic('you safe to travel on a student visa')).toBe(false)
+    expect(isJunkQuery('you safe in canada')).toBe(false)
+    expect(isJunkTopic('you safe while abroad')).toBe(false)
+    expect(isJunkQuery('are you safe to travel on a student visa')).toBe(false)
+    expect(isJunkQuery('is warwick safe for international students')).toBe(false)
+  })
+
+  it('keeps org-prefixed activity-safety questions junk-free at natural length (final review finding M1)', () => {
+    // Final review finding M1: the org-prefixed place-safety alternative
+    // (`university safe` / `campus safe`) matched inside a genuine
+    // activity-safety question, so it was classified campus lifestyle. The
+    // alternative now carries the same shared mission-activity lookahead as the
+    // unprefixed `safe for … students` branch. These are real long-tail
+    // questions, not pasted text.
+    for (const term of [
+      'is university safe for international students to work in the uk',
+      'is campus safe for international students to study in canada',
+      'is student safety a concern for international students to find work in the uk',
+    ]) {
+      expect(isJunkQuery(term)).toBe(false)
+      expect(isJunkTopic(term)).toBe(false)
+    }
+  })
+
+  it('keeps realistic long activity-safety phrasings actionable without relaxing the word-count guard (final review finding M2)', () => {
+    // Final review finding M2: the exemption only knew bare `work` / `study`,
+    // so realistic bounded activity phrasings were pasted-text junked.
+    for (const term of [
+      'is it safe for international students to get a job in the uk',
+      'is it safe for international students to find work in canada',
+      'is it safe for international students to do part-time work in the uk',
+      'is it safe for international students to look for a job in the uk',
+    ]) {
+      expect(isJunkQuery(term)).toBe(false)
+      expect(isJunkTopic(term)).toBe(false)
+      expect(isActionableDemandQuery(term)).toBe(true)
+    }
+    // MAX_KEYWORD_WORDS is untouched: long non-safety queries, long
+    // safety questions outside the mission shape, and physical pastes stay junk.
+    expect(
+      isJunkQuery('what are the best student housing options near the university of south carolina'),
+    ).toBe(true)
+    expect(isJunkQuery('is it safe to buy a used car from a private seller abroad')).toBe(true)
+    expect(isJunkQuery('students safe travel tips for studying abroad in canada this year')).toBe(true)
+    // The narrow exemption stays subject to the file / url / brand / document rules.
+    expect(isJunkQuery('is it safe for international students to find work in canada yousafe')).toBe(true)
+    expect(isJunkQuery('is it safe for international students to get a job in the uk rates final.pdf')).toBe(true)
+  })
+
   it('flags quoted fiscal-year housing leftovers that drop the .pdf dot', () => {
     expect(isJunkQuery('"fy27 stk housing rates" pacific pdf')).toBe(true)
     expect(isJunkQuery('fy27 stk housing rates pacific pdf')).toBe(true)

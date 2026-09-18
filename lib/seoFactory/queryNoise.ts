@@ -53,14 +53,23 @@ function normalizeSelfBrandView(term: string): string {
  * The rule is deliberately BOUNDED — the brand phrase (plus the optional word
  * `consultancy`) and then at most two qualifiers from a CLOSED navigational
  * vocabulary (login / reviews / app / portal / contact / website / page /
- * store / download / official / country-city suffixes). It is never an
- * unbounded `^you safe\b.*`: ordinary prose that merely contains or starts
- * with the words ("you safe to travel on a student visa", "are you safe to
- * travel on a student visa", "is warwick safe for international students") is
- * real search demand and must never be junked by the brand rule.
+ * store / download / official / services / country-city suffixes). BOTH
+ * qualifier slots draw on that same vocabulary, because the order carries no
+ * meaning for a navigational self-search: `you safe login england`,
+ * `you safe portal wales`, `you safe reviews scotland` and
+ * `you safe login services` are the same junk as `you safe login` and
+ * `you safe consultancy london`. It is never an unbounded `^you safe\b.*`:
+ * ordinary prose that merely contains or starts with the words ("you safe to
+ * travel on a student visa", "are you safe to travel on a student visa",
+ * "is warwick safe for international students") is real search demand and must
+ * never be junked by the brand rule.
  */
-const SPACED_SELF_BRAND_RE =
-  /^you safe(?: consultancy)?(?: (?:log ?in|sign ?in|reviews?|apps?|downloads?|portals?|contacts?|websites?|sites?|pages?|stores?|homepages?|official|services?|uk|england|scotland|wales|london))?(?: (?:log ?in|sign ?in|reviews?|apps?|downloads?|portals?|contacts?|websites?|sites?|pages?|stores?|homepages?|official|uk|london))?$/
+const SELF_BRAND_NAV_SRC =
+  '(?:log ?in|sign ?in|reviews?|apps?|downloads?|portals?|contacts?|websites?|sites?|pages?|stores?|homepages?|official|services?|uk|england|scotland|wales|london)'
+
+const SPACED_SELF_BRAND_RE = new RegExp(
+  `^you safe(?: consultancy)?(?: ${SELF_BRAND_NAV_SRC})?(?: ${SELF_BRAND_NAV_SRC})?$`,
+)
 
 function isSpacedSelfBrandTerm(term: string): boolean {
   return SPACED_SELF_BRAND_RE.test(normalizeSelfBrandView(term))
@@ -109,6 +118,35 @@ function isHousingStampJunk(term: string): boolean {
 }
 
 /**
+ * Mission activity phrases inside a safety question — "… safe for international
+ * students to work / study / travel / get a job / find work …".
+ *
+ * ONE shared source drives both safety boundaries:
+ *  - `MISSION_SAFETY_ACTIVITY_RE` (the narrow pasted-text exemption), and
+ *  - `CAMPUS_PLACE_SAFETY_RE` (the org-prefixed place-safety lookahead),
+ * so "… safe for … students to <mission activity>" can never read as
+ * place-safety in one place and as demand in the other.
+ *
+ * The vocabulary stays a BOUNDED list of activities — bare `work` / `study` are
+ * ordinary words in campus-lifestyle demand and are NOT mission anchors. The
+ * phrasings are the realistic long-tail shapes ("to get a job", "to find work",
+ * "to do part-time work", "to look for a job"), not an open verb slot.
+ */
+const MISSION_SAFETY_ACTIVITY_SRC =
+  '(?:work|study|travel|volunteer|intern|move|live|stay|arrive|leave|return|earn|get\\s+a\\s+job|find\\s+(?:work|a\\s+job)|do\\s+part[-\\s]?time\\s+work|look\\s+for\\s+(?:a\\s+job|work))'
+
+const MISSION_SAFETY_SUBJECT_SRC = `(?:international\\s+|college\\s+|university\\s+|overseas\\s+|foreign\\s+)?students?\\s+to\\s+${MISSION_SAFETY_ACTIVITY_SRC}\\b`
+
+/**
+ * `safe(ty)` … `for <…> students to <mission activity>`, with the bounded gap
+ * `[^?!.]{0,60}?` the exemption has always used. Shared by the exemption and by
+ * the org-prefixed place-safety lookahead below.
+ */
+const MISSION_SAFETY_CLAUSE_SRC = `[^?!.]{0,60}?\\bfor\\s+${MISSION_SAFETY_SUBJECT_SRC}`
+
+const MISSION_SAFETY_ACTIVITY_RE = new RegExp(`\\bsafe(?:ty)?\\b${MISSION_SAFETY_CLAUSE_SRC}`, 'i')
+
+/**
  * Real search demand that is outside YouSafe's ranking mission when it stands
  * alone. These terms are not malformed "junk": we keep them visible in raw
  * analytics so the team can measure topical pollution. They simply must not
@@ -135,9 +173,30 @@ function isHousingStampJunk(term: string): boolean {
  * international students to work in the uk / study in canada / travel while on
  * a visa") through. Deliberately NOT solved by adding bare `work` / `study`
  * mission anchors, which are ordinary words in campus-lifestyle demand too.
+ * The ORG-PREFIXED forms of the same phrase live in `CAMPUS_PLACE_SAFETY_RE`
+ * below, because they need the shared mission-activity lookahead too.
  */
 const CAMPUS_LIFESTYLE_RE =
-  /\b(?:student housing|campus housing|housing|housing rates?|dorms?|dormitor(?:y|ies)|residence halls?|halls? of residence|student residences?|residence life|homestays?|roommates?|housemates?|flatshares?|meal plans?|dining plans?|campus dining|parking|student neighborhoods?|student neighbourhoods?|campus life|student life|student living(?!\s+(?:costs?|expenses?|budgets?|prices?|affordability|fees?))|commute|accommodation|apartments?|student rentals?|rent ranges?|student storage|self[-\s]?storage|(?:campus|student|university|college)\s+saf(?:e|ety)|safe\s+for\s+(?:international\s+|college\s+|university\s+)?students?\b(?!\s+to\b))\b/i
+  /\b(?:student housing|campus housing|housing|housing rates?|dorms?|dormitor(?:y|ies)|residence halls?|halls? of residence|student residences?|residence life|homestays?|roommates?|housemates?|flatshares?|meal plans?|dining plans?|campus dining|parking|student neighborhoods?|student neighbourhoods?|campus life|student life|student living(?!\s+(?:costs?|expenses?|budgets?|prices?|affordability|fees?))|commute|accommodation|apartments?|student rentals?|rent ranges?|student storage|self[-\s]?storage|safe\s+for\s+(?:international\s+|college\s+|university\s+)?students?\b(?!\s+to\b))\b/i
+
+/**
+ * Org-prefixed campus place safety — "is warwick campus safe for international
+ * students", "university safety for international students", "campus safety
+ * tips for international students".
+ *
+ * The prefix is part of the same lifestyle family, but it needs its own
+ * negative lookahead: the SAME prefix opens a genuine activity-safety question
+ * when a mission activity clause follows ("is university safe for international
+ * students to work in the uk", "is campus safe for international students to
+ * study in canada"). Reusing the shared clause source keeps this boundary and
+ * the pasted-text exemption in agreement by construction, and the prefix stays
+ * a bounded `campus|student|university|college` token — never a generic
+ * `work` / `study` mission anchor.
+ */
+const CAMPUS_PLACE_SAFETY_RE = new RegExp(
+  `\\b(?:campus|student|university|college)\\s+saf(?:e|ety)\\b(?!${MISSION_SAFETY_CLAUSE_SRC})`,
+  'i',
+)
 
 /**
  * Bounded campus-proximity variants.
@@ -203,13 +262,11 @@ const MAX_KEYWORD_WORDS = 8
  * The exemption needs BOTH the word `safe(ty)` and one of those two mission
  * shapes, so the guard stays intact for real pasted blobs — a long blob, a
  * quoted document title, or a long non-safety query ("how to apply for a uk
- * spouse visa step by step guide") is still junk. Does NOT remove or raise
- * MAX_KEYWORD_WORDS.
+ * spouse visa step by step guide") is still junk, and the activity vocabulary
+ * itself is the bounded shared list at `MISSION_SAFETY_ACTIVITY_SRC` (not an
+ * open verb slot). Does NOT remove or raise MAX_KEYWORD_WORDS.
  */
 const SAFETY_QUESTION_RE = /\bsafe(?:ty)?\b/i
-
-const MISSION_SAFETY_ACTIVITY_RE =
-  /\bsafe(?:ty)?\b[^?!.]{0,60}?\bfor\s+(?:international\s+|college\s+|university\s+|overseas\s+|foreign\s+)?students?\s+to\s+(?:work|study|travel|volunteer|intern|move|live|stay|arrive|leave|return|earn)\b/i
 
 function isMissionSafetyPhrase(term: string): boolean {
   if (!SAFETY_QUESTION_RE.test(term)) return false
@@ -259,7 +316,7 @@ export function isFileOrUrlLikeTerm(term: string): boolean {
 export function isOffMissionDemandQuery(term: string): boolean {
   const t = sanitizeDemandTerm(term)
   if (!t) return false
-  if (!CAMPUS_LIFESTYLE_RE.test(t) && !CAMPUS_NEAR_RE.test(t)) return false
+  if (!CAMPUS_LIFESTYLE_RE.test(t) && !CAMPUS_PLACE_SAFETY_RE.test(t) && !CAMPUS_NEAR_RE.test(t)) return false
   if (MISSION_ANCHOR_RE.test(t)) return false
   if (TENANCY_LEGAL_RE.test(t)) return false
   return true
