@@ -50,6 +50,27 @@ describe('opportunity engine — cannibal classification', () => {
       'https://legal.yousafeconsultancy.com/uk/dependent-visa-2026/',
     ])
   })
+
+  it('refuses opt-out/opt-in process demand rescued by the `on opt` anchor, keeping the status question', () => {
+    // Diff review finding: the `on opt` mission anchor matched the ordinary
+    // verb inside "opt out" / "opt-in", so dining/housing process queries
+    // reached the action surface. The engine must refuse them while the
+    // immigration-status question still scores.
+    const result = scoreOpportunities({
+      queries: [
+        { term: 'meal plan information on opt out', impressions: 320, clicks: 0, ctr: 0, position: 6 },
+        { term: 'student housing details on opt-in', impressions: 140, clicks: 1, ctr: 0.007, position: 12 },
+        { term: 'is it safe for international students on opt', impressions: 260, clicks: 2, ctr: 0.008, position: 8 },
+      ],
+      coverage: [],
+      limit: 10,
+    })
+    const topics = result.opportunities.map((o) => o.topic)
+    expect(topics).not.toContain('meal plan information on opt out')
+    expect(topics).not.toContain('student housing details on opt-in')
+    expect(topics).toContain('is it safe for international students on opt')
+    expect(result.cannibalization.map((c) => c.term)).not.toContain('meal plan information on opt out')
+  })
 })
 
 describe('opportunity engine — monetary ranking', () => {
