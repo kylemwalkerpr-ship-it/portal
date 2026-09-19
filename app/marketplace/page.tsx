@@ -4,8 +4,10 @@ import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
+// This route is request-dynamic (filters/pagination) and its expensive shared
+// landing snapshot already has an explicit versioned-KV TTL. Route-level ISR
+// is intentionally omitted because the current OpenNext deployment has no
+// incremental cache/revalidation queue.
 
 export async function generateMetadata({
   searchParams,

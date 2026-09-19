@@ -3,8 +3,9 @@ import { MarketplaceProvidersIndex } from '@/components/marketplace/MarketplaceP
 import { ProvidersIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
+// Build-time SSG. Live provider results are fetched client-side, so this shell
+// does not need time-based ISR (which requires an OpenNext cache + queue).
+export const revalidate = false
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/providers')

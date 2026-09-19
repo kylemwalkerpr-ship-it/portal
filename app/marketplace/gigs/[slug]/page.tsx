@@ -11,8 +11,9 @@ import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryI
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
 import { renderBioMarkdown, stripHtmlComments } from '@/lib/bioMarkdown'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
+// Gig detail is request-dynamic and reads current provider/gig data directly.
+// Route-level ISR is intentionally omitted because the current OpenNext
+// deployment has no incremental cache/revalidation queue.
 
 /**
  * Check if a slug has been redirected (via gig_slug_redirects table)

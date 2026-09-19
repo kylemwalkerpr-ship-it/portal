@@ -7,7 +7,9 @@ const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
 const DESCRIPTION =
   'Immigration preparation packs, workbooks, templates, and short guides in one catalog. Pay once on Payhip, download instantly. No subscription.'
 
-export const revalidate = 3600
+// The catalog is code-backed and changes only with a deploy. Keep it as true
+// build-time SSG instead of entering OpenNext's unsupported ISR path.
+export const revalidate = false
 
 export const metadata: Metadata = {
   title: TITLE,
