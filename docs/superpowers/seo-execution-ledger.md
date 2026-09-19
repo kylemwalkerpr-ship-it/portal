@@ -415,3 +415,38 @@ This section supersedes the earlier implementation-only reward/forecast acceptan
 - Every current P1 row in the parity matrix is now `PASS`.
 - Overall SEO parity is **not** complete: P2-P13 remain pending and should be treated as the next workstream.
 - Historical ledger sections that said P1 was incomplete remain preserved as dated evidence of their earlier state; this section is the current superseding P1 status.
+
+## 2026-09-19 — P2 Marketplace Worker stability follow-up: remove unsupported time-based ISR
+
+Implementation and local acceptance only. This section does **not** mark any P2 parity row PASS; a fresh production route sweep and estate crawl remain required.
+
+### Production diagnosis after PR #238
+
+- PR #238 (`fix(marketplace): reduce free-plan worker cpu`) merged to main as `90d1e6d25fe2985785eaf4643bbb6f9f35fd5344`; exact-main deployment run `35467532782` completed SUCCESS including Cloudflare deploy, Worker-secret health, and post-deploy smoke.
+- The first post-deploy Market stress pass returned 27/27 HTTP 200 across three rounds of the landing, `/shop`, `/gigs`, `/providers`, `/categories`, `/categories/immigration`, two dynamic gig details, and a shop product.
+- A later controlled `/categories` request exposed a different failure from the earlier CPU 1102s: Wrangler tail recorded `wallTime=48849ms`, `cpuTime=9ms`, `outcome=canceled`, no completed response, and `waitUntil() tasks did not complete within the allowed time after invocation end and have been cancelled`.
+- A separate contemporaneous `exceededCpu` / 503 event belonged to Portal `/api/content-studio/system-health`, not the Market request. The Market `/categories` failure is therefore classified as a revalidation lifecycle/waitUntil hang rather than a Market CPU-limit render failure.
+
+### Configuration truth and fix
+
+- `open-next.config.ts` is `defineCloudflareConfig({})`; the installed OpenNext Cloudflare adapter resolves incremental cache, tag cache, and queue to dummy defaults when omitted.
+- Production `wrangler.toml` has the app-owned `PAGE_CACHE` KV binding but no OpenNext `NEXT_INC_CACHE_R2_BUCKET` / `NEXT_INC_CACHE_KV` binding and no production revalidation queue.
+- Every numeric route-level Market `revalidate=3600` was therefore removed instead of adding R2/Durable-Object infrastructure solely to preserve a one-hour timer.
+- `/marketplace/gigs`, `/marketplace/categories`, `/marketplace/providers`, and `/shop` are now true build-time SSG via `revalidate=false`.
+- Request-dynamic `/marketplace` and `/marketplace/gigs/[slug]` no longer declare route-level ISR; they retain their explicit live KV/DB behavior.
+- The `/gigs` directory no longer contains a misleading runtime KV layer on a static page. Its full active/provider-backed inventory is fetched at build time (limit 5000), and the build fails closed if that inventory read is unavailable instead of deploying an empty static directory.
+
+### Local verification
+
+- Focused stability/estate contracts: 6 suites / 32 tests PASS.
+- TypeScript: PASS.
+- `git diff --check`: PASS.
+- Full repository Jest: 430 suites PASS / 2 skipped; 4,535 tests PASS / 4 skipped; exit 0.
+- `npm run build`: PASS through Next.js 16.2.11 and OpenNext Cloudflare 1.20.2.
+- Production route table proof from that build: `/marketplace/gigs`, `/marketplace/categories`, `/marketplace/providers`, and `/shop` are static with **no revalidation interval**; `/marketplace`, `/marketplace/categories/[categoryId]`, and `/marketplace/gigs/[slug]` remain dynamic.
+- A new regression test rejects numeric Market route revalidation while the deployment lacks an explicit OpenNext incremental cache + queue.
+- A headless Grok xhigh read-only review attempt stalled without a completed result and was terminated; no independent Grok review PASS is claimed.
+
+### Remaining production acceptance
+
+Deploy the exact reviewed SHA, then repeat Market Worker-tail acceptance with repeated `/categories` requests and the broader public route set. Require HTTP 200 and no Market `exceededCpu`, `canceled`, waitUntil-timeout, or 503 events before treating this operational blocker as closed. After that, run the fresh P2 estate crawl and use its sitemap/canonical/redirect/4xx/broken-link/orphan evidence for the actual P2 matrix rows.

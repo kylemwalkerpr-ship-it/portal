@@ -1,25 +1,19 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CATEGORIES } from '@/lib/categories'
-import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export const revalidate = 3600
+// Build-time SSG keeps this large SEO directory off the Free-plan Worker hot
+// path. Do not add time-based ISR until OpenNext has a persistent incremental
+// cache and production revalidation queue.
+export const revalidate = false
 
 const canonicalUrl = getMarketplaceCanonicalUrl('/gigs')
 
-// ── Versioned KV read-through (same pattern as the marketplace landing) ──
-// The directory pulls every active provider-backed gig (up to 5000 rows) to
-// build the grouped "Complete service directory". That fan-out is identical
-// for every visitor, so it is read through a versioned KV entry in the `gigs`
-// namespace: any publish/pause/moderate (bumpCacheVersion('gigs')) makes the
-// entry unreachable instantly, and the TTL keeps a warm Worker from paying
-// the query on every ISR miss.
-const GIGS_DIRECTORY_CACHE_TTL_SECONDS = 300
-const GIGS_DIRECTORY_CACHE_PATH = '/cache/gigs-directory'
-const GIGS_DIRECTORY_CACHE_QUERY = 'v1'
-
+// The full directory is generated once during deployment and served as a
+// static asset. A failed build-time inventory read must fail the build instead
+// of freezing an empty directory into production until the next deploy.
 export const metadata: Metadata = {
   title: 'Browse Immigration & Tenancy Services | YouSafe Marketplace',
   description:
@@ -50,23 +44,11 @@ type HubGig = {
 }
 
 /**
- * A cached directory must still look like the rows the page renders: an
- * array of objects carrying a string id. Malformed/legacy entries are treated
- * as a miss and overwritten instead of crashing the hub.
+ * Build-time directory snapshot. This route is intentionally true SSG, so a
+ * failed inventory read must abort the build rather than deploy stale/empty
+ * HTML that cannot self-heal through ISR.
  */
-function isHubGigDirectory(value: unknown): value is HubGig[] {
-  return (
-    Array.isArray(value) &&
-    value.every((gig) => Boolean(gig && typeof gig === 'object' && typeof (gig as HubGig).id === 'string'))
-  )
-}
-
-/**
- * DB-backed directory snapshot. `null` = the admin client could not be
- * created or the query failed — callers serve an empty directory WITHOUT
- * persisting it, so a transient blip cannot blank the hub for the whole TTL.
- */
-async function computeActiveGigs(): Promise<HubGig[] | null> {
+async function loadActiveGigsForBuild(): Promise<HubGig[]> {
   try {
     const db = createSupabaseAdminClient()
     const { data, error } = await db
@@ -81,31 +63,14 @@ async function computeActiveGigs(): Promise<HubGig[] | null> {
       .limit(5000)
 
     if (error) {
-      console.warn('[marketplace/gigs] active-gig directory query failed', error.message)
-      return null
+      throw new Error(`active-gig directory query failed: ${error.message}`)
     }
 
     return (data ?? []).filter((gig: any) => Boolean(gig?.slug && gig?.provider_id)) as HubGig[]
   } catch (error) {
-    console.warn('[marketplace/gigs] active-gig directory unavailable', error)
-    return null
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`[marketplace/gigs] build-time directory unavailable: ${message}`)
   }
-}
-
-async function loadActiveGigs(): Promise<HubGig[]> {
-  const cacheKey = await generateVersionedCacheKey(
-    'gigs',
-    GIGS_DIRECTORY_CACHE_PATH,
-    GIGS_DIRECTORY_CACHE_QUERY,
-  )
-  const cached = await getCached<HubGig[]>(cacheKey, GIGS_DIRECTORY_CACHE_TTL_SECONDS)
-  if (isHubGigDirectory(cached)) return cached
-
-  const fresh = await computeActiveGigs()
-  if (!fresh) return []
-
-  await setCached(cacheKey, fresh, GIGS_DIRECTORY_CACHE_TTL_SECONDS)
-  return fresh
 }
 
 function categoryLabel(id: string | null): string {
@@ -132,7 +97,7 @@ function excerpt(value: string | null): string {
 }
 
 export default async function MarketplaceServicesHub() {
-  const gigs = await loadActiveGigs()
+  const gigs = await loadActiveGigsForBuild()
   const featured = gigs.slice(0, 24)
   const grouped = CATEGORIES.map((category) => ({
     ...category,

@@ -1,13 +1,11 @@
 /**
- * Page-level versioned KV read-through (marketplace CPU optimization):
+ * Marketplace page cache/static contracts:
  *
- *  - app/marketplace/gigs/page.tsx reads the full active-gig directory
- *    (same 5000-row inventory, same "Complete service directory") through a
- *    versioned `gigs` entry, and never persists a failed query as an empty
- *    directory.
+ *  - app/marketplace/gigs/page.tsx is true build-time SSG. It keeps the full
+ *    directory but never enters unsupported time-based ISR on Cloudflare.
  *  - the category page count used by BOTH generateMetadata and the page body
- *    goes through lib/marketplaceCategoryCounts, so the two renders reuse one
- *    cached count; failures are never cached as 0.
+ *    goes through lib/marketplaceCategoryCounts, so dynamic category requests
+ *    reuse one cached count; failures are never cached as 0.
  */
 
 import { readFileSync } from 'node:fs'
@@ -78,21 +76,7 @@ beforeEach(() => {
   mockedCache.__store.clear()
 })
 
-describe('gigs directory cache — /gigs hub', () => {
-  it('reads the directory through the versioned `gigs` KV entry', () => {
-    expect(gigHub).toContain(
-      "import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'",
-    )
-    expect(gigHub).toContain('GIGS_DIRECTORY_CACHE_PATH')
-    expect(gigHub).toContain('GIGS_DIRECTORY_CACHE_QUERY')
-    expect(gigHub).toContain('getCached<HubGig[]>(cacheKey, GIGS_DIRECTORY_CACHE_TTL_SECONDS)')
-    expect(gigHub).toContain('setCached(cacheKey, fresh, GIGS_DIRECTORY_CACHE_TTL_SECONDS)')
-    expect(gigHub).toContain("const GIGS_DIRECTORY_CACHE_QUERY = 'v1'")
-    // The key is stamped in the same namespace the rest of the marketplace
-    // invalidates (bumpCacheVersion('gigs')).
-    expect(gigHub).toMatch(/generateVersionedCacheKey\(\s*'gigs'/)
-  })
-
+describe('gigs directory SSG — /gigs hub', () => {
   it('keeps the full inventory query and the Complete service directory', () => {
     const source = gigHub
     expect(source).toContain(".eq('status', 'active')")
@@ -104,19 +88,19 @@ describe('gigs directory cache — /gigs hub', () => {
     expect(source).toContain('href={`/gigs/${gig.slug}`}')
   })
 
-  it('serves the cached directory on a hit and recomputes on a miss', () => {
-    const hitIdx = gigHub.indexOf('if (isHubGigDirectory(cached)) return cached')
-    const computeIdx = gigHub.indexOf('const fresh = await computeActiveGigs()')
-    expect(hitIdx).toBeGreaterThan(-1)
-    expect(computeIdx).toBeGreaterThan(hitIdx)
+  it('is build-time SSG with no runtime KV/ISR path', () => {
+    expect(gigHub).toContain('export const revalidate = false')
+    expect(gigHub).toContain('loadActiveGigsForBuild')
+    expect(gigHub).not.toContain("from '@/lib/cache'")
+    expect(gigHub).not.toContain('generateVersionedCacheKey')
+    expect(gigHub).not.toContain('GIGS_DIRECTORY_CACHE_')
+    expect(gigHub).not.toMatch(/export const revalidate\s*=\s*\d+/)
   })
 
-  it('never persists a failed query as an empty directory', () => {
-    const computeIdx = gigHub.indexOf('const fresh = await computeActiveGigs()')
-    const bailIdx = gigHub.indexOf('if (!fresh) return []')
-    const writeIdx = gigHub.indexOf('await setCached(cacheKey, fresh, GIGS_DIRECTORY_CACHE_TTL_SECONDS)')
-    expect(bailIdx).toBeGreaterThan(computeIdx)
-    expect(writeIdx).toBeGreaterThan(bailIdx)
+  it('fails closed if the build-time inventory query is unavailable', () => {
+    expect(gigHub).toContain('throw new Error(`active-gig directory query failed:')
+    expect(gigHub).toContain('throw new Error(`[marketplace/gigs] build-time directory unavailable:')
+    expect(gigHub).not.toContain('if (!fresh) return []')
   })
 })
 

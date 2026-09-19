@@ -2,8 +2,10 @@ import type { Metadata } from 'next'
 import { MarketplaceCategoriesIndex } from '@/components/marketplace/MarketplaceCategoriesIndex'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
+// Build-time SSG. Time-based ISR is intentionally disabled until the
+// Cloudflare/OpenNext deployment has both an incremental cache and a
+// production revalidation queue.
+export const revalidate = false
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/categories')
