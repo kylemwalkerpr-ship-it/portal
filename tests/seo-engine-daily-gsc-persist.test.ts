@@ -298,6 +298,50 @@ describe('seo-engine-daily phase all — scheduled GSC persistence', () => {
     expect(body.gscPersistStatus).toBe('empty')
   })
 
+  it('records phase all as partial when reward attribution evidence is unavailable', async () => {
+    const order: string[] = []
+    primeSuccess(order)
+    rewards.mockResolvedValue({
+      events: 0,
+      jobsConsidered: 223,
+      jobsMatched: 0,
+      duplicatesSkipped: 0,
+      persistFailed: 0,
+      unavailable: 'GSC attribution window timed out',
+    })
+
+    const res = await POST(cronRequest({ phase: 'all' }))
+    const body = (await res.json()) as Record<string, unknown>
+    const [, status, , errors] = lastRecordCall()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(false)
+    expect(status).toBe('partial')
+    expect(errors.join(' ')).toMatch(/reward-attribution/)
+    expect(errors.join(' ')).toMatch(/timed out/i)
+    expect((body.phaseErrors as string[]).join(' ')).toMatch(/reward-attribution/)
+  })
+
+  it('records phase all as partial when any reward persistence write fails', async () => {
+    const order: string[] = []
+    primeSuccess(order)
+    rewards.mockResolvedValue({
+      events: 0,
+      jobsConsidered: 223,
+      jobsMatched: 1,
+      duplicatesSkipped: 0,
+      persistFailed: 1,
+    })
+
+    const res = await POST(cronRequest({ phase: 'all' }))
+    const body = (await res.json()) as Record<string, unknown>
+    const [, status, , errors] = lastRecordCall()
+
+    expect(body.ok).toBe(false)
+    expect(status).toBe('partial')
+    expect(errors.join(' ')).toMatch(/reward-persist/)
+  })
+
   it('does not run the persisted GSC sync for phase knowledge alone', async () => {
     const order: string[] = []
     primeSuccess(order)
@@ -305,5 +349,72 @@ describe('seo-engine-daily phase all — scheduled GSC persistence', () => {
     await POST(cronRequest({ phase: 'knowledge' }))
 
     expect(gscPersist).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('seo-engine-daily phase rewards — truthful reward availability', () => {
+  it('keeps a genuine zero-evidence rewards pass successful', async () => {
+    rewards.mockResolvedValue({
+      events: 0,
+      jobsConsidered: 223,
+      jobsMatched: 0,
+      duplicatesSkipped: 0,
+      persistFailed: 0,
+    })
+
+    const res = await POST(cronRequest({ phase: 'rewards' }))
+    const body = (await res.json()) as Record<string, unknown>
+    const [kind, status, summary, errors] = lastRecordCall()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(kind).toBe('daily')
+    expect(status).toBe('success')
+    expect(summary.events).toBe(0)
+    expect(summary.unavailable).toBeNull()
+    expect(errors).toEqual([])
+  })
+
+  it('returns ok:false and records partial when reward attribution evidence is unavailable', async () => {
+    rewards.mockResolvedValue({
+      events: 0,
+      jobsConsidered: 223,
+      jobsMatched: 0,
+      duplicatesSkipped: 0,
+      persistFailed: 0,
+      unavailable: 'GSC attribution window timed out',
+    })
+
+    const res = await POST(cronRequest({ phase: 'rewards' }))
+    const body = (await res.json()) as Record<string, unknown>
+    const [, status, summary, errors] = lastRecordCall()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(false)
+    expect(status).toBe('partial')
+    expect(summary.unavailable).toBe('GSC attribution window timed out')
+    expect(errors.join(' ')).toMatch(/reward-attribution/)
+    expect(errors.join(' ')).toMatch(/timed out/i)
+  })
+
+  it('returns ok:false and records partial when any reward write fails', async () => {
+    rewards.mockResolvedValue({
+      events: 0,
+      jobsConsidered: 223,
+      jobsMatched: 1,
+      duplicatesSkipped: 0,
+      persistFailed: 1,
+    })
+
+    const res = await POST(cronRequest({ phase: 'rewards' }))
+    const body = (await res.json()) as Record<string, unknown>
+    const [, status, summary, errors] = lastRecordCall()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(false)
+    expect(status).toBe('partial')
+    expect(summary.persistFailed).toBe(1)
+    expect(errors.join(' ')).toMatch(/reward-persist/)
   })
 })

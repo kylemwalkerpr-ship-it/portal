@@ -1843,11 +1843,38 @@ export function prepareCronRewards(opts: {
 }
 
 /** Fetch GSC page+query rows for an explicit window (page-specific, not query gossip). */
-export async function fetchGscPageQueryRows(window: CronAttributionWindow): Promise<GscPageQueryRow[]> {
-  try {
-    const { getGscAccess } = await import('@/lib/gscAuth')
-    const access = await getGscAccess()
-    if (!access?.accessToken || !access.siteUrl) return []
+const GSC_ATTRIBUTION_ACCESS_TIMEOUT_MS = 20_000
+const GSC_ATTRIBUTION_FETCH_TIMEOUT_MS = 15_000
+// Fixed 14-day buckets have at most 14 current-window alignments; adding each
+// immediately-prior baseline yields at most 28 distinct windows. Keep a small
+// hard ceiling above that theoretical maximum so evidence acquisition stays bounded.
+const GSC_ATTRIBUTION_MAX_DISTINCT_WINDOWS = 32
+const GSC_ATTRIBUTION_FETCH_CONCURRENCY = 4
+const GSC_ATTRIBUTION_ROW_LIMIT = 25_000
+
+type GscWindowAccess = { accessToken: string; siteUrl: string }
+
+async function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+async function fetchGscPageQueryRowsStrict(
+  window: CronAttributionWindow,
+  access: GscWindowAccess,
+): Promise<GscPageQueryRow[]> {
+  const queryWindow = async (startRow: number, rowLimit: number) => {
     const res = await fetch(
       `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(access.siteUrl)}/searchAnalytics/query`,
       {
@@ -1857,22 +1884,55 @@ export async function fetchGscPageQueryRows(window: CronAttributionWindow): Prom
           startDate: window.start,
           endDate: window.end,
           dimensions: ['page', 'query'],
-          rowLimit: 25000,
+          rowLimit,
+          startRow,
           type: 'web',
         }),
+        signal: AbortSignal.timeout(GSC_ATTRIBUTION_FETCH_TIMEOUT_MS),
       },
     )
-    if (!res.ok) return []
-    const data = (await res.json()) as { rows?: Array<{ keys: string[]; clicks: number; impressions: number; position: number }> }
-    return (data.rows || [])
-      .filter((r) => Array.isArray(r.keys) && r.keys.length >= 2 && typeof r.keys[0] === 'string')
-      .map((r) => ({
-        page: String(r.keys[0]).trim(),
-        query: String(r.keys[1]).trim(),
-        clicks: Number(r.clicks) || 0,
-        impressions: Number(r.impressions) || 0,
-        position: Number(r.position) || 0,
-      }))
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(
+        `GSC attribution window ${window.start}..${window.end} failed (${res.status}): ${text.slice(0, 160)}`,
+      )
+    }
+    const data = (await res.json()) as {
+      rows?: Array<{ keys: string[]; clicks: number; impressions: number; position: number }>
+    }
+    return data.rows || []
+  }
+
+  const rows = await queryWindow(0, GSC_ATTRIBUTION_ROW_LIMIT)
+  if (rows.length >= GSC_ATTRIBUTION_ROW_LIMIT) {
+    const overflow = await queryWindow(GSC_ATTRIBUTION_ROW_LIMIT, 1)
+    if (overflow.length) {
+      throw new Error(
+        `GSC attribution window ${window.start}..${window.end} exceeds ${GSC_ATTRIBUTION_ROW_LIMIT} rows; holding incomplete evidence`,
+      )
+    }
+  }
+
+  return rows
+    .filter((r) => Array.isArray(r.keys) && r.keys.length >= 2 && typeof r.keys[0] === 'string')
+    .map((r) => ({
+      page: String(r.keys[0]).trim(),
+      query: String(r.keys[1]).trim(),
+      clicks: Number(r.clicks) || 0,
+      impressions: Number(r.impressions) || 0,
+      position: Number(r.position) || 0,
+    }))
+}
+
+export async function fetchGscPageQueryRows(window: CronAttributionWindow): Promise<GscPageQueryRow[]> {
+  try {
+    const { getGscAccess } = await import('@/lib/gscAuth')
+    const access = await getGscAccess()
+    if (!access?.accessToken || !access.siteUrl) return []
+    return await fetchGscPageQueryRowsStrict(window, {
+      accessToken: access.accessToken,
+      siteUrl: access.siteUrl,
+    })
   } catch {
     return []
   }
@@ -1880,11 +1940,20 @@ export async function fetchGscPageQueryRows(window: CronAttributionWindow): Prom
 
 export async function attributizeOutcomes(
   today?: string,
-): Promise<{ events: number; jobsConsidered: number; jobsMatched: number; duplicatesSkipped: number; persistFailed: number }> {
+): Promise<{
+  events: number
+  jobsConsidered: number
+  jobsMatched: number
+  duplicatesSkipped: number
+  persistFailed: number
+  unavailable?: string
+}> {
   const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0, duplicatesSkipped: 0, persistFailed: 0 }
+  const hold = (reason: string, jobsConsidered = 0) => ({ ...empty, jobsConsidered, unavailable: reason })
+  let jobsObservedForFailure = 0
   try {
     const client = await db()
-    if (!client) return empty
+    if (!client) return hold('reward database unavailable')
     // Bounded pagination over ALL merged/closed jobs in ascending merge order.
     // No rolling created_at cutoff and no silent 50/500-row truncation: the
     // page anchor needs the globally-earliest merge (the front of the set),
@@ -1907,11 +1976,13 @@ export async function attributizeOutcomes(
         .range(from, to)
       if (error) {
         // History read failed → hold attribution, write no rewards (fail closed).
+        const reason = 'content_jobs read failed: ' + error.message
         console.warn('[seoEngine] attributizeOutcomes content_jobs read failed — holding attribution', error.message)
-        return empty
+        return hold(reason, jobs.length)
       }
       const rows = (data as Array<Record<string, unknown>>) || []
       jobs.push(...rows)
+      jobsObservedForFailure = jobs.length
       if (rows.length < PAGE_SIZE) {
         paginationComplete = true
         break
@@ -1931,12 +2002,14 @@ export async function attributizeOutcomes(
         .order('id', { ascending: true })
         .range(probeFrom, probeFrom)
       if (probe.error) {
+        const reason = 'content_jobs ceiling probe failed: ' + probe.error.message
         console.warn('[seoEngine] attributizeOutcomes ceiling probe failed — holding attribution', probe.error.message)
-        return empty
+        return hold(reason, jobs.length)
       }
       if ((probe.data as Array<Record<string, unknown>> | null | undefined)?.length) {
+        const reason = 'content_jobs history exceeds safe attribution ceiling'
         console.warn('[seoEngine] attributizeOutcomes hit the content_jobs page ceiling — holding attribution (incomplete history)')
-        return empty
+        return hold(reason, 0)
       }
     }
     if (!jobs.length) return empty
@@ -1967,30 +2040,21 @@ export async function attributizeOutcomes(
       else byPage.set(pageUrl, [entry])
     }
 
-    // Window fetch cache: one GSC call per distinct (start,end).
-    const windowCache = new Map<string, GscPageQueryRow[]>()
-    const getRows = async (w: CronAttributionWindow): Promise<GscPageQueryRow[]> => {
-      const key = `${w.start}:${w.end}`
-      if (!windowCache.has(key)) windowCache.set(key, await fetchGscPageQueryRows(w))
-      return windowCache.get(key)!
+    // Build the complete page/window plan BEFORE any reward write. This makes
+    // external evidence acquisition all-or-nothing: if a GSC window cannot be
+    // read, no earlier page can already have been credited.
+    type AttrPlan = {
+      mission: CronMission
+      win: { window: CronAttributionWindow; baselineWindow: CronAttributionWindow | null; completedBucket: number; daysSincePublish: number }
     }
-    let events = 0
-    let persistFailed = 0
-    let jobsMatched = 0
-    let duplicatesSkipped = 0
+    const plans: AttrPlan[] = []
+    const distinctWindows = new Map<string, CronAttributionWindow>()
+    const windowKey = (w: CronAttributionWindow): string => `${w.start}:${w.end}`
+
     for (const [, pageJobs] of byPage) {
-      // CANONICAL PAGE/PROPERTY observation schedule: every same-page job
-      // (create + successive refresh merges) shares ONE anchor — the page's
-      // earliest verified publication — so windows align and overlapping GSC
-      // traffic can never be double-credited under per-job-merged_at keys.
       const basePublication = pageJobs.reduce((min, j) => (j.mergedDay < min ? j.mergedDay : min), pageJobs[0].mergedDay)
       const win = attributionWindowsFor(basePublication, runDate)
       if (!win) continue
-      // Deterministic ELIGIBLE RECORDED job/action per interval: the job whose
-      // version opened the interval (latest verified merge on/before the window
-      // start; tie → lowest job id). One interval, one observation, one action —
-      // a refresh merged mid/after the window never spawns a second, shifted
-      // window over the same days.
       const governing =
         pageJobs
           .filter((j) => j.mergedDay <= win.window.start)
@@ -2005,15 +2069,83 @@ export async function attributizeOutcomes(
                 ? 1
                 : -1,
           )[0] || pageJobs[0]
-      const mission: CronMission = {
-        jobId: governing.jobId,
-        pageUrl: governing.pageUrl,
-        topic: governing.topic,
-        publishDate: `${basePublication}T00:00:00Z`,
-        action: governing.action,
+      plans.push({
+        mission: {
+          jobId: governing.jobId,
+          pageUrl: governing.pageUrl,
+          topic: governing.topic,
+          publishDate: `${basePublication}T00:00:00Z`,
+          action: governing.action,
+        },
+        win,
+      })
+      distinctWindows.set(windowKey(win.window), win.window)
+      if (win.baselineWindow) distinctWindows.set(windowKey(win.baselineWindow), win.baselineWindow)
+    }
+
+    if (!plans.length) return { ...empty, jobsConsidered: jobs.length }
+    if (distinctWindows.size > GSC_ATTRIBUTION_MAX_DISTINCT_WINDOWS) {
+      console.warn(
+        `[seoEngine] attributizeOutcomes needs ${distinctWindows.size} distinct GSC windows (ceiling ${GSC_ATTRIBUTION_MAX_DISTINCT_WINDOWS}) — holding attribution`,
+      )
+      return hold(
+        `GSC attribution requires ${distinctWindows.size} distinct windows (ceiling ${GSC_ATTRIBUTION_MAX_DISTINCT_WINDOWS})`,
+        jobs.length,
+      )
+    }
+
+    // Resolve GSC auth exactly once per attribution pass. getGscAccess() may
+    // mint/refresh an OAuth or service-account token, so repeating it per
+    // window turns a bounded evidence pass into minutes of redundant network
+    // work and can hang the cron route.
+    const { getGscAccess } = await import('@/lib/gscAuth')
+    const gscAccess = await withDeadline(
+      getGscAccess(),
+      GSC_ATTRIBUTION_ACCESS_TIMEOUT_MS,
+      `GSC access resolution timed out after ${GSC_ATTRIBUTION_ACCESS_TIMEOUT_MS}ms`,
+    )
+    if (!gscAccess?.accessToken || !gscAccess.siteUrl) {
+      const reason = 'GSC access unavailable for reward attribution'
+      console.warn('[seoEngine] attributizeOutcomes GSC access unavailable — holding attribution')
+      return hold(reason, jobs.length)
+    }
+    const access: GscWindowAccess = {
+      accessToken: gscAccess.accessToken,
+      siteUrl: gscAccess.siteUrl,
+    }
+
+    // Prefetch every distinct window with bounded concurrency. Any timeout,
+    // HTTP error, or parse failure rejects the whole prefetch before reward
+    // writes begin, preserving fail-closed evidence semantics.
+    const windowCache = new Map<string, GscPageQueryRow[]>()
+    const pendingWindows = [...distinctWindows.entries()]
+    let nextWindow = 0
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const index = nextWindow
+        nextWindow += 1
+        if (index >= pendingWindows.length) return
+        const [key, window] = pendingWindows[index]
+        const rows = await fetchGscPageQueryRowsStrict(window, access)
+        windowCache.set(key, rows)
       }
-      const currentRows = await getRows(win.window)
-      const baselineRows = win.baselineWindow ? await getRows(win.baselineWindow) : null
+    }
+    await Promise.all(
+      Array.from(
+        { length: Math.min(GSC_ATTRIBUTION_FETCH_CONCURRENCY, pendingWindows.length) },
+        () => worker(),
+      ),
+    )
+
+    let events = 0
+    let persistFailed = 0
+    let jobsMatched = 0
+    let duplicatesSkipped = 0
+    for (const { mission, win } of plans) {
+      const currentRows = windowCache.get(windowKey(win.window)) || []
+      const baselineRows = win.baselineWindow
+        ? windowCache.get(windowKey(win.baselineWindow)) || []
+        : null
       const prepared = prepareCronRewards({
         mission,
         currentWindow: win.window,
@@ -2085,7 +2217,9 @@ export async function attributizeOutcomes(
       }
     }
     return { events, jobsConsidered: jobs.length, jobsMatched, duplicatesSkipped, persistFailed }
-  } catch {
-    return empty
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'reward attribution failed'
+    console.warn('[seoEngine] attributizeOutcomes failed closed — holding attribution', reason)
+    return hold(reason, jobsObservedForFailure)
   }
 }

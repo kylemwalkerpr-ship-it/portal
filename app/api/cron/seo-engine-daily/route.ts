@@ -122,13 +122,19 @@ export async function POST(req: NextRequest) {
     if (phase === 'rewards') {
       const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
       const reward = await attributizeOutcomes()
-      await recordEngineRun('daily', 'success', {
+      const rewardErrors: string[] = []
+      if (reward.unavailable) rewardErrors.push(`reward-attribution: ${reward.unavailable}`)
+      if (reward.persistFailed > 0) rewardErrors.push(`reward-persist: ${reward.persistFailed} write(s) failed`)
+      await recordEngineRun('daily', rewardErrors.length ? 'partial' : 'success', {
         phase,
         events: reward.events,
         jobsConsidered: reward.jobsConsidered,
         jobsMatched: reward.jobsMatched,
-      }, [], 'cron')
-      return NextResponse.json({ ok: true, phase, ...reward })
+        duplicatesSkipped: reward.duplicatesSkipped,
+        persistFailed: reward.persistFailed,
+        unavailable: reward.unavailable || null,
+      }, rewardErrors, 'cron')
+      return NextResponse.json({ ok: rewardErrors.length === 0, phase, ...reward, errors: rewardErrors })
     }
     if (phase === 'track') {
       const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
@@ -209,6 +215,12 @@ export async function POST(req: NextRequest) {
       rewardEvents = reward.events
       rewardJobs = reward.jobsConsidered
       rewardMatched = reward.jobsMatched
+      if (reward.unavailable) {
+        allPhaseErrors.push(`reward-attribution: ${reward.unavailable}`)
+      }
+      if (reward.persistFailed > 0) {
+        allPhaseErrors.push(`reward-persist: ${reward.persistFailed} write(s) failed`)
+      }
       const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
       const tracker = await loadForecastTracker({ limit: 200 })
       tracked = tracker.summary.evaluated
@@ -302,7 +314,10 @@ export async function POST(req: NextRequest) {
     }, [...ingest.errors, ...ingest.aiErrors, ...allPhaseErrors].slice(0, 20), 'cron')
 
     return NextResponse.json({
-      ok: true,
+      // Explicit phase errors must agree with the persisted partial status so
+      // the GitHub workflow can fail instead of green-lighting degraded work.
+      // A benign no-data partial with no explicit phase error remains ok:true.
+      ok: allPhaseErrors.length === 0,
       phase,
       ...(gscPersistStatus
         ? { gscPersistStatus, gscRowsProcessed, gscWindowEnd, gscSyncedAt, gscAttemptedAt }

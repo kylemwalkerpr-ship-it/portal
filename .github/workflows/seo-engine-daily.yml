@@ -43,10 +43,20 @@ jobs:
           BASE="${PORTAL_URL:-https://portal.yousafeconsultancy.com}"
           URL="${BASE}/api/cron/seo-engine-daily"
           echo "== SEO Master Engine (phase=${PHASE}) =="
-          RESP=$(curl -sS -w "\n%{http_code}" -X POST "$URL" \
+          # Bound network/runtime stalls explicitly. The rewards-only acceptance
+          # should fail fast; full daily runs retain a larger envelope but can
+          # never consume the entire 20-minute job timeout in one curl.
+          CURL_MAX_TIME=900
+          if [ "$PHASE" = "rewards" ]; then
+            CURL_MAX_TIME=180
+          fi
+          if ! RESP=$(curl -sS --connect-timeout 10 --max-time "$CURL_MAX_TIME" -w "\n%{http_code}" -X POST "$URL" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json" \
-            -d "{\"phase\":\"${PHASE}\",\"limitPerSource\":10,\"limit\":20}")
+            -d "{\"phase\":\"${PHASE}\",\"limitPerSource\":10,\"limit\":20}"); then
+            echo "::error::SEO Master Engine request failed or exceeded ${CURL_MAX_TIME}s"
+            exit 1
+          fi
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -n1)
           echo "HTTP $CODE"
