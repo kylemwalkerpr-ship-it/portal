@@ -7,8 +7,6 @@ const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
 const DESCRIPTION =
   'Immigration preparation packs, workbooks, templates, and short guides in one catalog. Pay once on Payhip, download instantly. No subscription.'
 
-export const revalidate = 3600
-
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
