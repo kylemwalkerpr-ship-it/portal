@@ -132,6 +132,9 @@ export async function POST(req: NextRequest) {
         jobsMatched: reward.jobsMatched,
         duplicatesSkipped: reward.duplicatesSkipped,
         persistFailed: reward.persistFailed,
+        preparedEvents: reward.preparedEvents ?? null,
+        historyRows: reward.historyRows ?? null,
+        distinctWindows: reward.distinctWindows ?? null,
         unavailable: reward.unavailable || null,
       }, rewardErrors, 'cron')
       return NextResponse.json({ ok: rewardErrors.length === 0, phase, ...reward, errors: rewardErrors })

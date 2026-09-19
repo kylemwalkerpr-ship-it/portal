@@ -1140,29 +1140,33 @@ export async function loadForecasts(limit = 30): Promise<Array<Record<string, un
   }
 }
 
+function rewardEventRow(event: RewardEvent): Record<string, unknown> {
+  return {
+    model_version: event.modelVersion,
+    page_url: event.pageUrl,
+    topic: event.topic || null,
+    action: event.action,
+    delta_impressions: event.deltaImpressions || 0,
+    delta_clicks: event.deltaClicks || 0,
+    delta_position: event.deltaPosition || 0,
+    reward: event.reward,
+    attribution: event.attribution as unknown as Record<string, unknown>,
+    note: event.note || null,
+    ...(event.query ? { query: event.query } : {}),
+    ...(event.windowStart ? { window_start: event.windowStart } : {}),
+    ...(event.windowEnd ? { window_end: event.windowEnd } : {}),
+    ...(event.baselineClicks != null ? { baseline_clicks: event.baselineClicks } : { baseline_clicks: null }),
+    improvement_credited: event.improvementCredited === true,
+    observation_label: event.observationLabel || null,
+    ...(event.dedupeKey ? { dedupe_key: event.dedupeKey } : {}),
+  }
+}
+
 export async function persistRewardEvent(event: RewardEvent): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = await db()
     if (!client) return { ok: false, error: 'no db' }
-    const row = {
-      model_version: event.modelVersion,
-      page_url: event.pageUrl,
-      topic: event.topic || null,
-      action: event.action,
-      delta_impressions: event.deltaImpressions || 0,
-      delta_clicks: event.deltaClicks || 0,
-      delta_position: event.deltaPosition || 0,
-      reward: event.reward,
-      attribution: event.attribution as unknown as Record<string, unknown>,
-      note: event.note || null,
-      ...(event.query ? { query: event.query } : {}),
-      ...(event.windowStart ? { window_start: event.windowStart } : {}),
-      ...(event.windowEnd ? { window_end: event.windowEnd } : {}),
-      ...(event.baselineClicks != null ? { baseline_clicks: event.baselineClicks } : { baseline_clicks: null }),
-      improvement_credited: event.improvementCredited === true,
-      observation_label: event.observationLabel || null,
-      ...(event.dedupeKey ? { dedupe_key: event.dedupeKey } : {}),
-    }
+    const row = rewardEventRow(event)
     if (event.dedupeKey) {
       // Idempotent: same key can never double-credit (unique index, migrate
       // applies it). On a pre-migration DB the column is missing — fall back
@@ -1947,6 +1951,9 @@ export async function attributizeOutcomes(
   duplicatesSkipped: number
   persistFailed: number
   unavailable?: string
+  preparedEvents?: number
+  historyRows?: number
+  distinctWindows?: number
 }> {
   const empty = { events: 0, jobsConsidered: 0, jobsMatched: 0, duplicatesSkipped: 0, persistFailed: 0 }
   const hold = (reason: string, jobsConsidered = 0) => ({ ...empty, jobsConsidered, unavailable: reason })
@@ -2137,86 +2144,224 @@ export async function attributizeOutcomes(
       ),
     )
 
-    let events = 0
-    let persistFailed = 0
-    let jobsMatched = 0
-    let duplicatesSkipped = 0
+    // Prepare every page/query observation in memory before touching the
+    // reward ledger. The old path did 2-3 sequential Supabase round-trips PER
+    // candidate (exact dedupe, overlap read, write), which made a truthful
+    // production pass scale with query count and exceed the cron deadline.
+    const preparedAll: PreparedCronReward[] = []
     for (const { mission, win } of plans) {
       const currentRows = windowCache.get(windowKey(win.window)) || []
       const baselineRows = win.baselineWindow
         ? windowCache.get(windowKey(win.baselineWindow)) || []
         : null
-      const prepared = prepareCronRewards({
-        mission,
-        currentWindow: win.window,
-        currentRows,
-        baselineRows,
-        bucket: win.completedBucket,
-      })
-      for (const p of prepared) {
-        const already = await client
-          .from('seo_reward_events')
-          .select('id')
-          .eq('dedupe_key', p.dedupeKey)
-          .maybeSingle()
-        if (already.data) {
-          duplicatesSkipped += 1
-          continue
-        }
-        // Overlap reconciliation — exact dedupe keys are NOT enough. Historical
-        // per-job-anchored observations (or any prior credited window on the
-        // same page/property+query) must suppress a NEW window that covers any
-        // of the same GSC days, even under a renamed start/end. Only intervals
-        // sharing no day with a previously credited window are fresh evidence.
-        // The history lookup itself is FAIL-CLOSED: a returned error or a
-        // thrown lookup means we cannot prove the interval is fresh, so the
-        // attribution is HELD and no reward is written.
-        let prior: Array<Record<string, unknown>> = []
-        try {
-          const overlap = await client
-            .from('seo_reward_events')
-            .select('window_start,window_end')
-            .eq('page_url', p.pageUrl)
-            .eq('query', String(p.query || ''))
-            .gte('window_end', p.windowStart)
-          if (overlap.error) {
-            duplicatesSkipped += 1
-            continue
-          }
-          prior = (overlap.data as Array<Record<string, unknown>> | null | undefined) || []
-        } catch {
-          duplicatesSkipped += 1
-          continue
-        }
-        if (prior.some((o) => String(o.window_start || '') <= p.windowEnd && String(o.window_end || '') >= p.windowStart)) {
-          duplicatesSkipped += 1
-          continue
-        }
-        jobsMatched += 1
-        const event = creditOutcome({
-          pageUrl: p.pageUrl,
-          topic: p.topic,
-          query: p.query || undefined,
-          action: p.action,
-          observationLabel: p.observationLabel,
-          deltaClicks: p.deltaClicks,
-          baselineClicks: p.baselineClicks,
-          improvementCredited: p.improvementCredited,
-          windowStart: p.windowStart,
-          windowEnd: p.windowEnd,
-          note: p.note,
-          dedupeKey: p.dedupeKey,
-        })
-        const res = await persistRewardEvent(event)
-        // A persistence failure is NOT a credited success — fail the count.
-        if (!res.ok) {
-          persistFailed += 1
-          continue
-        }
-        events += 1
+      preparedAll.push(
+        ...prepareCronRewards({
+          mission,
+          currentWindow: win.window,
+          currentRows,
+          baselineRows,
+          bucket: win.completedBucket,
+        }),
+      )
+    }
+
+    const MAX_PREPARED_EVENTS = 5_000
+    if (preparedAll.length > MAX_PREPARED_EVENTS) {
+      return {
+        ...hold(
+          `reward attribution prepared ${preparedAll.length} events (ceiling ${MAX_PREPARED_EVENTS}); holding oversized pass`,
+          jobs.length,
+        ),
+        preparedEvents: preparedAll.length,
+        historyRows: 0,
+        distinctWindows: distinctWindows.size,
       }
     }
-    return { events, jobsConsidered: jobs.length, jobsMatched, duplicatesSkipped, persistFailed }
+    if (!preparedAll.length) {
+      return {
+        ...empty,
+        jobsConsidered: jobs.length,
+        preparedEvents: 0,
+        historyRows: 0,
+        distinctWindows: distinctWindows.size,
+      }
+    }
+
+    // Load ALL relevant overlap history in bounded pages, once. Every candidate
+    // window is on/after earliestWindowStart, so older rows ending before that
+    // cannot overlap and are intentionally excluded. If this history cannot be
+    // proven complete, fail the whole pass BEFORE writes.
+    const earliestWindowStart = preparedAll.reduce(
+      (min, p) => (p.windowStart < min ? p.windowStart : min),
+      preparedAll[0].windowStart,
+    )
+    const HISTORY_PAGE_SIZE = 1_000
+    const HISTORY_MAX_PAGES = 50
+    const history: Array<Record<string, unknown>> = []
+    let historyComplete = false
+    try {
+      for (let page = 0; page < HISTORY_MAX_PAGES; page++) {
+        const from = page * HISTORY_PAGE_SIZE
+        const to = from + HISTORY_PAGE_SIZE - 1
+        const { data, error } = await client
+          .from('seo_reward_events')
+          .select('id,dedupe_key,page_url,query,window_start,window_end')
+          .gte('window_end', earliestWindowStart)
+          .order('window_end', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to)
+        if (error) {
+          return {
+            ...hold('reward history read failed: ' + error.message, jobs.length),
+            preparedEvents: preparedAll.length,
+            historyRows: history.length,
+            distinctWindows: distinctWindows.size,
+          }
+        }
+        const rows = (data as Array<Record<string, unknown>>) || []
+        history.push(...rows)
+        if (rows.length < HISTORY_PAGE_SIZE) {
+          historyComplete = true
+          break
+        }
+      }
+      if (!historyComplete) {
+        const probeFrom = history.length
+        const probe = await client
+          .from('seo_reward_events')
+          .select('id')
+          .gte('window_end', earliestWindowStart)
+          .order('window_end', { ascending: true })
+          .order('id', { ascending: true })
+          .range(probeFrom, probeFrom)
+        if (probe.error) {
+          return {
+            ...hold('reward history ceiling probe failed: ' + probe.error.message, jobs.length),
+            preparedEvents: preparedAll.length,
+            historyRows: history.length,
+            distinctWindows: distinctWindows.size,
+          }
+        }
+        if ((probe.data as Array<Record<string, unknown>> | null | undefined)?.length) {
+          return {
+            ...hold('reward history exceeds safe reconciliation ceiling', jobs.length),
+            preparedEvents: preparedAll.length,
+            historyRows: history.length,
+            distinctWindows: distinctWindows.size,
+          }
+        }
+      }
+    } catch (error) {
+      return {
+        ...hold(
+          'reward history read failed: ' + (error instanceof Error ? error.message : 'unknown'),
+          jobs.length,
+        ),
+        preparedEvents: preparedAll.length,
+        historyRows: history.length,
+        distinctWindows: distinctWindows.size,
+      }
+    }
+
+    const exactKeys = new Set(
+      history.map((row) => String(row.dedupe_key || '')).filter(Boolean),
+    )
+    const historyByPageQuery = new Map<string, Array<{ start: string; end: string }>>()
+    for (const row of history) {
+      const pageUrl = String(row.page_url || '').replace(/\/+$/, '')
+      const query = normalizeRewardQuery(String(row.query || ''))
+      const start = String(row.window_start || '')
+      const end = String(row.window_end || '')
+      if (!pageUrl || !query || !start || !end) continue
+      const key = `${pageUrl}\u0001${query}`
+      const list = historyByPageQuery.get(key)
+      const interval = { start, end }
+      if (list) list.push(interval)
+      else historyByPageQuery.set(key, [interval])
+    }
+
+    let duplicatesSkipped = 0
+    const fresh: PreparedCronReward[] = []
+    for (const p of preparedAll) {
+      if (exactKeys.has(p.dedupeKey)) {
+        duplicatesSkipped += 1
+        continue
+      }
+      const key = `${p.pageUrl.replace(/\/+$/, '')}\u0001${normalizeRewardQuery(String(p.query || ''))}`
+      const prior = historyByPageQuery.get(key) || []
+      if (prior.some((o) => o.start <= p.windowEnd && o.end >= p.windowStart)) {
+        duplicatesSkipped += 1
+        continue
+      }
+      fresh.push(p)
+    }
+
+    if (!fresh.length) {
+      return {
+        events: 0,
+        jobsConsidered: jobs.length,
+        jobsMatched: 0,
+        duplicatesSkipped,
+        persistFailed: 0,
+        preparedEvents: preparedAll.length,
+        historyRows: history.length,
+        distinctWindows: distinctWindows.size,
+      }
+    }
+
+    // One PostgREST upsert is one SQL statement: either the fresh set persists,
+    // or a statement error leaves the set uncredited. DB uniqueness on
+    // dedupe_key still protects exact concurrent retries.
+    const eventsToWrite = fresh.map((p) =>
+      creditOutcome({
+        pageUrl: p.pageUrl,
+        topic: p.topic,
+        query: p.query || undefined,
+        action: p.action,
+        observationLabel: p.observationLabel,
+        deltaClicks: p.deltaClicks,
+        baselineClicks: p.baselineClicks,
+        improvementCredited: p.improvementCredited,
+        windowStart: p.windowStart,
+        windowEnd: p.windowEnd,
+        note: p.note,
+        dedupeKey: p.dedupeKey,
+      }),
+    )
+    let writeError: { message: string } | null = null
+    try {
+      const result = await client
+        .from('seo_reward_events')
+        .upsert(eventsToWrite.map(rewardEventRow), { onConflict: 'dedupe_key', ignoreDuplicates: true })
+      writeError = result.error
+    } catch (error) {
+      writeError = { message: error instanceof Error ? error.message : 'bulk reward write failed' }
+    }
+    if (writeError) {
+      console.warn('[seoEngine] bulk reward persistence failed', writeError.message)
+      return {
+        events: 0,
+        jobsConsidered: jobs.length,
+        jobsMatched: fresh.length,
+        duplicatesSkipped,
+        persistFailed: fresh.length,
+        unavailable: 'bulk reward persistence failed: ' + writeError.message,
+        preparedEvents: preparedAll.length,
+        historyRows: history.length,
+        distinctWindows: distinctWindows.size,
+      }
+    }
+
+    return {
+      events: fresh.length,
+      jobsConsidered: jobs.length,
+      jobsMatched: fresh.length,
+      duplicatesSkipped,
+      persistFailed: 0,
+      preparedEvents: preparedAll.length,
+      historyRows: history.length,
+      distinctWindows: distinctWindows.size,
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'reward attribution failed'
     console.warn('[seoEngine] attributizeOutcomes failed closed — holding attribution', reason)
