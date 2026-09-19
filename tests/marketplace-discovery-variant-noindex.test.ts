@@ -166,9 +166,16 @@ describe('edge wiring — header only, params untouched, tracking 301 preserved'
     expect(stripCall).toBeGreaterThan(-1)
     expect(robotsCall).toBeGreaterThan(rewriteCall)
     expect(stripCall).toBeLessThan(robotsCall)
-    // Market-host branch only: the portal host never sees this rule.
-    expect(middleware.indexOf('if (hostname === MARKET_HOST) {')).toBeLessThan(robotsCall)
-    expect(middleware.indexOf('} else if (hostname === PORTAL_HOST')).toBeGreaterThan(robotsCall)
+    // The rule lives in the dedicated market fast-path handler, which the
+    // outer host guard invokes before Clerk. Portal traffic never enters it.
+    const fastPathStart = middleware.indexOf('function handleMarketHostRequest(')
+    const fastPathEnd = middleware.indexOf('const clerkHandler = clerkMiddleware(', fastPathStart)
+    const outerMarketGuard = middleware.indexOf('requestHostname(req) === MARKET_HOST')
+    const fastPathReturn = middleware.indexOf('return handleMarketHostRequest(req)', outerMarketGuard)
+    expect(fastPathStart).toBeLessThan(rewriteCall)
+    expect(robotsCall).toBeLessThan(fastPathEnd)
+    expect(outerMarketGuard).toBeGreaterThan(fastPathEnd)
+    expect(fastPathReturn).toBeGreaterThan(outerMarketGuard)
   })
 
   it('never strips or redirects a recognized discovery param', () => {
