@@ -15,7 +15,6 @@ import './mobile-visual-viewport.css'
 import './messenger-bubble-axis-alignment.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
-import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
 import StudentMobileNavigation from '@/components/student/StudentMobileNavigation'
@@ -33,13 +32,6 @@ import CookieConsentBanner from '@/components/CookieConsentBanner'
 // The CSS variables (--font-inter etc.) are defined in :root in globals.css.
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
-
-// SUPPORTED_LANGS kept for html lang attribute resolution only; we no
-// longer emit hreflang alternates because the URLs don't differ by locale
-// (translation is overlaid client-side).
-const SUPPORTED_LANGS = ['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'] as const
-const SUPPORTED_LANG_SET = new Set<string>(SUPPORTED_LANGS)
-const RTL_LANGS = new Set(['ar'])
 
 export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
@@ -86,22 +78,13 @@ export const viewport: Viewport = {
   themeColor: '#F4F6F8',
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Resolve the active language from middleware-set x-lang. Falls back to
-  // 'en' if the header is missing (e.g. on edge cases that bypass middleware).
-  let lang = 'en'
-  let dir: 'ltr' | 'rtl' = 'ltr'
-  try {
-    const h = await headers()
-    const fromHeader = h.get('x-lang')
-    if (fromHeader && SUPPORTED_LANG_SET.has(fromHeader)) lang = fromHeader
-    if (RTL_LANGS.has(lang)) dir = 'rtl'
-  } catch {
-    /* fall through with default 'en' */
-  }
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Static en/ltr on the server so this layout does not call headers()
+  // (which dynamically opts every route in). TranslationProvider already
+  // wraps LanguageProvider, which syncs document.documentElement lang/dir
+  // after hydration from URL / cookie / localStorage / navigator.
   return (
-    <html lang={lang} dir={dir} className="fonts-loaded">
+    <html lang="en" dir="ltr" className="fonts-loaded">
       <head>
         {/* Warm the TLS handshake for the Clerk SDK origin — the script
             itself is async, but preconnect shaves ~100ms off the eventual

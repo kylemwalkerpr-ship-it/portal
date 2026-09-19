@@ -4,8 +4,8 @@ import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { CategoryRecommendedGigsCarousel } from '@/components/marketplace/CategoryRecommendedGigsCarousel'
 import { CaseworksReadMoreRail } from '@/components/marketplace/CaseworksReadMoreRail'
 import { notFound } from 'next/navigation'
-import { buildCategoryOrFilter, resolveCategoryOrSubcategory } from '@/lib/categories'
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { resolveCategoryOrSubcategory } from '@/lib/categories'
+import { countActiveGigsForCategory } from '@/lib/marketplaceCategoryCounts'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
 import { getCategoryEditorial } from '@/lib/categoryEditorial'
@@ -13,22 +13,6 @@ import { getCategoryEditorial } from '@/lib/categoryEditorial'
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
-}
-
-async function countActiveGigsForCategory(filterId: string): Promise<number> {
-  try {
-    const db = createSupabaseAdminClient()
-    let query = db
-      .from('gigs')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
-    const categoryOr = buildCategoryOrFilter([filterId])
-    if (categoryOr) query = query.or(categoryOr)
-    const { count } = await query
-    return count || 0
-  } catch {
-    return 0
-  }
 }
 
 export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
