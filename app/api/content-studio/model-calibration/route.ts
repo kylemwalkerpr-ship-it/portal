@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { createClient } from '@supabase/supabase-js'
+import { OBSERVED_REWARD_CALIBRATION_PREFIX, isObservedCalibrationRow } from '@/lib/seoEngine/rankingModel'
 
 export async function GET(req: Request) {
   try {
@@ -31,12 +32,15 @@ export async function GET(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     )
 
-    // ── Latest calibration record ──
+    // ── Current observed-reward calibrations only ──
+    // Legacy forecast/manual rows remain in the audit table but must never be
+    // presented as the active model calibration.
     const { data: calibration, error: calError } = await supabase
       .from('seo_model_calibration')
-      .select('id, model_version, events_count, note, recalibrated_at')
+      .select('id, model_version, events_count, note, weights, recalibrated_at')
+      .like('note', OBSERVED_REWARD_CALIBRATION_PREFIX + '%')
       .order('recalibrated_at', { ascending: false })
-      .limit(1)
+      .limit(50)
 
     if (calError) {
       return NextResponse.json(
@@ -45,16 +49,10 @@ export async function GET(req: Request) {
       )
     }
 
-    const latest = calibration?.[0] ?? null
-
-    // ── Previous calibration (for trend) ──
-    const { data: prevCal, error: prevError } = await supabase
-      .from('seo_model_calibration')
-      .select('id, model_version, events_count, recalibrated_at')
-      .order('recalibrated_at', { ascending: false })
-      .range(1, 1)
-
-    const previous = (!prevError && prevCal?.length) ? prevCal[0] : null
+    const observedCalibration = ((calibration || []) as Array<Record<string, unknown>>)
+      .filter(isObservedCalibrationRow)
+    const latest = observedCalibration[0] ?? null
+    const previous = observedCalibration[1] ?? null
 
     // ── Recent forecast run stats (last 30 days) ──
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -84,10 +82,12 @@ export async function GET(req: Request) {
     }
 
     // ── Accuracy trend: compare current vs previous calibration events ──
-    if (latest && previous && previous.events_count > 0 && latest.events_count > 0) {
+    const latestEventsCount = Number(latest?.events_count) || 0
+    const previousEventsCount = Number(previous?.events_count) || 0
+    if (latest && previous && previousEventsCount > 0 && latestEventsCount > 0) {
       // Heuristic: if the latest calibration had more events and a note
       // indicating improvement, mark as improving. Otherwise stable.
-      const latestNote = (latest.note || '').toLowerCase()
+      const latestNote = String(latest.note || '').toLowerCase()
       if (latestNote.includes('improve') || latestNote.includes('lift')) {
         accuracyTrend = 'improving'
       } else if (latestNote.includes('declin') || latestNote.includes('drop')) {
@@ -99,11 +99,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      lastCalibratedAt: latest?.recalibrated_at ?? null,
-      modelVersion: latest?.model_version ?? 'unknown',
-      eventsCount: latest?.events_count ?? 0,
-      calibrationNote: latest?.note ?? null,
-      previousCalibratedAt: previous?.recalibrated_at ?? null,
+      lastCalibratedAt: latest?.recalibrated_at ? String(latest.recalibrated_at) : null,
+      modelVersion: latest?.model_version ? String(latest.model_version) : 'unknown',
+      eventsCount: latestEventsCount,
+      calibrationNote: latest?.note ? String(latest.note) : null,
+      previousCalibratedAt: previous?.recalibrated_at ? String(previous.recalibrated_at) : null,
       accuracy,
       accuracyTrend,
       recentRuns: runsCount,

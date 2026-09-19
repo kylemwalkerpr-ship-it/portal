@@ -1,8 +1,8 @@
 name: Forecast Reward Weekly
 
-# Every Monday 06:00 UTC — feeds forecast-vs-actual GSC deltas back into the
-# ranking model's reward ledger + bounded recalibration (seo_reward_events /
-# seo_model_calibration). Can also be run on demand from the Actions tab.
+# Every Monday 06:00 UTC — evaluates forecast-vs-actual accuracy as
+# diagnostics only. Generic forecast drift never writes reward/calibration
+# evidence. Can also be run on demand from the Actions tab.
 on:
   schedule:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC

@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * POST /api/cron/forecast-reward-weekly
- * Weekly forecast → reward feedback loop (Monday 06:00 UTC via GitHub Actions).
+ * Weekly forecast accuracy diagnostics (Monday 06:00 UTC via GitHub Actions).
  * Auth: Authorization: Bearer <CRON_SECRET>
  *
- * Compares each matured 30/60/90-day forecast against observed GSC (the
- * execution tracker), credits one deterministic `forecast_accuracy` reward
- * event per evaluated (topic, run_date, horizon) into seo_reward_events, and —
- * when the week yields enough evidence — bounded-recalibrates family weights
- * into seo_model_calibration. Idempotent: re-runs never double-credit.
+ * Compares matured 30/60/90-day forecasts against observed GSC through the
+ * execution tracker. P1 measurement integrity keeps generic forecast drift
+ * diagnostic-only: this route does not create reward events or calibrate model
+ * weights from forecast-vs-actual deltas.
  *
  * Body (optional): { "limit": 400 } — max forecast rows to evaluate.
  */

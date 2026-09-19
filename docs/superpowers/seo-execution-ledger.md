@@ -343,3 +343,30 @@ The arithmetic is therefore explicit: the headline citation denominator is 197 m
 - The `LLM audit failures excluded from genuine citation-loss math` row is now `PASS` in `docs/superpowers/seo-parity-matrix.md`.
 - Exactly one P1 row remains `PENDING`: `Reward/forecast inputs are tied to real observations`.
 - This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`.
+
+## 2026-09-19 — P1 reward/forecast observation integrity implementation acceptance
+
+Implementation-only evidence. This section does **not** mark the row PASS; production proof remains required after merge/deploy.
+
+### Truth boundary implemented
+
+- Forecast-vs-actual evaluation remains diagnostic-only and no longer persists forecast-derived reward events or calibration baselines.
+- Manual `/api/seo-engine/rewards` observations are audit-only: `manual_unverified`, `improvement_credited=false`, reward `0`, empty attribution, and no recalibration.
+- Training eligibility is restricted to verified `cron_gsc_improvement` evidence with real HTTP(S) URL, exact query, explicit observation window, measured baseline, known action, deterministic `cron-attr:` identity, positive measured click delta/reward, and positive family attribution.
+- Calibration reads fail closed. The processed-observation watermark is persisted as `through <observed_at>` in observed-reward calibration provenance rather than inferred from the later calibration write timestamp.
+- Eligible evidence is read oldest-first with bounded pagination and a final overflow probe; incomplete history cannot silently advance the watermark.
+- Active calibration reporting ignores legacy forecast/manual rows. The admin model-calibration route, daily digest, rewards API, and Ranking UI expose only verified observed-reward lineage as current; legacy rows remain audit history.
+- Existing migrations `20260903_seo_engine_integrity.sql` and `20260907_engine_evidence_attribution.sql` already contain the needed reward-evidence columns and idempotency key; no new schema migration is required.
+
+### Local verification
+
+- Focused reward/forecast/backfill/reporting suite: 10 suites / 92 tests PASS.
+- Full repository gate: 425 suites PASS / 2 skipped; 4,492 tests PASS / 4 skipped; exit 0 under `TZ=UTC NODE_OPTIONS=--max-old-space-size=8192 npx --no-install jest --ci --runInBand`.
+- `npx --no-install tsc --noEmit`: PASS.
+- `git diff --check`: PASS.
+- `npm run build`: PASS through Next.js 16.2.11 and OpenNext Cloudflare; `.open-next/worker.js` generated. Prebuild-generated SEO data churn was restored afterward.
+- Multiple headless Grok read-only review attempts stalled before returning a completed review, so no independent Grok REVIEW_OK is claimed. Supervisor review found and removed the remaining legacy backfill baseline-calibration write before this verification.
+
+### Remaining production proof before PASS
+
+Deploy the exact reviewed SHA, then prove live forecast/manual paths create no training reward rows; inspect persisted verified reward rows for intervention/query/window/baseline/provenance truth; and verify any active calibration is observed-reward lineage with a valid processed-observation watermark. Until that proof exists, the parity row remains `IN_PROGRESS`.

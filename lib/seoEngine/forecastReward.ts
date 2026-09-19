@@ -1,16 +1,16 @@
 /**
  * lib/seoEngine/forecastReward.ts
  *
- * FORECAST → REWARD FEEDBACK PASS — the weekly closed loop that feeds
- * forecast-vs-actual GSC deltas back into the ranking model's reward ledger
- * and bounded recalibration.
+ * FORECAST ACCURACY DIAGNOSTICS.
  *
- * Pipeline: matured 30/60/90-day forecasts (seo_forecast_runs) are evaluated
- * against observed GSC by the execution tracker (forecastTracker.ts). Every
- * evaluated (topic, run_date, horizon) becomes ONE deterministic reward event
- * (action `forecast_accuracy`) in seo_reward_events, and when a week yields
- * enough evaluated forecasts the pass recalibrates family weights (bounded by
- * MAX_FAMILY_DELTA) and records the history in seo_model_calibration.
+ * Matured 30/60/90-day forecasts are still evaluated against observed GSC by
+ * the execution tracker, but generic forecast drift is not intervention
+ * evidence. The production weekly pass therefore writes zero forecast reward
+ * rows. Model calibration, when available, is sourced separately and only from
+ * verified page+query completed-window GSC improvement events.
+ *
+ * The deterministic builders below remain for historical compatibility and
+ * offline diagnostics; runForecastRewardPass never persists their output.
  *
  * Reward semantics (deterministic, verdict-driven — see VERDICT_REWARD):
  *   under_predicted  — reality beat the model (model was conservative)  0.50
@@ -43,19 +43,13 @@
  * observed movement on them is demand signal first, regardless of verdict.
  * Non-funnel events keep the verdict-driven default above.
  *
- * A pass whose events are all one family cannot move weights (uniform
- * evidence carries no differential information) — the ledger still records
- * every outcome; recalibration only fires when the week contains both.
+ * Historical pure helpers below retain the old deterministic forecast-event
+ * mapping for tests/offline inspection. Production does not persist them and
+ * never uses them as calibration evidence.
  */
 import {
   RANKING_MODEL_VERSION,
-  SIGNAL_FAMILIES,
-  FAMILY_WEIGHTS,
-  CALIBRATION_LEARNING_RATE,
-  recalibrateWeights,
-  persistRewardEvent,
-  loadCalibrationHistory,
-  recordCalibration,
+  recalibrateFromObservedRewards,
   type SignalFamily,
   type RewardEvent,
 } from './rankingModel'
@@ -170,80 +164,44 @@ export interface ForecastRewardPassResult {
   recalibrated: boolean
   weightsChanged: boolean
   weights: Partial<Record<SignalFamily, number>> | null
+  eligibleObservedRewards?: number
   positionBias: number
   onTrackRate: number
-  /** Set when the pass itself failed — the caller can record `failed` instead of masking it as "nothing matured". */
+  /** Set when diagnostics or verified-observation calibration failed. */
   failed?: string
   note: string
 }
 
 /**
- * DB-backed weekly pass. Loads the tracker (forecasts + GSC snapshots + live
- * fallback), credits each evaluated outcome once, then — with enough evidence —
- * bounded-recalibrates family weights and records the audit row. Best-effort:
- * any failure returns an empty result so the cron reports `partial` instead of
- * crashing the pipeline.
+ * DB-backed weekly diagnostic pass. Forecast rows are evaluated but never
+ * persisted as rewards. Any calibration comes only from the separate strict
+ * observed-reward ledger boundary. Failures are surfaced to the cron caller.
  */
 export async function runForecastRewardPass(opts: { limit?: number; now?: string } = {}): Promise<ForecastRewardPassResult> {
   try {
     const { loadForecastTracker } = await import('./forecastTracker')
     const report = await loadForecastTracker({ limit: opts.limit || 400, now: opts.now })
     const evaluated = report.rows.filter((r) => r.matured && r.actual.source !== 'none')
+    const calibration = await recalibrateFromObservedRewards()
 
-    // Already-credited keys for this action — re-runs must not double-credit.
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    const client = createSupabaseAdminClient()
-    const { data: existing } = await client
-      .from('seo_reward_events')
-      .select('topic,note')
-      .eq('action', FORECAST_REWARD_ACTION)
-      .limit(1000)
-    const alreadyCredited = new Set(
-      ((existing as Array<{ topic?: string | null; note?: string | null }> | null) || [])
-        .map((r) => forecastEventKey(String(r.topic || ''), String(r.note || ''))),
-    )
-
-    const nowIso = opts.now ? new Date(`${opts.now}T00:00:00.000Z`).toISOString() : new Date().toISOString()
-    const events = buildForecastRewardEvents(evaluated, alreadyCredited, nowIso)
-    let inserted = 0
-    for (const e of events) {
-      const wrote = await persistRewardEvent(e)
-      if (wrote.ok) inserted += 1
-    }
-
-    // Bounded recalibration — only when the week carries enough NEW evidence.
-    let recalibrated = false
-    let weightsChanged = false
-    let weights: Partial<Record<SignalFamily, number>> | null = null
-    if (shouldRecalibrate(events.length)) {
-      const history = await loadCalibrationHistory(1)
-      const last = (history[0] as { weights?: unknown } | undefined)?.weights
-      const parsed = (last && typeof last === 'object' ? last : {}) as Partial<Record<SignalFamily, number>>
-      const current = { ...FAMILY_WEIGHTS, ...parsed }
-      const next = recalibrateWeights(current, events, CALIBRATION_LEARNING_RATE)
-      weightsChanged = SIGNAL_FAMILIES.some((f) => Math.abs(Number(next[f]) - Number(current[f])) > 1e-9)
-      if (weightsChanged) {
-        const cal = await recordCalibration(
-          next,
-          events.length,
-          `weekly forecast-reward pass · ${evaluated.length} evaluated · positionBias ${report.summary.positionBias} · action ${FORECAST_REWARD_ACTION}`,
-        )
-        if (cal.ok) {
-          weights = next
-          recalibrated = true
-        }
-      }
-    }
-
+    // P1 measurement integrity: forecast-vs-actual is diagnostic evidence only.
+    // A generic topic forecast never creates reward rows and never enters the
+    // calibration input set. The weekly job may calibrate only from separately
+    // persisted, intervention-bound cron GSC improvements.
     return {
       evaluated: evaluated.length,
-      events: inserted,
-      recalibrated,
-      weightsChanged,
-      weights,
+      events: 0,
+      recalibrated: calibration.recalibrated,
+      weightsChanged: calibration.weightsChanged,
+      weights: calibration.weights,
+      eligibleObservedRewards: calibration.eligible,
       positionBias: report.summary.positionBias,
       onTrackRate: report.summary.onTrackRate,
-      note: `forecast-reward pass · ${inserted} credited · ${evaluated.length} evaluated · recalibrated=${recalibrated}`,
+      ...(calibration.error ? { failed: calibration.error } : {}),
+      note:
+        'forecast diagnostic pass · ' + evaluated.length +
+        ' evaluated · forecast reward writes=0 · eligible observed improvements=' +
+        calibration.eligible,
     }
   } catch (err) {
     return {
@@ -254,8 +212,8 @@ export async function runForecastRewardPass(opts: { limit?: number; now?: string
       weights: null,
       positionBias: 0,
       onTrackRate: 0,
-      failed: err instanceof Error ? err.message : 'forecast-reward pass failed',
-      note: 'forecast-reward pass failed (best-effort)',
+      failed: err instanceof Error ? err.message : 'forecast diagnostic pass failed',
+      note: 'forecast diagnostic pass failed (best-effort)',
     }
   }
 }
