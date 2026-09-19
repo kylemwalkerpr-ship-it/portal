@@ -1,9 +1,11 @@
 import { ok } from '@/lib/apiEnvelope'
-import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
-import { computeFacetCounts } from '@/lib/marketplaceFacets'
+import {
+  computeFacetCounts,
+  getCachedFacetCounts,
+  normalizeFacetCounts,
+  setCachedFacetCounts,
+} from '@/lib/marketplaceFacets'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-
-const CACHE_TTL_SECONDS = 120
 
 /**
  * GET /api/marketplace/gig-facets
@@ -19,8 +21,10 @@ const CACHE_TTL_SECONDS = 120
  * chips (PublicMarketplaceLanding) can consume the exact same numbers —
  * one source of truth for "how many gigs would this filter list".
  *
- * Cached at the edge for 120s — facets don't change minute-by-minute and
- * the COUNT queries are cheap but not free (~16 round-trips).
+ * Cached in KV for 120s — facets don't change minute-by-minute and the COUNT
+ * queries are cheap but not free (~16 round-trips). The exact same versioned
+ * entry is shared with the landing chips (lib/marketplaceFacets cache
+ * helpers), so a warm landing never pays for a second COUNT fan-out.
  *
  * Optional query params: same filter set as /api/marketplace/gigs. When
  * present, the returned counts reflect inventory matching those filters
@@ -39,7 +43,6 @@ const CACHE_TTL_SECONDS = 120
  *   }
  */
 export async function GET(req: Request) {
-  const db = createSupabaseAdminClient()
   const url = new URL(req.url)
 
   // Echo the filter params so callers can fetch counts that respect
@@ -49,21 +52,24 @@ export async function GET(req: Request) {
   const minRating = url.searchParams.get('min_rating')
 
   // Identical for every caller with the same filters, so serve from KV
-  // (filter counts tolerate 2 min of staleness).
-  const cacheKey = await generateVersionedCacheKey('gigs', '/api/marketplace/gig-facets', url.searchParams.toString())
-  const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
-  if (cached) return ok(cached, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } })
+  // (filter counts tolerate 2 min of staleness). Read-through happens BEFORE
+  // any Supabase client creation so a warm entry costs no DB setup at all.
+  const cacheQuery = url.searchParams.toString()
+  const cached = await getCachedFacetCounts(cacheQuery)
+  if (cached) {
+    return ok(normalizeFacetCounts(cached), {
+      headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' },
+    })
+  }
 
+  const db = createSupabaseAdminClient()
   const counts = await computeFacetCounts(db, { country, providerTypes, minRating })
 
-  // Numeric API contract: failed COUNTs surface as 0 (the lib's nulls are
-  // for callers with their own fallback data — the landing).
-  const payload = {
-    categoryCounts: Object.fromEntries(Object.entries(counts.categoryCounts).map(([k, v]) => [k, v ?? 0])),
-    jurisdictionCounts: Object.fromEntries(Object.entries(counts.jurisdictionCounts).map(([k, v]) => [k, v ?? 0])),
-    providerTypeCounts: Object.fromEntries(Object.entries(counts.providerTypeCounts).map(([k, v]) => [k, v ?? 0])),
-    total: counts.total ?? 0,
-  }
-  await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
-  return ok(payload, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } })
+  // Raw counts (nulls preserved) go to the shared entry; the response keeps
+  // the numeric API contract: failed COUNTs surface as 0 (the lib's nulls
+  // are for callers with their own fallback data — the landing).
+  await setCachedFacetCounts(counts, cacheQuery)
+  return ok(normalizeFacetCounts(counts), {
+    headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' },
+  })
 }

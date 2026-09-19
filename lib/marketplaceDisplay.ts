@@ -33,7 +33,14 @@ export interface LandingGig {
   jx: JxCode | null
   tiers: Array<{ price: number; delivery_days: number | null }>
   cover_image_url: string | null
-  gallery_images: Array<{ url: string }>
+  /**
+   * Source gallery — only consumed while shaping the landing snapshot
+   * (resolveCoverUrl derives cover_image_url from gallery_images[0]). It is
+   * intentionally NOT part of the cached/serialized landing payload: no card
+   * or drawer consumer reads it, and dropping it keeps the KV entry (and the
+   * RSC props for FeaturedBriefsGrid) materially smaller.
+   */
+  gallery_images?: Array<{ url: string }>
 }
 
 export const COUNTRY_CODE_MAP: Record<string, JxCode> = {

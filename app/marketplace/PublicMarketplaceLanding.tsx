@@ -5,7 +5,7 @@ import {
   LEGACY_CATEGORY_MAP,
   normalizeCategory,
 } from '@/lib/categories'
-import { unstable_cache } from 'next/cache'
+import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   COUNTRY_META,
@@ -19,8 +19,14 @@ import {
   type LandingGig,
 } from '@/lib/marketplaceDisplay'
 import { FeaturedBriefsGrid } from '@/components/marketplace/FeaturedBriefsGrid'
-import { computeFacetCounts, isResolved, type FacetCounts } from '@/lib/marketplaceFacets'
-import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
+import {
+  computeFacetCounts,
+  getCachedFacetCounts,
+  isResolved,
+  setCachedFacetCounts,
+  type FacetCounts,
+} from '@/lib/marketplaceFacets'
+import { resolveCoverUrl } from '@/lib/galleryImages'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { MarketplaceHomeSeo } from '@/components/marketplace/MarketIndexSeo'
@@ -165,7 +171,8 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
   }
 }
 
-async function loadLandingData(): Promise<LandingData> {
+/** Empty SSR shell served when the DB client can't be created at all. */
+function fallbackLandingData(): LandingData {
   const fallbackSlices: Record<Country, Slice> = {
     all: emptySlice('All jurisdictions', 'USD'),
     us: emptySlice('United States', 'USD'),
@@ -173,7 +180,7 @@ async function loadLandingData(): Promise<LandingData> {
     ca: emptySlice('Canada', 'CAD'),
     au: emptySlice('Australia', 'AUD'),
   }
-  const fallback: LandingData = {
+  return {
     slices: fallbackSlices,
     jurisdictions: [
       { code: 'us', name: 'United States', currency: 'USD', count: 0, fromCents: null, topCategories: [] },
@@ -184,12 +191,18 @@ async function loadLandingData(): Promise<LandingData> {
     reviews: [],
     facets: null,
   }
+}
 
+/**
+ * DB-backed landing snapshot. `null` means the Supabase client could not be
+ * created — callers serve the empty shell WITHOUT persisting it.
+ */
+async function computeLandingData(): Promise<LandingData | null> {
   let db
   try {
     db = createSupabaseAdminClient()
   } catch {
-    return fallback
+    return null
   }
 
   // One fat query: every active gig with provider country + tiers. The
@@ -227,13 +240,21 @@ async function loadLandingData(): Promise<LandingData> {
     .order('created_at', { ascending: false })
     .limit(3)
 
-  // Facet counts straight from the DB (same lib the gig-facets API serves
-  // from) — keeps the "All (N)" and category chips in sync with what the
-  // drawer/API would actually list, even when a seller pauses a gig between
-  // this cached snapshot and a chip click. Runs in parallel with the
-  // inventory pull; never throws (failed COUNTs come back null and the
-  // render falls back to the in-memory partition per-field).
-  const facetsP = computeFacetCounts(db)
+  // Facet counts — same lib and the SAME versioned KV entry the gig-facets
+  // API serves from, so the landing and discovery share one COUNT fan-out per
+  // cache version. Keeps the "All (N)" and category chips in sync with what
+  // the drawer/API would actually list, even when a seller pauses a gig
+  // between this cached snapshot and a chip click. On a miss we compute via
+  // the shared lib and write the raw counts back (nulls preserved) so a
+  // failed COUNT still falls back per-field instead of lying with 0. Runs in
+  // parallel with the inventory pull; never throws.
+  const facetsP = (async (): Promise<FacetCounts> => {
+    const cachedFacets = await getCachedFacetCounts()
+    if (cachedFacets) return cachedFacets
+    const counts = await computeFacetCounts(db)
+    await setCachedFacetCounts(counts)
+    return counts
+  })()
 
   const [inventoryRes, reviewsRes, facetCounts] = await Promise.all([inventoryP, reviewsP, facetsP])
 
@@ -271,7 +292,6 @@ async function loadLandingData(): Promise<LandingData> {
     const gigJx: JxCode | null = ['us', 'uk', 'ca', 'au'].includes(String(row.jurisdiction || '').toLowerCase())
       ? (String(row.jurisdiction).toLowerCase() as JxCode)
       : null
-    const gallery = normalizeGallery(row.gallery_images)
     return {
       id: row.id,
       slug: row.slug,
@@ -291,8 +311,11 @@ async function loadLandingData(): Promise<LandingData> {
       providerHeadshot: headshotByProfileId.get(row.provider_id) ?? null,
       jx: gigJx ?? resolveJurisdiction(country),
       tiers: activeTiers,
+      // Only the resolved cover travels to the cached snapshot / client grid.
+      // The raw gallery would be re-serialized for every gig in every slice
+      // (and ships in the RSC props) without a single consumer reading it —
+      // resolveCoverUrl already collapsed gallery_images[0] into the cover.
       cover_image_url: resolveCoverUrl(row),
-      gallery_images: gallery,
     }
   })
 
@@ -361,6 +384,53 @@ async function loadLandingData(): Promise<LandingData> {
     })
 
   return { slices, jurisdictions, reviews, facets: facetCounts }
+}
+
+/* ───────────────────────── KV read-through ─────────────────────── */
+
+// Explicit versioned-KV cache (lib/cache.ts) — not Next.js's data cache. The
+// landing must not depend on OpenNext incremental-cache behavior for the
+// single heaviest public fan-out (inventory + tiers + reviews + headshots +
+// facet COUNTs). Same 5-minute freshness contract as before, but every read
+// is a plain KV get that also works on the Free plan without an
+// incremental-cache backend.
+const LANDING_CACHE_TTL_SECONDS = 300
+const LANDING_CACHE_PATH = '/marketplace-landing'
+const LANDING_CACHE_QUERY = 'v1'
+
+function isLandingData(value: unknown): value is LandingData {
+  const v = value as LandingData | null
+  return Boolean(
+    v &&
+      typeof v === 'object' &&
+      v.slices &&
+      v.slices.all &&
+      Array.isArray(v.slices.all.featured) &&
+      Array.isArray(v.reviews) &&
+      Array.isArray(v.jurisdictions),
+  )
+}
+
+/**
+ * Cached landing snapshot, keyed with the versioned `gigs` namespace so every
+ * gig publish/edit/moderate (bumpCacheVersion('gigs')) invalidates it along
+ * with the rest of the marketplace caches.
+ *
+ * Fail-soft: getCached returns null on miss/expired/KV error → recompute;
+ * a malformed entry is treated as a miss and overwritten. The empty fallback
+ * (DB client unavailable) is deliberately NOT written to KV — caching it
+ * would keep the marketplace blank for the whole TTL after a transient blip.
+ */
+export async function loadLandingData(): Promise<LandingData> {
+  const cacheKey = await generateVersionedCacheKey('gigs', LANDING_CACHE_PATH, LANDING_CACHE_QUERY)
+  const cached = await getCached<LandingData>(cacheKey, LANDING_CACHE_TTL_SECONDS)
+  if (isLandingData(cached)) return cached
+
+  const fresh = await computeLandingData()
+  if (!fresh) return fallbackLandingData()
+
+  await setCached(cacheKey, fresh, LANDING_CACHE_TTL_SECONDS)
+  return fresh
 }
 
 /* ───────────────────────── Helpers ─────────────────────────── */
@@ -880,15 +950,12 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
   },
 }
 
-// Cached: the landing inventory fan-out (gigs + tiers + reviews + headshots)
-// used to run on EVERY anonymous request inside the Worker — a major CPU-time
-// (CF 1102) contributor. One 5-minute cache entry serves all visitors.
-const loadLandingDataCached = unstable_cache(loadLandingData, ['marketplace-landing-v1'], {
-  revalidate: 300,
-})
-
 export async function PublicMarketplaceLanding({ country = 'all' as Country, page = 1 }: { country?: Country; page?: number }) {
-  const data = await loadLandingDataCached()
+  // The landing inventory fan-out (gigs + tiers + reviews + headshots) used to
+  // run on EVERY anonymous request inside the Worker — a major CPU-time
+  // (CF 1102) contributor. loadLandingData() now serves one explicit 5-minute
+  // KV entry to all visitors (see the KV read-through above).
+  const data = await loadLandingData()
   const active: Country = (['all', 'us', 'uk', 'ca', 'au'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
   const { reviews } = data

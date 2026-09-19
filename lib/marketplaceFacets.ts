@@ -26,6 +26,7 @@
  */
 
 import { CATEGORIES, buildCategoryOrFilter } from '@/lib/categories'
+import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { jurisdictionCountryOrFilter } from '@/lib/jurisdictionFilter'
 
 export const FACET_JX_CODES = ['us', 'uk', 'ca', 'au'] as const
@@ -37,6 +38,71 @@ export interface FacetCounts {
   jurisdictionCounts: Record<string, number | null>
   providerTypeCounts: Record<string, number | null>
   total: number | null
+}
+
+/** Numeric shape served by /api/marketplace/gig-facets (failed COUNTs → 0). */
+export interface NumericFacetCounts {
+  categoryCounts: Record<string, number>
+  jurisdictionCounts: Record<string, number>
+  providerTypeCounts: Record<string, number>
+  total: number
+}
+
+/**
+ * ── Shared facet cache ──────────────────────────────────────────────────
+ * The landing chips and the gig-facets API must agree on inventory, and the
+ * COUNT fan-out (~16 head-count queries) is one of the heavier marketplace
+ * reads. Both surfaces therefore read through the SAME versioned KV entry
+ * (namespace `gigs`, path `/api/marketplace/gig-facets`, unfiltered query).
+ *
+ * The cached value is the raw `FacetCounts` — `null` fields are preserved so
+ * a failed COUNT can never be mistaken for a real 0 by the landing's
+ * per-field in-memory fallback. The API normalizes to numbers only when
+ * serializing its response (see normalizeFacetCounts).
+ *
+ * getCached/setCached are fail-open: a KV miss or error simply falls through
+ * to a fresh compute, and a failed write never breaks the request.
+ */
+export const FACET_CACHE_TTL_SECONDS = 120
+export const FACET_CACHE_PATH = '/api/marketplace/gig-facets'
+
+function isFacetCountsShape(value: unknown): value is FacetCounts {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Partial<FacetCounts>
+  return Boolean(
+    v.categoryCounts &&
+      typeof v.categoryCounts === 'object' &&
+      v.jurisdictionCounts &&
+      typeof v.jurisdictionCounts === 'object' &&
+      v.providerTypeCounts &&
+      typeof v.providerTypeCounts === 'object' &&
+      'total' in v,
+  )
+}
+
+/** Read the shared facet entry. Returns null on miss, malformed data, or KV error. */
+export async function getCachedFacetCounts(cacheQuery = ''): Promise<FacetCounts | null> {
+  const cacheKey = await generateVersionedCacheKey('gigs', FACET_CACHE_PATH, cacheQuery)
+  const cached = await getCached<FacetCounts>(cacheKey, FACET_CACHE_TTL_SECONDS)
+  return isFacetCountsShape(cached) ? cached : null
+}
+
+/** Write the raw counts (nulls preserved) to the shared facet entry. */
+export async function setCachedFacetCounts(counts: FacetCounts, cacheQuery = ''): Promise<void> {
+  const cacheKey = await generateVersionedCacheKey('gigs', FACET_CACHE_PATH, cacheQuery)
+  await setCached(cacheKey, counts, FACET_CACHE_TTL_SECONDS)
+}
+
+/** Coerce raw counts into the numeric API contract: failed COUNTs surface as 0. */
+export function normalizeFacetCounts(counts: FacetCounts): NumericFacetCounts {
+  const asNumbers = (record: Record<string, number | null>): Record<string, number> =>
+    Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value ?? 0]))
+  return {
+    categoryCounts: asNumbers(counts.categoryCounts),
+    jurisdictionCounts: asNumbers(counts.jurisdictionCounts),
+    providerTypeCounts: asNumbers(counts.providerTypeCounts),
+    total: counts.total ?? 0,
+  }
 }
 
 /**
