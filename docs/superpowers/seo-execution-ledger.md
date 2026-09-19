@@ -298,3 +298,48 @@ Content Studio Discover (`/dashboard/admin/content?tab=discover`) renders the pe
 - This PASS is limited to persisted GSC visibility classification/measurement and the qualified-only action boundary. It does **not** claim Google property-wide completeness, frozen live GSC values, or that the requested `2026-06-21 → 2026-09-18` window was available; production explicitly used the latest persisted fallback `2026-06-20 → 2026-09-17`.
 - Overall P1 remains incomplete. Two P1 rows remain `PENDING`: `LLM audit failures excluded from genuine citation-loss math` and `Reward/forecast inputs are tied to real observations`.
 - This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`.
+
+
+## 2026-09-19 — P1 LLM-audit failure accounting production acceptance (PR #231)
+
+Docs-only evidence pass. This section records already-merged implementation and authenticated/read-only production evidence; it introduces no source, workflow, migration, deploy, or production mutation by itself. Prior ledger entries remain unchanged.
+
+**Scope of the PASS:** the single P1 row `LLM audit failures excluded from genuine citation-loss math`. Provider/engine failures remain observable as failed audit attempts but are excluded from genuine citation-loss/share-of-voice denominators. This row-level PASS does not complete P1; the reward/forecast observation row remains pending.
+
+### Implementation and release path
+
+- PR #231 (`fix(seo): exclude failed LLM audits from citation loss`) exact head `6fa4732c032ce48cf56b6532d05325cfcaabcf19` merged to `main` as `9c5db317341f512d9d68854d727cf7bc54fde256`.
+- The implementation treats rows explicitly flagged `audit_failed` (and compatible legacy engine matrices with no successful engine) as unavailable observations on read/calculation paths rather than uncited outcomes. Failed attempts remain persisted for auditability.
+- PR #231 reported local implementation verification: 14 affected suites / 96 tests PASS; TypeScript PASS; `git diff --check` PASS; full Next 16.2.11 + OpenNext Cloudflare build PASS. The attempted DeepSeek diff reviewer was unavailable because the provider returned HTTP 402, so no independent DeepSeek review PASS is claimed for this implementation.
+- Exact-main Deploy YouSafe Portal run #2911, run id `35429172831`, for merge SHA `9c5db317341f512d9d68854d727cf7bc54fde256` completed success through checkout/install, typecheck, unit tests, Next/OpenNext build, SEO audit, Cloudflare credential verification, secrets preparation/sync, Cloudflare deployment, secrets-health verification, and post-deploy smoke.
+
+### Production SQL proof — failures are retained but excluded from the denominator
+
+Read-only production query against `public.seo_llm_visibility` on 2026-09-19:
+
+- Prompt attempts (`fan_out=false`): **267**.
+- Measured prompt rows after excluding `flags @> {audit_failed}`: **197**.
+- Cited measured prompt rows: **0**.
+- Failed prompt attempts carrying `audit_failed`: **70**.
+- Across all rows, the same current measured/failed split is **197 measured / 70 failed** with **0 cited measured rows**.
+- Recent failed rows remain present in the table with `cited=false` and `audit_failed` plus the provider/engine failure reason. Historical failed rows inspected in production still store `share_of_voice=0.000`; the implementation does not claim or require a retroactive rewrite of that legacy stored numeric field.
+
+The arithmetic is therefore explicit: the headline citation denominator is 197 measured observations, not all 267 attempts. The 70 provider/engine failures are operational failures, not 70 additional citation losses.
+
+### Authenticated production API and UI proof
+
+- Authenticated deployed `GET /api/seo-engine/status` at `2026-09-19T07:54:23.714Z` returned `ok=true`, `authMode=service-role`, and `llmVisibility={total:197,cited:0,shareOfVoice:0,measurementState:"measured"}`.
+- The authenticated Content Studio live desk rendered `LLM CITED` = `0/197`, matching the measured production denominator rather than the 267 attempted rows.
+- The same production status payload preserves failure visibility through the latest daily run summary: `llmAudits=6` and `llmFailed=6`. Provider outages therefore remain visible to operators while being excluded from citation-loss math.
+
+### Caveats and interpretation
+
+- The current measured citation share is genuinely **0/197**. This PASS means failures no longer inflate the citation-loss denominator; it does **not** mean LLM citation performance is healthy.
+- Historical failed records may still contain stored `share_of_voice=0.000`. The proven contract is that current read/calculation paths identify `audit_failed` observations and exclude them from measured denominators; no retroactive data rewrite is claimed.
+- A provider outage that yields no successful observation is represented as unavailable for measurement rather than silently converted to a genuine 0% citation result.
+
+### Result and remaining P1 work
+
+- The `LLM audit failures excluded from genuine citation-loss math` row is now `PASS` in `docs/superpowers/seo-parity-matrix.md`.
+- Exactly one P1 row remains `PENDING`: `Reward/forecast inputs are tied to real observations`.
+- This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`.
