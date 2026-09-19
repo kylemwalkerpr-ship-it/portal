@@ -370,3 +370,48 @@ Implementation-only evidence. This section does **not** mark the row PASS; produ
 ### Remaining production proof before PASS
 
 Deploy the exact reviewed SHA, then prove live forecast/manual paths create no training reward rows; inspect persisted verified reward rows for intervention/query/window/baseline/provenance truth; and verify any active calibration is observed-reward lineage with a valid processed-observation watermark. Until that proof exists, the parity row remains `IN_PROGRESS`.
+
+## 2026-09-19 — P1 reward/forecast production acceptance — FINAL P1 closure
+
+This section supersedes the earlier implementation-only reward/forecast acceptance. It records deployed production evidence and closes the final P1 row.
+
+### Release chain
+
+- PR #233 (`fix(seo): bind reward learning to observed interventions`) merged to `main` as `a42c510ec65bcea61c68d6e1d6d63b6d4bec155b`.
+- PR #234 (`fix(seo): bound reward attribution runtime`) merged as `60f2b0a382598555c87277ea255291dab43c7474`.
+- PR #235 (`fix(seo): batch reward reconciliation`) merged as `7579d27c86dca29bbdd1cbee40161d012bf9daaa`.
+- PR #236 (`fix(seo): make reward dedupe conflict-safe`) merged as `d13041148e82209758b4eb32f7b67b00aa525928`.
+- Main migration workflow `35456821844` succeeded. `supabase_migrations.yousafe_migration_ledger` records `20260919165400_reward_dedupe_full_unique.sql` applied by `ci-runner` at `2026-09-19T17:02:38.065895+00:00` with `source_git_sha=d13041148e82209758b4eb32f7b67b00aa525928`.
+- Live `public.uq_reward_events_dedupe` is now a normal UNIQUE index on `seo_reward_events(dedupe_key)` with no partial predicate, so Supabase/PostgREST `ON CONFLICT (dedupe_key)` bulk upserts are valid while PostgreSQL still permits multiple NULL audit keys.
+- Exact-main `Deploy YouSafe Portal` run `35456821822` completed SUCCESS through typecheck, unit tests, Next/OpenNext build, SEO audit, Cloudflare deployment, Worker secret health, and post-deploy smoke.
+
+### Live reward-attribution proof
+
+- Pre-acceptance production baseline was 11 reward rows, all historical forecast-derived audit rows; 0 verified observed improvements; 0 manual audit rows; 2 historical forecast calibration rows; 0 observed-reward calibrations.
+- A live production `phase=rewards` engine run recorded at `2026-09-19T17:08:34.929962+00:00` completed `success` with `jobsConsidered=223`, `preparedEvents=724`, `distinctWindows=26`, `events=724`, `historyRows=0`, `duplicatesSkipped=0`, `persistFailed=0`.
+- The 724 persisted rows are `cron_gsc_observation` evidence from real HTTP(S) page/query/window measurements with deterministic `cron-attr:` identities. All 724 have a real HTTP(S) URL, exact query, explicit observation window, and cron identity; 530 have a measured baseline and 679 have a known recorded action. Rows missing baseline/action remain non-training.
+- All 724 live observations have `improvement_credited=false`, reward 0, and no positive click delta. No row was promoted to `cron_gsc_improvement` merely because GSC data existed.
+- A second exact-main workflow acceptance, GitHub run `35457162370`, completed SUCCESS in about four seconds with `events=0`, `historyRows=724`, `duplicatesSkipped=724`, `persistFailed=0`, proving idempotent replay and no duplicate writes.
+- Production `seo_engine_runs` therefore contains two consecutive successful reward runs: the first persisted the complete fresh evidence set; the second reconciled the same set entirely as duplicates.
+
+### Training/calibration truth proof
+
+- Final production reward ledger: 735 total rows = 724 real non-credit `cron_gsc_observation` rows + 11 historical forecast audit rows; 0 `cron_gsc_improvement` rows; 0 manual audit rows; no new positive reward rows.
+- Authenticated deployed `/api/seo-engine/rewards?limit=40` reports `training.eligibleEvents=0`, `trainingEligibleEvents=0`, default model weights, and `activeCalibration=null`. Legacy forecast calibration rows remain visible only in the audit history.
+- Authenticated deployed `/api/content-studio/model-calibration` reports `lastCalibratedAt=null`, `modelVersion=unknown`, `eventsCount=0`, `calibrationNote=null`, proving the two legacy forecast calibration rows are not surfaced as the active calibration lineage.
+- Post-observation `Forecast Reward Weekly` run `35457318418` completed SUCCESS and returned `ok=true`, `evaluated=0`, `events=0`, `recalibrated=false`, `weightsChanged=false`, `eligibleObservedRewards=0`, with note `forecast diagnostic pass · 0 evaluated · forecast reward writes=0 · eligible observed improvements=0`.
+- The calibration table remained exactly 2 legacy forecast rows and 0 observed-reward calibration rows after that pass. No forecast drift or non-improvement GSC observation moved model weights.
+- No synthetic manual production event was inserted solely for acceptance. The manual API boundary is protected by focused route tests: manual input persists only as `manual_unverified`, reward 0, empty training attribution, no recalibration; the shared training predicate rejects it.
+
+### Runtime/fail-closed proof
+
+- The original live reward pass exposed sequential external/database work that could exceed six minutes. PR #234 bounded GSC auth/window work and workflow curl time; PR #235 replaced per-candidate reward-history lookups/writes with one bounded history reconciliation plus one bulk write.
+- A production acceptance before #236 then failed quickly and truthfully with `ok=false`, `events=0`, `persistFailed=724`, because the old partial unique index could not satisfy Postgres `ON CONFLICT (dedupe_key)`. No partial reward writes occurred.
+- PR #236 corrected that database invariant. After the migration, the reward pass completed in seconds rather than hanging and the immediate rerun was idempotent.
+
+### Result
+
+- `Reward/forecast inputs are tied to real observations` is now `PASS` in `docs/superpowers/seo-parity-matrix.md`.
+- Every current P1 row in the parity matrix is now `PASS`.
+- Overall SEO parity is **not** complete: P2-P13 remain pending and should be treated as the next workstream.
+- Historical ledger sections that said P1 was incomplete remain preserved as dated evidence of their earlier state; this section is the current superseding P1 status.
