@@ -1,4 +1,3 @@
-import { unstable_cache } from 'next/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getCached, setCached } from '@/lib/cache'
 
@@ -78,8 +77,8 @@ export const FALLBACK_GIGS: FeaturedGig[] = [
 
 /**
  * Core data fetcher — queries Supabase for active gigs with their cheapest
- * tier pricing. Extracted so both `getFeaturedGigs` (Next.js unstable_cache)
- * and the KV layer can call it.
+ * tier pricing. The portal landing is build-static, so runtime freshness is
+ * handled by the existing KV layer rather than Next's writable data cache.
  */
 async function fetchFeaturedGigsFromDb(): Promise<FeaturedGig[]> {
   try {
@@ -181,34 +180,21 @@ const KV_CACHE_KEY = 'featured-gigs'
 const KV_CACHE_TTL = 300
 
 /**
- * Returns featured gigs with a two-layer cache:
- *   1. KV (Cloudflare) — survives deployments, zero DB cost on hit.
- *   2. Next.js unstable_cache (in-memory / Supabase) — 600s revalidation.
+ * Returns featured gigs from the explicit Cloudflare KV read-through cache.
  *
- * KV is checked first because it's the fastest path (no worker-internal cache
- * lookup or serialization). On miss it falls through to unstable_cache which
- * may still serve from its in-memory cache or revalidate from Supabase.
+ * The portal landing is build-static and production uses OpenNext's read-only
+ * static-assets incremental cache. Keeping a second Next.js `unstable_cache`
+ * layer here makes runtime requests attempt a forbidden `type=fetch` cache
+ * write, so KV is the only writable runtime cache for this data path.
  */
 export async function getFeaturedGigs(): Promise<FeaturedGig[]> {
-  // Layer 1: KV cache (fastest, survives redeploys)
   const kv = await getCached<FeaturedGig[]>(KV_CACHE_KEY, KV_CACHE_TTL)
   if (kv !== null) return kv
 
-  // Layer 2: Next.js unstable_cache (in-memory, 600s revalidation)
-  const result = await getFeaturedGigsCached()
+  const result = await fetchFeaturedGigsFromDb()
 
-  // Warm KV in background for next cold start
+  // Warm KV in background for the next cold start. Failure is non-fatal.
   setCached(KV_CACHE_KEY, result, KV_CACHE_TTL).catch(() => {})
 
   return result
 }
-
-/**
- * Next.js unstable_cache layer. Revalidates every 600s from Supabase.
- * This is the fallback when KV misses (e.g. first deploy, TTL expiry).
- */
-const getFeaturedGigsCached = unstable_cache(
-  fetchFeaturedGigsFromDb,
-  ['landing-featured-gigs'],
-  { revalidate: 600 },
-)
