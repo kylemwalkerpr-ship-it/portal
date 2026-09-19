@@ -1,6 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
+import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
 
 export const runtime = 'experimental-edge'
 
@@ -251,7 +252,98 @@ function stripRedundantCategoryParam(url: URL): string | null {
   return url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '')
 }
 
-export default clerkMiddleware(
+function requestHostname(req: NextRequest): string {
+  return req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
+}
+
+function isAllowedCorsPreflight(req: NextRequest): boolean {
+  if (req.method !== 'OPTIONS') return false
+  const { pathname } = req.nextUrl
+  const isCorsablePath =
+    pathname === '/' ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/gigs/') ||
+    pathname.startsWith('/providers/')
+  if (!isCorsablePath) return false
+  return ALLOWED_CROSS_ORIGINS.has(req.headers.get('origin') || '')
+}
+
+function handleMarketHostRequest(req: NextRequest): NextResponse {
+  const { pathname, search } = req.nextUrl
+  const lang = resolveLanguage(req)
+
+  const isLegacyMarketplacePath = pathname === '/marketplace' || pathname.startsWith('/marketplace/')
+  if (isLegacyMarketplacePath) {
+    const cleanMarketplacePath = pathname === '/marketplace' ? '/' : pathname.slice('/marketplace'.length) || '/'
+    const target = new URL(req.url)
+    target.protocol = 'https:'
+    target.hostname = MARKET_HOST
+    target.port = ''
+    target.pathname = cleanMarketplacePath
+    for (const key of [...target.searchParams.keys()]) {
+      if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
+        target.searchParams.delete(key)
+      }
+    }
+    return withCorsHeaders(NextResponse.redirect(target, { status: 301 }), req)
+  }
+
+  if (pathname === '/sitemap.xml' || pathname === '/sitemap.xml/') {
+    return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+  }
+
+  if (req.nextUrl.searchParams.size > 0) {
+    const cleaned = stripTrackingParams(new URL(req.url))
+    if (cleaned !== null) {
+      const dest = new URL(cleaned, req.url)
+      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+    }
+  }
+
+  if (req.nextUrl.searchParams.has('category')) {
+    const cleanedCategoryUrl = stripRedundantCategoryParam(new URL(req.url))
+    if (cleanedCategoryUrl !== null) {
+      const dest = new URL(cleanedCategoryUrl, req.url)
+      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+    }
+  }
+
+  if (isAllowedCorsPreflight(req)) {
+    return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
+  }
+
+  if (
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname.startsWith('/sign-in') ||
+    pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/user')
+  ) {
+    const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
+    return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
+  }
+
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/sellers') ||
+    pathname === '/shop' ||
+    pathname.startsWith('/shop/') ||
+    pathname === '/sitemap.xml' ||
+    pathname === '/sitemap.xml/'
+  ) {
+    return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+  }
+
+  const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
+  const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
+  if (isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)) {
+    response.headers.set('X-Robots-Tag', 'noindex, follow')
+  }
+  return withCorsHeaders(response, req)
+}
+
+const clerkHandler = clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
@@ -347,49 +439,17 @@ export default clerkMiddleware(
     // Market-domain clean paths rewrite to the internal app/marketplace route
     // tree without changing the browser URL. The public `/marketplace` prefix
     // canonicalizes above and is never served as a second indexable surface.
-    if (hostname === MARKET_HOST) {
-      if (
-        pathname.startsWith('/api/') ||
-        pathname.startsWith('/_next/') ||
-        pathname.startsWith('/sellers') ||
-        pathname === '/shop' ||
-        pathname.startsWith('/shop/') ||
-        pathname === '/sitemap.xml' ||
-        pathname === '/sitemap.xml/'
-      ) {
-        // pass through — these routes live at their on-disk root paths.
-      } else if (
-        // Portal-only surfaces should never live on the market host. A Clerk
-        // redirect, a stale link, or a typed URL should land on the portal
-        // host where these routes are real.
-        pathname === '/dashboard' ||
-        pathname.startsWith('/dashboard/') ||
-        pathname.startsWith('/sign-in') ||
-        pathname.startsWith('/sign-up') ||
-        pathname.startsWith('/user')
-      ) {
-        const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
-        return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
-      } else {
-        const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
-        const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
-        // Internal discovery/search URLs are useful for users but should not
-        // become index inventory. Keep links crawlable while consolidating
-        // filtered and paginated views to the clean canonical surface.
-        //
-        // Both clean surfaces here — the landing (`/`) and the service
-        // directory (`/gigs`) — are TRUE SSG with static metadata, so neither
-        // can emit query-sensitive robots metadata any more. Enforce the
-        // exact previous contract at the host edge, where the query string is
-        // still visible: every recognized discovery filter key plus
-        // `?page=N`, N >= 2. Clean URLs (and `?country=`, never noindexed)
-        // stay indexable, the query string is never trimmed or rewritten, and
-        // tracking params are already 301-consolidated above.
-        if (isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)) {
-          response.headers.set('X-Robots-Tag', 'noindex, follow')
-        }
-        return withCorsHeaders(response, req)
-      }
+    if (
+      hostname === MARKET_HOST &&
+      pathname !== '/sellers' &&
+      pathname !== '/sellers/' &&
+      pathname !== '/api' &&
+      !pathname.startsWith('/api/')
+    ) {
+      // Normal public Marketplace documents are handled before Clerk. A rare
+      // Clerk handshake query deliberately enters the wrapper first, then
+      // returns here so it still receives the same host rewrite/redirect logic.
+      return handleMarketHostRequest(req)
     } else if (hostname === PORTAL_HOST && (pathname === '/shop' || pathname.startsWith('/shop/'))) {
       // File Shop is a public Marketplace surface. Serving the same /shop URL
       // tree on portal.yousafeconsultancy.com creates a second crawlable copy
@@ -461,6 +521,23 @@ export default clerkMiddleware(
     authorizedParties: AUTHORIZED_PARTIES.length > 0 ? AUTHORIZED_PARTIES : undefined,
   },
 )
+
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  if (requestHostname(req) === MARKET_HOST) {
+    const allowedCorsPreflight = isAllowedCorsPreflight(req)
+    if (
+      shouldBypassClerkForMarketRequest(
+        req.nextUrl.pathname,
+        req.nextUrl.searchParams,
+        allowedCorsPreflight,
+      )
+    ) {
+      return handleMarketHostRequest(req)
+    }
+  }
+
+  return clerkHandler(req, event)
+}
 
 export const config = {
   // /api/translate(/batch) and /api/webhooks are excluded from the middleware
