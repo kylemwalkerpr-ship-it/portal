@@ -43,7 +43,8 @@ describe('standalone Marketplace public URL contract', () => {
 
   test('clean market-host paths still rewrite only to the internal app route tree', () => {
     const middleware = read('middleware.ts')
-    expect(middleware).toContain('const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)')
+    expect(middleware).toContain("const internalPath = pathname === '/' ? '/marketplace' : `/marketplace${pathname}`")
+    expect(middleware).toContain('const rewrite = new URL(`${internalPath}${search}`, req.url)')
     expect(middleware).toContain('NextResponse.rewrite(rewrite)')
   })
 

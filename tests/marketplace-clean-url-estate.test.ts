@@ -57,7 +57,8 @@ describe('Marketplace public URL retirement', () => {
   })
 
   test('keeps clean market URLs as browser-facing paths while rewriting only internally', () => {
-    expect(middleware).toContain('const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)')
+    expect(middleware).toContain("const internalPath = pathname === '/' ? '/marketplace' : `/marketplace${pathname}`")
+    expect(middleware).toContain('const rewrite = new URL(`${internalPath}${search}`, req.url)')
     expect(middleware).toContain('NextResponse.rewrite(rewrite)')
     expect(getMarketplaceCanonicalPath('/gigs/example')).toBe('/gigs/example')
     expect(getMarketplaceCanonicalUrl('/gigs/example')).toBe('https://market.yousafeconsultancy.com/gigs/example')
