@@ -9,23 +9,15 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 minify = true
 
 # ── CPU & Subrequest Limits ─────────────────────────────────────────────
-# OpenNext Next.js handler is CPU-heavy. The Free plan caps CPU at 10ms
-# per invocation. If your Workers plan is upgraded to Paid, uncomment the
-# [limits] block below and set an appropriate cpu_ms value.
+# This Worker currently deploys on the Cloudflare Workers Free plan. Do NOT
+# activate a [limits] block here: Cloudflare rejects paid-only CPU limits on
+# Free plans (API code 100328), and Free-plan subrequest caps cannot be raised
+# to the values used by Paid Workers. The platform defaults therefore remain
+# authoritative for production.
 #
-# Content Studio AI generation runs one exclusive commissioned provider per
-# job (Grok 4.6 or DeepSeek V4.1 Flash) with same-provider retries only —
-# there is no cross-provider fallback chain. Each provider call counts as a
-# subrequest; the default cap is 1,000, which long generation + retry
-# sequences can exhaust, so raise it to 5,000.
-#
-# Paid Workers plan: allow long-running AI generation (network I/O does not
-# consume CPU, but the Next.js SSR handler + quality-gate scanning are
-# CPU-heavy) and the 1,000-subrequest default cap. cpu_ms requires a Paid
-# Workers plan (Free caps at 10ms and ignores this block).
-[limits]
-  cpu_ms = 300000  # 5 minutes
-  subrequests = 5000
+# If the account is upgraded to Workers Paid, a reviewed follow-up may enable
+# a [limits] block such as cpu_ms = 300000 and an appropriate subrequests cap.
+# Keep that change coupled to the billing-plan upgrade and deployment proof.
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).
