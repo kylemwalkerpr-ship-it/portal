@@ -227,4 +227,97 @@ describe('GSC visibility classification', () => {
     expect(classifyGscVisibility('student living expenses canada', row)).toBe('qualified')
     expect(classifyGscVisibility('student living university of south carolina', row)).toBe('off_mission')
   })
+
+  it('classifies contact-detail / year-suffixed self-brand forms as junk (final review residual)', () => {
+    const strongSignal = { impressions: 900, position: 2, clicks: 0 }
+    // Final review residual: brand self-searches with a contact detail, a
+    // company suffix or a calendar year were still `qualified`. Same bounded
+    // rule as the other navigational forms: closed qualifier vocabulary plus an
+    // optional trailing year, never `^you safe\b.*`.
+    for (const term of [
+      'you safe contact number',
+      'you safe phone number',
+      'you safe email address',
+      'you safe opening hours',
+      'you safe reviews 2024',
+      'you safe login 2024',
+      'you safe login uk 2024',
+      'you safe 2024',
+      'you safe ltd',
+      'you safe limited',
+    ]) {
+      expect(classifyGscVisibility(term, strongSignal)).toBe('junk')
+    }
+    // Brand-like prose that keeps talking stays real demand.
+    expect(
+      classifyGscVisibility('you safe phone number for international students', {
+        impressions: 300,
+        position: 9,
+        clicks: 1,
+      }),
+    ).toBe('qualified')
+    expect(classifyGscVisibility('you safe 2025 visa', { impressions: 300, position: 9, clicks: 1 })).toBe('qualified')
+    expect(classifyGscVisibility('is warwick safe for international students', strongSignal)).toBe('off_mission')
+    // Existing production residual / boundary outcomes are unchanged.
+    const row = { impressions: 520, position: 8, clicks: 4 }
+    expect(classifyGscVisibility('"fy27_stk_housing_rates" pacific', strongSignal)).toBe('junk')
+    expect(classifyGscVisibility('student rentals near university of south carolina', strongSignal)).toBe('off_mission')
+    expect(classifyGscVisibility('student living expenses canada', row)).toBe('qualified')
+    expect(classifyGscVisibility('student living university of south carolina', row)).toBe('off_mission')
+    expect(classifyGscVisibility('is it safe for international students on opt', row)).toBe('qualified')
+    expect(classifyGscVisibility('is it safe for international students to work in the uk', row)).toBe('qualified')
+    expect(classifyGscVisibility('is it safe for international students to study in canada', row)).toBe('qualified')
+    expect(classifyGscVisibility('is it safe for international students to travel while on a visa', row)).toBe('qualified')
+  })
+
+  it('qualifies org-prefixed activity-safety and realistic long activity phrasings (final review findings M1/M2)', () => {
+    const row = { impressions: 520, position: 8, clicks: 4 }
+    // M1: `university safe` / `campus safe` is place-safety only when it stands
+    // alone — with a mission activity clause it is a genuine question.
+    for (const term of [
+      'is university safe for international students to work in the uk',
+      'is campus safe for international students to study in canada',
+    ]) {
+      expect(isOffMissionDemandQuery(term)).toBe(false)
+      expect(classifyGscVisibility(term, row)).toBe('qualified')
+    }
+    // M2: realistic bounded activity phrasings are still natural questions.
+    for (const term of [
+      'is it safe for international students to get a job in the uk',
+      'is it safe for international students to find work in canada',
+      'is it safe for international students to do part-time work in the uk',
+      'is it safe for international students to look for a job in the uk',
+    ]) {
+      expect(classifyGscVisibility(term, row)).toBe('qualified')
+    }
+    // Place-safety (no mission activity clause) is unchanged.
+    expect(classifyGscVisibility('is warwick safe for international students', row)).toBe('off_mission')
+    expect(classifyGscVisibility('university safety for international students', row)).toBe('off_mission')
+    expect(classifyGscVisibility('campus safety tips for international students', row)).toBe('off_mission')
+    // The pasted-text guard itself is untouched.
+    expect(classifyGscVisibility('is it safe to buy a used car from a private seller abroad', row)).toBe('junk')
+    expect(
+      classifyGscVisibility('what are the best student housing options near the university of south carolina', row),
+    ).toBe('junk')
+  })
+
+  it('classifies locale/service self-brand navigational forms as junk (final review finding M3)', () => {
+    const strongSignal = { impressions: 900, position: 2, clicks: 0 }
+    // Both qualifier slots share the same closed navigational vocabulary, so an
+    // order like brand + service + locale is junk too.
+    for (const term of [
+      'you safe login england',
+      'you safe portal wales',
+      'you safe reviews scotland',
+      'you safe login services',
+    ]) {
+      expect(classifyGscVisibility(term, strongSignal)).toBe('junk')
+    }
+    // Prose that merely starts with the brand words keeps its real bucket.
+    expect(isJunkQuery('you safe to travel on a student visa')).toBe(false)
+    expect(
+      classifyGscVisibility('you safe to travel on a student visa', { impressions: 300, position: 9, clicks: 1 }),
+    ).toBe('qualified')
+    expect(isOffMissionDemandQuery('is warwick safe for international students')).toBe(true)
+  })
 })
