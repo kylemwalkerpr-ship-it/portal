@@ -11,7 +11,8 @@ import staticAssetsIncrementalCache from '@opennextjs/cloudflare/overrides/incre
 
 export default defineCloudflareConfig({
   incrementalCache: staticAssetsIncrementalCache,
-  // Serve prerendered pages straight from the static-assets cache without
-  // re-invoking the Next.js server (no tag cache / queue involved).
+  // Serve prerendered pages straight from the static-assets cache before
+  // re-invoking the Next.js server. Tag/queue adapters stay intentionally
+  // unconfigured; true SSG entries never require writable revalidation infra.
   enableCacheInterception: true,
 })

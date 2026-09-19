@@ -46,7 +46,7 @@ const queryGate = readRepo('components/marketplace/GigsDiscoveryQueryGate.tsx')
 const request = (pathname: string, queryString = '') =>
   isDiscoveryVariantRequest(pathname, new URLSearchParams(queryString))
 
-const REWRITE_CALL = 'const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)'
+const REWRITE_CALL = 'const rewrite = new URL(`${internalPath}${search}`, req.url)'
 const ROBOTS_CALL = "headers.set('X-Robots-Tag'"
 const STRIP_CALL = 'stripTrackingParams(new URL(req.url))'
 

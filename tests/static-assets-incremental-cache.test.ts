@@ -261,8 +261,27 @@ describe('GitHub production workflow ordering (build -> populate -> raw deploy)'
     const nextStep = workflow.indexOf('\n      - name:', start + 1)
     const step = workflow.slice(start, nextStep === -1 ? undefined : nextStep)
 
-    expect(step).toContain(`run: npm run ${POPULATE_NPM_SCRIPT}`)
+    expect(step).toContain(`npm run ${POPULATE_NPM_SCRIPT}`)
     expect(step).not.toContain('continue-on-error')
+  })
+
+  test('the population step verifies every critical Marketplace SSG cache key', () => {
+    const start = workflow.indexOf(POPULATE_STEP_NAME)
+    const nextStep = workflow.indexOf('\n      - name:', start + 1)
+    const step = workflow.slice(start, nextStep === -1 ? undefined : nextStep)
+
+    expect(step).toContain('BUILD_ID="$(cat .next/BUILD_ID)"')
+    for (const key of [
+      'marketplace',
+      'marketplace/gigs',
+      'marketplace/categories',
+      'marketplace/providers',
+      'shop',
+    ]) {
+      expect(step).toContain(key)
+    }
+    expect(step).toContain('.open-next/assets/cdn-cgi/_next_cache/${BUILD_ID}/${cache_key}.cache')
+    expect(step).toContain('Missing required prerender cache asset')
   })
 
   test('the workflow still deploys only through the GitHub-main-only guarded script', () => {
