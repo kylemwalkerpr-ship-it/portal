@@ -100,6 +100,10 @@ function fmtN(n: number | null | undefined): string {
   return String(Math.round(v))
 }
 
+function isUnavailableLlmAudit(row: Record<string, unknown>): boolean {
+  return Array.isArray(row.flags) && row.flags.includes('audit_failed')
+}
+
 interface Props {
   onBrief?: (plan: Record<string, unknown>) => void
   onIngest?: (result: { stored: number; fetched: number; aiSummarized: number }) => void
@@ -266,8 +270,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 10 }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'audit failed')
-      flash(`LLM audit: ${data.cited}/${data.total} queries cited the estate (${data.shareOfVoice}% share of voice)`)
-      recordResult(true, 'LLM audit', `${data.cited}/${data.total} queries measured responded the estate cited it · ${data.shareOfVoice}% share of voice${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
+      const shareLabel = data.shareOfVoice == null ? 'unavailable' : `${data.shareOfVoice}%`
+      flash(`LLM audit: ${data.cited}/${data.total} measured queries cited the estate (${shareLabel} share of voice)`)
+      recordResult(true, 'LLM audit', `${data.cited}/${data.total} measured queries cited the estate · ${shareLabel} share of voice${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
       await loadAll()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'LLM audit failed'
@@ -284,8 +289,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fanOut: true, planLimit: 10, maxPerPlan: 6, maxAudits: 18 }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'fan-out audit failed')
-      flash(`Fan-out audit: ${data.cited}/${data.total} sub-queries across ${data.clusters} clusters cited the estate (${data.shareOfVoice}%)`)
-      recordResult(true, 'Fan-out audit', `${data.cited}/${data.total} sub-queries across ${data.clusters ?? 0} clusters cited the estate · ${data.shareOfVoice}%`)
+      const shareLabel = data.shareOfVoice == null ? 'unavailable' : `${data.shareOfVoice}%`
+      flash(`Fan-out audit: ${data.cited}/${data.total} measured sub-queries across ${data.clusters} clusters cited the estate (${shareLabel})`)
+      recordResult(true, 'Fan-out audit', `${data.cited}/${data.total} measured sub-queries across ${data.clusters ?? 0} clusters cited the estate · ${shareLabel}${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
       await loadAll()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'fan-out audit failed'
@@ -326,12 +332,13 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
 
   // Live counts on the tab bar — navigation tells you where the data is.
   const sn = status as Record<string, unknown> | null
+  const llmShareOfVoice = (sn?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice
   const tabCounts: Partial<Record<TabKey, string>> = {
     lifecycle: seededCount ? String(seededCount) : '',
     knowledge: sn ? fmtN((sn.knowledge as { total?: number } | undefined)?.total ?? 0) : '',
     planner: sn ? String((sn.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0) : '',
     interlink: sn ? String(((sn.interlinks as { planned?: number } | undefined)?.planned ?? 0) + ((sn.interlinks as { applied?: number } | undefined)?.applied ?? 0)) : '',
-    llm: sn ? `${(sn.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%` : '',
+    llm: sn ? (llmShareOfVoice == null ? '—' : `${llmShareOfVoice}%`) : '',
     rank: sn ? String((sn.rankingModel as { computed?: number } | undefined)?.computed ?? 0) : '',
     gate: sn ? String((sn.gate as { runs?: number } | undefined)?.runs ?? 0) : '',
   }
@@ -505,7 +512,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         <Kpi label="Missions" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions ranked" color={C.green} />
         <Kpi label="Intel" value={fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0))} sub="policy/trend items" color={C.violet} />
         <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`${(status?.gate as { runs?: number } | undefined)?.runs ?? 0} runs · avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
-        <Kpi label="LLM voice" value={`${(status?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%`} sub={`${(status?.llmVisibility as { cited?: number } | undefined)?.cited ?? 0}/${(status?.llmVisibility as { total?: number } | undefined)?.total ?? 0} cited`} color={C.violet} />
+        <Kpi label="LLM voice" value={((status?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice) == null ? '—' : `${(status?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice}%`} sub={`${(status?.llmVisibility as { cited?: number } | undefined)?.cited ?? 0}/${(status?.llmVisibility as { total?: number } | undefined)?.total ?? 0} measured cited`} color={C.violet} />
       </div>
 
       {/* ── Tab navigation (dedicated surfaces with live counts) ── */}
@@ -886,14 +893,14 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 24, alignItems: 'center', marginTop: 14 }}>
-              <div style={{ width: 120, height: 120, borderRadius: '50%', position: 'relative', background: `conic-gradient(${C.violet} ${(visibility?.shareOfVoice as number) || 0}%, ${C.surface3} 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 120, height: 120, borderRadius: '50%', position: 'relative', background: `conic-gradient(${C.violet} ${typeof visibility?.shareOfVoice === 'number' ? visibility.shareOfVoice : 0}%, ${C.surface3} 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ width: 88, height: 88, borderRadius: '50%', background: C.surface, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, fontFamily: C.mono, color: C.violet }}>{(visibility?.shareOfVoice as number) || 0}%</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, fontFamily: C.mono, color: C.violet }}>{typeof visibility?.shareOfVoice === 'number' ? `${visibility.shareOfVoice}%` : '—'}</div>
                   <div style={{ fontSize: 8, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase' }}>share of voice</div>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 12, color: C.text }}><strong>{(visibility?.total as number) || 0}</strong> audits · <strong style={{ color: C.green }}>{(visibility?.cited as number) || 0}</strong> cited the estate</div>
+                <div style={{ fontSize: 12, color: C.text }}><strong>{(visibility?.total as number) || 0}</strong> measured audits · <strong style={{ color: C.green }}>{(visibility?.cited as number) || 0}</strong> cited the estate{Number(visibility?.failed || 0) > 0 ? ` · ${Number(visibility?.failed)} failed excluded` : ''}</div>
                 {Object.entries((visibility?.byStage as Record<string, number>) || {}).map(([stage, count]) => (
                   <div key={stage} style={{ fontSize: 10.5, color: C.textMuted, display: 'flex', gap: 6 }}>
                     <span style={{ fontFamily: C.mono }}>{STAGE_LABELS[stage] || stage}</span>
@@ -953,10 +960,10 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
               )}
               {(visibility?.audits as Array<Record<string, unknown>> | undefined)?.map((a) => (
                 <div key={String(a.id)} style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0 }}>{a.cited ? '✅' : '❌'}</span>
+                  <span style={{ fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0 }}>{isUnavailableLlmAudit(a) ? '⚠️' : a.cited ? '✅' : '❌'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
-                      {badge(a.cited ? 'CITED' : 'NOT CITED', a.cited ? C.greenSoft : C.redSoft, a.cited ? C.green : C.red)}
+                      {isUnavailableLlmAudit(a) ? badge('UNAVAILABLE', C.surface3, C.textMuted) : badge(a.cited ? 'CITED' : 'NOT CITED', a.cited ? C.greenSoft : C.redSoft, a.cited ? C.green : C.red)}
                       {a.fan_out ? badge(`FAN-OUT ${String(a.source_field || '').toUpperCase()}`, C.violetSoft, C.violet) : null}
                       {Number(a.share_of_voice) > 0 ? badge(`SOV ${Math.round(Number(a.share_of_voice) * 100)}%`, C.violetSoft, C.violet) : null}
                       {a.stage ? badge(STAGE_LABELS[String(a.stage)] || String(a.stage), C.cyanSoft, C.cyan2) : null}

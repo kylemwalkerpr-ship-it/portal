@@ -93,8 +93,8 @@ export async function POST(req: NextRequest) {
       } catch {
         fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} }
       }
-      await recordEngineRun('daily', 'success', {
-        phase, cited: vis.cited, total: vis.total, failed: vis.failed, shareOfVoice: vis.shareOfVoice,
+      await recordEngineRun('daily', vis.total ? 'success' : 'partial', {
+        phase, cited: vis.cited, total: vis.total, attempted: vis.attempted, failed: vis.failed, shareOfVoice: vis.shareOfVoice, measurementState: vis.measurementState,
         fanOutCited: fanOut.cited, fanOutTotal: fanOut.total, fanOutClusters: fanOut.clusters,
       }, [], 'cron')
       return NextResponse.json({ ok: true, phase, ...vis, fanOut })

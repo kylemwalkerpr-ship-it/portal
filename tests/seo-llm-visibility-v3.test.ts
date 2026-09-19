@@ -86,9 +86,11 @@ describe('aggregateEngineAudits — multi-engine matrix + competitive delta', ()
     expect(result.actions.length).toBeGreaterThan(0)
   })
 
-  it('returns zero share-of-voice when every engine fails', () => {
+  it('returns unavailable share-of-voice when every engine fails', () => {
     const result = aggregateEngineAudits('q', [mk({ ok: false, flags: ['engine_error: 402'] })])
-    expect(result.shareOfVoice).toBe(0)
+    expect(result.shareOfVoice).toBeNull()
+    expect(result.measurementState).toBe('unavailable')
+    expect(result.actions).toEqual([])
     expect(result.topCompetitor).toBeNull()
     expect(result.engines).toHaveLength(1)
     expect(result.engines[0].ok).toBe(false)

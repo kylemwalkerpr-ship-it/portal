@@ -113,7 +113,7 @@ export async function assembleAuditQueryPool(limit: number): Promise<{
     loadKnowledgeFeed(24).catch(() => ({ items: [] as Array<Record<string, unknown>> })),
     supabase
       .from('seo_llm_visibility')
-      .select('query,cited,share_of_voice,created_at')
+      .select('query,cited,share_of_voice,flags,engines_json,created_at')
       .eq('fan_out', false)
       .order('created_at', { ascending: false })
       .limit(240),
@@ -132,12 +132,16 @@ export async function assembleAuditQueryPool(limit: number): Promise<{
     }
   })
 
-  const priorAudits = ((priorRes.data || []) as Array<Record<string, unknown>>).map((r) => ({
-    query: String(r.query || ''),
-    cited: Boolean(r.cited),
-    shareOfVoice: Number(r.share_of_voice) || 0,
-    createdAt: String(r.created_at || ''),
-  }))
+  const priorAudits = ((priorRes.data || []) as Array<Record<string, unknown>>)
+    .filter((row) => !isFailedVisibilityRow(row))
+    .map((r) => ({
+      query: String(r.query || ''),
+      cited: Boolean(r.cited),
+      shareOfVoice: r.share_of_voice == null
+        ? (r.cited ? 1 : 0)
+        : Number(r.share_of_voice) || 0,
+      createdAt: String(r.created_at || ''),
+    }))
 
   const knowledgeTitles = (knowledge.items || []).map((i) => String(i.title || '')).filter(Boolean)
   const scored = scoreAuditCandidates({
@@ -194,6 +198,8 @@ export interface CitationAction {
 }
 
 /** Aggregated per-query result across all engines in the matrix. */
+export type VisibilityMeasurementState = 'measured' | 'unavailable'
+
 export interface VisibilityAuditResult {
   query: string
   engine: string
@@ -204,8 +210,10 @@ export interface VisibilityAuditResult {
   competitorDomains: string[]
   snippet: string
   rawScore: number
-  /** Fraction of successful engines that cited the estate (0–1). */
-  shareOfVoice: number
+  /** Fraction of successful engines that cited the estate (0–1); null when none succeeded. */
+  shareOfVoice: number | null
+  /** Explicitly distinguishes an engine outage/setup failure from a genuine 0% citation result. */
+  measurementState: VisibilityMeasurementState
   stage: string | null
   country: string | null
   engines: EngineAudit[]
@@ -224,6 +232,34 @@ export interface LlmVisibilityEvidence {
 
 function normalizeAuditQuery(q: string): string {
   return String(q || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function hasAuditFailedFlag(flags: unknown): boolean {
+  return Array.isArray(flags) && flags.some((flag) => String(flag) === 'audit_failed')
+}
+
+/**
+ * Read-side compatibility guard. New writes carry `audit_failed`; older v3
+ * rows may only reveal an outage through engines_json. Never reinterpret a
+ * legacy row with no engine matrix as failed — only an explicit failure signal
+ * is excluded.
+ */
+export function isFailedVisibilityRow(row: Record<string, unknown>): boolean {
+  if (hasAuditFailedFlag(row.flags)) return true
+  if (!Array.isArray(row.engines_json)) return false
+  const engines = row.engines_json as Array<Record<string, unknown>>
+  return engines.length === 0 || !engines.some((engine) => engine?.ok === true)
+}
+
+function failedAuditResult(result: VisibilityAuditResult): boolean {
+  return result.measurementState === 'unavailable' || !result.engines.some((engine) => engine.ok)
+}
+
+function persistenceFlags(result: VisibilityAuditResult): string[] {
+  return [...new Set([
+    ...result.engines.flatMap((engine) => engine.flags),
+    ...(failedAuditResult(result) ? ['audit_failed'] : []),
+  ])]
 }
 
 function extractUrls(text: string): string[] {
@@ -418,7 +454,8 @@ export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]
   const citedUrls = [...new Set(okAudits.flatMap((e) => e.citedUrls))]
   const brandMentions = BRAND_MENTIONS.filter((b) => okAudits.some((e) => e.snippet.toLowerCase().includes(b.toLowerCase())))
   const competitorDomains = [...new Set(okAudits.flatMap((e) => e.competitorDomains))]
-  const shareOfVoice = okAudits.length ? citedAudits.length / okAudits.length : 0
+  const shareOfVoice = okAudits.length ? citedAudits.length / okAudits.length : null
+  const measurementState: VisibilityMeasurementState = okAudits.length ? 'measured' : 'unavailable'
 
   // Competitive delta — the competitor cited by the most engines.
   const compCounts = new Map<string, number>()
@@ -465,15 +502,16 @@ export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]
     brandMentions,
     competitorDomains,
     snippet,
-    rawScore: Math.min(1, shareOfVoice),
+    rawScore: shareOfVoice == null ? 0 : Math.min(1, shareOfVoice),
     shareOfVoice,
+    measurementState,
     stage,
     country,
     engines: engineAudits,
     topCompetitor,
     actions: [],
   }
-  result.actions = buildCitationActions({
+  result.actions = shareOfVoice == null ? [] : buildCitationActions({
     shareOfVoice,
     topCompetitorDomain: topCompetitor?.domain ?? null,
     competitorShare: topCompetitor?.share ?? null,
@@ -574,7 +612,7 @@ const DEFAULT_AUDIT_ENGINE_LABEL = commissionedProvider(LANE_DEFAULT_PIN).pin
 export async function auditQuery(query: string, engineLabel: string = DEFAULT_AUDIT_ENGINE_LABEL, model: string | null = null, maxEngines = 2): Promise<VisibilityAuditResult> {
   const empty: VisibilityAuditResult = {
     query, engine: engineLabel, model, cited: false, citedUrls: [], brandMentions: [],
-    competitorDomains: [], snippet: '', rawScore: 0, shareOfVoice: 0, stage: null, country: null,
+    competitorDomains: [], snippet: '', rawScore: 0, shareOfVoice: null, measurementState: 'unavailable', stage: null, country: null,
     engines: [], topCompetitor: null, actions: [],
   }
   let pins: string[] = resolveAuditEngines(Math.max(1, Math.min(3, maxEngines)))
@@ -607,9 +645,13 @@ export async function auditQuery(query: string, engineLabel: string = DEFAULT_AU
 export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Promise<{
   audits: VisibilityAuditResult[]
   cited: number
+  /** Successful/measured query audits — the citation denominator. */
   total: number
+  /** All attempted query audits, including provider failures. */
+  attempted: number
   failed: number
-  shareOfVoice: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
   engine: string
   selected?: Array<{ query: string; source: string; score: number; reasons: string[] }>
   remediations?: import('./citationRemediation').CitationRemediation[]
@@ -647,8 +689,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     // genuine "estate not cited" outcome — the row is flagged audit_failed so
     // every read-side SoV excludes it (previously these rows were stored as
     // uncited losses and quietly degraded share-of-voice on engine outages).
-    const allFailed = result.engines.length > 0 && !result.engines.some((e) => e.ok)
-    const flags = [...new Set([...result.engines.flatMap((e) => e.flags), ...(allFailed ? ['audit_failed'] : [])])]
+    const flags = persistenceFlags(result)
     try {
       const supabase = createSupabaseAdminClient()
       await supabase.from('seo_llm_visibility').insert({
@@ -676,14 +717,15 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     }
   }
 
-  const cited = audits.filter((a) => a.cited).length
-  const total = audits.length
-  const failed = audits.filter((a) => !a.engines.some((e) => e.ok)).length
-  const measured = Math.max(0, total - failed)
+  const measuredAudits = audits.filter((audit) => !failedAuditResult(audit))
+  const cited = measuredAudits.filter((audit) => audit.cited).length
+  const attempted = audits.length
+  const failed = attempted - measuredAudits.length
+  const total = measuredAudits.length
   let remediations: import('./citationRemediation').CitationRemediation[] = []
   try {
     const { remediateVisibilityAudits } = await import('./citationRemediation')
-    remediations = await remediateVisibilityAudits(audits.map((a) => ({
+    remediations = await remediateVisibilityAudits(measuredAudits.map((a) => ({
       query: a.query,
       cited: a.cited,
       shareOfVoice: a.shareOfVoice,
@@ -700,10 +742,12 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     audits,
     cited,
     total,
+    attempted,
     failed,
-    // Share-of-voice over MEASURED audits only — engine failures are not
-    // "estate not cited" outcomes and must never drag the trend down.
-    shareOfVoice: measured ? Math.round((cited / measured) * 100) : 0,
+    // Share-of-voice over MEASURED audits only. No successful engine is an
+    // unavailable observation, not a genuine 0% citation result.
+    shareOfVoice: total ? Math.round((cited / total) * 100) : null,
+    measurementState: total ? 'measured' : 'unavailable',
     engine,
     selected,
     remediations,
@@ -712,9 +756,12 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
 
 export async function loadVisibilityFeed(limit = 50): Promise<{
   audits: Array<Record<string, unknown>>
-  shareOfVoice: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
   cited: number
   total: number
+  attempted: number
+  failed: number
   byStage: Record<string, number>
   remediations: import('./citationRemediation').CitationRemediation[]
 }> {
@@ -732,7 +779,7 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
       .limit(limit)
     const rows = (data as Array<Record<string, unknown>>) || []
     // Exclude audit_failed rows from read-side SoV (engine outage ≠ non-citation).
-    const measuredRows = rows.filter((r) => !Array.isArray(r.flags) || !r.flags.includes('audit_failed'))
+    const measuredRows = rows.filter((row) => !isFailedVisibilityRow(row))
     const cited = measuredRows.filter((r) => r.cited).length
     const byStage: Record<string, number> = {}
     for (const r of measuredRows) {
@@ -741,7 +788,7 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
       // Deterministic, prioritized fixes derived from the stored evidence —
       // so the audit trail shows WHAT to do about a low share-of-voice, not
       // just that it is low.
-      const sov = Number(r.share_of_voice)
+      const sov = r.share_of_voice == null ? Number.NaN : Number(r.share_of_voice)
       ;(r as Record<string, unknown>).actions = buildCitationActions({
         shareOfVoice: Number.isFinite(sov) ? sov : r.cited ? 1 : 0,
         topCompetitorDomain: r.top_competitor ? String(r.top_competitor) : null,
@@ -754,11 +801,11 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
     let remediations: import('./citationRemediation').CitationRemediation[] = []
     try {
       const { remediateVisibilityAudits } = await import('./citationRemediation')
-      remediations = await remediateVisibilityAudits(rows.map((r) => ({
+      remediations = await remediateVisibilityAudits(measuredRows.map((r) => ({
         id: r.id ? String(r.id) : null,
         query: String(r.query || ''),
         cited: Boolean(r.cited),
-        shareOfVoice: Number(r.share_of_voice),
+        shareOfVoice: r.share_of_voice == null ? (r.cited ? 1 : 0) : Number(r.share_of_voice),
         topCompetitor: r.top_competitor ? String(r.top_competitor) : null,
         competitorShare: Number(r.competitor_share),
         stage: r.stage ? String(r.stage) : null,
@@ -766,23 +813,29 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
         actions: Array.isArray(r.actions) ? r.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
       })))
       const byQuery = new Map(remediations.map((item) => [item.query.toLowerCase(), item]))
-      for (const r of rows) {
+      for (const r of measuredRows) {
         const hit = byQuery.get(String(r.query || '').toLowerCase())
         if (hit) (r as Record<string, unknown>).remediation = hit
       }
     } catch {
       remediations = []
     }
+    const total = measuredRows.length
+    const attempted = rows.length
+    const failed = attempted - total
     return {
       audits: rows,
-      shareOfVoice: measuredRows.length ? Math.round((cited / measuredRows.length) * 100) : 0,
+      shareOfVoice: total ? Math.round((cited / total) * 100) : null,
+      measurementState: total ? 'measured' : 'unavailable',
       cited,
-      total: measuredRows.length,
+      total,
+      attempted,
+      failed,
       byStage,
       remediations,
     }
   } catch {
-    return { audits: [], shareOfVoice: 0, cited: 0, total: 0, byStage: {}, remediations: [] }
+    return { audits: [], shareOfVoice: null, measurementState: 'unavailable', cited: 0, total: 0, attempted: 0, failed: 0, byStage: {}, remediations: [] }
   }
 }
 
@@ -799,10 +852,10 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_llm_visibility')
-      .select('query,cited,share_of_voice,top_competitor,competitor_share')
+      .select('query,cited,share_of_voice,top_competitor,competitor_share,flags,engines_json')
       .order('created_at', { ascending: false })
       .limit(200)
-    const rows = (data as Array<Record<string, unknown>>) || []
+    const rows = ((data as Array<Record<string, unknown>>) || []).filter((row) => !isFailedVisibilityRow(row))
     // The daily cron re-audits the same canonical queries, so a single prompt
     // accumulates one row per run (currently 14 copies each). Dedupe by
     // normalized query, preferring the newest row (the DESC order already
@@ -820,9 +873,15 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
     if (!matches.length) return null
     const cited = matches.filter((r) => r.cited).length
     const total = matches.length
-    // Prefer the stored per-row share, else the row aggregate.
-    const sovs = matches.map((r) => Number(r.share_of_voice)).filter((n) => Number.isFinite(n))
-    const shareOfVoice = sovs.length ? sovs.reduce((a, b) => a + b, 0) / sovs.length : total ? cited / total : null
+    // Prefer the stored per-row share. Legacy measured rows predating the v3
+    // column fall back to their cited boolean; unavailable rows were removed
+    // before de-duplication and never participate here.
+    const sovs = matches.map((r) => {
+      if (r.share_of_voice == null) return r.cited ? 1 : 0
+      const n = Number(r.share_of_voice)
+      return Number.isFinite(n) ? n : (r.cited ? 1 : 0)
+    })
+    const shareOfVoice = sovs.length ? sovs.reduce((a, b) => a + b, 0) / sovs.length : null
     const compCounts = new Map<string, { n: number; share: number }>()
     for (const r of matches) {
       const d = String(r.top_competitor || '').trim()
@@ -920,8 +979,12 @@ export interface FanOutAuditRunResult {
   audits: VisibilityAuditResult[]
   clusters: number
   cited: number
+  /** Successful/measured fan-out audits — the denominator. */
   total: number
-  shareOfVoice: number
+  attempted: number
+  failed: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
   /** cluster_id → { cited, total } for the aeoGeo family feed. */
   byCluster: Record<string, { cited: number; total: number }>
 }
@@ -940,7 +1003,7 @@ export async function runFanOutVisibilityAudits(opts: {
   engineLabel?: string
 } = {}): Promise<FanOutAuditRunResult> {
   const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
-  const empty: FanOutAuditRunResult = { audits: [], clusters: 0, cited: 0, total: 0, shareOfVoice: 0, byCluster: {} }
+  const empty: FanOutAuditRunResult = { audits: [], clusters: 0, cited: 0, total: 0, attempted: 0, failed: 0, shareOfVoice: null, measurementState: 'unavailable', byCluster: {} }
   try {
     const { loadPlansDashboard } = await import('./planner')
     const { plans } = await loadPlansDashboard(opts.planLimit || 10)
@@ -956,10 +1019,12 @@ export async function runFanOutVisibilityAudits(opts: {
     for (const fq of queries) {
       const result = await auditQuery(fq.query, engine)
       audits.push(result)
-      const cell = byCluster[fq.clusterId] || { cited: 0, total: 0 }
-      cell.total += 1
-      if (result.cited) cell.cited += 1
-      byCluster[fq.clusterId] = cell
+      if (!failedAuditResult(result)) {
+        const cell = byCluster[fq.clusterId] || { cited: 0, total: 0 }
+        cell.total += 1
+        if (result.cited) cell.cited += 1
+        byCluster[fq.clusterId] = cell
+      }
       try {
         await supabase.from('seo_llm_visibility').insert({
           query: result.query,
@@ -978,7 +1043,7 @@ export async function runFanOutVisibilityAudits(opts: {
           competitor_domains: result.competitorDomains,
           answer_format: result.engines.map((e) => e.answerFormat).filter(Boolean)[0] ?? null,
           confidence: result.engines.length ? result.engines.reduce((a, e) => a + e.confidence, 0) / result.engines.length : null,
-          flags: [...new Set(result.engines.flatMap((e) => e.flags))],
+          flags: persistenceFlags(result),
           share_of_voice: result.shareOfVoice,
           top_competitor: result.topCompetitor?.domain ?? null,
           competitor_share: result.topCompetitor?.share ?? null,
@@ -988,13 +1053,20 @@ export async function runFanOutVisibilityAudits(opts: {
         // storage best-effort — the audit itself stands
       }
     }
-    const cited = audits.filter((a) => a.cited).length
+    const measuredAudits = audits.filter((audit) => !failedAuditResult(audit))
+    const cited = measuredAudits.filter((audit) => audit.cited).length
+    const total = measuredAudits.length
+    const attempted = audits.length
+    const failed = attempted - total
     return {
       audits,
       clusters: Object.keys(byCluster).length,
       cited,
-      total: audits.length,
-      shareOfVoice: audits.length ? Math.round((cited / audits.length) * 100) : 0,
+      total,
+      attempted,
+      failed,
+      shareOfVoice: total ? Math.round((cited / total) * 100) : null,
+      measurementState: total ? 'measured' : 'unavailable',
       byCluster,
     }
   } catch {
@@ -1015,9 +1087,10 @@ export async function loadVisibilityByCluster(perCluster = 12, maxClusters = 50)
     const supabase = createSupabaseAdminClient()
     const { data: clusters } = await supabase
       .from('seo_llm_visibility')
-      .select('cluster_id')
+      .select('cluster_id,flags,engines_json')
       .eq('fan_out', true)
       .not('cluster_id', 'is', null)
+      .not('flags', 'ov', `{audit_failed}`)
       .order('created_at', { ascending: false })
       .limit(maxClusters)
     const ids = [...new Set(((clusters as Array<{ cluster_id: string | null }>) || []).map((r) => String(r.cluster_id || '')).filter(Boolean))]
@@ -1025,12 +1098,16 @@ export async function loadVisibilityByCluster(perCluster = 12, maxClusters = 50)
     for (const id of ids) {
       const { data: rows } = await supabase
         .from('seo_llm_visibility')
-        .select('cluster_id,cited')
+        .select('cluster_id,cited,flags,engines_json')
         .eq('cluster_id', id)
         .eq('fan_out', true)
+        .not('flags', 'ov', `{audit_failed}`)
         .order('created_at', { ascending: false })
-        .limit(perCluster)
-      for (const r of (rows as Array<{ cited: boolean | null }>) || []) {
+        .limit(Math.max(perCluster, Math.min(200, perCluster * 4)))
+      const measuredRows = (((rows as Array<Record<string, unknown>>) || [])
+        .filter((row) => !isFailedVisibilityRow(row))
+        .slice(0, perCluster))
+      for (const r of measuredRows) {
         const cell = byCluster[id] || { cited: 0, total: 0 }
         cell.total += 1
         if (r.cited) cell.cited += 1

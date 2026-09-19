@@ -152,12 +152,16 @@ export async function POST(request: Request) {
               cited: result.cited,
               total: result.total,
               shareOfVoice: result.shareOfVoice,
+              attempted: result.attempted,
+              failed: result.failed,
+              measurementState: result.measurementState,
               selected: (result.selected || []).map((s) => s.query),
             },
             [],
             'admin',
           )
-          emitStep('done', `LLM audit: ${result.cited}/${result.total} cited the estate (${result.shareOfVoice}%)`)
+          const shareLabel = result.shareOfVoice == null ? 'unavailable' : `${result.shareOfVoice}%`
+          emitStep('done', `LLM audit: ${result.cited}/${result.total} measured audits cited the estate (${shareLabel})`, result.failed ? `${result.failed} failed audit(s) excluded` : undefined)
           send({ type: 'done', kind, summary: `LLM audit: ${result.cited}/${result.total} queries cited the estate`, result })
         }
       } catch (err) {
