@@ -5,7 +5,12 @@ import { SellerProfilePage } from '@/components/marketplace/SellerProfilePage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
-export const dynamic = 'force-dynamic'
+// TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: per-request
+// rendering of the provider estate exceeded the Workers Free 10ms CPU budget,
+// and the Free plan has no real ISR queue (OpenNext's default queue is a dummy
+// that throws). Every resolvable token is enumerated once at build time below;
+// tokens outside that estate are real 404s instead of a per-request lookup.
+export const dynamicParams = false
 
 interface ProviderPageProps {
   params: Promise<{ id: string }>
@@ -36,6 +41,77 @@ async function resolveProfileId(
   if (viaConsultant?.profile_id) return viaConsultant.profile_id
 
   return null
+}
+
+/** PostgREST can hand the embedded profile back either bare or as an array. */
+function joinedProfileUsername(row: any): string | null {
+  const profile = Array.isArray(row?.provider) ? row.provider[0] : row?.provider
+  const username = profile?.username
+  return typeof username === 'string' && username.trim() ? username : null
+}
+
+/**
+ * Build-time provider estate. Mirrors the sitemap token rule (profile username
+ * when present, otherwise the attorney/consultant row id) and additionally
+ * enumerates the tokens the marketplace actually links to: the profile id and
+ * the provider id of every active gig, because gig pages link
+ * `provider.username || provider_id` and messaging previews link profile ids.
+ */
+export async function generateStaticParams(): Promise<Array<{ id: string }>> {
+  // FAIL CLOSED. `dynamicParams = false` turns every token missing from this
+  // set into a hard 404, so a failed query can never be allowed to publish a
+  // partial (or empty) provider estate. Any setup/query failure rethrows and
+  // fails the build instead.
+  const tokens = new Set<string>()
+
+  const addRow = (row: any) => {
+    const username = joinedProfileUsername(row)
+    if (username) {
+      tokens.add(username)
+      // resolveProfileId() lowercases the token before matching, so the
+      // lowercased form of a live link must pre-render the same page.
+      tokens.add(username.toLowerCase())
+    }
+    if (row?.profile_id) tokens.add(String(row.profile_id))
+    if (row?.provider_id) tokens.add(String(row.provider_id))
+    if (row?.id) tokens.add(String(row.id))
+  }
+
+  const db = createSupabaseAdminClient()
+  const [attorneyResult, consultantResult, gigProviderResult] = await Promise.all([
+    db
+      .from('attorneys')
+      .select('id, profile_id, provider:profiles!attorneys_profile_id_fkey(username)')
+      .limit(5000),
+    db
+      .from('consultants')
+      .select('id, profile_id, provider:profiles!consultants_profile_id_fkey(username)')
+      .limit(5000),
+    // Same FK embed the public landing already uses, so it is a known-good
+    // PostgREST path rather than an untested join.
+    db
+      .from('gigs')
+      .select('provider_id, provider:profiles!gigs_provider_id_fkey(username)')
+      .eq('status', 'active')
+      .not('provider_id', 'is', null)
+      .limit(5000),
+  ])
+
+  if (attorneyResult.error) {
+    throw new Error(`[providers/static-params] attorney token query failed: ${attorneyResult.error.message}`)
+  }
+  if (consultantResult.error) {
+    throw new Error(`[providers/static-params] consultant token query failed: ${consultantResult.error.message}`)
+  }
+  if (gigProviderResult.error) {
+    throw new Error(`[providers/static-params] gig provider token query failed: ${gigProviderResult.error.message}`)
+  }
+
+  for (const row of attorneyResult.data ?? []) addRow(row)
+  for (const row of consultantResult.data ?? []) addRow(row)
+  for (const row of gigProviderResult.data ?? []) addRow(row)
+
+  return [...tokens].map((id) => ({ id }))
 }
 
 export async function generateMetadata({ params }: ProviderPageProps): Promise<Metadata> {

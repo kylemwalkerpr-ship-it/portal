@@ -11,7 +11,15 @@ const MARKET_HOST = 'market.yousafeconsultancy.com'
 // through, while portal.yousafeconsultancy.com receives an explicit empty map.
 // Keeping host detection out of this route avoids Cloudflare/OpenNext request-
 // header ambiguity turning the real Marketplace sitemap into an empty document.
-export const dynamic = 'force-dynamic'
+//
+// The sitemap is generated once at build time and never re-rendered on the
+// edge: the Workers Free plan has no real ISR queue (the default queue is a
+// dummy that throws) and the DB fan-out below exceeded the 10ms CPU budget
+// when the route was `force-dynamic`. `revalidate = false` is explicit "no
+// ISR" — Google still receives the complete URL set from the build, and a
+// supply change is picked up by the next deploy instead of by crawling.
+export const dynamic = 'force-static'
+export const revalidate = false
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = `https://${MARKET_HOST}`

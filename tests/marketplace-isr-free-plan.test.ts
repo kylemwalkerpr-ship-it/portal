@@ -6,9 +6,12 @@
  * allowed time after invocation end and have been cancelled." OpenNext is
  * configured with `defineCloudflareConfig({})`, so its incrementalCache /
  * tagCache / queue adapters resolve to the "dummy" defaults and the dummy
- * queue's send() throws. Removing hourly ISR from the deploy-static hubs and
- * rendering /gigs per request (against its explicit versioned KV snapshot)
- * keeps production on paid-feature-free defaults.
+ * queue's send() throws. Removing hourly ISR from the deploy-static hubs keeps
+ * production on paid-feature-free defaults. The /gigs hub originally stayed
+ * per-request against its versioned KV snapshot, but that render exceeded the
+ * Workers Free 10ms CPU budget, so it is now build-static too and its
+ * query-string discovery moved to a client gate (see
+ * tests/marketplace-static-estate-contract.test.ts).
  *
  * These are source contracts, not build assertions: they fail loudly if a
  * future edit reintroduces `export const revalidate` on a static hub, drops
@@ -61,9 +64,10 @@ for (const hub of STATIC_HUBS) {
   })
 }
 
-describe('gigs hub — per-request render from the versioned KV snapshot', () => {
-  it('forces dynamic rendering and exports no revalidate', () => {
-    expect(gigHub).toMatch(FORCE_DYNAMIC_EXPORT)
+describe('gigs hub — true SSG over the versioned KV snapshot', () => {
+  it('exports neither dynamic nor revalidate (no per-request render, no ISR)', () => {
+    expect(gigHub).not.toMatch(FORCE_DYNAMIC_EXPORT)
+    expect(gigHub).not.toMatch(DYNAMIC_EXPORT)
     expect(gigHub).not.toMatch(REVALIDATE_EXPORT)
     expect(gigHub).not.toContain('export const revalidate')
   })

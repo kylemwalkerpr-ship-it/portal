@@ -15,7 +15,15 @@ describe('GSC soft-404 route contract', () => {
 
   test('free-text Marketplace search variants are noindex,follow', () => {
     const middleware = read('middleware.ts')
-    expect(middleware).toContain("pathname === '/' && req.nextUrl.searchParams.has('q')")
+    // Query-sensitive robots metadata moved off the (now build-static) landing
+    // page and onto the market-host edge, where it also covers the equally
+    // build-static `/gigs` directory. The predicate still covers `q`; the full
+    // filter/page parity matrix lives in
+    // tests/marketplace-landing-query-noindex-parity.test.ts and the surface
+    // boundary in tests/marketplace-discovery-variant-noindex.test.ts.
+    expect(middleware).toContain(
+      'isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)',
+    )
     expect(middleware).toContain("'X-Robots-Tag', 'noindex, follow'")
   })
 

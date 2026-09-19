@@ -1,15 +1,19 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
+import { GigsDiscoveryQueryGate } from '@/components/marketplace/GigsDiscoveryQueryGate'
 import { CATEGORIES } from '@/lib/categories'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-// Freshness comes from the versioned `gigs` KV snapshot below, not from
-// deploy-tied ISR: every request renders against the current cache version,
-// so a publish/pause/moderate needs no redeploy and no OpenNext ISR queue
-// task (the default Free-plan queue is a dummy that throws).
-export const dynamic = 'force-dynamic'
+// TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: rendering
+// this hub per request exceeded the Workers Free 10ms CPU budget, and the Free
+// plan has no real ISR queue (OpenNext's default queue is a dummy that throws).
+// The complete service directory is therefore rendered once at build time and
+// served as a static asset. The versioned KV read-through below stays as the
+// shared cache contract with the rest of the marketplace; outside the Worker it
+// is a fail-open no-op, so the build reads the DB directly.
 
 const canonicalUrl = getMarketplaceCanonicalUrl('/gigs')
 
@@ -17,9 +21,11 @@ const canonicalUrl = getMarketplaceCanonicalUrl('/gigs')
 // The directory pulls every active provider-backed gig (up to 5000 rows) to
 // build the grouped "Complete service directory". That fan-out is identical
 // for every visitor, so it is read through a versioned KV entry in the `gigs`
-// namespace: any publish/pause/moderate (bumpCacheVersion('gigs')) makes the
-// entry unreachable instantly, and the TTL keeps a warm Worker from paying
-// the query on every request that misses.
+// namespace: the same namespace and TTL the rest of the marketplace uses, so
+// publish/pause/moderate (bumpCacheVersion('gigs')) keeps behaving the same
+// way wherever this snapshot is read. On this build-static route the Worker KV
+// binding is absent during `next build`, so the entry is resolved once from
+// the DB at build time and refreshed by the next deploy.
 const GIGS_DIRECTORY_CACHE_TTL_SECONDS = 300
 const GIGS_DIRECTORY_CACHE_PATH = '/cache/gigs-directory'
 const GIGS_DIRECTORY_CACHE_QUERY = 'v1'
@@ -146,7 +152,9 @@ export default async function MarketplaceServicesHub() {
     (gig) => !gig.category || !CATEGORIES.some((category) => category.id === gig.category),
   )
 
-  return (
+  // `directory` is also the Suspense fallback below: the static HTML a crawler
+  // receives is always the complete service directory.
+  const directory = (
     <main className="ys-gigs-hub">
       <style>{`
         .ys-gigs-hub{width:min(1280px,calc(100vw - 32px));margin:0 auto;padding:42px 0 72px;color:var(--ys-ink,#0f172a)}
@@ -266,5 +274,21 @@ export default async function MarketplaceServicesHub() {
         </section>
       )}
     </main>
+  )
+
+  // ── Client-side query discovery ──
+  // The hub is build-static, so it never reads the URL on the server. Deep
+  // links that carry discovery filters (/gigs?q=…&category=…&country=…) still
+  // resolve to the same client-side GigDiscoveryPage used by the landing and
+  // category shelves: the gate reads useSearchParams() after hydration and
+  // swaps the directory for the results view. The gate sits inside its own
+  // Suspense boundary (required by Next for useSearchParams on a static page);
+  // the fallback is the server-rendered directory above. Those variant URLs
+  // stay out of the index via the market-host edge rule (middleware.ts); this
+  // page keeps its clean, indexable `/gigs` canonical metadata.
+  return (
+    <Suspense fallback={directory}>
+      <GigsDiscoveryQueryGate>{directory}</GigsDiscoveryQueryGate>
+    </Suspense>
   )
 }

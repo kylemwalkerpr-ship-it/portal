@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import {
   CATEGORIES,
   type Category,
@@ -1072,7 +1073,16 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
               <input name="q" placeholder="What do you need help with?" />
               {active !== 'all' && <input type="hidden" name="country" value={active} />}
               <span className="pick">
-                Jurisdiction:&nbsp;<CountryPicker active={active} />
+                Jurisdiction:&nbsp;
+                <Suspense
+                  fallback={
+                    <span>
+                      {active === 'all' ? 'All jurisdictions' : COUNTRY_META[active].name}
+                    </span>
+                  }
+                >
+                  <CountryPicker active={active} />
+                </Suspense>
               </span>
               <button type="submit" className="search-go">Find help</button>
             </form>

@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { CategoryRecommendedGigsCarousel } from '@/components/marketplace/CategoryRecommendedGigsCarousel'
 import { CaseworksReadMoreRail } from '@/components/marketplace/CaseworksReadMoreRail'
 import { notFound } from 'next/navigation'
-import { resolveCategoryOrSubcategory } from '@/lib/categories'
+import { CATEGORIES, resolveCategoryOrSubcategory } from '@/lib/categories'
 import { countActiveGigsForCategory } from '@/lib/marketplaceCategoryCounts'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
@@ -12,13 +13,25 @@ import { getCategoryEditorial } from '@/lib/categoryEditorial'
 
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
+// TRUE SSG — the taxonomy is source-owned, so every canonical category and
+// subcategory shelf is enumerated here at build time and an unknown slug is a
+// real 404. Nothing about the shelf depends on the request URL: middleware
+// canonicalizes tracking parameters to this same path before the page is hit.
+export const dynamicParams = false
+
+export function generateStaticParams(): Array<{ categoryId: string }> {
+  const ids = new Set<string>()
+  for (const category of CATEGORIES) {
+    ids.add(category.id)
+    for (const subcategory of category.subcategories) ids.add(subcategory.id)
+  }
+  return [...ids].map((categoryId) => ({ categoryId }))
+}
+
+export async function generateMetadata({ params }: CategoryPageProps): Promise<Metadata> {
   const { categoryId } = await params
-  const sp = await searchParams
-  const hasUtm = sp && Object.keys(sp).some(k => k.startsWith('utm_'))
   const resolved = resolveCategoryOrSubcategory(categoryId)
   if (!resolved) return { title: 'Marketplace | YouSafe', robots: { index: false } }
 
@@ -27,7 +40,10 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
   const count = await countActiveGigsForCategory(subcategory?.id ?? category.id)
   const emptyShelf = count < 1
   const isTopLevelHub = !subcategory && Boolean((display.description || '').trim())
-  const allowIndex = !hasUtm && (!emptyShelf || isTopLevelHub)
+  // Tracking-parameter variants are 301-consolidated to this canonical URL by
+  // middleware, so indexability is decided from supply alone and can be baked
+  // into the static build.
+  const allowIndex = !emptyShelf || isTopLevelHub
   const title = emptyShelf
     ? `${display.name} | YouSafe Marketplace`
     : `${display.name} (${count} services) | YouSafe Marketplace`
@@ -161,7 +177,13 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         </section>
       </main>
 
-      <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
+      {/* GigDiscoveryPage reads useSearchParams() client-side. The category
+          shelf is statically generated now, so the client island needs its own
+          Suspense boundary; the fallback is intentionally null because the
+          server-rendered hero, guidance and carousel carry the content. */}
+      <Suspense fallback={null}>
+        <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
+      </Suspense>
 
       <section
         aria-label={`${displayName} buying guidance`}

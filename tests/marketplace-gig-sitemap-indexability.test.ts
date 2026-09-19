@@ -14,7 +14,11 @@ describe('Marketplace gig crawl and index contract', () => {
     expect(sitemap).not.toContain("import { headers } from 'next/headers'")
     expect(sitemap).not.toContain('return []')
     expect(sitemap).toContain("const MARKET_HOST = 'market.yousafeconsultancy.com'")
-    expect(sitemap).toContain("export const dynamic = 'force-dynamic'")
+    // Build-static estate: the sitemap is generated once at build time and
+    // never re-rendered on the edge (Workers Free has no real ISR queue).
+    expect(sitemap).toContain("export const dynamic = 'force-static'")
+    expect(sitemap).toContain('export const revalidate = false')
+    expect(sitemap).not.toContain("export const dynamic = 'force-dynamic'")
   })
 
   test('active provider-backed gigs are emitted as clean canonical Marketplace URLs', () => {
