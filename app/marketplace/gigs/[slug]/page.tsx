@@ -5,14 +5,18 @@ import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
-import { resolveLegacyGigRedirect } from '@/lib/gigSlugRedirects'
+import { LEGACY_GIG_SLUG_REDIRECTS, resolveLegacyGigRedirect } from '@/lib/gigSlugRedirects'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
 import { renderBioMarkdown, stripHtmlComments } from '@/lib/bioMarkdown'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
+// TRUE SSG — no `revalidate`. Production evidence: per-request rendering of
+// the detail estate exceeded the Workers Free 10ms CPU budget, and the Free
+// plan has no real ISR queue (OpenNext's default queue is a dummy that
+// throws). Every indexable slug is enumerated once at build time below; slugs
+// outside that estate are real 404s instead of a per-request DB round-trip.
+export const dynamicParams = false
 
 /**
  * Check if a slug has been redirected (via gig_slug_redirects table)
@@ -36,6 +40,51 @@ async function checkSlugRedirect(slug: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/**
+ * Build-time slug estate. Mirrors the sitemap eligibility rule (active gig
+ * with a real provider and a stored slug) and adds every safe alias slug: the
+ * static legacy map plus `gig_slug_redirects.old_slug` rows that have a known
+ * destination. Alias slugs still render the same permanent redirect they did
+ * when this route was dynamic — they are enumerated only so
+ * `dynamicParams = false` cannot turn a retired URL into a 404.
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  // FAIL CLOSED. `dynamicParams = false` turns every slug missing from this
+  // set into a hard 404, so a failed query can never be allowed to shrink the
+  // indexable estate to the source-controlled legacy map (or to an empty set).
+  // Any setup/query failure rethrows and fails the build instead.
+  const db = createSupabaseAdminClient()
+  const [gigResult, redirectResult] = await Promise.all([
+    db
+      .from('gigs')
+      .select('slug, provider_id')
+      .eq('status', 'active')
+      .not('provider_id', 'is', null)
+      .not('slug', 'is', null)
+      .limit(5000),
+    db.from('gig_slug_redirects').select('old_slug, new_slug').limit(5000),
+  ])
+
+  if (gigResult.error) {
+    throw new Error(`[gigs/static-params] gig slug query failed: ${gigResult.error.message}`)
+  }
+  if (redirectResult.error) {
+    throw new Error(`[gigs/static-params] alias slug query failed: ${redirectResult.error.message}`)
+  }
+
+  const slugs = new Set<string>(Object.keys(LEGACY_GIG_SLUG_REDIRECTS))
+  for (const gig of gigResult.data ?? []) {
+    if (gig?.slug && gig?.provider_id) slugs.add(String(gig.slug))
+  }
+  for (const row of redirectResult.data ?? []) {
+    // Only aliases with a known destination: a redirect row without a
+    // new_slug would have 404ed at runtime too.
+    if (row?.old_slug && row?.new_slug) slugs.add(String(row.old_slug))
+  }
+
+  return [...slugs].map((slug) => ({ slug }))
 }
 
 // Slug → readable title. Capped to fit the " | YouSafe Marketplace" suffix

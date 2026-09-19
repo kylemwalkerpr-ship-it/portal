@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
+import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 
 export const runtime = 'experimental-edge'
 
@@ -372,10 +373,19 @@ export default clerkMiddleware(
       } else {
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
         const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
-        // Internal free-text search URLs are useful for users but should not
+        // Internal discovery/search URLs are useful for users but should not
         // become index inventory. Keep links crawlable while consolidating
-        // search variants to the canonical Marketplace landing page.
-        if (pathname === '/' && req.nextUrl.searchParams.has('q')) {
+        // filtered and paginated views to the clean canonical surface.
+        //
+        // Both clean surfaces here — the landing (`/`) and the service
+        // directory (`/gigs`) — are TRUE SSG with static metadata, so neither
+        // can emit query-sensitive robots metadata any more. Enforce the
+        // exact previous contract at the host edge, where the query string is
+        // still visible: every recognized discovery filter key plus
+        // `?page=N`, N >= 2. Clean URLs (and `?country=`, never noindexed)
+        // stay indexable, the query string is never trimmed or rewritten, and
+        // tracking params are already 301-consolidated above.
+        if (isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)) {
           response.headers.set('X-Robots-Tag', 'noindex, follow')
         }
         return withCorsHeaders(response, req)
