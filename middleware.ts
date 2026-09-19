@@ -335,7 +335,8 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
     return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
   }
 
-  const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
+  const internalPath = pathname === '/' ? '/marketplace' : `/marketplace${pathname}`
+  const rewrite = new URL(`${internalPath}${search}`, req.url)
   const response = withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
   if (isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)) {
     response.headers.set('X-Robots-Tag', 'noindex, follow')

@@ -58,6 +58,34 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npm run build
 
+      # Official OpenNext static-assets incremental cache. `opennextjs-cloudflare
+      # deploy` would run the adapter's populateStaticAssetsIncrementalCache hook
+      # for us, but this repo deploys through raw `wrangler deploy` instead, so
+      # the equivalent local `fs.cpSync(.open-next/cache ->
+      # .open-next/assets/cdn-cgi/_next_cache)` is run explicitly BEFORE the
+      # deploy publishes .open-next/assets. Local filesystem only: no network,
+      # no Cloudflare API, no credentials, and no paid-plan infrastructure.
+      # Fails closed if the build emitted no prerender cache, so a stale or
+      # empty static incremental cache can never ship silently.
+      - name: Populate static incremental cache (local copy, no network)
+        run: |
+          npm run populate:static-incremental-cache
+          BUILD_ID="$(cat .next/BUILD_ID)"
+          for cache_key in \
+            marketplace \
+            marketplace/gigs \
+            marketplace/categories \
+            marketplace/providers \
+            shop
+          do
+            cache_file=".open-next/assets/cdn-cgi/_next_cache/${BUILD_ID}/${cache_key}.cache"
+            test -f "$cache_file" || {
+              echo "::error::Missing required prerender cache asset: $cache_file"
+              exit 1
+            }
+          done
+          echo "Verified critical Marketplace prerender cache assets for build ${BUILD_ID}."
+
       - name: SEO audit guard (report-only)
         continue-on-error: true
         run: |

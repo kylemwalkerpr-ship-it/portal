@@ -5,9 +5,9 @@ import { SeoIntroBlock } from '@/components/SeoIntroBlock'
 import HomeClient from './HomeClient'
 import { getFeaturedGigs } from '@/components/design/landing/data/featured-services'
 
-// ISR: revalidate at most once per hour. Serves cached HTML between builds
-// and regenerates in the background on the first request after TTL expiry.
-export const revalidate = 3600
+// Build-static on purpose. The Cloudflare Free deployment publishes the
+// OpenNext prerender cache as read-only static assets, so this route must not
+// schedule background ISR work against the intentionally absent queue/tag cache.
 
 // Portal is noindex sitewide (see layout.tsx robots config), so translated
 // metadata has zero SEO value. We keep static English metadata here to avoid

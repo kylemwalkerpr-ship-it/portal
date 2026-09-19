@@ -116,6 +116,7 @@ describe('middleware wiring', () => {
     expect(fastPath).toContain("pathname.startsWith('/sellers')")
     expect(fastPath).toContain("pathname === '/shop'")
     expect(fastPath).toContain("pathname === '/sitemap.xml'")
+    expect(fastPath).toContain("const internalPath = pathname === '/' ? '/marketplace' : `/marketplace${pathname}`")
     expect(fastPath).toContain('NextResponse.rewrite(rewrite)')
     expect(fastPath).toContain('isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)')
     expect(fastPath).toContain("'X-Robots-Tag', 'noindex, follow'")
