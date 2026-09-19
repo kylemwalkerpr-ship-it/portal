@@ -57,6 +57,11 @@ describe('citation remediation matcher', () => {
     expect(match.jobId).toBeNull()
   })
 
+  it('never treats unavailable audit evidence as a citation loss', () => {
+    expect(needsCitationFix({ query: 'uk graduate visa', cited: false, shareOfVoice: null })).toBe(false)
+    expect(buildCitationRemediation({ query: 'uk graduate visa', cited: false, shareOfVoice: null }, pages)).toBeNull()
+  })
+
   it('skips cited full-share rows and builds a four-action brief for losers', () => {
     expect(needsCitationFix({ query: 'uk graduate visa', cited: true, shareOfVoice: 1 })).toBe(false)
     expect(needsCitationFix({ query: 'uk graduate visa', cited: false, shareOfVoice: 0 })).toBe(true)

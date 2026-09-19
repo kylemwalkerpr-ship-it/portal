@@ -91,9 +91,12 @@ const COUNTRY_IN_PATH: Array<[RegExp, string]> = [
 
 export function needsCitationFix(row: AuditRemediationInput): boolean {
   if (!usableQuery(row.query) && String(row.query || '').trim().length < 8) return false
+  // `null`/missing share is unavailable evidence (provider/setup failure), not
+  // a 0% citation loss. Only measured rows are eligible for remediation.
+  if (row.shareOfVoice == null) return false
   if (row.cited === false) return true
   const sov = Number(row.shareOfVoice)
-  return Number.isFinite(sov) ? sov < 1 : !row.cited
+  return Number.isFinite(sov) ? sov < 1 : false
 }
 
 export function actionHeadings(actions: CitationAction[]): string[] {

@@ -41,7 +41,7 @@ type EngineStatus = {
   knowledge?: { total?: number; latestTitle?: string | null; latestAt?: string | null }
   plans?: { total?: number; latestTerm?: string | null; latestAt?: string | null }
   interlinks?: { planned?: number; applied?: number; latestAt?: string | null }
-  llmVisibility?: { total?: number; cited?: number; shareOfVoice?: number; latestQuery?: string | null; latestAt?: string | null }
+  llmVisibility?: { total?: number; cited?: number; shareOfVoice?: number | null; measurementState?: 'measured' | 'unavailable'; latestQuery?: string | null; latestAt?: string | null }
   rankingModel?: { computed?: number; latestTotal?: number | null; latestTopic?: string | null; latestAt?: string | null }
   gate?: { runs?: number; passed?: number; passRate?: number; avgScore?: number; latestAt?: string | null; source?: string }
   runs?: Array<Record<string, unknown>>
@@ -471,7 +471,7 @@ export function StudioLiveDesk({
               <Metric
                 label="LLM cited"
                 value={voice?.total ? `${voice.cited ?? 0}/${voice.total}` : 'n/a'}
-                hint={voice?.total ? `${voice.shareOfVoice ?? 0}% share of voice` : 'No LLM audits yet — run LLM audit'}
+                hint={voice?.total ? `${voice.shareOfVoice}% share of voice` : voice?.measurementState === 'unavailable' ? 'LLM citation measurement unavailable — failed audits excluded' : 'No measured LLM audits yet — run LLM audit'}
                 tone="gold"
               />
               <Metric
@@ -487,8 +487,8 @@ export function StudioLiveDesk({
               />
               <Metric
                 label="Voice"
-                value={voice?.total ? `${voice.shareOfVoice ?? 0}%` : 'n/a'}
-                hint={voice?.latestQuery || 'share of voice across exact audit bank'}
+                value={voice?.total && voice.shareOfVoice != null ? `${voice.shareOfVoice}%` : 'n/a'}
+                hint={voice?.measurementState === 'unavailable' ? 'failed audits excluded — no measured citation share' : voice?.latestQuery || 'share of voice across exact audit bank'}
                 tone="gold"
               />
             </div>

@@ -133,7 +133,7 @@ describe('StudioLiveDesk — live floor board', () => {
         gate: { runs: 0, passed: 0, passRate: 0, avgScore: 0 },
       },
     })
-    expect(html).toContain('No LLM audits yet')
+    expect(html).toContain('No measured LLM audits yet')
     expect(html).toContain('No compliance gate runs yet')
   })
 })

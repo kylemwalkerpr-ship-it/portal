@@ -60,7 +60,7 @@ export async function GET() {
     const [
       cells, knowledge, plans, runs, config,
       linksPlanned, linksApplied, rankCount,
-      llmPromptTotal, llmPromptCited, llmAllTotal, llmAllCited,
+      llmPromptTotal, llmPromptCited, llmPromptAttempted, llmAllTotal, llmAllCited,
       gateTotal, gatePassed, recentGates, jobsScored, jobsPassed,
       ranking,
       latestKnowledge, latestPlan, latestLink, latestLlm, latestGate,
@@ -77,7 +77,12 @@ export async function GET() {
       // outcomes — exclude them from the headline share-of-voice.
       countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).not('flags', 'ov', `{audit_failed}`)),
       countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
-      countExact(supabase, 'seo_llm_visibility'),
+      // Keep failed prompt attempts visible to selection logic without putting
+      // them in the citation denominator. This distinguishes 'no prompt bank'
+      // (where the all-row/fan-out fallback is useful) from 'prompt bank exists
+      // but every attempt failed' (which must remain unavailable).
+      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false)),
+      countExact(supabase, 'seo_llm_visibility', (q) => q.not('flags', 'ov', `{audit_failed}`)),
       countExact(supabase, 'seo_llm_visibility', (q) => q.eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
       countExact(supabase, 'seo_gate_runs'),
       countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
@@ -94,8 +99,9 @@ export async function GET() {
 
     const gateRows = ((recentGates.data as Array<{ score?: number; passed?: boolean }>) || [])
     const gateScores = gateRows.map((r) => Number(r.score) || 0)
-    const llmTotal = llmPromptTotal || llmAllTotal
-    const llmCited = llmPromptTotal ? llmPromptCited : llmAllCited
+    const usePromptVisibility = llmPromptAttempted > 0
+    const llmTotal = usePromptVisibility ? llmPromptTotal : llmAllTotal
+    const llmCited = usePromptVisibility ? llmPromptCited : llmAllCited
 
     return NextResponse.json({
       ok: true,
@@ -120,7 +126,8 @@ export async function GET() {
       llmVisibility: {
         total: llmTotal,
         cited: llmCited,
-        shareOfVoice: llmTotal ? Math.round((llmCited / llmTotal) * 100) : 0,
+        shareOfVoice: llmTotal ? Math.round((llmCited / llmTotal) * 100) : null,
+        measurementState: llmTotal ? 'measured' : 'unavailable',
         latestQuery: latestLlm ? String(latestLlm.query || '') : null,
         latestAt: latestLlm ? String(latestLlm.created_at || '') : null,
       },
