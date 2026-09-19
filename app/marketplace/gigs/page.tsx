@@ -5,7 +5,11 @@ import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export const revalidate = 3600
+// Freshness comes from the versioned `gigs` KV snapshot below, not from
+// deploy-tied ISR: every request renders against the current cache version,
+// so a publish/pause/moderate needs no redeploy and no OpenNext ISR queue
+// task (the default Free-plan queue is a dummy that throws).
+export const dynamic = 'force-dynamic'
 
 const canonicalUrl = getMarketplaceCanonicalUrl('/gigs')
 
@@ -15,7 +19,7 @@ const canonicalUrl = getMarketplaceCanonicalUrl('/gigs')
 // for every visitor, so it is read through a versioned KV entry in the `gigs`
 // namespace: any publish/pause/moderate (bumpCacheVersion('gigs')) makes the
 // entry unreachable instantly, and the TTL keeps a warm Worker from paying
-// the query on every ISR miss.
+// the query on every request that misses.
 const GIGS_DIRECTORY_CACHE_TTL_SECONDS = 300
 const GIGS_DIRECTORY_CACHE_PATH = '/cache/gigs-directory'
 const GIGS_DIRECTORY_CACHE_QUERY = 'v1'

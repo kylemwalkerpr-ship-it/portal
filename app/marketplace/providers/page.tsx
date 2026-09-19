@@ -3,9 +3,6 @@ import { MarketplaceProvidersIndex } from '@/components/marketplace/MarketplaceP
 import { ProvidersIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
-// ISR: revalidate at most once per hour
-export const revalidate = 3600
-
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/providers')
   const title = 'All providers | YouSafe Marketplace'
