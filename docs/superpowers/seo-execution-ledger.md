@@ -244,3 +244,57 @@ Docs-only evidence pass. No commit, push, PR, merge, deploy, migration dispatch,
 - This PASS is scoped to that row only. Overall P1 remains incomplete: `Qualified visibility separated from raw off-mission visibility`, `LLM audit failures excluded from genuine citation-loss math`, and `Reward/forecast inputs are tied to real observations` remain `PENDING`.
 - Older point-in-time documents (for example `docs/superpowers/specs/2026-09-15-forward-only-migration-ledger-design.md`, which records that the base-table backlog was left `PENDING` and out of scope for that project) were not edited by this pass; they remain accurate as statements about their own date and are superseded for current status by this section.
 - This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`; no source, workflow, migration, deploy, or production DDL is introduced by the documentation change itself.
+
+## 2026-09-19 — P1 qualified-visibility production acceptance (PRs #224, #225, #227; deploy fix #229)
+
+Docs-only evidence pass. This section records already-merged implementation and authenticated production evidence; it introduces no source, workflow, migration, deploy, or production mutation by itself. Prior ledger entries remain unchanged.
+
+**Scope of the PASS:** the single P1 row `Qualified visibility separated from raw off-mission visibility`. Raw persisted GSC demand remains measurable, while only the four-class `qualified` bucket may drive action/scoring/brief evidence. This row-level PASS does not complete P1.
+
+### Implementation and release path
+
+- PR #224 merged the base implementation as `d5348fd9d7801af7edb954fcd0c280a6e8b8c0ad`: deterministic `junk | off_mission | deep_tail | qualified` classification, full-window persisted scan/summary, Raw/Qualified/Off-mission UI, and qualified-only action boundaries.
+- Authenticated production proof after #224 correctly exposed residual campus/lifestyle and brand-navigation variants still reaching opportunity scoring. Follow-up PR #225 merged as `f80ce6be` and PR #227 merged as `a39c124ca153a3da91434e58d57d86fc69477d6c`, tightening the shared classifier rather than patching individual routes. The hardening keeps immigration/visa/F-1/study-permit and narrow tenancy/legal intent actionable while classifying the observed campus/lifestyle families off-mission and self-brand/document-stamp artifacts as junk.
+- Main Deploy YouSafe Portal run #2904 (`35424024633`) for `a39c124c` passed checkout, install, typecheck, unit tests, Next/OpenNext build, SEO audit, secrets preparation, and AI-vault sync, then failed only at Cloudflare upload: Wrangler returned code `100328`, `CPU limits are not supported for the Free plan`, because `wrangler.toml` still had an active paid-only `[limits] cpu_ms` block. Secrets cleanup succeeded; secrets-health/smoke were correctly skipped after the failed deploy.
+- Deployment-only PR #229 removed the paid-only Cloudflare limits block and merged as `217b4da50b0c05ce1a476fa953f08fb7ccf003c1`.
+- Exact-main Deploy YouSafe Portal run #2907 (`35424902862`) for `217b4da5` completed success through typecheck, unit tests, build, SEO audit, Cloudflare credentials, secrets preparation/sync, Cloudflare deployment, ephemeral-secret cleanup, Worker secrets-health verification, and post-deploy smoke.
+
+### Authenticated production measurement proof
+
+Production route: `/api/content-studio/gsc/performance?days=90&limit=40`.
+
+- `ok=true`; requested range `2026-06-21 → 2026-09-18`.
+- The requested window was not persisted yet, so the route truthfully returned `usedFallback=true` and selected the latest persisted 90-day window `2026-06-20 → 2026-09-17`; no claim is made that the requested newer range already existed.
+- Full-window scope: `persistedRows=2663`, `scannedRows=2663`, `windowRowCount=2663`, `countKnown=true`, `unscannedRows=0`, `complete=true`, `truncated=false`, `rowMismatch=false`, `cap=25000`.
+- Raw totals: 36,041 impressions, 2 clicks.
+- Qualified: 2,292 impressions, 0 clicks, 140 rows, share `0.063594...` (6.4% of raw impressions).
+- Off-mission: 617 impressions, 0 clicks, 135 rows, share `0.017119...` (1.7% of raw impressions).
+- Junk: 30,775 impressions, 2 clicks, 1,242 rows.
+- Deep-tail: 2,357 impressions, 0 clicks, 1,146 rows.
+- Raw observations are preserved and classified. Example from the returned diagnostic rows: `international+student+storage+cornell` remains visible with `visibilityClass=off_mission`; it is not deleted or relabelled as qualified.
+
+### Authenticated production action-boundary proof
+
+Production route: `/api/content-studio/opportunities/score?days=90&limit=200`.
+
+- `ok=true`, `usedFallback=true`, `excludedNonActionable=116`, `count=84`.
+- The following exact production residuals are absent from the scored opportunity output: `student rentals near university of south carolina`; `student rentals near florida international university`; `student living university of south carolina`; `international student storage cornell`; `is warwick safe for international students`; `"fy27_stk_housing_rates" pacific`; `you safe`; `you safe consultancy`; `you safe contact number`; `you safe login 2024`; `you safe ltd`.
+- The exclusion is driven by the shared classifier/action boundary, not route-specific deny lists: campus/lifestyle observations are `off_mission`; malformed fiscal-year housing metadata and bounded self-brand navigation are `junk`; deep-tail remains observable but non-actionable; only `qualified` is admitted to action scoring.
+
+### Authenticated production UI proof
+
+Content Studio Discover (`/dashboard/admin/content?tab=discover`) renders the persisted full-window visibility strip:
+
+- `Visibility mix · full persisted window · 90d`.
+- `Complete measurement` and `2,663 scanned of 2,663 persisted rows`.
+- `Raw visibility` = `36,041`, described as impressions persisted in the window with junk + off-mission included.
+- `Qualified visibility` = `2,292`, `6.4% of raw impressions · 0 clicks`.
+- `Off-mission visibility` = `617`, `1.7% of raw impressions · real demand, not actionable`.
+- The evidence drawer explicitly describes `showing top 40 diagnostic rows`, so the limited table is not misrepresented as the full-window measurement.
+
+### Result and remaining P1 work
+
+- The `Qualified visibility separated from raw off-mission visibility` row is now `PASS` in `docs/superpowers/seo-parity-matrix.md`.
+- This PASS is limited to persisted GSC visibility classification/measurement and the qualified-only action boundary. It does **not** claim Google property-wide completeness, frozen live GSC values, or that the requested `2026-06-21 → 2026-09-18` window was available; production explicitly used the latest persisted fallback `2026-06-20 → 2026-09-17`.
+- Overall P1 remains incomplete. Two P1 rows remain `PENDING`: `LLM audit failures excluded from genuine citation-loss math` and `Reward/forecast inputs are tied to real observations`.
+- This evidence pass changes only `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`.
