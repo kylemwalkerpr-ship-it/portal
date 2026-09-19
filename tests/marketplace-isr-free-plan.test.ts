@@ -5,10 +5,13 @@
  * `outcome=canceled` and "waitUntil() tasks did not complete within the
  * allowed time after invocation end and have been cancelled." OpenNext is
  * configured with `defineCloudflareConfig({})`, so its incrementalCache /
- * tagCache / queue adapters resolve to the "dummy" defaults and the dummy
- * queue's send() throws. Removing hourly ISR from the deploy-static hubs and
- * rendering /gigs per request (against its explicit versioned KV snapshot)
- * keeps production on paid-feature-free defaults.
+ * tagCache / queue adapters used to resolve to the "dummy" defaults and the
+ * dummy queue's send() throws. The only adapter added since is OpenNext's
+ * official read-only static-assets incremental cache (no writable cache, no
+ * queue, no tag cache — the Free-plan-safe SSG path). Removing hourly ISR
+ * from the deploy-static hubs and rendering /gigs per request (against its
+ * explicit versioned KV snapshot) keeps production on paid-feature-free
+ * defaults.
  *
  * These are source contracts, not build assertions: they fail loudly if a
  * future edit reintroduces `export const revalidate` on a static hub, drops
@@ -33,7 +36,12 @@ const DYNAMIC_EXPORT = /^\s*export\s+const\s+dynamic\b/m
 const FORCE_DYNAMIC_EXPORT = /^\s*export\s+const\s+dynamic\s*=\s*['"]force-dynamic['"]/m
 
 const gigHub = readRepo('app/marketplace/gigs/page.tsx')
+// Comments are stripped so prose describing the paid-path adapters cannot be
+// mistaken for an actual configuration.
 const openNextConfig = readRepo('open-next.config.ts')
+  .split('\n')
+  .map((line) => line.replace(/\/\/.*$/, ''))
+  .join('\n')
 const wrangler = readRepo('wrangler.toml')
   .split('\n')
   .filter((line) => !line.trimStart().startsWith('#'))
@@ -118,10 +126,16 @@ describe('no paid-plan escape hatch was added for the Free-plan hang', () => {
     expect(wrangler).not.toMatch(/^\s*subrequests\s*=/m)
   })
 
-  it('open-next.config.ts keeps the default (dummy) adapters', () => {
-    expect(openNextConfig).toMatch(/defineCloudflareConfig\(\{\s*\}\)/)
+  it('open-next.config.ts uses only the read-only static-assets incremental cache', () => {
+    expect(openNextConfig).toContain(
+      "import staticAssetsIncrementalCache from '@opennextjs/cloudflare/overrides/incremental-cache/static-assets-incremental-cache'",
+    )
+    expect(openNextConfig).toMatch(/incrementalCache:\s*staticAssetsIncrementalCache/)
+    expect(openNextConfig).toMatch(/enableCacheInterception:\s*true/)
+    // tagCache / queue / R2 / D1 / DO adapters are the paid-path adapters that
+    // made Free-plan requests hang — none may be introduced here.
     expect(openNextConfig).not.toMatch(
-      /incrementalCache|tagCache|queue|r2IncrementalCache|d1NextTagCache|shardedD1TagCache|doQueue/,
+      /tagCache|queue|r2IncrementalCache|d1NextTagCache|shardedD1TagCache|doQueue/,
     )
   })
 })
