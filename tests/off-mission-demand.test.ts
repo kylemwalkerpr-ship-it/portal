@@ -119,6 +119,34 @@ describe('spaced self-brand navigational junk (PR #224 brand leak)', () => {
     expect(isActionableDemandQuery('how do you safely apply for a visa')).toBe(true)
     expect(isOffMissionDemandQuery('is warwick safe for international students')).toBe(true)
   })
+
+  it('treats contact-detail / year-suffixed self-brand navigational forms as junk, never as demand', () => {
+    // Final review residual: brand + contact detail, brand + company suffix and
+    // brand + year self-searches still scored. Still the same bounded boundary
+    // (closed qualifier vocabulary + optional trailing year), never a prefix
+    // rule — so prose keeps its classification.
+    for (const term of [
+      'you safe contact number',
+      'you safe phone number',
+      'you safe email address',
+      'you safe opening hours',
+      'you safe reviews 2024',
+      'you safe login 2024',
+      'you safe login uk 2024',
+      'you safe 2024',
+      'you safe ltd',
+      'you safe limited',
+    ]) {
+      expect(isJunkQuery(term)).toBe(true)
+      expect(isJunkTopic(term)).toBe(true)
+      expect(isOffMissionDemandQuery(term)).toBe(false)
+      expect(isActionableDemandQuery(term)).toBe(false)
+    }
+    expect(isJunkQuery('you safe phone number for international students')).toBe(false)
+    expect(isActionableDemandQuery('you safe phone number for international students')).toBe(true)
+    expect(isJunkTopic('are you safe to travel on a student visa')).toBe(false)
+    expect(isOffMissionDemandQuery('is warwick safe for international students')).toBe(true)
+  })
 })
 
 /**
@@ -345,6 +373,51 @@ describe('campus-safety boundary: place safety vs activity safety (PR #224 revie
       expect(isOffMissionDemandQuery(term)).toBe(false)
       expect(isActionableDemandQuery(term)).toBe(true)
     }
+  })
+})
+
+/**
+ * Final review finding M1 — the org-prefixed place-safety alternative
+ * (`(campus|student|university|college) safe`) was matched inside a genuine
+ * activity-safety question, so "is university safe for international students
+ * to work in the uk" was labelled campus lifestyle. The alternative now carries
+ * the same shared mission-activity lookahead as the unprefixed
+ * `safe for … students` branch.
+ */
+describe('campus-safety boundary: org-prefixed place safety vs activity safety (final review M1)', () => {
+  it('never classifies an org-prefixed activity-safety question as campus lifestyle', () => {
+    for (const term of [
+      'is university safe for international students to work in the uk',
+      'is campus safe for international students to study in canada',
+      'is college safety a concern for international students to look for a job in the uk',
+    ]) {
+      expect(isOffMissionDemandQuery(term)).toBe(false)
+      expect(isJunkQuery(term)).toBe(false)
+      expect(isActionableDemandQuery(term)).toBe(true)
+    }
+  })
+
+  it('still refuses org-prefixed place-safety questions as off-mission', () => {
+    for (const term of [
+      'is warwick safe for international students',
+      'is warwick campus safe for international students',
+      'university safety for international students',
+      'campus safety tips for international students',
+    ]) {
+      expect(isOffMissionDemandQuery(term)).toBe(true)
+    }
+    // Explicitly NOT solved by adding bare `work` / `study` mission anchors.
+    expect(isOffMissionDemandQuery('campus dining jobs for students')).toBe(true)
+  })
+
+  it('keeps the activity phrasing anchor-free: no new generic mission anchors', () => {
+    // A long non-safety campus query is still off-mission (and pasted-text junk
+    // via the untouched word-count guard).
+    expect(isOffMissionDemandQuery('student housing safety near the university of south carolina')).toBe(true)
+    // `student living expenses canada` (living-COST demand) is unchanged.
+    expect(isOffMissionDemandQuery('student living expenses canada')).toBe(false)
+    // Production residual unchanged.
+    expect(isOffMissionDemandQuery('student living university of south carolina')).toBe(true)
   })
 })
 

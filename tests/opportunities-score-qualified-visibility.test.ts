@@ -892,3 +892,226 @@ describe('POST /api/content-studio/opportunities/score — tightened boundary (P
     }
   })
 })
+
+/**
+ * Final review findings M1–M3 — every persisted row is classified through the
+ * single shared queryNoise boundary, so the route must refuse locale/service
+ * self-brand navigational forms and org-prefixed PLACE safety while scoring
+ * org-prefixed activity-safety questions and realistic long activity phrasings.
+ */
+const FINAL_REVIEW_BRAND_NAV_ROWS: FakeRow[] = [
+  {
+    query: 'you safe login england',
+    page: 'https://legal.yousafeconsultancy.com/login/',
+    clicks: 0,
+    impressions: 640,
+    ctr: 0,
+    position: 3,
+  },
+  {
+    query: 'you safe portal wales',
+    page: 'https://legal.yousafeconsultancy.com/portal/',
+    clicks: 0,
+    impressions: 210,
+    ctr: 0,
+    position: 4,
+  },
+  {
+    query: 'you safe reviews scotland',
+    page: 'https://legal.yousafeconsultancy.com/reviews/',
+    clicks: 0,
+    impressions: 90,
+    ctr: 0,
+    position: 5,
+  },
+  {
+    query: 'you safe login services',
+    page: 'https://legal.yousafeconsultancy.com/login/',
+    clicks: 0,
+    impressions: 60,
+    ctr: 0,
+    position: 6,
+  },
+]
+
+/** Natural long-tail activity-safety questions: real, qualified demand. */
+const FINAL_REVIEW_ACTIVITY_ROWS: FakeRow[] = [
+  {
+    query: 'is university safe for international students to work in the uk',
+    page: 'https://legal.yousafeconsultancy.com/uk/work-while-on-visa/',
+    clicks: 3,
+    impressions: 430,
+    ctr: 0.007,
+    position: 7,
+  },
+  {
+    query: 'is it safe for international students to get a job in the uk',
+    page: 'https://legal.yousafeconsultancy.com/uk/work-while-on-visa/',
+    clicks: 2,
+    impressions: 300,
+    ctr: 0.007,
+    position: 9,
+  },
+]
+
+/** Same org-prefixed surface WITHOUT a mission activity clause: place safety. */
+const FINAL_REVIEW_PLACE_SAFETY_ROW: FakeRow = {
+  query: 'university safety for international students',
+  page: 'https://example.com/campus-safety',
+  clicks: 0,
+  impressions: 170,
+  ctr: 0,
+  position: 8,
+}
+
+const FINAL_REVIEW_BRAND_NAV_QUERIES = FINAL_REVIEW_BRAND_NAV_ROWS.map((r) => String(r.query))
+const FINAL_REVIEW_ACTIVITY_QUERIES = FINAL_REVIEW_ACTIVITY_ROWS.map((r) => String(r.query))
+const FINAL_REVIEW_EXPECTED_QUERIES = [...FINAL_REVIEW_ACTIVITY_QUERIES, ...QUALIFIED_QUERIES].sort()
+
+describe('POST /api/content-studio/opportunities/score — final review boundaries M1–M3', () => {
+  it('never scores locale/service self-brand rows or place safety, but scores org-prefixed activity-safety demand', async () => {
+    mockRequireAdminUser.mockResolvedValue({ role: 'admin', profileId: 'p_admin', db: {} })
+    const res = await POST(
+      postRequest({
+        rows: [
+          ...FINAL_REVIEW_BRAND_NAV_ROWS,
+          ...FINAL_REVIEW_ACTIVITY_ROWS,
+          FINAL_REVIEW_PLACE_SAFETY_ROW,
+          ...QUALIFIED_ROWS,
+        ].map((r) => ({
+          query: r.query,
+          page: r.page,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          ctr: r.ctr,
+          position: r.position,
+        })),
+      }),
+    )
+    const body = (await res.json()) as Record<string, any>
+
+    expect(body.ok).toBe(true)
+    expect(queriesOf(body).sort()).toEqual(FINAL_REVIEW_EXPECTED_QUERIES)
+    for (const query of [...FINAL_REVIEW_BRAND_NAV_QUERIES, String(FINAL_REVIEW_PLACE_SAFETY_ROW.query)]) {
+      expect(JSON.stringify(body.opportunities)).not.toContain(query)
+    }
+    expect(body.excludedNonActionable).toBe(FINAL_REVIEW_BRAND_NAV_ROWS.length + 1)
+  })
+})
+
+describe('GET /api/content-studio/opportunities/score — final review boundaries M1–M3', () => {
+  it('drops self-brand junk at the persisted read, refusing place safety while keeping activity safety', async () => {
+    mockRequireAdminUser.mockResolvedValue({
+      role: 'admin',
+      profileId: 'p_admin',
+      db: stubDb([
+        ...FINAL_REVIEW_BRAND_NAV_ROWS,
+        ...FINAL_REVIEW_ACTIVITY_ROWS,
+        FINAL_REVIEW_PLACE_SAFETY_ROW,
+        ...QUALIFIED_ROWS,
+      ]),
+    })
+    const res = await GET(request('?days=90&limit=50'))
+    const body = (await res.json()) as Record<string, any>
+
+    expect(body.ok).toBe(true)
+    // Junk brand rows are dropped at the persisted read (not counted as
+    // non-actionable demand); only the place-safety row is refused at the
+    // action boundary.
+    expect(queriesOf(body).sort()).toEqual(FINAL_REVIEW_EXPECTED_QUERIES)
+    expect(body.excludedNonActionable).toBe(1)
+  })
+})
+
+/**
+ * Final review residual — contact-detail / company-suffix / year-suffixed
+ * self-brand navigational rows. Still the estate's own self-search, so the
+ * shared queryNoise boundary must refuse them while brand-like prose keeps
+ * scoring.
+ */
+const RESIDUAL_SELF_BRAND_ROWS: FakeRow[] = [
+  {
+    query: 'you safe contact number',
+    page: 'https://legal.yousafeconsultancy.com/contact/',
+    clicks: 0,
+    impressions: 420,
+    ctr: 0,
+    position: 3,
+  },
+  {
+    query: 'you safe login 2024',
+    page: 'https://legal.yousafeconsultancy.com/login/',
+    clicks: 0,
+    impressions: 260,
+    ctr: 0,
+    position: 4,
+  },
+  {
+    query: 'you safe ltd',
+    page: 'https://legal.yousafeconsultancy.com/',
+    clicks: 0,
+    impressions: 90,
+    ctr: 0,
+    position: 5,
+  },
+]
+
+/** Brand-like prose: real demand, so it must survive the brand boundary. */
+const RESIDUAL_SELF_BRAND_PROSE_ROW: FakeRow = {
+  query: 'you safe phone number for international students',
+  page: 'https://legal.yousafeconsultancy.com/uk/contact/',
+  clicks: 1,
+  impressions: 180,
+  ctr: 0.005,
+  position: 11,
+}
+
+const RESIDUAL_SELF_BRAND_QUERIES = RESIDUAL_SELF_BRAND_ROWS.map((r) => String(r.query))
+const RESIDUAL_SELF_BRAND_EXPECTED_QUERIES = [
+  ...QUALIFIED_QUERIES,
+  String(RESIDUAL_SELF_BRAND_PROSE_ROW.query),
+].sort()
+
+describe('POST /api/content-studio/opportunities/score — contact-detail / year-suffixed self-brand leak (final review residual)', () => {
+  it('never scores contact-detail or year-suffixed self-brand rows, but keeps brand-like prose', async () => {
+    mockRequireAdminUser.mockResolvedValue({ role: 'admin', profileId: 'p_admin', db: {} })
+    const res = await POST(
+      postRequest({
+        rows: [...RESIDUAL_SELF_BRAND_ROWS, RESIDUAL_SELF_BRAND_PROSE_ROW, ...QUALIFIED_ROWS].map((r) => ({
+          query: r.query,
+          page: r.page,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          ctr: r.ctr,
+          position: r.position,
+        })),
+      }),
+    )
+    const body = (await res.json()) as Record<string, any>
+
+    expect(body.ok).toBe(true)
+    expect(queriesOf(body).sort()).toEqual(RESIDUAL_SELF_BRAND_EXPECTED_QUERIES)
+    for (const query of RESIDUAL_SELF_BRAND_QUERIES) {
+      expect(JSON.stringify(body.opportunities)).not.toContain(query)
+    }
+    expect(body.excludedNonActionable).toBe(RESIDUAL_SELF_BRAND_ROWS.length)
+  })
+})
+
+describe('GET /api/content-studio/opportunities/score — contact-detail / year-suffixed self-brand leak (final review residual)', () => {
+  it('drops the brand rows at the persisted read and still actions brand-like prose', async () => {
+    mockRequireAdminUser.mockResolvedValue({
+      role: 'admin',
+      profileId: 'p_admin',
+      db: stubDb([...RESIDUAL_SELF_BRAND_ROWS, RESIDUAL_SELF_BRAND_PROSE_ROW, ...QUALIFIED_ROWS]),
+    })
+    const res = await GET(request('?days=90&limit=50'))
+    const body = (await res.json()) as Record<string, any>
+
+    expect(body.ok).toBe(true)
+    // Junk brand rows are dropped at the persisted read, so only the prose row
+    // is a scoring opportunity — nothing is refused at the action boundary.
+    expect(queriesOf(body).sort()).toEqual(RESIDUAL_SELF_BRAND_EXPECTED_QUERIES)
+    expect(body.excludedNonActionable).toBe(0)
+  })
+})
