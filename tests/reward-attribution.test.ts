@@ -371,6 +371,9 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
 
   beforeEach(() => {
     const sb = mockSb()
+    const gsc = jest.requireMock('@/lib/gscAuth') as { getGscAccess: typeof GetGscAccess }
+    ;(gsc.getGscAccess as jest.Mock).mockClear()
+    ;(gsc.getGscAccess as jest.Mock).mockResolvedValue({ accessToken: 'tok', siteUrl: 'sc-domain:yousafeconsultancy.com' })
     sb.__cronState.rewardRows.clear()
     sb.__cronState.credits = []
     sb.__cronState.failUpsert = false
@@ -659,6 +662,122 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
       const otherCredit = sb.__cronState.credits.find((c) => c.page_url === other.replace(/\/+$/, ''))
       expect(otherCredit).toBeDefined()
       expect(otherCredit.action).toBe('new')
+    } finally {
+      global.fetch = prevFetch
+    }
+  })
+
+  it('resolves GSC access exactly once even when canonical pages require multiple distinct windows', async () => {
+    const sb = mockSb()
+    const gsc = jest.requireMock('@/lib/gscAuth') as { getGscAccess: typeof GetGscAccess }
+    const otherJob = {
+      ...JOB1,
+      id: 'job-other-window',
+      canonical_url: other,
+      merged_at: '2026-07-05T00:00:00Z',
+    }
+    sb.__cronState.jobs = [JOB1, otherJob]
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+
+    await attributizeOutcomes('2026-08-12')
+
+    expect(gsc.getGscAccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('times out a hung GSC access resolution before any reward write', async () => {
+    const sb = mockSb()
+    sb.__cronState.jobs = [JOB1]
+    const gsc = jest.requireMock('@/lib/gscAuth') as { getGscAccess: typeof GetGscAccess }
+    ;(gsc.getGscAccess as jest.Mock).mockImplementation(() => new Promise(() => {}))
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+    jest.useFakeTimers()
+
+    try {
+      const pending = attributizeOutcomes('2026-08-12')
+      await jest.advanceTimersByTimeAsync(20_001)
+      const res = await pending
+
+      expect(res.events).toBe(0)
+      expect(res.jobsMatched).toBe(0)
+      expect(res.jobsConsidered).toBe(1)
+      expect(res.unavailable).toMatch(/GSC access resolution timed out/i)
+      expect(sb.__cronState.rewardRows.size).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('holds the whole pass when a GSC window exceeds the 25k row completeness ceiling', async () => {
+    const sb = mockSb()
+    sb.__cronState.jobs = [JOB1]
+    const prevFetch = global.fetch
+    const saturatedRow = { keys: [page, 'uk graduate visa'], clicks: 10, impressions: 90, position: 7 }
+    global.fetch = jest.fn(async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || '{}'))
+      const startRow = Number(body.startRow || 0)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          rows: startRow >= 25_000 ? [saturatedRow] : new Array(25_000).fill(saturatedRow),
+        }),
+      } as unknown as Response
+    })
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+
+    try {
+      const res = await attributizeOutcomes('2026-08-12')
+      expect(res.events).toBe(0)
+      expect(res.jobsMatched).toBe(0)
+      expect(res.jobsConsidered).toBe(1)
+      expect(res.unavailable).toMatch(/exceeds 25000 rows/i)
+      expect(sb.__cronState.rewardRows.size).toBe(0)
+    } finally {
+      global.fetch = prevFetch
+    }
+  })
+
+  it('fails closed before any reward write when a GSC window returns HTTP failure', async () => {
+    const sb = mockSb()
+    sb.__cronState.jobs = [JOB1]
+    const prevFetch = global.fetch
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: async () => 'upstream unavailable',
+    })) as unknown as typeof fetch
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+
+    try {
+      const res = await attributizeOutcomes('2026-08-12')
+      expect(res.events).toBe(0)
+      expect(res.jobsMatched).toBe(0)
+      expect(res.persistFailed).toBe(0)
+      expect(res.jobsConsidered).toBe(1)
+      expect(res.unavailable).toMatch(/GSC attribution window .* failed \(503\)/)
+      expect(sb.__cronState.rewardRows.size).toBe(0)
+    } finally {
+      global.fetch = prevFetch
+    }
+  })
+
+  it('fails closed before any reward write when a GSC window request times out', async () => {
+    const sb = mockSb()
+    sb.__cronState.jobs = [JOB1]
+    const prevFetch = global.fetch
+    global.fetch = jest.fn(async () => {
+      throw new Error('The operation was aborted due to timeout')
+    }) as unknown as typeof fetch
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+
+    try {
+      const res = await attributizeOutcomes('2026-08-12')
+      expect(res.events).toBe(0)
+      expect(res.jobsMatched).toBe(0)
+      expect(res.persistFailed).toBe(0)
+      expect(res.jobsConsidered).toBe(1)
+      expect(res.unavailable).toMatch(/timeout/i)
+      expect(sb.__cronState.rewardRows.size).toBe(0)
     } finally {
       global.fetch = prevFetch
     }
