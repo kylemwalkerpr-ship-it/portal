@@ -282,19 +282,18 @@ export default function AdminRankingModel() {
           deltaImpressions: rwImp ? Number(rwImp) : undefined,
           deltaClicks: rwClicks ? Number(rwClicks) : undefined,
           deltaPosition: rwPos ? Number(rwPos) : undefined,
-          recalibrate: true,
         }),
       })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'reward failed')
-      flash(`Reward ${data.event.reward} credited to ${data.event.action}${data.recalibrated ? ' · weights recalibrated' : ''}`)
-      recordResult(true, 'Credit outcome', `reward ${data.event?.reward ?? 0} → ${data.event?.action ?? rwAction}${data.recalibrated ? ' · weights recalibrated' : ''}`)
+      flash('Manual observation recorded · audit-only, not model training')
+      recordResult(true, 'Record observation', `audit-only → ${data.event?.action ?? rwAction} · verified cron improvements train weights`)
       setRwUrl(''); setRwImp(''); setRwClicks(''); setRwPos('')
       await loadAll()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'reward failed'
       setError(msg)
-      recordResult(false, 'Credit outcome', msg)
+      recordResult(false, 'Record observation', msg)
     } finally {
       setBusy(false)
     }
@@ -318,6 +317,10 @@ export default function AdminRankingModel() {
 
   const weights = (rewards?.weights as Record<string, number>) || {}
   const calibration = (rewards?.calibration as Array<Record<string, any>>) || []
+  const verifiedCalibration = calibration.filter((row) => {
+    const note = String(row.note || '')
+    return note.startsWith('observed-reward calibration') && /\bthrough\s+\S+/i.test(note)
+  })
   const trackerRows = (tracker?.rows as Array<Record<string, any>>) || []
   const trackerSummary = (tracker?.summary as Record<string, any>) || null
   // Client-side filter mirrors the server-side horizon filter; it also guards
@@ -349,8 +352,8 @@ export default function AdminRankingModel() {
           run: loadLineage, busyLabel: 'Walking…', done: actionResult?.title === 'Lineage lookup' ? actionResult : null,
           slot: <input value={lineageJob} onChange={(e) => setLineageJob(e.target.value)} placeholder="Job ID or topic…" style={{ ...inputStyle, flex: 1 }} onKeyDown={(e) => e.key === 'Enter' && loadLineage()} />,
         }, {
-          key: 'reward', icon: '🎁', title: 'Credit outcome', sub: 'Log a shipped-page delta', color: C.gold,
-          run: () => jump('rewards-form'), busyLabel: '', done: actionResult?.title === 'Credit outcome' ? actionResult : null,
+          key: 'reward', icon: '📝', title: 'Record observation', sub: 'Audit-only manual note', color: C.gold,
+          run: () => jump('rewards-form'), busyLabel: '', done: actionResult?.title === 'Record observation' ? actionResult : null,
         }]).map((cell) => (
           <div key={cell.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '12px 14px', boxShadow: C.shadowCard, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -514,8 +517,8 @@ export default function AdminRankingModel() {
       {/* ══ 4 · REWARDS ══ */}
       <div id="rewards-form" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
         <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
-          <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🎁 Reward Loop & Calibration</h2>
-          <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>Outcome ledger → bounded weight recalibration. The model learns from what the estate actually experiences.</p>
+          <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🎁 Observation Ledger & Calibration</h2>
+          <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>Manual entries are audit-only. Only verified page + query + completed-window GSC improvements may train model weights.</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
             <input value={rwUrl} onChange={(e) => setRwUrl(e.target.value)} placeholder="Shipped page URL…" style={{ ...inputStyle, width: 240 }} />
             <select value={rwAction} onChange={(e) => setRwAction(e.target.value)} style={{ ...inputStyle, width: 130 }}>
@@ -524,7 +527,7 @@ export default function AdminRankingModel() {
             <input value={rwImp} onChange={(e) => setRwImp(e.target.value)} placeholder="Δ imp" style={{ ...inputStyle, width: 70 }} />
             <input value={rwClicks} onChange={(e) => setRwClicks(e.target.value)} placeholder="Δ clicks" style={{ ...inputStyle, width: 80 }} />
             <input value={rwPos} onChange={(e) => setRwPos(e.target.value)} placeholder="Δ pos (-5)" style={{ ...inputStyle, width: 80 }} />
-            <button type="button" onClick={recordReward} disabled={busy || !rwUrl.trim()} style={{ ...btnSolid(C.gold) }}>🎁 Credit outcome</button>
+            <button type="button" onClick={recordReward} disabled={busy || !rwUrl.trim()} style={{ ...btnSolid(C.gold) }}>📝 Record observation</button>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, padding: 12 }}>
@@ -543,8 +546,10 @@ export default function AdminRankingModel() {
                 </div>
               )
             })}
-            <div style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono, marginTop: 6 }}>
-              events: {(rewards?.summary as any)?.events ?? 0} · avg reward {(rewards?.summary as any)?.avgReward ?? 0} · total {(rewards?.summary as any)?.totalReward ?? 0}
+            <div style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono, marginTop: 6, lineHeight: 1.5 }}>
+              audit ledger: {(rewards?.summary as any)?.audit?.events ?? (rewards?.summary as any)?.events ?? 0}
+              {' · '}verified training evidence: {(rewards?.summary as any)?.training?.eligibleEvents ?? (rewards?.summary as any)?.trainingEligibleEvents ?? 0}
+              {' · '}training reward: {(rewards?.summary as any)?.training?.totalReward ?? 0}
             </div>
           </div>
           <div>
@@ -561,12 +566,15 @@ export default function AdminRankingModel() {
           </div>
           <div>
             <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Calibration history</div>
-            {calibration.length === 0 && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>No recalibrations yet — credit an outcome to see bounded weight shifts.</div>}
-            {calibration.map((c) => (
-              <div key={String(c.id)} style={{ padding: '6px 8px', borderRadius: C.radiusXs, background: C.surface2, marginBottom: 4, fontSize: 9.5, fontFamily: C.mono, color: C.textMuted }}>
-                <span style={{ color: C.gold, fontWeight: 700 }}>↻ recalibrated</span> · {Number(c.events_count)} events · {timeAgo(String(c.recalibrated_at))}
-              </div>
-            ))}
+            {verifiedCalibration.length === 0 && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, marginBottom: 6 }}>No verified observed-reward recalibrations yet. Manual notes and forecast diagnostics never move active weights.</div>}
+            {calibration.map((c) => {
+              const verified = verifiedCalibration.includes(c)
+              return (
+                <div key={String(c.id)} style={{ padding: '6px 8px', borderRadius: C.radiusXs, background: C.surface2, marginBottom: 4, fontSize: 9.5, fontFamily: C.mono, color: C.textMuted }}>
+                  <span style={{ color: verified ? C.green : C.textDim, fontWeight: 700 }}>{verified ? '✓ verified observed' : 'audit · legacy/non-training'}</span> · {Number(c.events_count)} events · {timeAgo(String(c.recalibrated_at))}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

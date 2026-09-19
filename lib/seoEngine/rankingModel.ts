@@ -1233,6 +1233,297 @@ export async function loadCalibrationHistory(limit = 10): Promise<Array<Record<s
   }
 }
 
+export const OBSERVED_REWARD_CALIBRATION_PREFIX = 'observed-reward calibration'
+
+async function loadCalibrationHistoryForTraining(limit = 50): Promise<Array<Record<string, unknown>>> {
+  const client = await db()
+  if (!client) throw new Error('calibration database unavailable')
+  const { data, error } = await client
+    .from('seo_model_calibration')
+    .select('*')
+    .like('note', OBSERVED_REWARD_CALIBRATION_PREFIX + '%')
+    .order('recalibrated_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error('calibration read failed: ' + error.message)
+  return ((data as Array<Record<string, unknown>>) || []).filter(isObservedCalibrationRow)
+}
+
+/**
+ * Strict training boundary for persisted reward rows.
+ *
+ * Only a verified, intervention-bound GSC improvement may train weights:
+ * real HTTP(S) canonical page + exact query + explicit completed window +
+ * measured baseline + positive measured click delta + known recorded action.
+ * Legacy forecast-prefixed rows, manual notes, plain observations and partial
+ * evidence remain auditable in the ledger but are never model-training inputs.
+ */
+export function isTrainingEligibleRewardRow(row: Record<string, unknown>): boolean {
+  const pageUrl = String(row.page_url || '').trim()
+  const query = String(row.query || '').trim()
+  const windowStart = String(row.window_start || '').trim()
+  const windowEnd = String(row.window_end || '').trim()
+  const action = String(row.action || '').trim()
+  const label = String(row.observation_label || '').trim()
+  const reward = Number(row.reward) || 0
+  const deltaClicks = Number(row.delta_clicks) || 0
+  const dedupeKey = String(row.dedupe_key || '').trim()
+  const attribution =
+    row.attribution && typeof row.attribution === 'object'
+      ? (row.attribution as Record<string, unknown>)
+      : {}
+  const hasAttributedCredit = Object.values(attribution).some((value) => Number(value) > 0)
+  const hasBaseline = row.baseline_clicks !== null && row.baseline_clicks !== undefined
+  const date = /^\d{4}-\d{2}-\d{2}$/
+
+  return (
+    /^https?:\/\//i.test(pageUrl) &&
+    Boolean(query) &&
+    date.test(windowStart) &&
+    date.test(windowEnd) &&
+    windowStart <= windowEnd &&
+    hasBaseline &&
+    action !== '' &&
+    action !== 'unknown' &&
+    label === 'cron_gsc_improvement' &&
+    row.improvement_credited === true &&
+    dedupeKey.startsWith('cron-attr:') &&
+    hasAttributedCredit &&
+    deltaClicks > 0 &&
+    reward > 0
+  )
+}
+
+/** Only calibrations produced from the strict observed-reward boundary are active. */
+function observedRewardWatermarkFromNote(note: string): string | null {
+  const match = note.match(/(?:^|[·\s])through\s+([^\s·]+)(?:\s|$)/i)
+  if (!match?.[1]) return null
+  const timestamp = new Date(match[1])
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null
+}
+
+export function isObservedCalibrationRow(row: Record<string, unknown>): boolean {
+  const note = String(row.note || '').trim()
+  return note.startsWith(OBSERVED_REWARD_CALIBRATION_PREFIX) &&
+    Boolean(row.weights && typeof row.weights === 'object') &&
+    Boolean(observedRewardWatermarkFromNote(note))
+}
+
+export async function loadObservedCalibrationHistory(limit = 10): Promise<Array<Record<string, unknown>>> {
+  try {
+    const client = await db()
+    if (!client) return []
+    const { data, error } = await client
+      .from('seo_model_calibration')
+      .select('*')
+      .like('note', OBSERVED_REWARD_CALIBRATION_PREFIX + '%')
+      .order('recalibrated_at', { ascending: false })
+      .limit(limit)
+    if (error) return []
+    return ((data as Array<Record<string, unknown>>) || []).filter(isObservedCalibrationRow)
+  } catch {
+    return []
+  }
+}
+
+/** Rehydrate only persisted rows that pass the strict training boundary. */
+export function trainingRewardEventFromRow(row: Record<string, unknown>): RewardEvent | null {
+  if (!isTrainingEligibleRewardRow(row)) return null
+  const attribution =
+    row.attribution && typeof row.attribution === 'object'
+      ? (row.attribution as Partial<Record<SignalFamily, number>>)
+      : {}
+  return {
+    id: String(row.id || ''),
+    modelVersion: String(row.model_version || RANKING_MODEL_VERSION),
+    pageUrl: String(row.page_url),
+    topic: row.topic ? String(row.topic) : undefined,
+    action: String(row.action),
+    query: String(row.query),
+    windowStart: String(row.window_start),
+    windowEnd: String(row.window_end),
+    baselineClicks: Number(row.baseline_clicks),
+    improvementCredited: true,
+    observationLabel: 'cron_gsc_improvement',
+    deltaImpressions: Number(row.delta_impressions) || 0,
+    deltaClicks: Number(row.delta_clicks) || 0,
+    deltaPosition: Number(row.delta_position) || 0,
+    reward: Number(row.reward) || 0,
+    attribution,
+    note: row.note ? String(row.note) : undefined,
+    dedupeKey: row.dedupe_key ? String(row.dedupe_key) : undefined,
+    observedAt: String(row.observed_at || ''),
+  }
+}
+
+export const MIN_OBSERVED_IMPROVEMENTS_FOR_CALIBRATION = 5
+const MAX_OBSERVED_REWARD_PAGES = 50
+const MAX_OBSERVED_REWARD_PAGE_SIZE = 1000
+
+/** Read only persisted improvement candidates; JS applies the full strict boundary. */
+export async function loadTrainingEligibleRewardRows(
+  limit = 200,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const client = await db()
+    if (!client) return []
+    const { data, error } = await client
+      .from('seo_reward_events')
+      .select('*')
+      .eq('improvement_credited', true)
+      .eq('observation_label', 'cron_gsc_improvement')
+      .gt('reward', 0)
+      .order('observed_at', { ascending: false })
+      .limit(limit)
+    if (error) return []
+    return ((data as Array<Record<string, unknown>>) || []).filter(isTrainingEligibleRewardRow)
+  } catch {
+    return []
+  }
+}
+
+function observedRewardWatermark(row: Record<string, unknown>): string | null {
+  if (!isObservedCalibrationRow(row)) return null
+  return observedRewardWatermarkFromNote(String(row.note || ''))
+}
+
+async function loadTrainingEligibleRewardRowsForCalibration(
+  watermark: string,
+  pageSize = 200,
+): Promise<Array<Record<string, unknown>>> {
+  const client = await db()
+  if (!client) throw new Error('reward evidence database unavailable')
+
+  const size = Math.max(1, Math.min(MAX_OBSERVED_REWARD_PAGE_SIZE, Math.floor(pageSize) || 200))
+  const rows: Array<Record<string, unknown>> = []
+
+  const baseQuery = () => {
+    let query = client
+      .from('seo_reward_events')
+      .select('*')
+      .eq('improvement_credited', true)
+      .eq('observation_label', 'cron_gsc_improvement')
+      .gt('reward', 0)
+    if (watermark) query = query.gt('observed_at', watermark)
+    return query
+  }
+
+  for (let page = 0; page < MAX_OBSERVED_REWARD_PAGES; page += 1) {
+    const from = page * size
+    const { data, error } = await baseQuery()
+      .order('observed_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + size - 1)
+    if (error) throw new Error('reward read failed: ' + error.message)
+
+    const batch = (data as Array<Record<string, unknown>>) || []
+    rows.push(...batch.filter(isTrainingEligibleRewardRow))
+    if (batch.length < size) return rows
+  }
+
+  const probeOffset = MAX_OBSERVED_REWARD_PAGES * size
+  const { data: overflow, error: overflowError } = await baseQuery()
+    .order('observed_at', { ascending: true })
+    .order('id', { ascending: true })
+    .range(probeOffset, probeOffset)
+  if (overflowError) throw new Error('reward read failed: ' + overflowError.message)
+  if (Array.isArray(overflow) && overflow.length > 0) {
+    throw new Error('reward evidence exceeds safe calibration page ceiling of ' + probeOffset + ' rows')
+  }
+
+  return rows
+}
+
+export interface ObservedRewardCalibrationResult {
+  eligible: number
+  recalibrated: boolean
+  weightsChanged: boolean
+  weights: Record<SignalFamily, number>
+  watermark: string | null
+  error?: string
+}
+
+/**
+ * Recalibrate only from NEW persisted rows that pass the strict observed
+ * improvement boundary. Historical forecast/manual calibration rows are never
+ * used as the active baseline; until an observed-reward calibration exists we
+ * start from the code-defined FAMILY_WEIGHTS.
+ */
+export async function recalibrateFromObservedRewards(
+  limit = 200,
+): Promise<ObservedRewardCalibrationResult> {
+  try {
+    const history = await loadCalibrationHistoryForTraining(50)
+    const prior = history.find(isObservedCalibrationRow)
+    const watermark = prior ? observedRewardWatermark(prior) : null
+    if (prior && !watermark) {
+      throw new Error('observed calibration is missing a valid processed-observation watermark')
+    }
+
+    const eligibleLedger = await loadTrainingEligibleRewardRowsForCalibration(watermark || '', limit)
+    const events = eligibleLedger
+      .map(trainingRewardEventFromRow)
+      .filter((event): event is RewardEvent => Boolean(event))
+      .sort((a, b) => a.observedAt.localeCompare(b.observedAt))
+    const priorWeights =
+      prior?.weights && typeof prior.weights === 'object'
+        ? (prior.weights as Partial<Record<SignalFamily, number>>)
+        : {}
+    const current: Record<SignalFamily, number> = { ...FAMILY_WEIGHTS, ...priorWeights }
+
+    if (events.length < MIN_OBSERVED_IMPROVEMENTS_FOR_CALIBRATION) {
+      return {
+        eligible: events.length,
+        recalibrated: false,
+        weightsChanged: false,
+        weights: current,
+        watermark,
+      }
+    }
+
+    const next = recalibrateWeights(current, events, CALIBRATION_LEARNING_RATE)
+    const weightsChanged = SIGNAL_FAMILIES.some(
+      (family) => Math.abs(Number(next[family]) - Number(current[family])) > 1e-9,
+    )
+    const through = events[events.length - 1]?.observedAt || ''
+    if (!through) throw new Error('observed reward calibration has no terminal observation timestamp')
+
+    const wrote = await recordCalibration(
+      weightsChanged ? next : current,
+      events.length,
+      OBSERVED_REWARD_CALIBRATION_PREFIX +
+        ' · ' + events.length +
+        ' verified improvements · ' + (weightsChanged ? 'weights updated' : 'weights unchanged') +
+        ' · through ' + through,
+    )
+    if (!wrote.ok) {
+      return {
+        eligible: events.length,
+        recalibrated: false,
+        weightsChanged,
+        weights: current,
+        watermark,
+        error: wrote.error || 'observed reward calibration persistence failed',
+      }
+    }
+    return {
+      eligible: events.length,
+      recalibrated: true,
+      weightsChanged,
+      weights: weightsChanged ? next : current,
+      watermark: through,
+    }
+  } catch (error) {
+    return {
+      eligible: 0,
+      recalibrated: false,
+      weightsChanged: false,
+      weights: { ...FAMILY_WEIGHTS },
+      watermark: null,
+      error: error instanceof Error ? error.message : 'observed reward calibration failed',
+    }
+  }
+}
+
 /** Cron pass: compute + persist ranking scores for the top planner missions. */
 export async function runRankingPassForPlans(limit = 15): Promise<{ computed: number; topScores: Array<{ topic: string; total: number }> }> {
   try {
@@ -1514,7 +1805,9 @@ export function prepareCronRewards(opts: {
     if (!query || seen.has(query)) continue
     seen.add(query)
     const clicks = Math.max(0, Number(r.clicks) || 0)
-    if (clicks <= 0) continue
+    // A returned GSC page+query row is a real measurement even when clicks are
+    // zero. Keep the observation so the ledger records measured non-performance
+    // instead of silently converting it into "no data".
     const baselineClicks = baselineByQuery.has(query) ? baselineByQuery.get(query)! : null
     // Improvement credit is ONLY warranted when we actually know the action that
     // led to the observation. An absent/unknown action can never be credited as

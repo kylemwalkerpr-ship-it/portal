@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getGscConfig } from '@/lib/gscConfig'
 import { createClient } from '@supabase/supabase-js'
+import { OBSERVED_REWARD_CALIBRATION_PREFIX, isObservedCalibrationRow } from '@/lib/seoEngine/rankingModel'
 
 // ── Data fetching (direct Supabase queries, no admin-auth endpoints) ────────
 
@@ -82,9 +83,10 @@ async function fetchModelCalibration(): Promise<CalibrationData> {
 
   const { data: cal } = await supabase
     .from('seo_model_calibration')
-    .select('model_version, events_count, recalibrated_at')
+    .select('model_version, events_count, note, weights, recalibrated_at')
+    .like('note', OBSERVED_REWARD_CALIBRATION_PREFIX + '%')
     .order('recalibrated_at', { ascending: false })
-    .limit(1)
+    .limit(50)
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const { count: recentRuns } = await supabase
@@ -105,12 +107,13 @@ async function fetchModelCalibration(): Promise<CalibrationData> {
     if (total > 0) accuracy = Math.round((agree / total) * 100)
   }
 
-  const latest = cal?.[0] ?? null
+  const latest = (((cal || []) as Array<Record<string, unknown>>)
+    .find(isObservedCalibrationRow)) ?? null
 
   return {
-    lastCalibratedAt: latest?.recalibrated_at ?? null,
-    modelVersion: latest?.model_version ?? 'unknown',
-    eventsCount: latest?.events_count ?? 0,
+    lastCalibratedAt: latest?.recalibrated_at ? String(latest.recalibrated_at) : null,
+    modelVersion: latest?.model_version ? String(latest.model_version) : 'unknown',
+    eventsCount: Number(latest?.events_count) || 0,
     accuracy,
     accuracyTrend: null, // derived heuristically from notes in the full endpoint
     recentRuns: recentRuns ?? 0,

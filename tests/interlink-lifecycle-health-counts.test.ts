@@ -45,7 +45,7 @@ function makeQueryBuilder(table: string) {
       filters.push(call)
       return builder
     }
-  for (const method of ['select', 'eq', 'not', 'order', 'limit', 'in', 'ilike']) {
+  for (const method of ['select', 'eq', 'not', 'order', 'limit', 'in', 'ilike', 'like']) {
     builder[method] = record(method)
   }
   builder.then = (resolve: (value: unknown) => unknown) => {

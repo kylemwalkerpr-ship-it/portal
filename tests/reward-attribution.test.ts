@@ -728,3 +728,25 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
     expect(sb.__cronState.rewardRows.size).toBe(0)
   })
 })
+
+describe('P1 observation truth — zero-click rows remain measured observations', () => {
+  it('retains an observed page+query row with zero clicks without inventing improvement reward', () => {
+    const rewards = prepareCronRewards({
+      mission,
+      currentWindow: { start: '2026-08-12', end: '2026-08-25' },
+      currentRows: [row(page, 'uk graduate visa', 0)],
+      baselineRows: null,
+      bucket: 3,
+    })
+    expect(rewards).toHaveLength(1)
+    expect(rewards[0]).toMatchObject({
+      pageUrl: page.replace(/\/+$/, ''),
+      query: 'uk graduate visa',
+      action: 'create',
+      observationLabel: 'cron_gsc_observation',
+      deltaClicks: 0,
+      baselineClicks: null,
+      improvementCredited: false,
+    })
+  })
+})

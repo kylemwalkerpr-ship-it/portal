@@ -11,11 +11,8 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { buildPredictiveSignal } from './intelligence'
 import {
-  FAMILY_WEIGHTS,
   persistForecast,
-  recordCalibration,
   runRankingPassForPlans,
-  RANKING_MODEL_VERSION,
 } from './rankingModel'
 import { runForecastRewardPass } from './forecastReward'
 import { fallbackLegalAhrefsSnapshot, persistAhrefsSnapshot } from './ahrefsAudit'
@@ -240,26 +237,21 @@ export async function backfillMaturedForecasts(
 
 export async function backfillRewardAndCalibration(): Promise<EngineBackfillStep> {
   const pass = await runForecastRewardPass({ limit: 400 })
-  if (pass.failed) return step('seo_reward_events', false, 0, pass.note, pass.failed)
-  let calWrote = 0
-  if (!pass.recalibrated) {
-    const baseline = await recordCalibration(
-      FAMILY_WEIGHTS,
-      pass.events,
-      pass.events
-        ? `baseline after forecast-reward · ${pass.events} events · weights unchanged`
-        : `baseline seed · ${RANKING_MODEL_VERSION} default weights (no matured GSC match yet)`,
-    )
-    calWrote = baseline.ok ? 1 : 0
-    if (!baseline.ok) {
-      return step('seo_model_calibration', false, pass.events, pass.note, baseline.error)
-    }
+  if (pass.failed) {
+    return step('seo_reward_events+seo_model_calibration', false, 0, pass.note, pass.failed)
   }
+
+  // Forecast evaluation is diagnostic-only. Never manufacture a baseline
+  // calibration row just to make the backfill store non-empty: the only
+  // calibration write allowed here is the one produced from verified observed
+  // intervention rewards inside runForecastRewardPass().
+  const wrote = pass.recalibrated ? 1 : 0
+  const eligible = pass.eligibleObservedRewards ?? 0
   return step(
     'seo_reward_events+seo_model_calibration',
-    pass.events > 0 || calWrote > 0,
-    pass.events + calWrote,
-    `${pass.note} · calibration ${pass.recalibrated ? 'moved' : `baseline+${calWrote}`}`,
+    true,
+    wrote,
+    `${pass.note} · forecast reward writes=0 · observed calibration ${pass.recalibrated ? 'written' : 'not written'} · eligible=${eligible}`,
   )
 }
 

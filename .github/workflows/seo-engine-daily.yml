@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: 'all | knowledge | plan'
+        description: 'all | knowledge | plan | rewards'
         required: false
         default: 'all'
         type: choice
@@ -17,6 +17,7 @@ on:
           - 'all'
           - 'knowledge'
           - 'plan'
+          - 'rewards'
 
 jobs:
   seo-engine-daily:
