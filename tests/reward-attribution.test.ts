@@ -16,6 +16,9 @@ jest.mock('@/lib/supabase', () => {
     jobs: [] as Array<Record<string, unknown>>,
     overlapError: false,
     overlapThrow: false,
+    rewardHistoryReads: 0,
+    rewardUpsertCalls: 0,
+    lastRewardUpsertSize: 0,
     // Persisted reward rows (page/query/window/action) for overlap reconciliation.
     credits: [] as Array<{ dedupe_key: string; page_url: string; query: string; window_start: string; window_end: string; action: string }>,
   }
@@ -68,15 +71,19 @@ jest.mock('@/lib/supabase', () => {
           if (this._table === 'seo_reward_events' && this._filters.dedupe_key) {
             return Promise.resolve(cb({ data: state.rewardRows.get(this._filters.dedupe_key) || null, error: null }))
           }
-          if (this._table === 'seo_reward_events' && this._filters.page_url) {
+          if (this._table === 'seo_reward_events') {
             if (state.overlapThrow) throw new Error('history lookup exploded (test)')
             if (state.overlapError) return Promise.resolve(cb({ data: null, error: { message: 'history lookup failed (test)' } }))
-            const page = String(this._filters.page_url)
+            state.rewardHistoryReads += 1
+            const page = String(this._filters.page_url || '')
             const query = String(this._filters.query || '')
             const gteEnd = String(this._filters.window_end || '')
-            const rows = state.credits.filter(
-              (c) => c.page_url === page && (!query || c.query === query) && (!gteEnd || c.window_end >= gteEnd),
+            let rows = state.credits.filter(
+              (c) => (!page || c.page_url === page) && (!query || c.query === query) && (!gteEnd || c.window_end >= gteEnd),
             )
+            if (this._filters.range_from != null && this._filters.range_to != null) {
+              rows = rows.slice(Number(this._filters.range_from), Number(this._filters.range_to) + 1)
+            }
             return Promise.resolve(cb({ data: rows, error: null }))
           }
           return Promise.resolve(cb({ data: null, error: null }))
@@ -88,19 +95,26 @@ jest.mock('@/lib/supabase', () => {
           return this._write(row, 'insert')
         },
         _write: function write(_row: any, kind: string) {
+          const rows = Array.isArray(_row) ? _row : [_row]
+          if (this._table === 'seo_reward_events' && kind === 'upsert') {
+            state.rewardUpsertCalls += 1
+            state.lastRewardUpsertSize = rows.length
+          }
           if (state.failUpsert) return Promise.resolve({ error: { message: 'insert refused (test)' } })
-          if (kind === 'upsert' && _row.dedupe_key && state.rewardRows.has(_row.dedupe_key)) return Promise.resolve({ error: null })
-          if (_row.dedupe_key) {
-            state.rewardRows.set(_row.dedupe_key, { id: 'r-1' })
-            if (this._table === 'seo_reward_events') {
-              state.credits.push({
-                dedupe_key: String(_row.dedupe_key),
-                page_url: String(_row.page_url || ''),
-                query: _row.query ? String(_row.query) : '',
-                window_start: _row.window_start ? String(_row.window_start) : '',
-                window_end: _row.window_end ? String(_row.window_end) : '',
-                action: _row.action ? String(_row.action) : 'unknown',
-              })
+          for (const row of rows) {
+            if (kind === 'upsert' && row.dedupe_key && state.rewardRows.has(row.dedupe_key)) continue
+            if (row.dedupe_key) {
+              state.rewardRows.set(row.dedupe_key, { id: 'r-1' })
+              if (this._table === 'seo_reward_events') {
+                state.credits.push({
+                  dedupe_key: String(row.dedupe_key),
+                  page_url: String(row.page_url || ''),
+                  query: row.query ? String(row.query) : '',
+                  window_start: row.window_start ? String(row.window_start) : '',
+                  window_end: row.window_end ? String(row.window_end) : '',
+                  action: row.action ? String(row.action) : 'unknown',
+                })
+              }
             }
           }
           return Promise.resolve({ error: null })
@@ -345,7 +359,7 @@ describe('dedupe stability — a completed observation is never re-credited', ()
 })
 
 describe('attributizeOutcomes — ACTUAL cron path regression', () => {
-  type MockSupabase = { __cronState: { rewardRows: Map<string, { id: string }>; failUpsert: boolean; jobs: Array<Record<string, unknown>>; overlapError: boolean; overlapThrow: boolean; credits: Array<{ dedupe_key: string; page_url: string; query: string; window_start: string; window_end: string; action: string }> } }
+  type MockSupabase = { __cronState: { rewardRows: Map<string, { id: string }>; failUpsert: boolean; jobs: Array<Record<string, unknown>>; overlapError: boolean; overlapThrow: boolean; rewardHistoryReads: number; rewardUpsertCalls: number; lastRewardUpsertSize: number; credits: Array<{ dedupe_key: string; page_url: string; query: string; window_start: string; window_end: string; action: string }> } }
   const mockSb = (): MockSupabase => jest.requireMock('@/lib/supabase') as MockSupabase
   const realFetch = global.fetch
 
@@ -379,6 +393,9 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
     sb.__cronState.failUpsert = false
     sb.__cronState.overlapError = false
     sb.__cronState.overlapThrow = false
+    sb.__cronState.rewardHistoryReads = 0
+    sb.__cronState.rewardUpsertCalls = 0
+    sb.__cronState.lastRewardUpsertSize = 0
     sb.__cronState.jobs = [JOB1, JOB2_DRAFT]
   })
 
@@ -590,7 +607,8 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
     expect(res.events).toBe(0)
     expect(res.jobsMatched).toBe(0)
     expect(res.persistFailed).toBe(0)
-    expect(res.duplicatesSkipped).toBe(1)
+    expect(res.duplicatesSkipped).toBe(0)
+    expect(res.unavailable).toMatch(/reward history read failed/i)
     expect(sb.__cronState.rewardRows.size).toBe(0)
   })
 
@@ -603,8 +621,45 @@ describe('attributizeOutcomes — ACTUAL cron path regression', () => {
     expect(res.events).toBe(0)
     expect(res.jobsMatched).toBe(0)
     expect(res.persistFailed).toBe(0)
-    expect(res.duplicatesSkipped).toBe(1)
+    expect(res.duplicatesSkipped).toBe(0)
+    expect(res.unavailable).toMatch(/reward history read failed/i)
     expect(sb.__cronState.rewardRows.size).toBe(0)
+  })
+
+  it('reconciles many prepared page/query observations with one history read and one bulk write', async () => {
+    const sb = mockSb()
+    const JOB5_OTHER = { ...JOB1, id: 'job-5', canonical_url: other, merged_at: '2026-07-05T00:00:00Z' }
+    sb.__cronState.jobs = [JOB1, JOB5_OTHER]
+    const prevFetch = global.fetch
+    global.fetch = jest.fn(async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || '{}'))
+      const start = String(body.startDate || '')
+      const clicks = start >= '2026-08-01' ? 30 : 10
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          rows: [
+            { keys: [page, 'uk graduate visa'], clicks, impressions: 90, position: 7 },
+            { keys: [page, 'graduate visa work'], clicks, impressions: 60, position: 8 },
+            { keys: [other, 'another guide'], clicks, impressions: 40, position: 9 },
+          ],
+        }),
+      } as unknown as Response
+    })
+    const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+    try {
+      const res = await attributizeOutcomes('2026-08-12')
+      expect(res.events).toBe(3)
+      expect(res.preparedEvents).toBe(3)
+      expect(res.historyRows).toBe(0)
+      expect(sb.__cronState.rewardHistoryReads).toBe(1)
+      expect(sb.__cronState.rewardUpsertCalls).toBe(1)
+      expect(sb.__cronState.lastRewardUpsertSize).toBe(3)
+      expect(sb.__cronState.rewardRows.size).toBe(3)
+    } finally {
+      global.fetch = prevFetch
+    }
   })
 
   it('bounded pagination recovers latest refresh action and newer pages beyond an old 500-row cap', async () => {
