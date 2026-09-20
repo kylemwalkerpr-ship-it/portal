@@ -731,7 +731,7 @@ Closed by one commit on this branch (no amend, no push, no merge, no deploy, no 
 
 1. **Shared boundary, not a new rule.** `lib/seoEngine/planner.ts` now imports the existing semantic `isActionableDemandQuery()` from `lib/seoFactory/queryNoise.ts` (which is **not** modified) and applies it in every action-influencing signal loop; `isJunkQuery` keeps its existing uses (purge, dashboard read) and its semantics inside the boundary.
 2. **Four loop guards.** (a) `neededCells` derivation for `marketSupply` — off-mission signals create no actionable-cell work and issue no marketplace lookup; (b) `gscCorroboratedCells` — off-mission (or junk) GSC can never corroborate a cell, so no boost and no dead-funnel rescue from off-mission proof; (c) candidate/plan admission — off-mission signals never become plans/missions for any source (GSC, Ubersuggest, Ads, GA4); (d) the related-terms loop of an admitted plan — an off-mission term can never ride along as a cluster term/spoke/keyword.
-3. **Admission boundary, not ontology deletion.** The housing lifecycle stage and its settlement/tenancy/legal seeds are untouched; tenancy/lease/deposit-anchored and immigration-anchored housing demand still plans (bare housing/newcomer-lifestyle queries may remain off-mission under the shared classifier), and the stage/country inclusion-constraint semantics are unchanged. No CREATE-freeze change.
+3. **Admission boundary, not ontology deletion.** The housing lifecycle stage and its settlement/tenancy/legal seeds are untouched; tenancy/lease/deposit/legal-anchored and immigration-anchored housing forms still plan (a bare generic query such as `housing for newcomers usa` can be off-mission under the shared classifier), and the stage/country inclusion-constraint semantics are unchanged. No CREATE-freeze change.
 4. **Regression.** New `tests/p5-planner-demand-boundary.test.ts` drives the REAL `runPlanner` (only Supabase/interlink mocked, shared repository pattern) and pins: off-mission GSC + Ubersuggest never plan, never persist (payload-level assertion over the mocked persistence writes) and never leak into an admitted cluster; qualified immigration **and** tenancy-legal housing demand in the same batch still plan and persist; the Ubersuggest-only housing score is bit-identical with and without the off-mission GSC signal (no corroboration grant); off-mission-only demand issues zero marketplace (`gigs`) lookups while qualified housing demand does (non-vacuous control). `tests/planner-filter-inclusion.test.ts` keeps its inclusion/no-relabelling purpose with the on-mission fixture `stockton student housing tenant rights` (asserted `isActionableDemandQuery() === true` and housing-mapped); a bare campus-housing term like the old `stockton student housing rates 2026` is off-mission by design and is not the inclusion behaviour that test exists to prove.
 5. **Records.** P5 plan + both P5 matrix rows updated narrowly; the residual sentence claiming the planner may still persist an off-mission cluster plan is removed and replaced with the closure record. At that checkpoint P5 stayed **IN_PROGRESS**; CI, merge and exact-main production verification all completed later on 2026-09-20 (see the production acceptance closure at the end of this ledger).
 
@@ -752,13 +752,13 @@ Local verification for this fix (Jest and `tsc` remain unavailable in this workt
 
 ## 2026-09-20 — P5 production acceptance and closure
 
-**Status: PASS — phase closed 2026-09-20.** Implementation PR [#254](https://github.com/kylemwalkerpr-ship-it/portal/pull/254); final implementation branch head `4745f89cb7be3ed75ee06990f73dec092ce8ae16`; merged `2026-09-20T17:49:32Z` as the exact-main merge commit `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b`. Both P5 matrix rows moved `IN_PROGRESS` → `PASS`; P6+ rows were not changed.
+**Status: PASS — phase closed 2026-09-20, narrowly: this PASS covers the two P5 rows only.** Overall SEO parity is NOT complete (P6–P13 remain PENDING) and broad net-new CREATE stays frozen until P13. Implementation PR [#254](https://github.com/kylemwalkerpr-ship-it/portal/pull/254) — `SEO P5: off-mission cleanup and mission-safety boundaries`; final implementation branch head `4745f89cb7be3ed75ee06990f73dec092ce8ae16`; merged `2026-09-20T17:49:32Z` as the exact-main merge commit `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b`. Both P5 matrix rows moved `IN_PROGRESS` → `PASS`; P6+ rows were not changed.
 
 ### PR checks on final head `4745f89c`
 
 - `Content Studio Review` run `35526811862` — SUCCESS.
 - `Deploy YouSafe Portal` PR-context run `35526811883` — SUCCESS: typecheck, full unit tests, Next/OpenNext build and the SEO audit guard all passed; the deployment-specific production steps were skipped as expected in PR context.
-- PR CI on an earlier head caught one regression — the spaced self-brand form (`you safe`) — which was repaired before merge in final head `4745f89c…`; both PR workflows were then re-run green on that head. Recorded for truthful provenance only; no further mechanism is claimed here.
+- PR CI failure-and-repair truth: run `35526368322` on a pre-repair head failed one P5 `includeBrand` test (the spaced self-brand form `you safe`); that run was superseded by the repair in `4745f89c…`, and both PR workflows were then re-run green on the final head. Recorded for truthful provenance only; no further mechanism is claimed here.
 
 ### Exact-main production deploy on `3a041a07…`
 
@@ -768,6 +768,13 @@ Local verification for this fix (Jest and `tsc` remain unavailable in this workt
 - Cloudflare credential check PASS; Worker deploy PASS with 28 ms startup.
 - Worker secrets health PASS (HTTP 200, `ok=true`, `healthy=true`, `failures=[]`): Clerk live OK; Supabase profiles live OK; service-role legacy-JWT auth mode healthy.
 - Post-deploy smoke: the first attempts saw the normal propagation transients; attempt 3 passed **all 4/4** — portal root 200; studio auth gate 307 → `/sign-in/student` with sign-in 200; GSC connect API guard 401 JSON; exact build freshness `buildId 6Lo03t2kpJg9ql9lJ2UAI` with CDN consistency. Final line: `deployment healthy`.
+
+### Live production verification (read-only, after deploy)
+
+- Disposition contract `https://portal.yousafeconsultancy.com/seo-data/p5-off-mission-dispositions.json`: **HTTP 200**, `version = p5-off-mission-dispositions-v1`, **8 entries, all `KEEP_BUT_SILO`**.
+- Served artifact SHA-256 `33f4764e2a85ddfc1cbe832152b7da2a4a13ddaef79f970e978b160463625135` — **byte-identical** to the repo's `public/seo-data/p5-off-mission-dispositions.json`.
+- Read-only live cohort recheck after deploy: all **8 cohort URLs returned HTTP 200 at their same URL** (no redirect), and the current `https://legal.yousafeconsultancy.com/sitemap.xml` contained **0 of the 8** cohort URLs (sitemap hits = 0). This proves P5 did not disturb their live/sitemap `KEEP_BUT_SILO` state; it does not claim any re-inspection of HTML meta-robots (the P5 audit's `robotsState` remains robots.txt-only, and ownership row 57's Utah Legal noindex/follow caveat stands).
+- The P5 implementation performs no production content mutation itself. Broad net-new CREATE remains frozen until P13.
 
 ### Evidence window and semantics preserved
 
@@ -786,10 +793,10 @@ None of these is claimed fixed. They are recorded so a later phase can pick them
 
 ### Documentation wording correction (reviewer-noted)
 
-The overbroad phrase "newcomer housing still plans" was tightened in this ledger, the matrix and the plan to: **tenancy/lease/deposit-anchored and immigration-anchored housing demand still plans; bare housing / newcomer-lifestyle queries may remain off-mission under the shared classifier.**
+The overbroad phrase "newcomer housing still plans" was tightened in this ledger, the matrix and the plan to: **tenancy/lease/deposit/legal-anchored and immigration-anchored housing forms still plan; a bare generic query such as `housing for newcomers usa` can be off-mission under the shared classifier.** Wording only — no classifier, seed or boundary change.
 
 ### Closure mechanics
 
 - This closure pass modified exactly the three P5 docs: `docs/superpowers/seo-parity-matrix.md` (both P5 rows `IN_PROGRESS` → `PASS` with production acceptance evidence; P6+ rows unchanged), this ledger, and `docs/superpowers/plans/2026-09-20-seo-parity-p5-off-mission.md`.
 - `git diff --check` PASS; no code, test, data, dependency, or manifest changes; no temporary artifacts.
-- P5 is closed **PASS**; P4 and earlier remain closed, and P6+ remain PENDING.
+- P5 is closed **PASS**, narrowly for the two P5 rows: the implementation is merged, exact-main CI/deploy/smoke succeeded and the read-only live verification above completed. Overall SEO parity is NOT complete — P6–P13 remain PENDING — and broad net-new CREATE remains frozen until P13.
