@@ -102,6 +102,10 @@ describe('P3 ownership registry hygiene', () => {
     const roots = confirmed.filter((row) => isSectionRootCanonical(row.owner_url))
     expect(roots.length).toBeGreaterThan(0)
     expect(unauthorized(roots)).toEqual([])
+    expect(isSectionRootCanonical('https://usa.yousafeconsultancy.com/universities/')).toBe(true)
+    expect(isSectionRootCanonical('https://uk.yousafeconsultancy.com/from/')).toBe(true)
+    expect(isSectionRootCanonical('https://usa.yousafeconsultancy.com/universities/mit/')).toBe(false)
+    expect(isSectionRootCanonical('https://uk.yousafeconsultancy.com/from/sri-lanka/')).toBe(false)
 
     const specific = confirmed.filter(
       (row) =>

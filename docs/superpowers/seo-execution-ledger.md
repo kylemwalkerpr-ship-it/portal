@@ -479,22 +479,23 @@ This section records the P3 ownership contract, live owner ratification, and loc
 
 ### Registry ratification and production probes
 
-- The authoritative ownership source was ratified on 2026-09-20, merged through `yousafe-seo-strategies` PR #1 as `dad9e2251a36422e159a834c927d739afadb0b58`, and regenerated into `data/seo/ownership-registry.json` and `public/seo-data/ownership-registry.json`; both files are byte-identical and contain 76 rows.
-- Final status distribution: **76 confirmed / 0 unresolved statuses**. Final action distribution includes **3 `build`** and **2 `supply_first`** rows that are deliberately mapped but non-authoritative.
+- The authoritative ownership source was ratified on 2026-09-20, merged through `yousafe-seo-strategies` PR #2 as `8ab917638be52f456f7c4d74654e53e999e7837e`, and regenerated into `data/seo/ownership-registry.json` and `public/seo-data/ownership-registry.json`; both files are byte-identical and contain 76 rows.
+- Final status distribution: **76 confirmed / 0 unresolved statuses**. Final non-authoring action distribution is **2 `build` + 1 `family_scope` + 2 `supply_first`**; these five rows are deliberately mapped but cannot authorize CREATE/publication.
 - Live probes verified exact/self-canonical/indexed owners for the resolved leaf rows, including OPT travel, SEVIS reinstatement, MIT, University of Washington, F-1 Requirements 2026, UK family visas, marriage-green-card timeline, spouse checklist, Australia 485 English requirements, Ministerial Direction 111, UK skilled-worker healthcare, STEM MBA, Canada spousal sponsorship, Sri Lanka/UAE UK routes, and the UK student-tenant city guide.
-- University dual-graph truth was reconciled to the indexed regional owner. Auburn, Missouri, Kansas State, Utah, American University, King’s College London, and Creighton now map to regional `/universities/{slug}` owners; their Legal university/housing pages are supporting/noindex or redirecting surfaces where applicable.
-- Row 39 is a confirmed **family namespace** at USA `/universities/` with `action=build`; the root itself is generic and non-authoritative, so each concrete university leaf must resolve before authoring.
+- University dual-graph truth was reconciled by live owner. Auburn, American University, King’s College London, and Creighton use indexed regional `/universities/{slug}` owners; Missouri, Kansas State, and Utah retain their exact-live Legal housing owners. Supporting Legal university/housing surfaces remain noindex/redirecting where the regional journey owns the intent.
+- Row 39 is a confirmed Legal housing **family namespace** with `action=family_scope`: concrete ownership follows `/guide/{university}-student-housing/`; the `/guide/` root is metadata only and remains non-authoritative, so each concrete leaf must resolve before authoring.
 - Row 65 reserves the UK dependent-child destination but the target is currently a live 404; `status=confirmed, action=build` records ownership without permitting CREATE/publication until the leaf exists and is separately ratified.
 - Marketplace supply was re-proven before ratifying rows 40–41: live search returned **4 F-1-specific gigs** and **23 study-permit gigs**. Both rows are therefore mapped `confirmed/supply_first`, but `supply_first` remains non-authoritative by code contract.
 - The old generic `/blog/` mapping for F-1 requirements was corrected to the specific live self-canonical `https://yousafeconsultancy.com/blog/f1-visa-requirements-2026` owner.
+- Final authority-wide live audit covered every one of the **67** registry rows eligible under `confirmed + keep|expand|merge`: **67 exact-live 2xx / 0 redirects / 0 404 or final-URL mismatches**. The audit found one stale pre-fix row (UK Renters Rights row 23) and corrected it to the same apex 2026 article owner before acceptance.
 
 ### Verification
 
-- P3 ratified focused gate: **23 suites / 259 tests PASS**.
+- Final authority/live-proof gate after ratification: **5 suites / 83 tests PASS**, plus the earlier broader P3 focused batches; `isSectionRootCanonical` also rejects generic `/universities/` and `/from/` indexes while preserving their leaves.
 - `npx --no-install tsc --noEmit`: PASS.
 - `git diff --check`: PASS.
-- Earlier integrated full repository gate: **439 suites passed / 2 skipped; 4,668 tests passed / 4 skipped; exit 0**.
-- Production build initially failed closed only because the fresh worktree lacked the untracked Supabase service-role JWT. Re-running with the authorized machine’s existing JWT injected into the process environment completed Next.js 16.2.11 compilation, TypeScript, 1,031-page static generation, and OpenNext Cloudflare bundle generation with **exit 0**. No secret value was copied or printed.
+- Post-ratification full repository gate: **439 suites passed / 2 skipped; 4,670 tests passed / 4 skipped; exit 0**.
+- An integrated production build, with the authorized machine’s existing service-role JWT injected only into the process environment, completed Next.js 16.2.11 compilation, TypeScript, 1,031-page static generation, and OpenNext Cloudflare bundle generation with **exit 0**. No secret value was copied or printed. Later local rebuild retries encountered a Next worker stall without a code diagnostic; exact-head GitHub CI/deploy is therefore retained as the authoritative final production gate rather than masking that local runner instability.
 
 ### Result before production deploy
 
