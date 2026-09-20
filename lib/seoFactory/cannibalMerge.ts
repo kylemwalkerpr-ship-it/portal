@@ -1,27 +1,36 @@
 /**
- * Cannibal merge executor — one-click resolution of war-room cannibal_merge plays.
+ * P4 cannibalization executor.
  *
- * For a query with multiple estate URLs ranking for the same term, the admin
- * picks a winner; this module:
- *   1. Appends 301 redirects (loser → winner) to the estate `_redirects` files
- *      (caseworks/public/_redirects · yousafe-consultancy/<app>/public/_redirects).
- *   2. Retires losers at the source (markdown only): index:false + canonicalUrl
- *      + mergedInto, so sitemaps/signals consolidate even before the 301 propagates.
- *   3. Enriches the winner frontmatter with mergedQueries so it explicitly
- *      targets the merged term (interlink/SEO layer reads this later).
- * Writes go to main directly (mode: 'merge') or a review PR (mode: 'pr').
+ * Detection stays recommendation-first. Destructive consolidation is possible
+ * only through an evidence-backed decision whose winner equals authoritative P3
+ * ownership, and every mutation goes to a review PR — never to main.
  *
- * Resolution hardening (v2): when the caller passes a bare keyword or an
- * incomplete winner/loser set, this engine resolves the *actual competing
- * pages* straight from Google Search Console query×page data (highest
- * impressions = winner) instead of throwing a validation error. GSC data is
- * the source of truth for "which pages rank for this term".
+ * Ordering guarantees enforced here:
+ *  1. `decision` is validated (pure) before anything else.
+ *  2. Rollback SHAs are compared against live `main` — a stale/missing snapshot
+ *     fails closed before any write.
+ *  3. The decision row is persisted to the append-only ledger BEFORE the first
+ *     branch/file mutation. Persistence failure means zero Git mutation.
+ *  4. Every Git mutation is branch-fenced: no call may target `main`.
+ *  5. A `pr_opened` ledger row is written for each review PR. If that row
+ *     cannot be persisted the executor stops and returns `needs_decision` —
+ *     partial state is never reported as a clean completion.
  */
 
-import { hostFromUrl, HOST_REPO, filePathFromOwnerUrl, slugify, type OwnerHost } from './ownership'
-import { isJunkQuery } from './queryNoise'
+import { hostFromUrl, slugify, type ContentRepo, type OwnershipRow } from './ownership'
+import { isJunkQuery, isQualifiedGscDemandQuery } from './queryNoise'
 import { getGscAccess } from '@/lib/gscAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { loadOwnershipRegistry } from '@/lib/seoDataLoaders'
+import {
+  ABSENT_FILE_SHA,
+  CannibalDecisionBlockedError,
+  cannibalLoserTarget,
+  normalizeCannibalUrl,
+  validateCannibalDecision,
+  type CannibalEvidenceSource,
+  type CannibalDecisionRecord,
+} from './cannibalDecision'
 import {
   createBranchFrom,
   encodeRepoPath,
@@ -31,7 +40,7 @@ import {
   putRepoFile,
 } from '@/lib/githubContents'
 
-export type CannibalMergeMode = 'merge' | 'pr'
+export type CannibalMergeMode = 'pr'
 
 export interface CannibalRedirect {
   from: string
@@ -43,7 +52,7 @@ export interface CannibalRedirect {
 export interface CannibalFileChange {
   repo: string
   path: string
-  action: 'loser_noindex' | 'winner_keywords'
+  action: 'loser_noindex'
 }
 
 export interface CannibalCommit {
@@ -53,50 +62,110 @@ export interface CannibalCommit {
   prUrl?: string
 }
 
+/**
+ * `completed` means every Git mutation is covered by a persisted append-only
+ * ledger row. `needs_decision` means partial state exists that the executor
+ * could not ledger (e.g. a review PR opened but its `pr_opened` row missing);
+ * callers must never report it as clean completion.
+ */
+export type CannibalMergeStatus = 'completed' | 'skipped' | 'needs_decision'
+
 export interface CannibalMergeOutcome {
+  status: CannibalMergeStatus
+  mode: 'pr'
   term: string
+  clusterId: string
   winnerUrl: string
+  decisionId: string
+  evidenceHash: string
+  /** False when a Git mutation happened without its append-only ledger row. */
+  ledgerPersisted: boolean
+  /** Machine-readable reasons the outcome is not clean (empty when completed). */
+  blockers: string[]
   redirectsAdded: CannibalRedirect[]
   filesUpdated: CannibalFileChange[]
   commits: CannibalCommit[]
   skipped: Array<{ url: string; reason: string }>
 }
 
+/**
+ * Display/evidence shape for `/api/seo-factory/cannibal-pages`.
+ * Metrics are `null` whenever they are unavailable (content-inventory fallback):
+ * unavailable evidence is never coerced to zero and never destructive.
+ */
+export interface ResolvedCannibalPage {
+  url: string
+  impressions: number | null
+  clicks: number | null
+  position: number | null
+}
+
+export interface CannibalEvidenceWindow {
+  startDate: string
+  endDate: string
+  capturedAt: string
+}
+
+/**
+ * Evidence source for the evidence listing. `content_inventory` is a synthetic
+ * display-only fallback with no GSC rows behind it — it is deliberately a
+ * distinct value so an inventory listing can never masquerade as GSC evidence.
+ */
+export type CannibalResolutionEvidenceSource = CannibalEvidenceSource | 'content_inventory'
+
+export interface CannibalResolution {
+  pages: ResolvedCannibalPage[]
+  source: 'gsc_live' | 'content_inventory'
+  evidenceSource: CannibalResolutionEvidenceSource
+  siteUrl: string
+  window: CannibalEvidenceWindow | null
+  metricsSynthetic: boolean
+  /** True when the listing is a display-only inventory with no GSC evidence. */
+  displayOnly: boolean
+  eligibleForDestructiveAction: boolean
+  blockingReasons: string[]
+  /** P4 never suggests a winner; the authoritative P3 owner row decides. */
+  suggestedWinner: null
+}
+
+interface PlannedWrite {
+  path: string
+  content: string
+  sha?: string
+}
+
+interface PlannedRedirect {
+  url: string
+  from: string
+  to: string
+}
+
 interface RepoPlan {
-  repo: string
-  branch: string
-  redirectFile: string | null
-  redirects: Array<{ from: string; to: string }>
-  writes: Array<{ path: string; content: string; sha?: string }>
+  repo: ContentRepo
+  redirectsByFile: Map<string, PlannedRedirect[]>
+  writes: PlannedWrite[]
+  branch?: string
 }
 
 const OWNER = process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it'
-
-/** _redirects location per host — null when the host has no redirect convention. */
-function redirectFileForHost(host: OwnerHost): { repo: string; file: string } | null {
-  if (host === 'legal') return { repo: 'caseworks', file: 'public/_redirects' }
-  if (host === 'usa' || host === 'uk' || host === 'ca' || host === 'au')
-    return { repo: 'yousafe-consultancy', file: `${host}/public/_redirects` }
-  // apex (landing-page OpenNext worker) and market (portal) have no _redirects convention
-  return null
-}
-
-/** Markdown/mdx content path for a URL — legal pages.tsx are never rewritten. */
-function contentFilePathFor(host: OwnerHost, url: string): string | null {
-  if (host === 'legal') return null
-  const mapped = filePathFromOwnerUrl(url, host)
-  if (!mapped) return null
-  if (mapped.filePath.endsWith('.md') || mapped.filePath.endsWith('.mdx')) return mapped.filePath
-  return null
-}
+const P4_BRANCH_PREFIX = 'cannibal-p4-'
+const GSC_WINDOW_DAYS = 90
 
 function pathOf(url: string): string | null {
   try {
-    const p = new URL(url).pathname.replace(/\/+$/, '') || '/'
-    return p.endsWith('/') ? p : `${p}/`
+    const path = new URL(url).pathname.replace(/\/+$/, '') || '/'
+    return path.endsWith('/') ? path : `${path}/`
   } catch {
     return null
   }
+}
+
+function normalizeUrl(url: string): string {
+  return normalizeCannibalUrl(url)
+}
+
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10)
 }
 
 async function readRepoFile(
@@ -112,65 +181,32 @@ async function readRepoFile(
     if (Array.isArray(res)) return null
     const b64 = res?.content as string | undefined
     if (!b64) return null
-    return { content: Buffer.from(b64, 'base64').toString('utf-8'), sha: res.sha as string }
-  } catch (e) {
-    if (/^GitHub 404:/.test(e instanceof Error ? e.message : String(e))) return null
-    throw e
+    return { content: Buffer.from(b64, 'base64').toString('utf-8'), sha: String(res.sha || '') }
+  } catch (error) {
+    if (/^GitHub 404:/.test(error instanceof Error ? error.message : String(error))) return null
+    throw error
   }
 }
 
-/** Deterministic frontmatter edit — preserves field order, adds missing keys on top. */
 function editFrontmatter(content: string, edits: Array<[string, string]>): string | null {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
-  if (!m) return null
-  let fm = m[1]
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
+  if (!match) return null
+  let frontmatter = match[1]
   for (const [key, value] of edits) {
     const re = new RegExp(`^${key}\\s*:.*$`, 'm')
-    if (re.test(fm)) fm = fm.replace(re, `${key}: ${value}`)
-    else fm = `${key}: ${value}\n${fm}`
+    frontmatter = re.test(frontmatter)
+      ? frontmatter.replace(re, `${key}: ${value}`)
+      : `${key}: ${value}\n${frontmatter}`
   }
-  return `---\n${fm}\n---\n${m[2]}`
+  return `---\n${frontmatter}\n---\n${match[2]}`
 }
 
-function quote(v: string): string {
-  return /^(true|false|\d+)$/.test(v) ? v : JSON.stringify(v)
+function quote(value: string): string {
+  return JSON.stringify(value)
 }
 
-/** Append the merged term to the winner's mergedQueries frontmatter field. */
-function withMergedQuery(content: string, term: string): string | null {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
-  if (!m) return null
-  let fm = m[1]
-  const re = /^mergedQueries\s*:\s*"?([^"\n]*)"?$/m
-  const hit = fm.match(re)
-  if (hit) {
-    const parts = hit[1]
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
-    if (parts.some((p) => p.toLowerCase() === term.toLowerCase())) return content
-    fm = fm.replace(re, `mergedQueries: ${JSON.stringify([...parts, term].join(', '))}`)
-  } else {
-    fm = `mergedQueries: ${JSON.stringify(term)}\n${fm}`
-  }
-  return `---\n${fm}\n---\n${m[2]}`
-}
-
-// ---------------------------------------------------------------------------
-// GSC resolution — the page set for a term comes from Google, not from guesses
-// ---------------------------------------------------------------------------
-
-/** A keyword-shaped string (no scheme/host) is a query, not a page URL. */
-function looksLikeKeyword(value: string): boolean {
-  const v = value.trim().toLowerCase()
-  if (!v) return true
-  if (/^https?:\/\//i.test(v)) return false
-  if (v.startsWith('/')) return false // path-only is still URL-ish
-  return !/\.[a-z]{2,}(\/|$)/i.test(v) // no domain-looking component → keyword
-}
-
-function canonicalStem(q: string): string {
-  return q
+function canonicalStem(term: string): string {
+  return term
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -182,21 +218,10 @@ function canonicalStem(q: string): string {
     .join(' ')
 }
 
-/**
- * Deterministic cluster id shared with the Command Center — both products
- * derive the same id from the term stem so the cannibal_merges upsert key
- * (cluster_id, source) dedupes cleanly across writers.
- */
 export function clusterIdFromTerm(term: string): string {
   return `cluster_${canonicalStem(term).replace(/[^a-z0-9]+/g, '_').slice(0, 48)}`
 }
 
-/**
- * Best-effort sync of a merge decision into the shared cannibal_merges table
- * (source = 'portal'). Mirrors the Command Center's write so the deployed
- * Content Studio and Command Center share one audit trail. Never throws — a
- * sync failure must not fail the merge itself.
- */
 async function recordMergeToSupabase(payload: {
   term: string
   winnerUrl: string
@@ -204,7 +229,7 @@ async function recordMergeToSupabase(payload: {
   redirectsCreated: number
   prUrl?: string
   prNumber?: number
-  status: 'merged' | 'skipped'
+  status: string
   message?: string
 }): Promise<void> {
   try {
@@ -223,18 +248,15 @@ async function recordMergeToSupabase(payload: {
         status: payload.status,
         message: payload.message ?? null,
         merged_at: new Date().toISOString(),
-      },
+      } as never,
       { onConflict: 'cluster_id,source' },
     )
-    if (error) {
-      console.warn('[cannibalMerge] supabase history sync skipped:', error.message)
-    }
-  } catch (err) {
-    console.warn('[cannibalMerge] supabase history sync skipped:', err)
+    if (error) console.warn('[cannibalMerge] compatibility history skipped:', error.message)
+  } catch (error) {
+    console.warn('[cannibalMerge] compatibility history skipped:', error)
   }
 }
 
-/** Persist a non-mergeable cluster so Resolve-all can clear it from the Work Plan. */
 export async function dismissCannibalCluster(term: string, reason: string): Promise<void> {
   await recordMergeToSupabase({
     term,
@@ -246,169 +268,277 @@ export async function dismissCannibalCluster(term: string, reason: string): Prom
   })
 }
 
-export interface ResolvedCannibalPage {
-  url: string
-  impressions: number
-  clicks: number
-  position: number
-}
-
-export interface CannibalResolution {
-  pages: ResolvedCannibalPage[]
-  source: 'gsc_live' | 'content_inventory'
-  siteUrl: string
-}
-
-/** Stop-words never counted in overlap matching. */
 const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'for', 'of', 'to', 'in', 'on', 'at', 'by',
-  'with', 'from', 'is', 'are', 'was', 'be', 'been', 'how', 'what', 'why', 'when',
-  'where', 'do', 'does', 'can', 'vs', 'uk', 'us', 'ca', 'au', 'new', 'near', 'for',
+  'a','an','the','and','or','but','for','of','to','in','on','at','by','with','from','is','are','was',
+  'be','been','how','what','why','when','where','do','does','can','vs','uk','us','ca','au','new','near',
 ])
 
-function significantWords(q: string): string[] {
-  return q
+function significantWords(value: string): string[] {
+  return value
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]+/g, ' ')
     .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+    .map((word) => word.trim())
+    .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
 }
 
-/**
- * Word-overlap similarity between a GSC query and the target term. Returns
- * the number of shared significant words (plural-safe via stem prefix match).
- */
-function overlapScore(q: string, term: string): number {
-  const qWords = significantWords(q)
-  const tWords = significantWords(term)
-  if (!qWords.length || !tWords.length) return 0
+function overlapScore(query: string, term: string): number {
+  const queryWords = significantWords(query)
+  const termWords = significantWords(term)
+  if (!queryWords.length || !termWords.length) return 0
   let hits = 0
-  for (const tw of tWords) {
-    // match exact or plural stem (letter, letters)
-    if (qWords.some((qw) => qw === tw || qw.startsWith(tw.slice(0, Math.max(3, tw.length - 1))))) hits++
+  for (const termWord of termWords) {
+    if (
+      queryWords.some(
+        (queryWord) =>
+          queryWord === termWord || queryWord.startsWith(termWord.slice(0, Math.max(3, termWord.length - 1))),
+      )
+    ) {
+      hits += 1
+    }
   }
   return hits
 }
 
 /**
- * Query Google Search Console for every query×page row in the last 30 days,
- * keep rows whose keyword words overlap the target term, and return the pages
- * competing for it ranked by impressions. Matching is fuzzy (word-overlap)
- * instead of exact-stem so "administrative review letter template uk" also
- * picks up sibling queries like "uk administrative review letter template"
- * or "administrative review letter template 2026".
+ * Competing-page evidence for a cluster.
  *
- * Falls back to the content inventory (shipped/merged content_jobs) when GSC
- * has no page-level rows for the term, so the watch is still actionable when
- * GSC data is thin.
+ * GSC rows are qualified-only (`isQualifiedGscDemandQuery`), so raw/off-mission
+ * and deep-tail rows can never masquerade as destructive evidence. The content
+ * inventory fallback is display-only: it marks metrics `null` (never 0) and is
+ * permanently ineligible for destructive action. No winner is ever suggested.
  */
 export async function resolveCannibalPages(
   term: string,
+  opts: { now?: Date; windowDays?: number } = {},
 ): Promise<CannibalResolution | null> {
   const trimmed = term.trim()
   if (!trimmed) return null
+  const now = opts.now ?? new Date()
+  const windowDays = Math.max(7, Math.min(opts.windowDays ?? GSC_WINDOW_DAYS, 180))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 86_400_000)
+  const start = new Date(end.getTime() - (windowDays - 1) * 86_400_000)
+  const window: CannibalEvidenceWindow = {
+    startDate: isoDay(start),
+    endDate: isoDay(end),
+    capturedAt: now.toISOString(),
+  }
 
-  // 1) GSC page×query resolution (source of truth when present)
   const access = await getGscAccess().catch(() => null)
   if (access?.accessToken && access.siteUrl) {
     try {
-      const encodedSite = encodeURIComponent(access.siteUrl)
-      const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`
-      const res = await fetch(url, {
+      const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(access.siteUrl)}/searchAnalytics/query`
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${access.accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${access.accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          startDate: '30daysAgo',
-          endDate: 'today',
+          startDate: window.startDate,
+          endDate: window.endDate,
           dimensions: ['query', 'page'],
-          rowLimit: 1000,
+          rowLimit: 25000,
           aggregationType: 'auto',
         }),
       })
-      if (res.ok) {
-        const data = (await res.json()) as {
-          rows?: Array<{
-            keys: string[]
-            clicks: number
-            impressions: number
-            ctr: number
-            position: number
-          }>
+      if (response.ok) {
+        const data = (await response.json()) as {
+          rows?: Array<{ keys: string[]; clicks: number; impressions: number; position: number }>
         }
         const pageMap = new Map<
           string,
-          { impressions: number; clicks: number; positions: number[] }
+          { impressions: number; clicks: number; positionNumerator: number; positionDenominator: number; queries: Set<string> }
         >()
+        const queryPages = new Map<string, Set<string>>()
+        const termWords = significantWords(trimmed)
+        const minOverlap = Math.max(2, Math.ceil(termWords.length / 2))
         for (const row of data.rows ?? []) {
-          const q = String(row.keys?.[0] ?? '').toLowerCase().trim()
+          const query = String(row.keys?.[0] ?? '').toLowerCase().trim()
           const rawUrl = String(row.keys?.[1] ?? '').trim()
-          if (!q || q.length < 4 || !rawUrl || !/^https?:\/\//i.test(rawUrl)) continue
-          // Word-overlap gate: at least half the term's words appear in the query.
-          const tWords = significantWords(trimmed)
-          const hits = overlapScore(q, trimmed)
-          if (hits < Math.max(2, Math.ceil(tWords.length / 2))) continue
-          const urlKey = rawUrl.replace(/\/+$/, '')
-          const existing = pageMap.get(urlKey) ?? { impressions: 0, clicks: 0, positions: [] }
-          existing.impressions += row.impressions
-          existing.clicks += row.clicks
-          existing.positions.push(row.position)
-          pageMap.set(urlKey, existing)
+          if (!query || !/^https?:\/\//i.test(rawUrl)) continue
+          const metrics = {
+            impressions: Number(row.impressions),
+            clicks: Number(row.clicks),
+            position: Number(row.position),
+          }
+          if (!Number.isFinite(metrics.impressions) || !Number.isFinite(metrics.clicks) || !Number.isFinite(metrics.position)) {
+            continue
+          }
+          // Zero/absent metrics are not evidence. A row without real
+          // impressions and a real position is dropped (never zeroed into
+          // destructive eligibility).
+          if (!(metrics.impressions > 0) || !(metrics.position > 0)) continue
+          if (!isQualifiedGscDemandQuery(query, metrics)) continue
+          if (overlapScore(query, trimmed) < minOverlap) continue
+          const page = rawUrl.replace(/\/+$/, '')
+          const current = pageMap.get(page) ?? {
+            impressions: 0,
+            clicks: 0,
+            positionNumerator: 0,
+            positionDenominator: 0,
+            queries: new Set<string>(),
+          }
+          const weight = Math.max(metrics.impressions, 1)
+          current.impressions += metrics.impressions
+          current.clicks += metrics.clicks
+          current.positionNumerator += metrics.position * weight
+          current.positionDenominator += weight
+          current.queries.add(query)
+          pageMap.set(page, current)
+          const pages = queryPages.get(query) ?? new Set<string>()
+          pages.add(page)
+          queryPages.set(query, pages)
         }
+        const sharedQueries = new Set(
+          [...queryPages.entries()].filter(([, pages]) => pages.size >= 2).map(([query]) => query),
+        )
         const pages: ResolvedCannibalPage[] = [...pageMap.entries()]
-          .map(([u, d]) => ({
-            url: u,
-            impressions: d.impressions,
-            clicks: d.clicks,
-            position: Math.round((d.positions.reduce((a, b) => a + b, 0) / d.positions.length) * 10) / 10,
+          .filter(([, data]) => [...data.queries].some((query) => sharedQueries.has(query)))
+          .map(([url, data]) => ({
+            url,
+            impressions: data.impressions,
+            clicks: data.clicks,
+            position: Math.round((data.positionNumerator / Math.max(data.positionDenominator, 1)) * 10) / 10,
           }))
-          .sort((a, b) => b.impressions - a.impressions)
+          // Evidence listing is deliberately URL-ordered: impressions must never
+          // imply a winner.
+          .sort((a, b) => a.url.localeCompare(b.url))
         if (pages.length >= 2) {
-          return { pages, source: 'gsc_live', siteUrl: access.siteUrl }
+          const blockingReasons: string[] = []
+          if (sharedQueries.size === 0) blockingReasons.push('qualified_shared_query_required')
+          if (pages.some((page) => !(Number.isFinite(page.impressions) && (page.impressions ?? 0) > 0))) {
+            blockingReasons.push('real_impressions_required_for_every_page')
+          }
+          if (pages.some((page) => !(Number.isFinite(page.position) && (page.position ?? 0) > 0))) {
+            blockingReasons.push('real_position_required_for_every_page')
+          }
+          const eligible = blockingReasons.length === 0
+          return {
+            pages,
+            source: 'gsc_live',
+            evidenceSource: 'gsc_live',
+            siteUrl: access.siteUrl,
+            window,
+            metricsSynthetic: false,
+            displayOnly: false,
+            eligibleForDestructiveAction: eligible,
+            blockingReasons,
+            suggestedWinner: null,
+          }
         }
       }
     } catch {
-      /* fall through to inventory resolution */
+      /* display-only fallback below */
     }
   }
 
-  // 2) Content-inventory fallback: shipped/merged pages that target this term.
-  // GSC often has no page rows for fresh or low-impression terms — but the
-  // studio KNOWS which pages were built for it, so resolve from those instead
-  // of dead-ending with "could not resolve".
   const supabase = createSupabaseAdminClient()
   const { data: jobs } = await supabase
     .from('content_jobs')
-    .select('id, title, topic, primary_keyword, canonical_url, content_path, status, seo_score, pr_url')
+    .select('title,topic,primary_keyword,canonical_url,status')
     .in('status', ['merged', 'pr_created', 'publishing'])
     .limit(500)
-  const tWords = significantWords(trimmed)
+  const termWords = significantWords(trimmed)
   const seen = new Set<string>()
   const pages: ResolvedCannibalPage[] = []
-  for (const j of (jobs ?? []) as Array<Record<string, unknown>>) {
-    const url = String(j.canonical_url || '').trim()
-    const hay = `${String(j.primary_keyword || '')} ${String(j.topic || '')} ${String(j.title || '')}`
+  for (const job of (jobs ?? []) as Array<Record<string, unknown>>) {
+    const url = String(job.canonical_url || '').trim()
+    const haystack = `${String(job.primary_keyword || '')} ${String(job.topic || '')} ${String(job.title || '')}`
     if (!url || seen.has(url)) continue
-    const hits = overlapScore(hay, trimmed)
-    if (hits < Math.max(1, Math.ceil(tWords.length / 2))) continue
+    if (overlapScore(haystack, trimmed) < Math.max(1, Math.ceil(termWords.length / 2))) continue
     seen.add(url)
-    pages.push({
-      url,
-      impressions: 0,
-      clicks: 0,
-      position: 0,
-    })
+    // Metrics are genuinely unavailable here — null, never 0.
+    pages.push({ url, impressions: null, clicks: null, position: null })
   }
+  pages.sort((a, b) => a.url.localeCompare(b.url))
   if (pages.length >= 2) {
-    return { pages, source: 'content_inventory', siteUrl: access?.siteUrl ?? '' }
+    return {
+      pages,
+      source: 'content_inventory',
+      // No GSC row backs this listing: it is a synthetic, display-only
+      // inventory. It must never be labelled as GSC evidence, and it is
+      // permanently ineligible for destructive action.
+      evidenceSource: 'content_inventory',
+      siteUrl: access?.siteUrl ?? '',
+      window: null,
+      metricsSynthetic: true,
+      displayOnly: true,
+      eligibleForDestructiveAction: false,
+      blockingReasons: ['synthetic_inventory_evidence_not_actionable', 'real_metrics_unavailable'],
+      suggestedWinner: null,
+    }
   }
-
   return null
+}
+
+async function persistP4Decision(
+  decision: CannibalDecisionRecord,
+  status: 'approved' | 'pr_opened' | 'failed',
+  pr?: { url?: string; number?: number },
+): Promise<string> {
+  const supabase = createSupabaseAdminClient()
+  const result = await supabase
+    .from('seo_cannibal_decisions')
+    .insert({
+      cluster_id: decision.clusterId,
+      term: decision.term,
+      status,
+      evidence_source: decision.evidenceSource,
+      evidence_hash: decision.evidenceHash,
+      evidence_window: decision.evidenceWindow,
+      evidence: decision,
+      competitors: decision.competitors,
+      winner_url: decision.winnerUrl,
+      owner_registry_row_id: decision.authoritativeOwner.registryRowId,
+      loser_actions: decision.loserActions,
+      rollback: decision.rollback,
+      decided_by: decision.decidedBy,
+      decided_at: decision.decidedAt,
+      pr_url: pr?.url ?? null,
+      pr_number: pr?.number ?? null,
+    } as never)
+    .select('id')
+    .single()
+  if (result.error) throw new Error(`P4 decision persistence failed: ${result.error.message}`)
+  const data = result.data as { id?: string } | null
+  if (!data?.id) throw new Error('P4 decision persistence failed: missing decision id')
+  return String(data.id)
+}
+
+function rollbackSha(decision: CannibalDecisionRecord, repo: string, path: string): string | null {
+  return decision.rollback.files.find((file) => file.repo === repo && file.path === path)?.sha ?? null
+}
+
+/** Fail closed: the recorded snapshot must match live `main` exactly. */
+function assertRollbackMatches(
+  decision: CannibalDecisionRecord,
+  repo: string,
+  path: string,
+  current: { sha: string } | null,
+): void {
+  const expected = rollbackSha(decision, repo, path)
+  if (!expected) throw new CannibalDecisionBlockedError([`rollback_file_missing:${repo}:${path}`])
+  if (expected === ABSENT_FILE_SHA) {
+    if (current) throw new CannibalDecisionBlockedError([`rollback_sha_mismatch:${repo}:${path}`])
+    return
+  }
+  if (!current || current.sha !== expected) {
+    throw new CannibalDecisionBlockedError([`rollback_sha_mismatch:${repo}:${path}`])
+  }
+}
+
+/** Every Git mutation is branch-fenced; `main` is impossible by construction. */
+function assertSafeBranch(branch: string): void {
+  const normalized = String(branch || '').trim()
+  const isMain =
+    normalized === 'main' ||
+    normalized === 'master' ||
+    normalized.startsWith('refs/heads/main') ||
+    normalized.startsWith('refs/heads/master')
+  if (isMain) throw new CannibalDecisionBlockedError(['main_branch_forbidden'])
+  if (!normalized.startsWith(P4_BRANCH_PREFIX)) {
+    throw new CannibalDecisionBlockedError([`branch_naming_violation:${normalized || 'empty'}`])
+  }
 }
 
 export async function executeCannibalMerge(opts: {
@@ -416,220 +546,214 @@ export async function executeCannibalMerge(opts: {
   winnerUrl: string
   loserUrls: string[]
   mode?: CannibalMergeMode
+  confirm?: boolean
+  decision?: CannibalDecisionRecord
 }): Promise<CannibalMergeOutcome> {
-  const mode: CannibalMergeMode = opts.mode === 'pr' ? 'pr' : 'merge'
-  const term = opts.term.trim().slice(0, 160)
-  let winnerUrl = opts.winnerUrl.trim()
-  let loserUrls = [...new Set(opts.loserUrls.map((u) => u.trim()).filter(Boolean))].filter(
-    (u) => u !== winnerUrl,
-  )
+  const term = String(opts.term || '').trim().slice(0, 160)
+  if (!term) throw new CannibalDecisionBlockedError(['term_required'])
+  if (isJunkQuery(term)) throw new CannibalDecisionBlockedError(['term_not_actionable'])
+  if (opts.mode !== 'pr') throw new CannibalDecisionBlockedError(['pr_mode_required'])
+  if (opts.confirm !== true) throw new CannibalDecisionBlockedError(['explicit_confirmation_required'])
+  if (!opts.decision) throw new CannibalDecisionBlockedError(['decision_required'])
+
+  const registry = await loadOwnershipRegistry()
+  const validation = validateCannibalDecision(opts.decision, registry.rows as OwnershipRow[])
+  if (!validation.ok) throw new CannibalDecisionBlockedError(validation.blockers)
+  if (String(opts.decision.term).trim().toLowerCase() !== term.toLowerCase()) {
+    throw new CannibalDecisionBlockedError(['request_term_must_match_decision'])
+  }
+
+  const winnerUrl = normalizeUrl(opts.winnerUrl)
+  const decisionWinner = normalizeUrl(opts.decision.winnerUrl)
+  const loserUrls = [...new Set(opts.loserUrls.map(normalizeUrl).filter(Boolean))].sort()
+  const decisionLosers = [...new Set(opts.decision.loserActions.map((action) => normalizeUrl(action.url)))].sort()
+  if (!winnerUrl || winnerUrl !== decisionWinner) {
+    throw new CannibalDecisionBlockedError(['request_winner_must_match_decision'])
+  }
+  if (JSON.stringify(loserUrls) !== JSON.stringify(decisionLosers)) {
+    throw new CannibalDecisionBlockedError(['request_losers_must_match_decision'])
+  }
+  const winnerHost = hostFromUrl(winnerUrl)
+  const winnerPath = pathOf(winnerUrl)
+  if (!winnerHost || !winnerPath) throw new CannibalDecisionBlockedError(['winner_url_invalid'])
+
+  const plans = new Map<ContentRepo, RepoPlan>()
+  const planFor = (repo: ContentRepo): RepoPlan => {
+    const existing = plans.get(repo)
+    if (existing) return existing
+    const created: RepoPlan = { repo, redirectsByFile: new Map(), writes: [] }
+    plans.set(repo, created)
+    return created
+  }
+  const actionByUrl = new Map(opts.decision.loserActions.map((action) => [normalizeUrl(action.url), action]))
+  const skipped: Array<{ url: string; reason: string }> = []
+  const writtenRedirects: Array<{ repo: ContentRepo; file: string; entry: PlannedRedirect }> = []
+
+  // ── Plan (reads only) ────────────────────────────────────────────────────
+  for (const loserUrl of loserUrls) {
+    const action = actionByUrl.get(loserUrl)
+    const target = action ? cannibalLoserTarget(loserUrl, action.action) : null
+    if (!target) throw new CannibalDecisionBlockedError([`unactionable_loser:${loserUrl}`])
+    const plan = planFor(target.repo)
+    if (target.kind === 'redirect') {
+      const from = pathOf(loserUrl)
+      if (!from) throw new CannibalDecisionBlockedError([`loser_path_unresolvable:${loserUrl}`])
+      const redirects = plan.redirectsByFile.get(target.file) ?? []
+      redirects.push({ url: loserUrl, from, to: target.host === winnerHost ? winnerPath : winnerUrl })
+      plan.redirectsByFile.set(target.file, redirects)
+    } else {
+      const current = await readRepoFile(OWNER, target.repo, target.path, 'main')
+      assertRollbackMatches(opts.decision, target.repo, target.path, current)
+      if (!current) throw new CannibalDecisionBlockedError([`noindex_source_missing:${loserUrl}`])
+      const edited = editFrontmatter(current.content, [
+        ['index', 'false'],
+        ['canonicalUrl', quote(winnerUrl)],
+        ['mergedInto', quote(winnerUrl)],
+      ])
+      if (!edited) throw new CannibalDecisionBlockedError([`noindex_frontmatter_missing:${loserUrl}`])
+      plan.writes.push({ path: target.path, content: edited, sha: current.sha })
+    }
+  }
+
+  for (const plan of plans.values()) {
+    for (const [file, redirects] of plan.redirectsByFile.entries()) {
+      const current = await readRepoFile(OWNER, plan.repo, file, 'main')
+      assertRollbackMatches(opts.decision, plan.repo, file, current)
+      const seen = new Set<string>()
+      for (const line of (current?.content || '').split('\n')) {
+        const first = (line.trim().split(/\s+/)[0] || '').trim()
+        if (first && first !== '#') seen.add(first)
+      }
+      const fresh = redirects.filter((redirect) => redirect.from && !seen.has(redirect.from))
+      for (const redirect of redirects) {
+        if (!fresh.includes(redirect)) {
+          skipped.push({ url: redirect.url, reason: 'redirect_already_present_on_main' })
+        }
+      }
+      if (!fresh.length) continue
+      const body = fresh.map((redirect) => `${redirect.from}  ${redirect.to}  301`).join('\n')
+      const header = `\n# P4 evidence-backed cannibal consolidation — ${term}\n# winner: ${winnerUrl}\n`
+      plan.writes.push({
+        path: file,
+        content: `${(current?.content || '').replace(/\n*$/, '\n')}${header}${body}\n`,
+        sha: current?.sha,
+      })
+      for (const entry of fresh) writtenRedirects.push({ repo: plan.repo, file, entry })
+    }
+  }
+
+  // ── Persist decision BEFORE the first Git mutation ───────────────────────
+  const decisionId = await persistP4Decision(opts.decision, 'approved')
 
   const outcome: CannibalMergeOutcome = {
+    status: 'completed',
+    mode: 'pr',
     term,
+    clusterId: opts.decision.clusterId,
     winnerUrl,
+    decisionId,
+    evidenceHash: opts.decision.evidenceHash,
+    ledgerPersisted: true,
+    blockers: [],
     redirectsAdded: [],
     filesUpdated: [],
     commits: [],
-    skipped: [],
+    skipped,
   }
 
-  if (!term) {
-    throw new Error('A search term is required to run a cannibal merge.')
-  }
-
-  if (isJunkQuery(term)) {
-    const reason = 'junk GSC query — not a real keyword cluster'
-    await dismissCannibalCluster(term, reason)
-    outcome.skipped.push({ url: '', reason })
-    return outcome
-  }
-
-  // Resolution-first: if the caller passed a bare keyword, a missing winner,
-  // or an empty loser set, pull the competing pages from GSC page data.
-  if (!winnerUrl || looksLikeKeyword(winnerUrl) || loserUrls.length === 0) {
-    const resolved = await resolveCannibalPages(term)
-    if (resolved && resolved.pages.length >= 2) {
-      winnerUrl = resolved.pages[0].url
-      loserUrls = resolved.pages.slice(1).map((p) => p.url)
-      outcome.winnerUrl = winnerUrl
-    } else {
-      const reason = 'no competing pages resolvable — not a real cluster'
-      await dismissCannibalCluster(term, reason)
-      outcome.skipped.push({ url: '', reason })
-      return outcome
-    }
-  }
-
-  // Hard validation of the final (possibly resolved) page set.
-  if (!/^https?:\/\//i.test(winnerUrl)) {
-    throw new Error(`Winner is not a valid page URL: ${winnerUrl}`)
-  }
-  const winnerHost = hostFromUrl(winnerUrl)
-  if (!winnerHost) throw new Error(`Could not resolve host for winner URL: ${winnerUrl}`)
-  const winnerPath = pathOf(winnerUrl)
-  if (!winnerPath) throw new Error(`Could not parse winner URL: ${winnerUrl}`)
-  const winnerRepo = HOST_REPO[winnerHost]
-  const winnerContentPath = contentFilePathFor(winnerHost, winnerUrl)
-
-  // ── Plan per repo ──
-  const plans = new Map<string, RepoPlan>()
-  const planFor = (repo: string, host: OwnerHost): RepoPlan => {
-    let p = plans.get(repo)
-    if (!p) {
-      p = { repo, branch: 'main', redirectFile: null, redirects: [], writes: [] }
-      plans.set(repo, p)
-      const rf = redirectFileForHost(host)
-      if (rf && rf.repo === repo) p.redirectFile = rf.file
-    }
-    return p
-  }
-
-  // Winner enrichment (markdown only) — explicitly target the merged term
-  if (winnerContentPath) {
-    const existing = await readRepoFile(OWNER, winnerRepo, winnerContentPath, 'main')
-    if (existing) {
-      const withQ = withMergedQuery(existing.content, term)
-      if (withQ && withQ !== existing.content) {
-        planFor(winnerRepo, winnerHost).writes.push({
-          path: winnerContentPath,
-          content: withQ,
-          sha: existing.sha,
-        })
-        outcome.filesUpdated.push({ repo: winnerRepo, path: winnerContentPath, action: 'winner_keywords' })
-      }
-    }
-  }
-
-  // Losers → 301 redirect + noindex/canonical at source
-  for (const loserUrl of loserUrls) {
-    const host = hostFromUrl(loserUrl)
-    if (!host) {
-      outcome.skipped.push({ url: loserUrl, reason: 'unknown host' })
-      continue
-    }
-    const repo = HOST_REPO[host]
-    const fromPath = pathOf(loserUrl)
-    if (!fromPath) {
-      outcome.skipped.push({ url: loserUrl, reason: 'unparseable URL' })
-      continue
-    }
-    const to = host === winnerHost ? winnerPath : winnerUrl
-    const plan = planFor(repo, host)
-    if (plan.redirectFile) {
-      plan.redirects.push({ from: fromPath, to })
-    } else {
-      outcome.skipped.push({
-        url: loserUrl,
-        reason: `no _redirects convention for host ${host} — canonical/noindex only`,
-      })
-    }
-    const contentPath = contentFilePathFor(host, loserUrl)
-    if (contentPath) {
-      const existing = await readRepoFile(OWNER, repo, contentPath, 'main')
-      if (existing) {
-        const edited = editFrontmatter(existing.content, [
-          ['index', 'false'],
-          ['canonicalUrl', quote(winnerUrl)],
-          ['mergedInto', quote(winnerUrl)],
-        ])
-        if (edited) {
-          plan.writes.push({ path: contentPath, content: edited, sha: existing.sha })
-          outcome.filesUpdated.push({ repo, path: contentPath, action: 'loser_noindex' })
-        }
-      }
-    }
-  }
-
-  // ── Execute per repo ──
-  for (const plan of plans.values()) {
-    const hasChanges = plan.redirects.length > 0 || plan.writes.length > 0
-    if (!hasChanges) continue
-
-    let branch = 'main'
-    let isPr = false
-    if (mode === 'pr') {
-      branch = `cannibal-merge-${slugify(term).slice(0, 40)}-${Date.now().toString(36)}`
+  try {
+    // ── Branch + writes + PR (never main) ─────────────────────────────────
+    for (const plan of plans.values()) {
+      if (!plan.writes.length) continue
+      const branch = `${P4_BRANCH_PREFIX}${slugify(term).slice(0, 32)}-${Date.now().toString(36)}`
+      assertSafeBranch(branch)
+      plan.branch = branch
       const mainSha = await getBranchHeadSha(OWNER, plan.repo, 'main')
+      assertSafeBranch(branch)
       await createBranchFrom(OWNER, plan.repo, branch, mainSha)
-      isPr = true
-    }
-
-    // _redirects (append 301s, dedupe by source path)
-    if (plan.redirectFile && plan.redirects.length > 0) {
-      const existing = await readRepoFile(OWNER, plan.repo, plan.redirectFile, 'main')
-      const seen = new Set<string>()
-      if (existing) {
-        for (const line of existing.content.split('\n')) {
-          const first = (line.trim().split(/\s+/)[0] || '').trim()
-          if (first && first !== '#') seen.add(first)
-        }
-      }
-      const fresh = plan.redirects.filter((r) => !seen.has(r.from))
-      if (fresh.length > 0) {
-        const header = [
-          '',
-          `# SEO war-room cannibal merge — ${term} (${new Date().toISOString().slice(0, 10)})`,
-          `# winner: ${winnerUrl}`,
-          '',
-        ].join('\n')
-        const body = fresh.map((r) => `${r.from}  ${r.to}  301`).join('\n') + '\n'
-        const content = existing
-          ? existing.content.replace(/\n*$/, '\n') + header + body
-          : `# Cloudflare Pages 301 redirects — war-room cannibal merges\n# winner: ${winnerUrl}\n${body}`
+      for (const write of plan.writes) {
+        assertSafeBranch(branch)
         await putRepoFile({
           owner: OWNER,
           repo: plan.repo,
-          path: plan.redirectFile,
+          path: write.path,
           branch,
-          content,
-          message: `fix(seo): cannibal merge "${term}" — 301 ${fresh.length} URL(s) → ${winnerUrl}`,
-          sha: existing?.sha,
+          content: write.content,
+          message: `fix(seo): P4 consolidate "${term}" — ${write.path}`,
+          sha: write.sha,
         })
-        for (const r of fresh) {
-          outcome.redirectsAdded.push({ from: r.from, to: r.to, repo: plan.repo, file: plan.redirectFile })
-        }
       }
-    }
-
-    // content file writes
-    for (const w of plan.writes) {
-      await putRepoFile({
-        owner: OWNER,
-        repo: plan.repo,
-        path: w.path,
-        branch,
-        content: w.content,
-        message: `fix(seo): cannibal merge "${term}" — ${w.path}`,
-        sha: w.sha,
-      })
-    }
-
-    // PR or direct commit
-    if (isPr) {
+      assertSafeBranch(branch)
       const pr = await openPullRequest({
         owner: OWNER,
         repo: plan.repo,
-        title: `fix(seo): cannibal merge "${term}" → ${winnerUrl}`,
+        title: `fix(seo): P4 cannibal consolidation "${term}"`,
         head: branch,
         base: 'main',
         body: [
-          `Cannibal merge from the SEO War Room.`,
-          ``,
-          `**Winner:** ${winnerUrl}`,
-          `**Redirects (301):**`,
-          ...plan.redirects.map((r) => `- ${r.from} → ${r.to}`),
-          `**Files updated:**`,
-          ...plan.writes.map((w) => `- ${w.path}`),
+          'P4 evidence-backed cannibalization consolidation. Review required — never merged by this executor.',
+          '',
+          `**Winner / P3 owner:** ${winnerUrl}`,
+          `**Decision cluster:** ${opts.decision.clusterId}`,
+          `**Decision ledger id:** ${decisionId}`,
+          `**Evidence:** ${opts.decision.evidenceSource} · ${opts.decision.evidenceWindow.startDate} → ${opts.decision.evidenceWindow.endDate}`,
+          `**Evidence hash:** ${opts.decision.evidenceHash}`,
+          `**Decided by:** ${opts.decision.decidedBy} at ${opts.decision.decidedAt}`,
+          '',
+          '**Loser actions:**',
+          ...opts.decision.loserActions.map((action) => `- ${action.action}: ${action.url} → ${action.target}`),
+          '',
+          `**Rollback:** ${opts.decision.rollback.restoreInstructions}`,
+          '',
+          'Rollback snapshot:',
+          ...opts.decision.rollback.files.map((file) => `- \`${file.repo}\` \`${file.path}\` @ ${file.sha}`),
         ].join('\n'),
       })
+      const prNumber = Number(pr.html_url.split('/').pop() || 0) || undefined
       outcome.commits.push({ repo: plan.repo, branch, commitSha: '', prUrl: pr.html_url })
-    } else {
-      outcome.commits.push({ repo: plan.repo, branch, commitSha: 'merged-to-main' })
+      for (const written of writtenRedirects) {
+        if (written.repo !== plan.repo) continue
+        outcome.redirectsAdded.push({
+          from: written.entry.from,
+          to: written.entry.to,
+          repo: written.repo,
+          file: written.file,
+        })
+      }
+      for (const write of plan.writes) {
+        if (!write.path.endsWith('_redirects')) {
+          outcome.filesUpdated.push({ repo: plan.repo, path: write.path, action: 'loser_noindex' })
+        }
+      }
+      try {
+        await persistP4Decision(opts.decision, 'pr_opened', { url: pr.html_url, number: prNumber })
+      } catch (error) {
+        // The review PR exists but its append-only ledger row does not. That is
+        // partial state: report needs-decision, record the blocker, and stop
+        // mutating so no further PR can outrun the ledger.
+        console.error('[cannibalMerge] PR linkage persistence failed:', error)
+        outcome.status = 'needs_decision'
+        outcome.ledgerPersisted = false
+        outcome.blockers.push('pr_opened_ledger_persistence_failed')
+        break
+      }
     }
+  } catch (error) {
+    try {
+      await persistP4Decision(opts.decision, 'failed')
+    } catch (persistError) {
+      console.error('[cannibalMerge] failure persistence skipped:', persistError)
+    }
+    throw error
   }
 
-  // ── Sync the decision into the shared cannibal_merges table (best-effort) ──
-  const firstPr = outcome.commits.find((c) => c.prUrl)
+  if (outcome.status === 'completed' && outcome.commits.length === 0) {
+    outcome.status = 'skipped'
+    outcome.blockers.push('no_actionable_writes')
+    return outcome
+  }
+
+  const firstPr = outcome.commits.find((commit) => commit.prUrl)
   const prNumber = firstPr?.prUrl ? Number(firstPr.prUrl.split('/').pop() || 0) || undefined : undefined
   await recordMergeToSupabase({
     term,
@@ -638,12 +762,18 @@ export async function executeCannibalMerge(opts: {
     redirectsCreated: outcome.redirectsAdded.length,
     prUrl: firstPr?.prUrl,
     prNumber,
-    status: outcome.commits.length > 0 ? 'merged' : 'skipped',
+    status:
+      outcome.status === 'needs_decision'
+        ? 'needs_decision'
+        : outcome.commits.length
+          ? 'pr_created'
+          : 'skipped',
     message:
-      outcome.commits.length > 0
-        ? `Merged ${outcome.redirectsAdded.length} redirect(s) across ${outcome.commits.length} repo(s)`
-        : `Skipped — ${outcome.skipped.length} URL(s) had no redirect convention`,
+      outcome.status === 'needs_decision'
+        ? 'P4 review PR opened but the append-only decision ledger row could not be persisted — operator decision required'
+        : outcome.commits.length
+          ? 'P4 evidence-backed review PR opened; not merged'
+          : 'P4 decision produced no actionable writes',
   })
-
   return outcome
 }

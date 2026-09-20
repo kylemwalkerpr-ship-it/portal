@@ -75,10 +75,8 @@ import {
 } from '@/lib/seoFactory/publishLedgerMetric'
 import { RankingModelBlock } from './admin-ranking-model-block'
 import {
-  classifyCannibalMergeResult,
-  formatCannibalSweepNotice,
-  type CannibalMergeResponseBody,
-  type CannibalResolveOutcome,
+  formatCannibalEvidenceReviewNotice,
+  type CannibalEvidenceReview,
 } from '@/lib/seoFactory/cannibalResolveOutcome'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
@@ -5412,7 +5410,7 @@ function DiscoverDrawer({
 }
 
 function WorkPlanTable({
-  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onResolveCannibal, onResolveAllCannibal, resolvingIds, resolvingAll, resolvedIds, gscSummary,
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch, onReviewCannibal, onReviewAllCannibal, reviewingIds, reviewingAll, gscSummary,
 }: {
   items: WorkPlanItem[]
   selectedIds: Set<string>
@@ -5420,11 +5418,15 @@ function WorkPlanTable({
   onSelectAll: (ids: string[]) => void
   onClearSelection: () => void
   onSendToResearch: (items: WorkPlanItem[]) => void
-  onResolveCannibal: (item: WorkPlanItem) => void
-  onResolveAllCannibal: () => void
-  resolvingIds?: Set<string>
-  resolvingAll?: boolean
-  resolvedIds?: Set<string>
+  /**
+   * Evidence review only. Destructive consolidation is not reachable from the
+   * Work Plan: it requires an explicit evidence-backed P4 decision plus a review
+   * PR opened by the guarded executor.
+   */
+  onReviewCannibal: (item: WorkPlanItem) => void
+  onReviewAllCannibal: () => void
+  reviewingIds?: Set<string>
+  reviewingAll?: boolean
   gscSummary?: { clicks: number; impressions: number; high: number; refresh: number } | null
 }) {
   const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
@@ -5434,7 +5436,6 @@ function WorkPlanTable({
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
   const shippedCount = items.filter((i) => i.shipped).length
   const activeItems = items.filter((i) => {
-    if (i.category === 'cannibal' && resolvedIds?.has(i.id)) return false
     if (i.shipped && !showShipped) return false
     return true
   })
@@ -5551,17 +5552,17 @@ function WorkPlanTable({
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
             type="button"
-            onClick={onResolveAllCannibal}
-            disabled={cannibalItems.length === 0 || resolvingAll}
-            title={cannibalItems.length === 0 ? 'No cannibalization alerts to resolve' : 'Resolve every cannibal alert in one sweep (winner = highest impressions, 301 losers → winner)'}
+            onClick={onReviewAllCannibal}
+            disabled={cannibalItems.length === 0 || reviewingAll}
+            title={cannibalItems.length === 0 ? 'No cannibalization alerts to review' : 'Review the competing-page evidence for every cannibal alert (read-only: no redirects, no noindex, no PR writes)'}
             style={{
               padding: '5px 10px', borderRadius: 0, border: `1px solid ${E.red}`,
-              background: resolvingAll ? E.redSoft : 'transparent', color: E.red,
-              fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: cannibalItems.length === 0 || resolvingAll ? 'not-allowed' : 'pointer',
-              whiteSpace: 'nowrap', opacity: cannibalItems.length === 0 || resolvingAll ? 0.55 : 1,
+              background: reviewingAll ? E.redSoft : 'transparent', color: E.red,
+              fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: cannibalItems.length === 0 || reviewingAll ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap', opacity: cannibalItems.length === 0 || reviewingAll ? 0.55 : 1,
             }}
           >
-            {resolvingAll ? 'Resolving…' : `⚠ Resolve all${cannibalItems.length ? ` (${cannibalItems.length})` : ''}`}
+            {reviewingAll ? 'Reviewing…' : `🔍 Review all${cannibalItems.length ? ` (${cannibalItems.length})` : ''}`}
           </button>
           {shippedCount > 0 && (
             <button
@@ -5677,31 +5678,19 @@ function WorkPlanTable({
                   )}
                   <div style={{ marginLeft: 'auto' }}>
                   {item.category === 'cannibal' ? (
-                    resolvedIds?.has(item.id) ? (
-                      <span
-                        title="Cleared — merge completed or the cluster was dismissed as unresolvable"
-                        style={{
-                          display: 'inline-block', padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.green}`, background: E.greenSoft,
-                          color: E.green, fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
-                        }}
-                      >
-                        ✅ Resolved
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onResolveCannibal(item)}
-                        disabled={resolvingIds?.has(item.id)}
-                        title="Auto-resolve: winner = highest impressions, 301 losers → winner, retire losers at the source"
-                        style={{
-                          padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.red}`, background: resolvingIds?.has(item.id) ? E.redSoft : 'transparent',
-                          color: E.red, cursor: resolvingIds?.has(item.id) ? 'wait' : 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-                          whiteSpace: 'nowrap', opacity: resolvingIds?.has(item.id) ? 0.6 : 1,
-                        }}
-                      >
-                        {resolvingIds?.has(item.id) ? 'Resolving…' : '⚠ Resolve'}
-                      </button>
-                    )
+                    <button
+                      type="button"
+                      onClick={() => onReviewCannibal(item)}
+                      disabled={reviewingIds?.has(item.id)}
+                      title="Inspect qualified GSC overlap and the authoritative P3 owner (read-only). Destructive consolidation requires an evidence-backed P4 decision and a review PR."
+                      style={{
+                        padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.red}`, background: reviewingIds?.has(item.id) ? E.redSoft : 'transparent',
+                        color: E.red, cursor: reviewingIds?.has(item.id) ? 'wait' : 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                        whiteSpace: 'nowrap', opacity: reviewingIds?.has(item.id) ? 0.6 : 1,
+                      }}
+                    >
+                      {reviewingIds?.has(item.id) ? 'Reviewing…' : '🔍 Review evidence'}
+                    </button>
                   ) : item.suggestion ? (
                     <button type="button" onClick={() => {
                       // Single-item quick apply
@@ -5772,13 +5761,14 @@ function ResearchLiveOperations() {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ term }),
       })
-      const body = await response.json().catch(() => ({})) as { pages?: Array<{ url: string; impressions: number; clicks: number; position: number }>; suggestedWinner?: string | null; error?: string }
+      const body = await response.json().catch(() => ({})) as { pages?: Array<{ url: string; impressions: number | null; clicks: number | null; position: number | null }>; suggestedWinner?: string | null; error?: string }
       if (!response.ok && !Array.isArray(body.pages)) throw new Error(body.error || `Competing-page lookup failed (${response.status})`)
       const pages = Array.isArray(body.pages) ? body.pages : []
-      const winner = body.suggestedWinner || pages[0]?.url || null
       setCompetingPages(pages)
-      setCompetingWinner(winner)
-      setCompetingLosers(new Set(pages.map((page) => page.url).filter((url) => url !== winner)))
+      // P4: never preselect a winner — impressions cannot choose the owner, and
+      // the P3 registry row authorizes the winner at decision time.
+      setCompetingWinner(null)
+      setCompetingLosers(new Set())
     } catch (cause) {
       setCompetingPages([])
       setError(cause instanceof Error ? cause.message : 'Competing-page lookup failed')
@@ -5788,27 +5778,13 @@ function ResearchLiveOperations() {
   }, [])
 
   const resolveCompetingPages = React.useCallback(async () => {
-    if (!competingTerm || !competingWinner || competingLosers.size === 0) return
+    if (!competingTerm) return
     setCompetingResolveBusy(true)
-    try {
-      const response = await fetch('/api/seo-factory/cannibal-merge', {
-        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ term: competingTerm, winnerUrl: competingWinner, loserUrls: [...competingLosers], mode: 'merge' }),
-      })
-      const body = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(body.error || `Resolution failed (${response.status})`)
-      setCompetingTerm(null)
-      setCompetingPages(null)
-      setCompetingWinner(null)
-      setCompetingLosers(new Set())
-      setError(null)
-      await loadRef.current()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Competing-page resolution failed')
-    } finally {
-      setCompetingResolveBusy(false)
-    }
-  }, [competingLosers, competingTerm, competingWinner])
+    setError(
+      `P4 decision required for “${competingTerm}”: inspect the competing pages and create an evidence-backed per-cluster decision (authoritative P3 owner + qualified GSC overlap + rollback snapshot) before any review PR can be opened.`,
+    )
+    setCompetingResolveBusy(false)
+  }, [competingTerm])
 
   const openOutreachDraft = React.useCallback(async (target: { id?: string; domain?: string; title?: string | null }) => {
     if (!target.id) return
@@ -5962,6 +5938,7 @@ function ResearchLiveOperations() {
           {competingTerm && competingPages && (
             <div style={{ margin: '2px 12px 10px', padding: 7, background: E.cream, border: `1px dashed ${E.hairline}`, fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>
               <strong style={{ color: E.ink }}>Competing pages · {competingTerm}</strong>
+              <div style={{ marginTop: 3 }}>Evidence only — the winner must be the authoritative P3 owner row; impressions never choose it.</div>
               {competingPages.length ? competingPages.map((page) => {
                 const position = Number(page.position)
                 const isWinner = competingWinner === page.url
@@ -5969,10 +5946,10 @@ function ResearchLiveOperations() {
                 return <label key={page.url} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: E.goldDeep, cursor: 'pointer' }}>
                   <input type="radio" name={`research-winner-${competingTerm}`} checked={isWinner} onChange={() => { const selection = transferCompetingWinner(competingWinner, page.url, competingLosers); setCompetingWinner(selection.winner); setCompetingLosers(selection.losers) }} />
                   <input type="checkbox" checked={isLoser} disabled={isWinner} onChange={() => setCompetingLosers((current) => { const next = new Set(current); if (next.has(page.url)) next.delete(page.url); else next.add(page.url); return next })} />
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{Number.isFinite(position) ? position.toFixed(1) : '—'} · {page.url}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{Number.isFinite(position) ? `#${position.toFixed(1)}` : 'no GSC metrics'} · {page.url}</span>
                 </label>
               }) : <div style={{ marginTop: 4 }}>No competing pages returned.</div>}
-              {competingPages.length > 1 && <button type="button" onClick={() => void resolveCompetingPages()} disabled={competingResolveBusy || !competingWinner || competingLosers.size === 0} style={{ marginTop: 7, padding: '5px 7px', border: 'none', background: competingResolveBusy ? C.textDim : C.red, color: '#FFF', fontFamily: C.mono, fontSize: 8, cursor: competingResolveBusy ? 'wait' : 'pointer', opacity: !competingWinner || competingLosers.size === 0 ? 0.5 : 1 }}>{competingResolveBusy ? 'Resolving…' : 'Resolve & 301 losers → winner'}</button>}
+              {competingPages.length > 1 && <button type="button" onClick={() => void resolveCompetingPages()} disabled={competingResolveBusy} style={{ marginTop: 7, padding: '5px 7px', border: 'none', background: competingResolveBusy ? C.textDim : C.red, color: '#FFF', fontFamily: C.mono, fontSize: 8, cursor: competingResolveBusy ? 'wait' : 'pointer', opacity: competingResolveBusy ? 0.5 : 1 }}>{competingResolveBusy ? 'Checking…' : 'Check P4 decision requirements'}</button>}
             </div>
           )}
         </div>
@@ -6261,7 +6238,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // Populated from radarMeta.cannibalization and the coverage map.
   const [competingUrls, setCompetingUrls] = React.useState<Array<{ url: string; title: string; primaryKeyword?: string | null }>>([])
 
-  const [clearedCannibalTopics, setClearedCannibalTopics] = React.useState<Set<string>>(new Set())
   const [uberOpps, setUberOpps] = React.useState<AISuggestion[]>([])
   const [uberOppsLoading, setUberOppsLoading] = React.useState(false)
   const [uberOppsMeta, setUberOppsMeta] = React.useState<{
@@ -6277,8 +6253,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [intelStats, setIntelStats] = React.useState<SeoIntelStats | null>(null)
 
   const workPlanItems = React.useMemo(
-    () => buildWorkPlan(radar, radarMeta, merges, clearedCannibalTopics, [...uberOpps, ...promotedIntel], gscIntelOpps),
-    [radar, radarMeta, merges, clearedCannibalTopics, uberOpps, promotedIntel, gscIntelOpps],
+    // Clusters leave the Work Plan only through the ledger (merged/skipped) —
+    // never through a local "cleared" set.
+    () => buildWorkPlan(radar, radarMeta, merges, undefined, [...uberOpps, ...promotedIntel], gscIntelOpps),
+    [radar, radarMeta, merges, uberOpps, promotedIntel, gscIntelOpps],
   )
 
   const handleIntelOpps = React.useCallback((rows: OppRow[]) => {
@@ -6570,90 +6548,87 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } catch { /* best-effort */ }
   }, [])
 
-  // One-click cannibal resolution from the Work Plan: resolve the competing
-  // pages (winner = highest impressions) and execute the merge — 301 losers →
-  // winner, retire losers at the source, enrich the winner. The decision is
-  // recorded to cannibal_merges and the Merge History panel refreshes so the
-  // cluster shows as resolved. Mirrors ResearchLiveOperations' resolve flow.
-  const [resolvingCannibalIds, setResolvingCannibalIds] = React.useState<Set<string>>(new Set())
-  const [resolvingAllCannibal, setResolvingAllCannibal] = React.useState(false)
-  const [resolvedCannibalIds, setResolvedCannibalIds] = React.useState<Set<string>>(new Set())
+  // P4 Work Plan cannibal rows are EVIDENCE-REVIEW ONLY. There is no one-click
+  // destructive resolution and no destructive sweep: the winner is the P3
+  // authoritative owner, the evidence must be qualified GSC overlap, and the
+  // only writer is the guarded executor behind an explicit decision record
+  // (persisted before any branch/PR write).
+  const [reviewingCannibalIds, setReviewingCannibalIds] = React.useState<Set<string>>(new Set())
+  const [reviewingAllCannibal, setReviewingAllCannibal] = React.useState(false)
 
-  // Shared merge call: returns a per-item outcome so the single-row Resolve
-  // button and the Resolve-all sweep share identical behavior.
-  const resolveOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<CannibalResolveOutcome> => {
+  // Read-only evidence check shared by the single-row Review button and the
+  // Review-all sweep. Never POSTs to cannibal-merge.
+  const reviewOneCannibal = React.useCallback(async (item: WorkPlanItem): Promise<CannibalEvidenceReview> => {
     try {
-      const urls = (item.competingPages || []).filter((u) => /^https?:\/\//i.test(u))
-      const payload = urls.length >= 2
-        ? { term: item.topic, winnerUrl: urls[0], loserUrls: urls.slice(1), mode: 'merge' as const }
-        : { term: item.topic, mode: 'merge' as const }
-      const res = await fetch('/api/seo-factory/cannibal-merge', {
-        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
+      const res = await fetch('/api/seo-factory/cannibal-pages', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ term: item.topic }),
       })
-      const body = await res.json().catch(() => ({})) as CannibalMergeResponseBody
-      return classifyCannibalMergeResult({ ok: res.ok, status: res.status, body })
+      const body = await res.json().catch(() => ({})) as {
+        ok?: boolean
+        error?: string
+        metricsSynthetic?: boolean
+        eligibleForDestructiveAction?: boolean
+        blockers?: string[]
+      }
+      if (!res.ok) return { status: 'unavailable', detail: body.error || `evidence check failed (${res.status})` }
+      if (!body.ok) return { status: 'unavailable', detail: body.error || 'no competing-page pair resolved' }
+      if (body.metricsSynthetic) {
+        return { status: 'recommendation_only', detail: 'content-inventory evidence is synthetic — never destructive' }
+      }
+      if (!body.eligibleForDestructiveAction) {
+        return { status: 'recommendation_only', detail: (body.blockers || []).join(', ') || 'unqualified GSC evidence' }
+      }
+      return {
+        status: 'qualified',
+        detail: 'qualified GSC overlap — author an evidence-backed decision (authoritative P3 owner + rollback snapshot), then review the PR',
+      }
     } catch (err) {
-      return { status: 'failed', detail: err instanceof Error ? err.message : 'unknown error' }
+      return { status: 'unavailable', detail: err instanceof Error ? err.message : 'unknown error' }
     }
   }, [])
 
-  const handleResolveCannibal = React.useCallback(async (item: WorkPlanItem) => {
-    setResolvingCannibalIds((prev) => new Set(prev).add(item.id))
+  const handleReviewCannibal = React.useCallback(async (item: WorkPlanItem) => {
+    setReviewingCannibalIds((prev) => new Set(prev).add(item.id))
     try {
-      const r = await resolveOneCannibal(item)
-      if (r.status === 'resolved' || r.status === 'skipped') {
-        setResolvedCannibalIds((prev) => new Set(prev).add(item.id))
-        setClearedCannibalTopics((prev) => new Set(prev).add(item.topic.toLowerCase()))
-      }
-      setActionNotice(r.status === 'failed' ? `Cannibal resolve failed: ${r.detail}` : r.status === 'skipped' ? `⚠ Cannibal cleared: ${r.detail}` : `⚠ Cannibal resolved: ${r.detail}`)
-      void fetchMergeHistory()
+      const r = await reviewOneCannibal(item)
+      const prefix = r.status === 'qualified' ? '✓ P4 evidence' : r.status === 'recommendation_only' ? '⚠ Recommendation only' : '⚠ Evidence unavailable'
+      setActionNotice(`${prefix} for “${item.topic}”: ${r.detail}`)
     } finally {
-      setResolvingCannibalIds((prev) => {
+      setReviewingCannibalIds((prev) => {
         const next = new Set(prev)
         next.delete(item.id)
         return next
       })
     }
-  }, [resolveOneCannibal, fetchMergeHistory, setActionNotice])
+  }, [reviewOneCannibal, setActionNotice])
 
-  // Resolve all cannibal alerts in one sweep: iterate rows sequentially (avoids
-  // hammering GSC/GitHub), then report an aggregate notice + refresh Merge
-  // History once.
-  const handleResolveAllCannibal = React.useCallback(async () => {
+  // Review every cannibal alert in one read-only sweep. Nothing is resolved,
+  // hidden, redirected, or written: clusters stay on the Work Plan until a
+  // reviewed PR (or the ledger) clears them.
+  const handleReviewAllCannibal = React.useCallback(async () => {
     const cannibals = workPlanItems.filter((i) => i.category === 'cannibal')
-    if (cannibals.length === 0 || resolvingAllCannibal) return
-    setResolvingAllCannibal(true)
-    setResolvingCannibalIds(new Set(cannibals.map((i) => i.id)))
-    let resolved = 0
-    let skipped = 0
-    let failed = 0
-    const failures: string[] = []
-    const resolvedIds: string[] = []
+    if (cannibals.length === 0 || reviewingAllCannibal) return
+    setReviewingAllCannibal(true)
+    setReviewingCannibalIds(new Set(cannibals.map((i) => i.id)))
+    let qualified = 0
+    let recommendationOnly = 0
+    let unavailable = 0
+    const blockers: string[] = []
     try {
       for (const item of cannibals) {
-        const r = await resolveOneCannibal(item)
-        if (r.status === 'resolved') { resolved += 1; resolvedIds.push(item.id) }
-        else if (r.status === 'skipped') { skipped += 1; resolvedIds.push(item.id) }
-        else { failed += 1; failures.push(`${item.topic}: ${r.detail}`) }
+        const r = await reviewOneCannibal(item)
+        if (r.status === 'qualified') qualified += 1
+        else if (r.status === 'recommendation_only') recommendationOnly += 1
+        else { unavailable += 1; blockers.push(`${item.topic}: ${r.detail}`) }
       }
-      if (resolvedIds.length) {
-        setResolvedCannibalIds((prev) => new Set([...prev, ...resolvedIds]))
-        setClearedCannibalTopics((prev) => new Set([...prev, ...cannibals.filter((i) => resolvedIds.includes(i.id)).map((i) => i.topic.toLowerCase())]))
-        setRadarMeta((prev) => {
-          if (!prev) return prev
-          const gone = new Set(cannibals.filter((i) => resolvedIds.includes(i.id)).map((i) => i.topic.toLowerCase()))
-          const list = Array.isArray(prev.cannibalization) ? (prev.cannibalization as Array<{ term?: string }>) : []
-          return { ...prev, cannibalization: list.filter((c) => !gone.has(String(c.term || '').toLowerCase())) }
-        })
-      }
-      setActionNotice(formatCannibalSweepNotice({ resolved, skipped, failed, failures }))
-      void fetchMergeHistory()
+      setActionNotice(formatCannibalEvidenceReviewNotice({ qualified, recommendationOnly, unavailable, blockers }))
     } finally {
-      setResolvingAllCannibal(false)
-      setResolvingCannibalIds(new Set())
+      setReviewingAllCannibal(false)
+      setReviewingCannibalIds(new Set())
     }
-  }, [workPlanItems, resolvingAllCannibal, resolveOneCannibal, fetchMergeHistory, setActionNotice])
+  }, [workPlanItems, reviewingAllCannibal, reviewOneCannibal, setActionNotice])
 
   const fetchSuggestions = React.useCallback(async (regionArg: string) => {
     setSuggestionsLoading(true)
@@ -8368,11 +8343,10 @@ const controller = new AbortController()
                 onSelectAll={(ids) => setSelectedWorkPlanIds(new Set(ids))}
                 onClearSelection={() => setSelectedWorkPlanIds(new Set())}
                 onSendToResearch={handleSendToResearch}
-                onResolveCannibal={handleResolveCannibal}
-                onResolveAllCannibal={handleResolveAllCannibal}
-                resolvingIds={resolvingCannibalIds}
-                resolvingAll={resolvingAllCannibal}
-                resolvedIds={resolvedCannibalIds}
+                onReviewCannibal={handleReviewCannibal}
+                onReviewAllCannibal={handleReviewAllCannibal}
+                reviewingIds={reviewingCannibalIds}
+                reviewingAll={reviewingAllCannibal}
                 gscSummary={intelStats ? { clicks: intelStats.clicks, impressions: intelStats.impressions, high: intelStats.high, refresh: intelStats.refresh } : null}
               />
               </div>

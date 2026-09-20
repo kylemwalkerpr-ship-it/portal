@@ -539,9 +539,11 @@ export default function AdminCommandCenter({
   const [prStatus, setPrStatus] = React.useState<PrStatus | null>(null)
   const [logs, setLogs] = React.useState<StudioLogEntry[]>([])
 
-  // Cannibal resolver state (explicit winner/loser picks per term)
-  const [cannibalPages, setCannibalPages] = React.useState<Record<string, Array<{ url: string; impressions: number; clicks: number; position: number }>>>({})
+  // Cannibal evidence state. Operator picks are display-only: P4 authorizes the
+  // winner from the authoritative P3 owner row, never from impressions.
+  const [cannibalPages, setCannibalPages] = React.useState<Record<string, Array<{ url: string; impressions: number | null; clicks: number | null; position: number | null }>>>({})
   const [cannibalSource, setCannibalSource] = React.useState<Record<string, string>>({})
+  const [cannibalEvidence, setCannibalEvidence] = React.useState<Record<string, { eligible: boolean; metricsSynthetic: boolean; blockers: string[] }>>({})
   const [cannibalWinner, setCannibalWinner] = React.useState<Record<string, string>>({})
   const [cannibalLosers, setCannibalLosers] = React.useState<Record<string, Set<string>>>({})
   const [cannibalExpanded, setCannibalExpanded] = React.useState<Set<string>>(new Set())
@@ -1358,42 +1360,17 @@ export default function AdminCommandCenter({
     }
   }
 
-  // ── Cannibal merge (proper resolution: explicit winner + losers) ────────
-  const runCannibalMerge = async (o: any) => {
-    const pages = (o.pages || []) as Array<{ url?: string; impressions?: number }>
-    const winner = [...pages].sort((a, b) => (b.impressions || 0) - (a.impressions || 0))[0]?.url || pages[0]?.url
-    if (!winner) {
-      notify(`No pages to merge for “${o.term}”`, 'error')
-      return
-    }
-    setBusy(true)
-    try {
-      const losers = pages.map((p) => String(p.url || '')).filter((u) => u && u !== winner)
-      const res = await fetch('/api/seo-factory/cannibal-merge', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ term: o.term, winnerUrl: winner, loserUrls: losers, mode: 'merge' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
-      setResolvedTerms((prev) => new Set(prev).add(String(o.term)))
-      notify(`Merged “${o.term}” → ${winner.split('/').pop() || winner} (${(data.redirectsAdded || []).length} redirects)`, 'success')
-      recordMission({
-        kind: 'merge', status: 'success', source: 'cannibal-merge',
-        message: `Merged “${o.term}” → ${winner.split('/').pop() || winner}`,
-        detail: { term: o.term, winner, losers, redirects: (data.redirectsAdded || []).length },
-      })
-      loadRadar()
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'cannibal merge failed', 'error')
-      recordMission({
-        kind: 'merge', status: 'error', source: 'cannibal-merge',
-        message: `Merge failed · ${e instanceof Error ? e.message : 'cannibal merge failed'}`,
-        detail: { term: o.term },
-      })
-    } finally {
-      setBusy(false)
-    }
+  // ── Cannibal evidence review (P4: no destructive one-click path) ───────
+  // Impressions must never select a winner. Consolidation requires an
+  // evidence-backed decision (authoritative P3 owner + qualified GSC overlap +
+  // rollback snapshot); the guarded executor then opens a review PR.
+  const reviewCannibalEvidence = async (o: any) => {
+    const term = String(o?.term || '').trim()
+    if (term) await fetchCannibalPages(term)
+    notify(
+      'P4 decision required: winner-by-impressions merging is disabled. Review qualified GSC overlap and the authoritative P3 owner before opening a consolidation PR.',
+      'info',
+    )
   }
 
   // Proper cannibalization resolution (what Google expects): the operator
@@ -1423,15 +1400,21 @@ export default function AdminCommandCenter({
         setCannibalExpanded((prev) => new Set(prev).add(term))
         return
       }
-      const pages = (data.pages || []) as Array<{ url: string; impressions: number; clicks: number; position: number }>
+      const pages = (data.pages || []) as Array<{ url: string; impressions: number | null; clicks: number | null; position: number | null }>
       setCannibalPages((prev) => ({ ...prev, [term]: pages }))
       setCannibalSource((prev) => ({ ...prev, [term]: String(data.source || 'unknown') }))
-      setCannibalWinner((prev) => ({ ...prev, [term]: String(data.suggestedWinner || pages[0]?.url || '') }))
-      const loserSet = new Set<string>()
-      for (const p of pages) {
-        if (p.url !== (data.suggestedWinner || pages[0]?.url)) loserSet.add(p.url)
-      }
-      setCannibalLosers((prev) => ({ ...prev, [term]: loserSet }))
+      setCannibalEvidence((prev) => ({
+        ...prev,
+        [term]: {
+          eligible: data.eligibleForDestructiveAction === true,
+          metricsSynthetic: data.metricsSynthetic === true,
+          blockers: Array.isArray(data.blockers) ? data.blockers.map(String) : [],
+        },
+      }))
+      // No preselected winner/losers: impressions never choose the owner, and
+      // the P3 registry row must authorize the winner.
+      setCannibalWinner((prev) => ({ ...prev, [term]: '' }))
+      setCannibalLosers((prev) => ({ ...prev, [term]: new Set<string>() }))
       setCannibalExpanded((prev) => new Set(prev).add(term))
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Failed to resolve competing pages', 'error')
@@ -1458,41 +1441,12 @@ export default function AdminCommandCenter({
     })
   }
 
-  const resolveCannibal = async (term: string) => {
-    const pages = cannibalPages[term] || []
-    const winner = cannibalWinner[term]
-    const losers = [...(cannibalLosers[term] || [])]
-    if (!winner || losers.length === 0) {
-      notify(`Pick a winner and at least one loser for “${term}”`, 'info')
-      return
-    }
-    setBusy(true)
-    try {
-      const res = await fetch('/api/seo-factory/cannibal-merge', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ term, winnerUrl: winner, loserUrls: losers, mode: 'merge' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
-      setResolvedTerms((prev) => new Set(prev).add(term))
-      notify(`Resolved “${term}” → ${winner.split('/').pop() || winner} (${(data.redirectsAdded || []).length} redirects)`, 'success')
-      recordMission({
-        kind: 'merge', status: 'success', source: 'cannibal-merge',
-        message: `Resolved “${term}” → ${winner.split('/').pop() || winner}`,
-        detail: { term, winner, losers: losers.length, redirects: (data.redirectsAdded || []).length },
-      })
-      loadRadar()
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'Resolution failed', 'error')
-      recordMission({
-        kind: 'merge', status: 'error', source: 'cannibal-merge',
-        message: `Resolution failed · ${e instanceof Error ? e.message : 'cannibal merge failed'}`,
-        detail: { term },
-      })
-    } finally {
-      setBusy(false)
-    }
+  const reviewCannibalSelection = async (term: string) => {
+    await fetchCannibalPages(term)
+    notify(
+      `P4 decision required for “${term}”: manual winner/loser selection alone cannot authorize redirects or noindex changes — the winner must be the authoritative P3 owner row.`,
+      'info',
+    )
   }
 
   // ── Systems loaders ──────────────────────────────────────────────────────
@@ -2041,7 +1995,7 @@ function RecheckDuePanel() {
               ⚠ Cannibalization watch ({cannibals.length})
             </span>
             <span style={{ fontSize: 10, color: C.textMuted }}>
-              resolve each cluster to ONE winner — every other page 301s into it and is retired at the source
+              evidence review only — the winner must be the authoritative P3 owner, and consolidation runs through an evidence-backed decision + review PR
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2069,20 +2023,27 @@ function RecheckDuePanel() {
                       </span>
                     )}
                     {resolved && <span style={{ fontSize: 9, fontFamily: C.mono, padding: '1px 7px', borderRadius: 999, background: C.greenSoft, color: C.green, fontWeight: 800 }}>✓ RESOLVED</span>}
-                    <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700, whiteSpace: 'nowrap' }} onClick={() => void runCannibalMerge(o)} disabled={busy} title="Auto-resolve: winner = highest impressions">
-                      Auto merge
+                    <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700, whiteSpace: 'nowrap' }} onClick={() => void reviewCannibalEvidence(o)} disabled={busy} title="Review qualified GSC evidence and the authoritative P3 owner (read-only; no redirects, noindex or PR writes)">
+                      Review evidence
                     </button>
                   </div>
                   {expanded && (
                     <div style={{ borderTop: `1px solid ${C.redBorder}`, padding: '9px 12px', background: '#FFFCFC' }}>
                       {cannibalBusyTerm === term && pages.length === 0 ? (
-                        <div style={{ fontSize: 10.5, fontFamily: C.mono, color: C.textMuted }}>Resolving competing pages…</div>
+                        <div style={{ fontSize: 10.5, fontFamily: C.mono, color: C.textMuted }}>Loading competing-page evidence…</div>
                       ) : pages.length === 0 ? (
                         <div style={{ fontSize: 10.5, fontFamily: C.mono, color: C.textMuted }}>
-                          No competing pages resolved for this term yet — click ▾ to retry, or use <strong>Auto merge</strong>.
+                          No competing-page evidence resolved for this term yet — click ▾ to retry.
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ fontSize: 9.5, fontFamily: C.mono, color: C.textMuted }}>
+                            {cannibalEvidence[term]?.metricsSynthetic
+                              ? 'Synthetic inventory evidence — display only, never destructive.'
+                              : cannibalEvidence[term]?.eligible
+                                ? 'Qualified GSC overlap. Winner must equal the authoritative P3 owner row.'
+                                : `Not destructive-eligible${cannibalEvidence[term]?.blockers?.length ? ` · ${cannibalEvidence[term].blockers.join(', ')}` : ''}`}
+                          </div>
                           {pages.map((p, pi) => {
                             const isWinner = winner === p.url
                             const isLoser = losers.has(p.url)
@@ -2096,23 +2057,27 @@ function RecheckDuePanel() {
                                   {p.url.replace(/^https?:\/\//, '').split('/').slice(0, 3).join('/')}
                                 </span>
                                 <span style={{ color: C.textDim, whiteSpace: 'nowrap' }}>
-                                  {p.impressions > 0 ? `${fmtN(p.impressions)} imp · #${p.position}` : 'no GSC data'}
+                                  {typeof p.impressions === 'number' && p.impressions > 0
+                                    ? `${fmtN(p.impressions)} imp · #${p.position ?? '—'}`
+                                    : 'no GSC metrics'}
                                 </span>
                                 <span style={{ fontSize: 9, fontWeight: 800, color: isWinner ? C.green : isLoser ? C.red : C.textDim, minWidth: 46, textAlign: 'right' }}>
-                                  {isWinner ? '★ WINNER' : isLoser ? '→ 301' : ''}
+                                  {isWinner ? '★ WINNER PICK' : isLoser ? 'loser pick' : ''}
                                 </span>
                               </label>
                             )
                           })}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
-                              {winner ? `${losers.size} loser(s) → ${winner.split('/').pop() || winner}` : 'pick a winner + ≥1 loser'}
+                              {winner
+                                ? `operator pick (informational): ${winner.split('/').pop() || winner}`
+                                : 'operator picks are informational — the P3 owner row authorizes the winner'}
                             </span>
-                            <button type="button" disabled={busy || !winner || losers.size === 0}
-                              onClick={() => void resolveCannibal(term)}
-                              title="301 losers → winner, retire losers at the source, enrich winner with merged queries"
-                              style={{ marginLeft: 'auto', ...btnSmall, background: C.red, color: '#fff', fontWeight: 800, opacity: busy || !winner || losers.size === 0 ? 0.5 : 1 }}>
-                              {busy ? 'Resolving…' : 'Resolve & 301 → winner'}
+                            <button type="button" disabled={busy}
+                              onClick={() => void reviewCannibalSelection(term)}
+                              title="Check the P4 decision requirements for this cluster (read-only: no redirects, noindex or PR writes)"
+                              style={{ marginLeft: 'auto', ...btnSmall, background: C.red, color: '#fff', fontWeight: 800, opacity: busy ? 0.5 : 1 }}>
+                              {busy ? 'Checking…' : 'Check P4 requirements'}
                             </button>
                           </div>
                         </div>
@@ -2254,8 +2219,8 @@ function RecheckDuePanel() {
                           </button>
                         )}
                         {isCannibal ? (
-                          <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700 }} onClick={() => runCannibalMerge(o)} disabled={busy}>
-                            Merge
+                          <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700 }} onClick={() => void reviewCannibalEvidence(o)} disabled={busy}>
+                            Review
                           </button>
                         ) : (
                           <button type="button" style={{ ...btnSmall, background: C.navy, color: '#fff' }} onClick={() => { setSelectedTerms(new Set([String(o.term)])); runAutopilot() }} disabled={busy}>

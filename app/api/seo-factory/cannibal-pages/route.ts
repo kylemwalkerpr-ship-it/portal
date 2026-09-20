@@ -3,69 +3,65 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveCannibalPages } from '@/lib/seoFactory/cannibalMerge'
 
 /**
- * POST /api/seo-factory/cannibal-pages
- * Body: { term }
+ * Recommendation-only competing-page evidence for P4 decisions.
  *
- * Resolves the pages competing for a term so the operator can pick a winner
- * and losers explicitly (the anti-cannibalization flow Google expects: one
- * canonical page wins, the rest 301/noindex into it).
- *
- * Uses fuzzy word-overlap GSC matching first, then falls back to the content
- * inventory (shipped content_jobs) so the watch is actionable even when GSC
- * has no page-level rows for the term.
+ * Never suggests a winner (impressions cannot choose one; the authoritative P3
+ * owner row does) and never mutates anything. `eligibleForDestructiveAction`
+ * only states that the *evidence* is strong enough for an operator to author a
+ * decision record — it is not authorization.
  */
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminUser()
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status })
-    }
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const body = await request.json().catch(() => ({}))
     const term = String(body.term || '').trim().slice(0, 160)
-    if (!term) {
-      return NextResponse.json(
-        { ok: false, error: 'term required', guidance: 'Pass the keyword whose competing pages you want to see.' },
-        { status: 400 },
-      )
-    }
-
+    if (!term) return NextResponse.json({ ok: false, error: 'term required' }, { status: 400 })
     const resolved = await resolveCannibalPages(term)
-
     if (!resolved || resolved.pages.length < 2) {
       return NextResponse.json({
         ok: false,
         term,
         pages: [],
         source: resolved?.source ?? null,
-        error: `No competing pages found for "${term}".`,
-        guidance:
-          'The term did not return ≥2 ranking pages from GSC or the content inventory. ' +
-          'Try a broader term, rescan GSC in the War Room, or check the Pipeline for shipped pages targeting it.',
+        evidenceSource: resolved?.evidenceSource ?? null,
+        window: resolved?.window ?? null,
+        metricsSynthetic: resolved?.metricsSynthetic ?? null,
+        displayOnly: resolved?.displayOnly ?? null,
+        eligibleForDestructiveAction: false,
+        destructiveEligible: false,
+        blockingReasons: resolved?.blockingReasons ?? ['two_competing_pages_required'],
+        blockers: resolved?.blockingReasons ?? ['two_competing_pages_required'],
+        suggestedWinner: null,
+        winnerSelection: 'authoritative_p3_owner_only',
+        error: `No actionable competing-page pair found for "${term}".`,
       })
     }
-
     return NextResponse.json({
       ok: true,
       term,
-      pages: resolved.pages.map((p) => ({
-        url: p.url,
-        impressions: p.impressions,
-        clicks: p.clicks,
-        position: p.position,
-      })),
+      pages: resolved.pages,
       source: resolved.source,
+      evidenceSource: resolved.evidenceSource,
       siteUrl: resolved.siteUrl,
-      suggestedWinner: resolved.pages[0]?.url ?? null,
-      guidance:
-        resolved.source === 'gsc_live'
-          ? 'Pages resolved from live GSC query×page data — winner = highest impressions.'
-          : 'GSC had no page rows for this term — pages resolved from the shipped content inventory. Verify the URLs before merging.',
+      window: resolved.window,
+      metricsSynthetic: resolved.metricsSynthetic,
+      displayOnly: resolved.displayOnly,
+      eligibleForDestructiveAction: resolved.eligibleForDestructiveAction,
+      destructiveEligible: resolved.eligibleForDestructiveAction,
+      blockingReasons: resolved.blockingReasons,
+      blockers: resolved.blockingReasons,
+      suggestedWinner: null,
+      winnerSelection: 'authoritative_p3_owner_only',
+      guidance: resolved.eligibleForDestructiveAction
+        ? 'Qualified GSC overlap found. P4 still requires an authoritative-owner decision record before any review PR can be opened.'
+        : 'Recommendation-only evidence. Synthetic inventory or unqualified GSC evidence cannot authorize destructive consolidation.',
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'cannibal pages failed'
     console.error('[seo-factory/cannibal-pages]', err)
     return NextResponse.json(
-      { ok: false, error: message, pages: [], guidance: 'Resolution failed unexpectedly.' },
+      { ok: false, error: message, pages: [], eligibleForDestructiveAction: false, destructiveEligible: false, suggestedWinner: null },
       { status: 500 },
     )
   }
