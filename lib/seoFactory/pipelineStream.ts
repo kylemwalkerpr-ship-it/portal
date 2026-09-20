@@ -38,6 +38,7 @@ import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolve
 import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
+import { pruneInterlinksToLiveTargets } from './interlinkInjection'
 import { stripNoIndex } from './siteHealthFixes'
 import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors } from './providerAuthors'
@@ -351,7 +352,7 @@ export async function* runSeoFactoryPipelineStream(
 
     // ── Opportunity Radar autopilot brief (transparency into the draft) ──
     const opp = input.opportunity
-    const radarInterlinks = Array.isArray(input.interlinks) ? [...input.interlinks] : []
+    let radarInterlinks = Array.isArray(input.interlinks) ? [...input.interlinks] : []
     // ── Master Engine interlink graph (seo_interlinks) ──────────────────────
     // The planner's persisted journey edges for this term's lifecycle cell are
     // a first-class internal-link allowlist (same contract as radar links), so
@@ -377,20 +378,23 @@ export async function* runSeoFactoryPipelineStream(
         /* engine interlinks are additive — never fail the run */
       }
     }
-    try {
+    // FAIL-CLOSED live injection (P6): if the live-internal-link verification
+    // throws or proves nothing live, every automatic planner/radar interlink is
+    // withheld. The draft is never handed unverified links, and no replacement
+    // target is invented.
+    {
       const { filterLiveInternalUrls } = await import('./linkAudit')
-      const live = new Set(
-        await filterLiveInternalUrls(radarInterlinks.map((l) => String(l.url || '')).filter(Boolean)),
+      const pruned = await pruneInterlinksToLiveTargets(radarInterlinks, (urls) =>
+        filterLiveInternalUrls(urls),
       )
-      const keep = (url: string) => {
-        const n = String(url || '').replace(/\/+$/, '')
-        return live.has(url) || live.has(n) || [...live].some((u) => u.replace(/\/+$/, '') === n)
+      if (!pruned.ok && radarInterlinks.length) {
+        yield {
+          type: 'progress',
+          stage: 'gsc',
+          message: `Withheld ${radarInterlinks.length} automatic interlink target(s): live verification failed — no unverified links injected`,
+        }
       }
-      for (let i = radarInterlinks.length - 1; i >= 0; i--) {
-        if (!keep(String(radarInterlinks[i].url || ''))) radarInterlinks.splice(i, 1)
-      }
-    } catch {
-      /* live filter is best-effort — never invent replacements */
+      radarInterlinks = pruned.links
     }
 
     const providerAuthors = await resolveProviderAuthors({

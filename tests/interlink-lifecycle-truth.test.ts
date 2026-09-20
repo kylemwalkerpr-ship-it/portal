@@ -17,6 +17,11 @@
  */
 
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+jest.mock('@/lib/seoFactory/linkAudit', () => ({
+  // P6 target-liveness gate: this suite is about lifecycle truth, so every
+  // persisted target is treated as live unless a test overrides the mock.
+  filterLiveInternalUrls: jest.fn(async (urls: string[]) => urls),
+}))
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -52,6 +57,10 @@ let idSeq = 0
 const SEO_INTERLINK_DB_DEFAULTS: FakeRow = {
   status: 'planned',
   applied_at: null,
+  source_url: null,
+  verification_state: null,
+  verified_at: null,
+  verification_evidence: null,
   gate_state: null,
   gate_reason: null,
   gate_actor: null,
@@ -232,6 +241,10 @@ describe('A. persistInterlinkPlan never resets lifecycle truth', () => {
     // …lifecycle columns are not.
     expect(rows[0]).not.toHaveProperty('status')
     expect(rows[0]).not.toHaveProperty('applied_at')
+    expect(rows[0]).not.toHaveProperty('source_url')
+    expect(rows[0]).not.toHaveProperty('verification_state')
+    expect(rows[0]).not.toHaveProperty('verified_at')
+    expect(rows[0]).not.toHaveProperty('verification_evidence')
     expect(rows[0]).not.toHaveProperty('gate_state')
     expect(rows[0]).not.toHaveProperty('gate_reason')
     expect(rows[0]).not.toHaveProperty('gate_actor')
@@ -322,6 +335,47 @@ describe('B. plan-eligible engine suggestions (planned/applied only)', () => {
 
     const query = capturedQueries.find((q) => q.table === 'seo_interlinks')!
     expect(query.filters).toContainEqual({ op: 'in', column: 'status', value: ['planned', 'applied'] })
+  })
+
+  it('excludes rows whose durable verification verdict proved the edge dead', async () => {
+    seed('seo_interlinks', [
+      LIFE_ROW('planned', {
+        score: 0.9,
+        target_url: 'https://legal.yousafeconsultancy.com/uk/dead-target/',
+        verification_state: 'target_not_live',
+      }),
+      LIFE_ROW('planned', {
+        score: 0.8,
+        target_url: 'https://legal.yousafeconsultancy.com/uk/gone-source/',
+        verification_state: 'source_not_live',
+      }),
+      LIFE_ROW('planned', {
+        score: 0.7,
+        target_url: 'https://legal.yousafeconsultancy.com/uk/absent-href/',
+        verification_state: 'absent',
+      }),
+      LIFE_ROW('planned', {
+        score: 0.6,
+        target_url: 'https://legal.yousafeconsultancy.com/uk/unverified/',
+        verification_state: null,
+      }),
+      LIFE_ROW('applied', {
+        score: 0.5,
+        target_url: 'https://legal.yousafeconsultancy.com/uk/applied-verified/',
+        verification_state: 'present',
+      }),
+    ])
+
+    const suggestions = await loadEngineInterlinksForCell('visa', 'UK', 10)
+
+    // Dead-verdict rows are withheld; absent (live source, href missing) and
+    // null-verdict rows may still be suggested while they await verification,
+    // and applied rows keep their own row proof.
+    expect(suggestions.map((s) => s.url)).toEqual([
+      'https://legal.yousafeconsultancy.com/uk/absent-href/',
+      'https://legal.yousafeconsultancy.com/uk/unverified/',
+      'https://legal.yousafeconsultancy.com/uk/applied-verified/',
+    ])
   })
 })
 

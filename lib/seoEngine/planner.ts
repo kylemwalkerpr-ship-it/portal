@@ -1344,9 +1344,12 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
   try {
     const { persistPlannerInterlinks } = await import('./interlink')
-    await persistPlannerInterlinks(plans)
-  } catch {
-    // interlink graph is additive — plans still stand without it
+    const interlinks = await persistPlannerInterlinks(plans)
+    // The P6 fail-closed target gate means a zero-store result is truthful
+    // information (dead/verifier-failing targets), never silent success.
+    for (const error of interlinks.errors) persistErrors.push(`interlinks: ${error}`)
+  } catch (e) {
+    persistErrors.push(`interlinks: ${e instanceof Error ? e.message : 'failed'}`)
   }
 
   return { plans, pair, skippedDead: skipDead, persisted, persistErrors }

@@ -206,7 +206,9 @@ export async function POST(req: NextRequest) {
       }
       try {
         const { persistPlannerInterlinks } = await import('@/lib/seoEngine/interlink')
-        interlinksStored = await persistPlannerInterlinks(planned.plans)
+        const interlinks = await persistPlannerInterlinks(planned.plans)
+        interlinksStored = interlinks.stored
+        for (const error of interlinks.errors) allPhaseErrors.push(`interlinks: ${error}`)
       } catch (ilErr) {
         allPhaseErrors.push(`interlinks: ${ilErr instanceof Error ? ilErr.message : 'failed'}`)
       }

@@ -26,7 +26,7 @@ import { knowledgeAgeInfo } from '@/lib/seoEngine/planner'
 import { runPlanner, type GscSignalInput } from '@/lib/seoEngine/planner'
 
 jest.mock('@/lib/seoEngine/interlink', () => ({
-  persistPlannerInterlinks: jest.fn(async () => undefined),
+  persistPlannerInterlinks: jest.fn(async () => ({ stored: 0, errors: [] })),
 }))
 
 jest.mock('@/lib/supabase', () => {

@@ -9,6 +9,12 @@
  * Portal-hosted targets remain allowed for those callers.
  */
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+jest.mock('@/lib/seoFactory/linkAudit', () => ({
+  // P6 target-liveness gate: this suite is about marketplace canonical shapes,
+  // so targets pass the liveness gate by default and the liveness-specific
+  // cases live in tests/p6-*.
+  filterLiveInternalUrls: jest.fn(async (urls: string[]) => urls),
+}))
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {

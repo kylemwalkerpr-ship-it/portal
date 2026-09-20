@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { verifyLiveUrl, type LiveVerifyInput, type LiveVerifyResult } from '@/lib/seoFactory/liveVerify'
+import { finalizeStagedInterlinksForLiveSource } from '@/lib/seoFactory/interlinkVerification'
 
 interface VerifyRequestBody {
   canonicalUrl?: string
@@ -77,7 +78,16 @@ export async function POST(request: NextRequest) {
               : `HTTP ${result.httpStatus || '?'} · needs review`),
     }
 
-    return NextResponse.json({ ok: true, stamp, result })
+    // Interlink truth is finalized ONLY after verifyLiveUrl has actually
+    // established ok=true for this exact canonicalUrl: staged rows are checked
+    // against the live source HTML (exact anchor href) and target liveness.
+    // Never weakens the content verification above — a finalization failure is
+    // reported beside the result, not instead of it.
+    const interlinks = result.ok
+      ? await finalizeStagedInterlinksForLiveSource({ canonicalUrl })
+      : null
+
+    return NextResponse.json({ ok: true, stamp, result, interlinks })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'verify-published failed' },

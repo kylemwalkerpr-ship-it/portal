@@ -30,7 +30,7 @@ import { isActionableDemandQuery, isOffMissionDemandQuery } from '@/lib/seoFacto
 type SupabaseQueryLogEntry = { table: string; filters: Array<[string, unknown]> }
 
 jest.mock('@/lib/seoEngine/interlink', () => ({
-  persistPlannerInterlinks: jest.fn(async () => undefined),
+  persistPlannerInterlinks: jest.fn(async () => ({ stored: 0, errors: [] })),
 }))
 
 // The AI narrative boundary: hermetic (no provider/network), but observable so

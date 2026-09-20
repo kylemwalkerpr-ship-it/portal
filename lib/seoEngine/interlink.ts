@@ -234,6 +234,19 @@ export const PLAN_ELIGIBLE_INTERLINK_STATUSES = ['planned', 'applied'] as const
 const PLAN_ELIGIBLE_STATUS_SET: ReadonlySet<string> = new Set(PLAN_ELIGIBLE_INTERLINK_STATUSES)
 
 /**
+ * Verification verdicts that are durable proof the edge must NOT be suggested:
+ * the target is dead (`target_not_live`) or the source itself is gone
+ * (`source_not_live`). `absent` is a per-source verdict for a live page that
+ * did not embed the edge — it does not prove the target dead, so such rows may
+ * still be suggested while they wait for a re-verification. Applied rows are
+ * exposed by their own row proof and keep their lifecycle guard.
+ */
+const PLAN_INELIGIBLE_VERIFICATION_STATES: ReadonlySet<string> = new Set([
+  'target_not_live',
+  'source_not_live',
+])
+
+/**
  * Load the engine's PERSISTED interlink edges for a lifecycle cell —
  * `seo-<country>-<stage>-%` source slugs (planner missions). Shaped like the
  * Opportunity Radar's interlink options so the pipeline's interlinkAllowlist
@@ -252,16 +265,19 @@ export async function loadEngineInterlinksForCell(
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_interlinks')
-      .select('target_url,target_host,anchor_text,reason,status')
+      .select('target_url,target_host,anchor_text,reason,status,verification_state')
       .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
       .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
       .order('score', { ascending: false })
       .limit(limit)
     const rows = (data as Array<Record<string, unknown>>) || []
     // Defence-in-depth: even if a caller's query ever stops filtering, an
-    // ineligible lifecycle row can never reach automatic suggestions.
+    // ineligible lifecycle row — or a row whose durable verification verdict
+    // already proved the target/source dead — can never reach automatic
+    // suggestions.
     return rows
       .filter((r) => PLAN_ELIGIBLE_STATUS_SET.has(String(r.status || 'planned')))
+      .filter((r) => !PLAN_INELIGIBLE_VERIFICATION_STATES.has(String(r.verification_state || '')))
       .map((r) => ({
         label: String(r.anchor_text || r.target_url || ''),
         url: String(r.target_url || ''),
@@ -273,7 +289,45 @@ export async function loadEngineInterlinksForCell(
   }
 }
 
-/** Persist ontology interlink edges for planner missions (idempotent upsert). */
+/**
+ * Comparison key for target liveness proof: host lowercased, fragment
+ * dropped, trailing slashes stripped (root preserved), query kept strict.
+ */
+function interlinkTargetKey(url: string): string {
+  const raw = String(url || '').trim()
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    const path = (parsed.pathname || '/').replace(/\/+$/, '') || '/'
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}${parsed.search}`
+  } catch {
+    let out = raw.split('#')[0]
+    if (out.length > 1) out = out.replace(/\/+$/, '')
+    return out
+  }
+}
+
+/**
+ * Keep only edges whose target URL the live-validity authority proved live.
+ * Pure: the caller supplies the verified live URLs, so this is directly
+ * unit-testable and never invents a replacement target.
+ */
+export function selectLiveInterlinkEdges(edges: InterlinkEdge[], liveUrls: string[]): InterlinkEdge[] {
+  const liveKeys = new Set((liveUrls || []).map((url) => interlinkTargetKey(url)).filter(Boolean))
+  if (!liveKeys.size) return []
+  return edges.filter((edge) => liveKeys.has(interlinkTargetKey(String(edge.targetUrl || ''))))
+}
+
+/**
+ * Persist ontology interlink edges for planner missions (idempotent upsert).
+ *
+ * FAIL-CLOSED TARGET GATE (P6): generated edges only persist when the exact
+ * target URL is proven live by the existing link-validity authority
+ * (`filterLiveInternalUrls`). Synthetic journey/cross-country/cluster targets
+ * that 404 today, and every edge produced while the verifier is failing,
+ * persist ZERO rows instead of becoming planner backlog. No replacement URL is
+ * ever invented; a verifier failure is returned as a truthful error.
+ */
 export async function persistPlannerInterlinks(
   plans: Array<{
     clusterId: string
@@ -282,8 +336,9 @@ export async function persistPlannerInterlinks(
     relatedTerms?: string[]
     plan: { contentType: ContentType }
   }>,
-): Promise<number> {
+): Promise<{ stored: number; errors: string[] }> {
   let stored = 0
+  const errors: string[] = []
   for (const p of plans) {
     if (!p.clusterId || !p.stage || !p.country) continue
     const edges = generateInterlinkPlan({
@@ -294,9 +349,11 @@ export async function persistPlannerInterlinks(
       clusterId: p.clusterId,
       relatedTerms: p.relatedTerms,
     })
-    stored += (await persistInterlinkPlan(edges)).stored
+    const persisted = await persistInterlinkPlan(edges)
+    stored += persisted.stored
+    if (persisted.error) errors.push(`${p.clusterId}: ${persisted.error}`)
   }
-  return stored
+  return { stored, errors }
 }
 
 /**
@@ -333,17 +390,40 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
       error: `marketplace_cta target is not a canonical Marketplace category URL: ${noncanonical}`.slice(0, 300),
     }
   }
+  // FAIL-CLOSED target liveness gate. Runs before the Supabase client exists
+  // and before any write: zero unverified edges persist, and a verifier
+  // throw/empty result is reported truthfully instead of silently storing a
+  // dead planner target. Never substitutes a replacement URL.
+  let verifiedEdges: InterlinkEdge[]
+  try {
+    const { filterLiveInternalUrls } = await import('@/lib/seoFactory/linkAudit')
+    const targetUrls = [...new Set(edges.map((e) => String(e.targetUrl || '').trim()).filter(Boolean))]
+    const liveUrls = await filterLiveInternalUrls(targetUrls)
+    verifiedEdges = selectLiveInterlinkEdges(edges, liveUrls || [])
+  } catch (e) {
+    return {
+      stored: 0,
+      error: `internal target liveness verification failed — persisted zero unverified edges: ${e instanceof Error ? e.message : 'verifier error'}`.slice(0, 300),
+    }
+  }
+  if (!verifiedEdges.length) {
+    return {
+      stored: 0,
+      error: `no live internal target verified for ${edges.length} generated edge(s) — persisted zero unverified edges`.slice(0, 300),
+    }
+  }
   try {
     const supabase = createSupabaseAdminClient()
     // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
     // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
-    // actor/timestamps — belongs to the ship loop and the compliance gate, so
-    // those columns are deliberately omitted from the payload. With
-    // `defaultToNull: false` PostgREST sends `Prefer: missing=default`: on
-    // INSERT the omitted columns take their DB defaults (status -> 'planned'),
-    // while on conflict only the keys present here are updated. No
-    // read-before-write race needed.
-    const rows = edges.map((e) => ({
+    // actor/timestamps, and the P6 verification truth (source_url,
+    // verification_state, verified_at, verification_evidence) — belongs to the
+    // ship loop, the live verifier and the compliance gate, so those columns
+    // are deliberately omitted from the payload. With `defaultToNull: false`
+    // PostgREST sends `Prefer: missing=default`: on INSERT the omitted columns
+    // take their DB defaults (status -> 'planned'), while on conflict only the
+    // keys present here are updated. No read-before-write race needed.
+    const rows = verifiedEdges.map((e) => ({
       source_slug: e.sourceSlug,
       target_url: e.targetUrl,
       target_host: e.targetHost,
@@ -364,23 +444,6 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
     return { stored: rows.length }
   } catch (e) {
     return { stored: 0, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
-  }
-}
-
-export async function markInterlinkApplied(sourceSlugs: string[], targetUrls: string[]): Promise<void> {
-  try {
-    const supabase = createSupabaseAdminClient()
-    for (const slug of sourceSlugs) {
-      for (const url of targetUrls) {
-        await supabase
-          .from('seo_interlinks')
-          .update({ status: 'applied', applied_at: new Date().toISOString() })
-          .eq('source_slug', slug)
-          .eq('target_url', url)
-      }
-    }
-  } catch {
-    // best-effort
   }
 }
 

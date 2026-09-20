@@ -45,6 +45,7 @@ import {
 } from '@/lib/githubContents'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
+import { stageEngineInterlinksForVerification } from './interlinkVerification'
 import { stripNoIndex } from './siteHealthFixes'
 import { publicPathFromRepoFile, sitemapPathForShippedFile, upsertStudioSitemapEntry } from './siteHealth'
 
@@ -850,8 +851,14 @@ export async function shipContent(opts: {
     }
 
     if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-    // Close the interlink loop: mark engine-planned edges that are now LIVE.
-    await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
+    // Stage (never "apply") engine-planned edges for live verification: record
+    // the real source canonicalUrl and leave the row planned. `applied` is only
+    // ever written after verifyLiveUrl + exact live-anchor proof.
+    await stageEngineInterlinksForVerification({
+      canonicalUrl: opts.plan.canonicalUrl,
+      primaryKeyword: opts.primaryKeyword,
+      body: shipContent_,
+    })
     return {
       mode: 'autodeploy',
       owner,
@@ -1002,8 +1009,12 @@ export async function shipContent(opts: {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
         if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-        // Closed loop: mark the engine's planned edges that are now live on main.
-        await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
+        // Stage (never "apply") the engine's planned edges for live verification.
+        await stageEngineInterlinksForVerification({
+          canonicalUrl: opts.plan.canonicalUrl,
+          primaryKeyword: opts.primaryKeyword,
+          body: shipContent_,
+        })
         return {
           mode: 'merge',
           owner,
@@ -1081,44 +1092,4 @@ export function parseRepoSlug(targetRepo: string): { owner: string; repo: string
     process.env.GITHUB_CONTENT_OWNER ?? process.env.GITHUB_REPO_OWNER ?? 'kylemwalkerpr-ship-it',
     targetRepo,
   )
-}
-
-/**
- * Close the interlink loop: once content is LIVE (merged/deployed), flip the
- * engine's planned edges for this mission to `applied` — but ONLY the edges
- * whose target URL actually made it into the shipped body. Edges the draft
- * never embedded stay `planned`, so the "applied" metric is honest.
- */
-async function recordAppliedEngineInterlinks(opts: {
-  primaryKeyword: string
-  body: string
-}): Promise<number> {
-  try {
-    const { bestCellForTerm, MIN_CELL_MATCH_SCORE, plannerClusterId } = await import('@/lib/seoEngine/planner')
-    const cell = bestCellForTerm(opts.primaryKeyword)
-    if (!cell || cell.score < MIN_CELL_MATCH_SCORE) return 0
-    const slug = plannerClusterId(cell.country, cell.stage, opts.primaryKeyword)
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    const supabase = createSupabaseAdminClient()
-    const { data } = await supabase
-      .from('seo_interlinks')
-      .select('target_url')
-      .eq('source_slug', slug)
-      .eq('status', 'planned')
-    const rows = (data as Array<{ target_url?: string }> | null) || []
-    let applied = 0
-    for (const r of rows) {
-      const url = String(r.target_url || '')
-      if (!url || !opts.body.includes(url)) continue
-      const { error } = await supabase
-        .from('seo_interlinks')
-        .update({ status: 'applied', applied_at: new Date().toISOString() })
-        .eq('source_slug', slug)
-        .eq('target_url', url)
-      if (!error) applied += 1
-    }
-    return applied
-  } catch {
-    return 0
-  }
 }
