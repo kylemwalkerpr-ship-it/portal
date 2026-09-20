@@ -543,3 +543,41 @@ This section supersedes the pre-deploy P3 acceptance entry. It records the exact
 - `CREATE is blocked without owner resolution` → **PASS** in production.
 - **P3 is closed.**
 - Broad net-new CREATE remains frozen until P13. P4 is the next parity phase; no P4 work is implied by this closure.
+
+
+## 2026-09-20 — P4 cannibalization safety implementation — PR #251 pre-merge
+
+P4 is now **IN_PROGRESS**. This entry records the implementation safety layer only; it does not claim that any priority collision has been consolidated or that the P4 phase gate is closed.
+
+### Candidate
+
+- Branch: `seo/p4-cannibalization-20260920`.
+- P4 implementation commits: `7c158ac0` (`feat(seo): enforce P4 cannibalization safety`) and `3f658f81` (`fix(seo): harden P4 intent identity boundaries`).
+- PR: #251, final code head before this documentation update `3f658f81dfbbc165afe159a8aa96470a71f66af3`.
+- Branch started from P3 production closure `5a4a773a0bf8531cd9ea737332320779f1912f3d`; current `main` is one unrelated Messenger knowledge-refresh commit ahead, with no overlap in P4-sensitive files.
+
+### Safety contract implemented
+
+- Destructive cannibalization execution is PR-only; direct/main publication and non-PR modes fail closed.
+- A complete evidence-backed decision is validated and inserted into the append-only `seo_cannibal_decisions` ledger before the first Git mutation. Pre-mutation persistence failure yields zero branch/file writes.
+- A review PR whose `pr_opened` ledger row cannot be persisted returns `needs_decision`; partial state is never reported as clean success.
+- `content_inventory` is explicitly synthetic/display-only and never masquerades as qualified GSC evidence or authorizes destructive action.
+- Exactly one authoritative P3 row must apply across the competitor set and the selected winner must equal that unique owner.
+- P4 identity matching is fail-closed: Canada spousal sponsorship; US F-1/CPT vs OPT vs STEM OPT as related but distinct; Australia subclass 485 vs US I-485; UK Student vs Graduate vs Skilled Worker vs dependant/dependent; and Express Entry checklist/general vs CRS/draw/category/STEM-category vs FSW are kept distinct unless their own ratified authority/evidence permits action. Unrecognized/mixed identities do not act as wildcard matches.
+- Exact qualified-query overlap, real metrics, per-loser actions, rollback file SHAs, and current-main file state are checked before mutation.
+- Admin/Resolve-All surfaces remain evidence-review only and cannot perform destructive sweeps. Zero-write outcomes are explicit skipped no-ops and do not create terminal compatibility history.
+
+### Local verification
+
+- Focused P4 + adjacent ownership regressions: **16 suites / 191 tests PASS**.
+- `npx tsc --noEmit --pretty false`: **PASS**.
+- Full Jest: **446 suites PASS / 2 skipped; 4,772 tests PASS / 4 skipped**.
+- `git diff --check`: **PASS**.
+- Earlier independent DeepSeek review found **no BLOCKER/HIGH**; its three MEDIUM residuals (no-op semantics, asymmetric/over-permissive identity handling, and stageable `node_modules` symlink) were subsequently repaired and regression-tested.
+- Local `npm run build` compiled successfully and completed its TypeScript phase, then stopped during Marketplace page-data collection because the local shell had neither `SUPABASE_SERVICE_ROLE_JWT` nor `SUPABASE_SERVICE_ROLE_KEY`. The failing guard is pre-existing Marketplace build-authority protection, not P4 code. Full build acceptance is therefore delegated to PR CI with repository secrets.
+
+### Phase boundary
+
+- No live redirect, noindex, canonical change, PR merge, migration application, deployment, or production consolidation was performed by this implementation pass.
+- The five priority families remain subject to current per-collision GSC query×page, HTTP/canonical/indexability, internal-link, backlink/UNKNOWN, authoritative P3 owner, exact repo/path/SHA, and rollback evidence before any actual consolidation.
+- P4 remains **IN_PROGRESS** until PR checks/review, merge, exact-main deployment, migration proof where applicable, and live collision evidence close the phase gate. Broad CREATE remains frozen until P13.
