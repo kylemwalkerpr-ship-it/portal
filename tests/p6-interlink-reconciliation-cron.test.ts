@@ -96,6 +96,7 @@ const PENDING_RECONCILE = {
   skippedYoung: 0,
   skippedCooldown: 0,
   skippedInvalidSource: 0,
+  skippedMissingJobIdentity: 3,
   verifiedLive: 1,
   // Deployment not observable yet for the other source — benign truth.
   verificationFailed: 1,
@@ -178,6 +179,7 @@ describe('phase interlinks — bounded durable reconciliation', () => {
     expect(status).toBe('success')
     expect(summary.interlinkApplied).toBe(1)
     expect(summary.interlinkVerificationPending).toBe(1)
+    expect(summary.interlinkSkippedMissingJobIdentity).toBe(3)
   })
 
   it('is a real partial error (never silent) when the verifier or DB writes fail', async () => {
@@ -219,7 +221,7 @@ describe('phase all — the daily run is the durable post-deploy opportunity', (
     expect(body.interlinkReconcile).toMatchObject({ applied: 1, verificationFailed: 1 })
     const [, status, summary, errors] = lastRecordCall()
     expect(status).toBe('success')
-    expect(summary.interlinkReconcile).toMatchObject({ applied: 1 })
+    expect(summary.interlinkReconcile).toMatchObject({ applied: 1, skippedMissingJobIdentity: 3 })
     expect(errors.join(' ')).not.toMatch(/interlink-reconcile/)
     expect((body.phaseErrors as string[]).join(' ')).not.toMatch(/interlink-reconcile/)
   })

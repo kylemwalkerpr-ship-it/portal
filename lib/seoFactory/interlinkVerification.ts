@@ -321,11 +321,21 @@ interface InterlinkDbRow {
   target_url?: string | null
   status?: string | null
   source_url?: string | null
+  source_job_id?: string | null
 }
 
 export interface StageEngineInterlinksInput {
   /** The plan's canonicalUrl — the ONLY source URL authority. */
   canonicalUrl: string
+  /**
+   * The EXACT content_jobs.id of the ship job that produced this draft.
+   * Recorded as `source_job_id` so the scheduled contracted reconciler can
+   * prove the official deployment lineage for that exact job before any
+   * automatic finalization. Optional for legacy/admin callers: when absent
+   * the row is staged without job identity and is therefore never
+   * auto-finalized (historical/backlog rows stay unresolved/manual).
+   */
+  jobId?: string | null
   /** Used (with the planner cell) to locate candidate planner rows only. */
   primaryKeyword: string
   /** The exact shipped draft body. */
@@ -359,6 +369,7 @@ export async function stageEngineInterlinksForVerification(
   input: StageEngineInterlinksInput,
 ): Promise<StageEngineInterlinksResult> {
   const sourceUrl = String(input.canonicalUrl || '').trim()
+  const sourceJobId = typeof input.jobId === 'string' ? input.jobId.trim() : ''
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return {
       staged: 0,
@@ -419,7 +430,14 @@ export async function stageEngineInterlinksForVerification(
         staged += 1
         continue
       }
-      const write = await writePlannedRowPatch(supabase, row, { source_url: sourceUrl })
+      // Stage the EXACT job identity alongside the source URL. The job id is
+      // never guessed from the slug or canonical; when it is absent the row is
+      // still staged for legacy compatibility but carries no job identity, so
+      // the scheduled reconciler refuses to auto-finalize it.
+      const write = await writePlannedRowPatch(supabase, row, {
+        source_url: sourceUrl,
+        ...(sourceJobId ? { source_job_id: sourceJobId } : {}),
+      })
       if (write.error) {
         failed += 1
         lastWriteError = write.error
@@ -461,6 +479,13 @@ export async function stageEngineInterlinksForVerification(
 export interface FinalizeStagedInterlinksInput {
   /** The verified live canonicalUrl (same identity `verifyLiveUrl` proved). */
   canonicalUrl: string
+  /**
+   * When present, finalization is job-bound: only rows staged by this exact
+   * content_jobs.id are eligible. The scheduled reconciler always passes the
+   * exact staged job id; legacy/admin callers without one keep the previous
+   * source-url-only behavior.
+   */
+  sourceJobId?: string | null
   /** Optional already-fetched live source HTML (one bounded refetch otherwise). */
   sourceHtml?: string
 }
@@ -528,6 +553,7 @@ export async function finalizeStagedInterlinksForLiveSource(
 ): Promise<FinalizeStagedInterlinksResult> {
   const rawSource = String(input.canonicalUrl || '').trim()
   const sourceUrl = normalizeInterlinkProofUrl(rawSource)
+  const sourceJobId = typeof input.sourceJobId === 'string' ? input.sourceJobId.trim() : ''
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return emptyFinalize(null, 'canonicalUrl must be an absolute http(s) URL')
   }
@@ -536,11 +562,16 @@ export async function finalizeStagedInterlinksForLiveSource(
     const sourceVariants = [
       ...new Set([rawSource, sourceUrl, rawSource.replace(/\/+$/, ''), sourceUrl.replace(/\/+$/, '')].filter(Boolean)),
     ]
-    const { data, error } = await supabase
+    let query = supabase
       .from('seo_interlinks')
       .select('id,target_url,status,source_url')
       .in('source_url', sourceVariants)
       .eq('status', 'planned')
+    // Job-bound finalization: never finalize a row staged by a different ship
+    // job for the same canonical (or a jobless legacy row) when an exact job
+    // identity is available.
+    if (sourceJobId) query = query.eq('source_job_id', sourceJobId)
+    const { data, error } = await query
     if (error) return emptyFinalize(sourceUrl, error.message.slice(0, 300))
     const rows = (data as InterlinkDbRow[] | null) || []
     if (!rows.length) return emptyFinalize(sourceUrl)
@@ -695,6 +726,9 @@ export async function finalizeStagedInterlinksForLiveSource(
           status: 'applied',
           applied_at: now,
           source_url: String(row.source_url || sourceUrl),
+          // Bind the applied proof to the exact ship job when one is known
+          // (the row was already filtered to it above).
+          ...(sourceJobId ? { source_job_id: sourceJobId } : {}),
           verification_state: 'present',
           verified_at: now,
           verification_evidence: {

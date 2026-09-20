@@ -15,14 +15,18 @@
  * run re-verifies at most a few already-staged sources:
  *
  *   · only rows that are `status = 'planned'` AND carry a durable
- *     `source_url` are even read — an applied row can never be touched;
+ *     `source_url` AND an exact `source_job_id` job identity are even
+ *     attempted — an applied row can never be touched, and a row without job
+ *     identity is never auto-finalized;
  *   · a source is only attempted after a minimum age (deployment lag) and
  *     outside the re-verification cooldown;
- *   · `verifyLiveUrl` is the ONLY gate — finalization runs for the EXACT
- *     staged `source_url` and only when that verification resolved ok=true;
+ *   · `verifyLiveUrl` is the ONLY gate — it is called with the EXACT staged
+ *     `(source_url, source_job_id)` pair so a contracted job resolves its
+ *     official deployment lineage (`reconcilePublicationDeployment`), and
+ *     finalization runs only when that verification resolved ok=true;
  *   · the finalizer itself re-proves the exact live anchor href + live target
- *     and still updates `status='planned'` rows only, so the pass is
- *     idempotent and can never downgrade an applied row;
+ *     and still updates `status='planned'` rows staged by that exact job only,
+ *     so the pass is idempotent and can never downgrade an applied row;
  *   · a verifier throw (unavailable) or a DB-write failure is reported as a
  *     real error; an ok=false verdict (deployment not observable yet) is
  *     benign pending-deployment truth, never an error.
@@ -54,6 +58,7 @@ export const INTERLINK_RECONCILE_SCAN_LIMIT = Number(
 export interface StagedInterlinkRow {
   id?: string | number
   sourceUrl?: string | null
+  sourceJobId?: string | null
   verifiedAt?: string | null
   updatedAt?: string | null
 }
@@ -61,6 +66,8 @@ export interface StagedInterlinkRow {
 export interface StagedInterlinkSource {
   /** Exact durable source identity: the plan canonicalUrl recorded at staging. */
   sourceUrl: string
+  /** Exact ship job identity (content_jobs.id) recorded at staging. */
+  sourceJobId: string
   rows: number
   lastVerifiedAt: string | null
   lastWrittenAt: string | null
@@ -72,12 +79,16 @@ export interface InterlinkReconciliationDeps {
   /** Default: the repository live-verification authority (`verifyLiveUrl`). */
   verify?: (input: LiveVerifyInput) => Promise<LiveVerifyResult>
   /** Default: the live-proof interlink finalizer. */
-  finalize?: (input: { canonicalUrl: string }) => Promise<FinalizeStagedInterlinksResult>
+  finalize?: (input: {
+    canonicalUrl: string
+    sourceJobId?: string | null
+  }) => Promise<FinalizeStagedInterlinksResult>
   now?: () => number
 }
 
 export interface InterlinkReconciliationDetail {
   sourceUrl: string
+  sourceJobId?: string
   verified: boolean
   applied: number
   error?: string
@@ -97,6 +108,14 @@ export interface InterlinkReconciliationSummary {
   skippedYoung: number
   skippedCooldown: number
   skippedInvalidSource: number
+  /**
+   * Staged planned rows with a durable source_url but no valid exact
+   * `source_job_id`. They are deliberately NOT auto-finalized: without exact
+   * job identity the official deployment lineage cannot be proved, and the
+   * scheduled seam must never fall back to legacy verification. Truthful
+   * unresolved count, not an error.
+   */
+  skippedMissingJobIdentity: number
   /** Sources whose live verification resolved ok=true. */
   verifiedLive: number
   /** Sources verified but not yet ok (deployment not observable) — benign. */
@@ -131,6 +150,22 @@ function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 /**
+ * Exact job identity only: a real UUID as stored in `seo_interlinks.source_job_id`
+ * (which references `content_jobs.id`). A slug, a truncated value or any other
+ * string is NOT job identity and must never be used as a verification subject.
+ */
+function normalizeJobId(value: unknown): string | null {
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null
+}
+
+/** Group key for exact (source_url, source_job_id) identity. */
+function sourceJobKey(sourceUrl: string, sourceJobId: string): string {
+  return `${sourceUrl}\u0000${sourceJobId}`
+}
+
+/**
  * A missing table/column means the additive P6 migration has not been applied
  * yet. That is a known, documented pre-migration state (the seam is inert and
  * reports it) — never a fake "nothing to do" and never a red daily run.
@@ -149,7 +184,7 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
   const supabase = createSupabaseAdminClient()
   const { data, error } = await supabase
     .from('seo_interlinks')
-    .select('id,source_url,status,verified_at,updated_at')
+    .select('id,source_url,source_job_id,status,verified_at,updated_at')
     .eq('status', 'planned')
     .not('source_url', 'is', null)
     .order('updated_at', { ascending: true })
@@ -159,6 +194,7 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
   return rows.map((row) => ({
     id: row.id as string | number | undefined,
     sourceUrl: (row.source_url as string | null) ?? null,
+    sourceJobId: (row.source_job_id as string | null) ?? null,
     verifiedAt: (row.verified_at as string | null) ?? null,
     updatedAt: (row.updated_at as string | null) ?? null,
   }))
@@ -194,6 +230,7 @@ export async function reconcileStagedInterlinks(
     skippedYoung: 0,
     skippedCooldown: 0,
     skippedInvalidSource: 0,
+    skippedMissingJobIdentity: 0,
     verifiedLive: 0,
     verificationFailed: 0,
     verificationUnavailable: 0,
@@ -225,7 +262,13 @@ export async function reconcileStagedInterlinks(
 
   const groups = new Map<
     string,
-    { rows: number; lastVerifiedAt: number | null; lastWrittenAt: number | null }
+    {
+      sourceUrl: string
+      sourceJobId: string
+      rows: number
+      lastVerifiedAt: number | null
+      lastWrittenAt: number | null
+    }
   >()
   for (const row of rows) {
     const sourceUrl = String(row.sourceUrl || '').trim()
@@ -233,7 +276,23 @@ export async function reconcileStagedInterlinks(
       summary.skippedInvalidSource += 1
       continue
     }
-    const group = groups.get(sourceUrl) || { rows: 0, lastVerifiedAt: null, lastWrittenAt: null }
+    // Exact job identity is required for scheduled auto-finalization. Without
+    // it the official deployment lineage cannot be proved for the exact job,
+    // so the row is skipped as unresolved — never verified/finalized through
+    // the legacy path.
+    const sourceJobId = normalizeJobId(row.sourceJobId)
+    if (!sourceJobId) {
+      summary.skippedMissingJobIdentity += 1
+      continue
+    }
+    const key = sourceJobKey(sourceUrl, sourceJobId)
+    const group = groups.get(key) || {
+      sourceUrl,
+      sourceJobId,
+      rows: 0,
+      lastVerifiedAt: null,
+      lastWrittenAt: null,
+    }
     group.rows += 1
     const verifiedAt = parseTime(row.verifiedAt)
     if (verifiedAt != null && (group.lastVerifiedAt == null || verifiedAt > group.lastVerifiedAt)) {
@@ -243,12 +302,12 @@ export async function reconcileStagedInterlinks(
     if (writtenAt != null && (group.lastWrittenAt == null || writtenAt > group.lastWrittenAt)) {
       group.lastWrittenAt = writtenAt
     }
-    groups.set(sourceUrl, group)
+    groups.set(key, group)
   }
   summary.stagedSources = groups.size
 
   const eligible: StagedInterlinkSource[] = []
-  for (const [sourceUrl, group] of groups) {
+  for (const group of groups.values()) {
     if (group.lastWrittenAt != null && now - group.lastWrittenAt < minAgeMs) {
       summary.skippedYoung += 1
       continue
@@ -258,7 +317,8 @@ export async function reconcileStagedInterlinks(
       continue
     }
     eligible.push({
-      sourceUrl,
+      sourceUrl: group.sourceUrl,
+      sourceJobId: group.sourceJobId,
       rows: group.rows,
       lastVerifiedAt: group.lastVerifiedAt != null ? new Date(group.lastVerifiedAt).toISOString() : null,
       lastWrittenAt: group.lastWrittenAt != null ? new Date(group.lastWrittenAt).toISOString() : null,
@@ -267,7 +327,9 @@ export async function reconcileStagedInterlinks(
   // Deterministic stalest-first order so repeated runs make progress.
   eligible.sort((a, b) => {
     const byWrite = String(a.lastWrittenAt || '').localeCompare(String(b.lastWrittenAt || ''))
-    return byWrite !== 0 ? byWrite : a.sourceUrl.localeCompare(b.sourceUrl)
+    if (byWrite !== 0) return byWrite
+    const byUrl = a.sourceUrl.localeCompare(b.sourceUrl)
+    return byUrl !== 0 ? byUrl : a.sourceJobId.localeCompare(b.sourceJobId)
   })
   summary.eligibleSources = eligible.length
 
@@ -285,31 +347,54 @@ export async function reconcileStagedInterlinks(
   for (const source of batch) {
     let verification: LiveVerifyResult
     try {
-      verification = await verify({ canonicalUrl: source.sourceUrl })
+      // The exact job id is mandatory here: verifyLiveUrl uses it to resolve
+      // the official publication deployment for that ship job. Calling with
+      // the canonicalUrl alone would silently land on the legacy/uncontracted
+      // path, which must never drive scheduled auto-finalization.
+      verification = await verify({ canonicalUrl: source.sourceUrl, jobId: source.sourceJobId })
     } catch (error) {
       summary.verificationUnavailable += 1
       summary.errors.push(
-        `live verification unavailable for ${source.sourceUrl}: ${errorMessage(error).slice(0, 200)}`,
+        `live verification unavailable for ${source.sourceUrl} (job ${source.sourceJobId}): ${errorMessage(error).slice(0, 200)}`,
       )
-      summary.details.push({ sourceUrl: source.sourceUrl, verified: false, applied: 0, error: 'verifier unavailable' })
+      summary.details.push({
+        sourceUrl: source.sourceUrl,
+        sourceJobId: source.sourceJobId,
+        verified: false,
+        applied: 0,
+        error: 'verifier unavailable',
+      })
       continue
     }
     // Fail closed: only an explicit ok=true verdict may run finalization.
     if (!verification?.ok) {
       summary.verificationFailed += 1
-      summary.details.push({ sourceUrl: source.sourceUrl, verified: false, applied: 0 })
+      summary.details.push({
+        sourceUrl: source.sourceUrl,
+        sourceJobId: source.sourceJobId,
+        verified: false,
+        applied: 0,
+      })
       continue
     }
     summary.verifiedLive += 1
 
     let outcome: FinalizeStagedInterlinksResult
     try {
-      outcome = await finalize({ canonicalUrl: source.sourceUrl })
+      // Job-bound finalization: only rows staged by this exact ship job are
+      // eligible for the applied transition.
+      outcome = await finalize({ canonicalUrl: source.sourceUrl, sourceJobId: source.sourceJobId })
     } catch (error) {
       summary.errors.push(
-        `interlink finalization failed for ${source.sourceUrl}: ${errorMessage(error).slice(0, 200)}`,
+        `interlink finalization failed for ${source.sourceUrl} (job ${source.sourceJobId}): ${errorMessage(error).slice(0, 200)}`,
       )
-      summary.details.push({ sourceUrl: source.sourceUrl, verified: true, applied: 0, error: 'finalization threw' })
+      summary.details.push({
+        sourceUrl: source.sourceUrl,
+        sourceJobId: source.sourceJobId,
+        verified: true,
+        applied: 0,
+        error: 'finalization threw',
+      })
       continue
     }
     summary.finalized += 1
@@ -321,10 +406,13 @@ export async function reconcileStagedInterlinks(
       (outcome?.sourceNotLive || 0)
     summary.dbErrors += outcome?.dbErrors || 0
     if (outcome?.error) {
-      summary.errors.push(`interlink finalization error for ${source.sourceUrl}: ${outcome.error}`)
+      summary.errors.push(
+        `interlink finalization error for ${source.sourceUrl} (job ${source.sourceJobId}): ${outcome.error}`,
+      )
     }
     summary.details.push({
       sourceUrl: source.sourceUrl,
+      sourceJobId: source.sourceJobId,
       verified: true,
       applied: outcome?.applied || 0,
       ...(outcome?.error ? { error: outcome.error } : {}),
@@ -334,4 +422,3 @@ export async function reconcileStagedInterlinks(
   summary.ok = summary.errors.length === 0
   return summary
 }
-

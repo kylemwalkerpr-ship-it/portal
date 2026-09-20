@@ -861,10 +861,14 @@ export async function shipContent(opts: {
     // proof.
     await stageEngineInterlinksForVerification({
       canonicalUrl: opts.plan.canonicalUrl,
+      // Exact ship job identity: the scheduled reconciler can only prove the
+      // official deployment lineage (and therefore auto-finalize) for a staged
+      // row that carries this exact content_jobs.id.
+      jobId: opts.jobId || null,
       primaryKeyword: opts.primaryKeyword,
       body: shipContent_,
     })
-    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
+    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
     return {
       mode: 'autodeploy',
       owner,
@@ -1019,10 +1023,11 @@ export async function shipContent(opts: {
         // verifier can finalize them, otherwise valid links stay planned.
         await stageEngineInterlinksForVerification({
           canonicalUrl: opts.plan.canonicalUrl,
+          jobId: opts.jobId || null,
           primaryKeyword: opts.primaryKeyword,
           body: shipContent_,
         })
-        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
+        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
         return {
           mode: 'merge',
           owner,

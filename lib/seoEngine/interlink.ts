@@ -423,10 +423,11 @@ export async function persistInterlinkPlan(
     const supabase = createSupabaseAdminClient()
     // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
     // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
-    // actor/timestamps, and the P6 verification truth (source_url,
-    // verification_state, verified_at, verification_evidence) — belongs to the
-    // ship loop, the live verifier and the compliance gate, so those columns
-    // are deliberately omitted from the payload. With `defaultToNull: false`
+    // actor/timestamps, and the P6 verification/job truth (source_url,
+    // source_job_id, verification_state, verified_at, verification_evidence)
+    // — belongs to the ship loop, the live verifier and the compliance gate,
+    // so those columns are deliberately omitted from the payload. With
+    // `defaultToNull: false`
     // PostgREST sends `Prefer: missing=default`: on INSERT the omitted columns
     // take their DB defaults (status -> 'planned'), while on conflict only the
     // keys present here are updated. No read-before-write race needed.

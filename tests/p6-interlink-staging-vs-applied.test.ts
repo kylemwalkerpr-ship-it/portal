@@ -20,6 +20,7 @@ import { createP6FakeDb, type P6FakeRow } from './helpers/p6InterlinkFakeDb'
 const CANONICAL = 'https://market.yousafeconsultancy.com/articles/f1-checklist/'
 const LIVE_TARGET = 'https://legal.yousafeconsultancy.com/us/student-visas/'
 const DEAD_TARGET = 'https://legal.yousafeconsultancy.com/us/made-up-journey/'
+const SHIP_JOB = '33333333-3333-4333-8333-333333333333'
 
 const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
 
@@ -31,6 +32,7 @@ function row(overrides: Partial<P6FakeRow> = {}): P6FakeRow {
     status: 'planned',
     applied_at: null,
     source_url: null,
+    source_job_id: null,
     verification_state: null,
     verified_at: null,
     verification_evidence: null,
@@ -129,6 +131,49 @@ describe('B) staging never happens without structural presence', () => {
 
     expect(result.staged).toBe(0)
     expect(db.updates).toHaveLength(0)
+  })
+})
+
+describe('E) exact job identity is staged with the source URL', () => {
+  it('writes source_job_id from the exact ship jobId alongside source_url, still planned', async () => {
+    const db = installDb([row()])
+    const body = `See the [US student visa guide](${LIVE_TARGET}).`
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(db.updates).toHaveLength(1)
+    const { patch, filters } = db.updates[0]
+    expect(patch).toEqual({ source_url: CANONICAL, source_job_id: SHIP_JOB })
+    expect(patch).not.toHaveProperty('status')
+    expect(patch).not.toHaveProperty('applied_at')
+    expect(patch).not.toHaveProperty('verification_state')
+    expect(filters).toEqual([
+      { op: 'eq', column: 'id', value: 'row-1' },
+      { op: 'eq', column: 'status', value: 'planned' },
+    ])
+    expect(db.rows[0].status).toBe('planned')
+    expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+  })
+
+  it('legacy staging without a jobId records only source_url — never a guessed job', async () => {
+    const db = installDb([row()])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: null,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(db.updates[0].patch).toEqual({ source_url: CANONICAL })
+    expect(db.rows[0].source_job_id).toBeNull()
   })
 })
 

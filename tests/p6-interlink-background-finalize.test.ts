@@ -135,6 +135,29 @@ describe('background live verification — interlink finalization', () => {
     expect(mockFinalize).not.toHaveBeenCalled()
   })
 
+  it('binds the ship-time finalization to the exact ship job when one is known', async () => {
+    const shipJob = '66666666-6666-4666-8666-666666666666'
+
+    await runBackgroundLiveVerification(
+      { canonicalUrl: EXACT_CANONICAL, jobId: shipJob },
+      { verify: okVerify },
+    )
+
+    // The exact job id travels into verification (official deployment
+    // lineage) and into the finalizer (only that job's staged rows may apply).
+    expect(okVerify).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL, jobId: shipJob })
+    expect(mockFinalize).toHaveBeenCalledWith({
+      canonicalUrl: EXACT_CANONICAL,
+      sourceJobId: shipJob,
+    })
+  })
+
+  it('legacy callers without a job id keep the source-url-only finalization', async () => {
+    await runBackgroundLiveVerification({ canonicalUrl: EXACT_CANONICAL }, { verify: okVerify })
+
+    expect(mockFinalize).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL })
+  })
+
   it('verifyLiveInBackground is the ship entry point into the background runner', () => {
     // The real verifyLiveUrl cannot be injected through the public ship entry
     // point, so the delegation itself is pinned at source level (and the ship

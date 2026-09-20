@@ -119,6 +119,7 @@ const REGISTRY_KEYWORD = 'f-1 document checklist'
 const REGISTRY_OWNER_URL =
   'https://legal.yousafeconsultancy.com/us/student-visas/f1-document-checklist-2026/'
 const REGISTRY_REGION = 'US'
+const SHIP_JOB = '77777777-7777-4777-8777-777777777777'
 
 const AUDIT = { score: 100, humanScore: 100, blockers: [], grade: 'A' } as never
 
@@ -174,6 +175,7 @@ describe('shipContent — staging completes BEFORE background live verification'
     const plan = await registryPlan()
 
     const result = await shipContent({
+      jobId: SHIP_JOB,
       mode: 'autodeploy',
       humanApproved: true,
       plan,
@@ -189,10 +191,10 @@ describe('shipContent — staging completes BEFORE background live verification'
     expect(result.status).toBe('deployed')
     expect(mockGitCalls).toContain('putRepoFile')
     expect(stageMock()).toHaveBeenCalledWith(
-      expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL }),
+      expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL, jobId: SHIP_JOB }),
     )
     expect(verifyMock()).toHaveBeenCalledWith(
-      expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL }),
+      expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL, jobId: SHIP_JOB }),
     )
     // Deterministic invariant: staging started AND finished before verification.
     expect(mockShipEvents).toEqual([

@@ -10,7 +10,7 @@
 -- could not distinguish executed authority from a planner guess.
 --
 -- This migration is ADDITIVE and IDEMPOTENT (re-runnable):
---   · adds the four nullable verification-truth columns,
+--   · adds the five nullable verification-truth/job-identity columns,
 --   · constrains `verification_state` to the closed vocabulary,
 --   · constrains `status = 'applied'` to require the full proof contract,
 --   · adds the two read indexes the verification/report queries need,
@@ -23,16 +23,27 @@
 -- by the current estate without touching a single existing row. Any later
 -- backlog reconciliation/retarget is explicitly out of scope for P6
 -- foundation and must not be smuggled into this file.
+--
+-- `source_job_id` (nullable uuid) exists so the scheduled contracted
+-- reconciler can prove the OFFICIAL deployment lineage for the exact ship job
+-- that staged an edge (verifyLiveUrl -> reconcilePublicationDeployment) before
+-- any automatic finalization. Staged rows without it are never auto-finalized
+-- and stay unresolved/manual. The applied proof constraint deliberately does
+-- NOT require it: the minimum applied proof remains source_url + present +
+-- verified_at + evidence + applied_at.
 -- ============================================================================
 
 alter table public.seo_interlinks
   add column if not exists source_url text null,
+  add column if not exists source_job_id uuid null,
   add column if not exists verification_state text null,
   add column if not exists verified_at timestamptz null,
   add column if not exists verification_evidence jsonb null;
 
 comment on column public.seo_interlinks.source_url is
   'Durable live source identity (the shipped plan canonicalUrl) that staged this edge for verification. Planner slugs are locators, never source URL authority.';
+comment on column public.seo_interlinks.source_job_id is
+  'Exact content_jobs.id (ship job) that staged this edge. Scheduled automatic finalization requires this exact job id so verifyLiveUrl proves the official deployment lineage (reconcilePublicationDeployment) for that job; rows without it are never auto-finalized and remain unresolved/manual. Nullable on purpose — legacy/backlog and non-ship rows are not forced to invent a job identity.';
 comment on column public.seo_interlinks.verification_state is
   'Closed verification vocabulary: present | absent | source_not_live | target_not_live | unverifiable. Null until a verifier has actually run.';
 comment on column public.seo_interlinks.verified_at is

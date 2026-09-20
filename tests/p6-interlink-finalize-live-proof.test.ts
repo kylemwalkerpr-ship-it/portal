@@ -356,6 +356,53 @@ describe('E) idempotency and no downgrade', () => {
   })
 })
 
+describe('E2) job-bound finalization (P6 supervisor follow-up)', () => {
+  const SHIP_JOB = '44444444-4444-4444-8444-444444444444'
+  const OTHER_JOB = '55555555-5555-4555-8555-555555555555'
+
+  it('only considers planned rows staged by the exact ship job and binds the applied proof to it', async () => {
+    const db = installDb([
+      row({ id: 'mine', source_job_id: SHIP_JOB }),
+      // A different job's row for the same canonical must never be touched by
+      // this job-bound finalization.
+      row({ id: 'other', source_job_id: OTHER_JOB }),
+      // A jobless legacy row for the same canonical must never be touched by
+      // scheduled job-bound finalization.
+      row({ id: 'legacy', source_job_id: null }),
+    ])
+
+    const result = await finalizeStagedInterlinksForLiveSource({
+      canonicalUrl: SOURCE,
+      sourceJobId: SHIP_JOB,
+    })
+
+    expect(result.applied).toBe(1)
+    expect(result.checked).toBe(1)
+    expect(db.selects[0].filters).toContainEqual({
+      op: 'eq',
+      column: 'source_job_id',
+      value: SHIP_JOB,
+    })
+    expect(db.updates).toHaveLength(1)
+    expect(db.updates[0].patch.status).toBe('applied')
+    expect(db.updates[0].patch.source_job_id).toBe(SHIP_JOB)
+    const byId = new Map(db.rows.map((r) => [r.id, r]))
+    expect(byId.get('mine')!.status).toBe('applied')
+    expect(byId.get('other')!.status).toBe('planned')
+    expect(byId.get('legacy')!.status).toBe('planned')
+  })
+
+  it('legacy/admin finalization without a job id keeps the source-url-only behavior', async () => {
+    const db = installDb([row({ source_job_id: null })])
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(1)
+    expect(db.selects[0].filters.some((filter) => filter.column === 'source_job_id')).toBe(false)
+    expect(db.updates[0].patch).not.toHaveProperty('source_job_id')
+  })
+})
+
 describe('F) verifier failure fails closed', () => {
   it('records unverifiable and never applies when target verification throws', async () => {
     const db = installDb([row()])

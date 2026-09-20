@@ -172,6 +172,7 @@ export async function POST(req: NextRequest) {
         interlinkUnavailableReason: interlinkReconcile.unavailableReason,
         interlinkScannedRows: interlinkReconcile.scannedRows,
         interlinkStagedSources: interlinkReconcile.stagedSources,
+        interlinkSkippedMissingJobIdentity: interlinkReconcile.skippedMissingJobIdentity,
         interlinkEligibleSources: interlinkReconcile.eligibleSources,
         interlinkVerifiedLive: interlinkReconcile.verifiedLive,
         interlinkVerificationPending: interlinkReconcile.verificationFailed,
@@ -325,6 +326,7 @@ export async function POST(req: NextRequest) {
         interlinkReconcileSummary = {
           scannedRows: reconcile.scannedRows,
           stagedSources: reconcile.stagedSources,
+          skippedMissingJobIdentity: reconcile.skippedMissingJobIdentity,
           eligibleSources: reconcile.eligibleSources,
           unavailable: reconcile.unavailable,
           unavailableReason: reconcile.unavailableReason,

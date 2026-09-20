@@ -176,6 +176,7 @@ describe('D) replanning preserves lifecycle and verification truth', () => {
         status: 'applied',
         applied_at: '2026-09-01T00:00:00.000Z',
         source_url: 'https://legal.yousafeconsultancy.com/us/student-visas/',
+        source_job_id: '88888888-8888-4888-8888-888888888888',
         verification_state: 'present',
         verified_at: '2026-09-01T00:00:00.000Z',
         verification_evidence: { proof: 'live_exact_href', target: LIVE },
@@ -195,6 +196,7 @@ describe('D) replanning preserves lifecycle and verification truth', () => {
       'status',
       'applied_at',
       'source_url',
+      'source_job_id',
       'verification_state',
       'verified_at',
       'verification_evidence',
@@ -209,6 +211,8 @@ describe('D) replanning preserves lifecycle and verification truth', () => {
     expect(stored.status).toBe('applied')
     expect(stored.applied_at).toBe('2026-09-01T00:00:00.000Z')
     expect(stored.source_url).toBe('https://legal.yousafeconsultancy.com/us/student-visas/')
+    // Exact job identity survives replanning like every other lifecycle column.
+    expect(stored.source_job_id).toBe('88888888-8888-4888-8888-888888888888')
     expect(stored.verification_state).toBe('present')
     expect(stored.verification_evidence).toMatchObject({ proof: 'live_exact_href' })
     expect(stored.anchor_text).toBe('Regenerated anchor')

@@ -66,6 +66,7 @@ describe('A) migration self-registration and order', () => {
 describe('B) verification-truth columns are additive', () => {
   it.each([
     ['source_url', 'text'],
+    ['source_job_id', 'uuid'],
     ['verification_state', 'text'],
     ['verified_at', 'timestamptz'],
     ['verification_evidence', 'jsonb'],
@@ -73,6 +74,15 @@ describe('B) verification-truth columns are additive', () => {
     expect(sql().toLowerCase()).toContain(
       `add column if not exists ${column} ${type} null`,
     )
+  })
+
+  it('adds nullable source_job_id as the exact ship-job identity, documented and unbackfilled', () => {
+    const lower = sql().toLowerCase()
+    expect(lower).toContain('add column if not exists source_job_id uuid null')
+    expect(lower).toContain('comment on column public.seo_interlinks.source_job_id is')
+    // Exact job identity is content_jobs.id — never a slug or a guessed job.
+    expect(lower).toContain('content_jobs.id')
+    expect(lower).toContain('never auto-finalized')
   })
 
   it('never rewrites, deletes or backfills existing rows', () => {
@@ -118,6 +128,21 @@ describe('D) applied requires the full proof contract, validated', () => {
     const body = contract()
     expect(body).not.toContain('not valid')
     expect(body).toMatch(/from pg_constraint where conname = 'seo_interlinks_applied_requires_verification'/)
+  })
+
+  it('does not require source_job_id for applied — the original minimum proof stands', () => {
+    const body = contract()
+    const start = body.indexOf('seo_interlinks_applied_requires_verification')
+    const appliedBlock = body.slice(start, body.indexOf('create index', start))
+    // The scheduled reconciler is job-bound in code, but the applied DB
+    // contract intentionally stays source_url + present + verified_at +
+    // evidence + applied_at so legacy/manual applied rows remain valid.
+    expect(appliedBlock).not.toContain('source_job_id')
+    expect(appliedBlock).toContain('source_url is not null')
+    expect(appliedBlock).toContain("verification_state = 'present'")
+    expect(appliedBlock).toContain('verified_at is not null')
+    expect(appliedBlock).toContain('verification_evidence is not null')
+    expect(appliedBlock).toContain('applied_at is not null')
   })
 })
 

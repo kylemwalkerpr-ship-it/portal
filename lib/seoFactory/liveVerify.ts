@@ -96,7 +96,7 @@ export async function verifyLiveUrl(input:LiveVerifyInput):Promise<LiveVerifyRes
 
 export interface BackgroundLiveVerifyDeps {
   verify:(input:LiveVerifyInput)=>Promise<LiveVerifyResult>
-  finalize:(input:{canonicalUrl:string})=>Promise<FinalizeStagedInterlinksResult>
+  finalize:(input:{canonicalUrl:string;sourceJobId?:string|null})=>Promise<FinalizeStagedInterlinksResult>
 }
 
 /**
@@ -130,8 +130,12 @@ export async function runBackgroundLiveVerification(
   if(!result?.ok)return
   const canonicalUrl=String(input?.canonicalUrl||'').trim()
   if(!canonicalUrl)return
+  // When the ship knows the exact content_jobs.id, finalization is job-bound:
+  // only rows staged by that exact job may apply. Legacy/admin callers without
+  // a job id keep the source-url-only behavior.
+  const sourceJobId=String(input?.jobId||'').trim()
   try{
-    const summary=await finalize({canonicalUrl})
+    const summary=await finalize({canonicalUrl,...(sourceJobId?{sourceJobId}:{})})
     if(summary?.applied>0||summary?.error){
       console.warn('[liveVerify] interlink finalization',{
         sourceUrl:summary?.sourceUrl||canonicalUrl,

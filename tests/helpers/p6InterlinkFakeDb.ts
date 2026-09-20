@@ -43,6 +43,7 @@ export const SEO_INTERLINK_DEFAULTS: P6FakeRow = {
   status: 'planned',
   applied_at: null,
   source_url: null,
+  source_job_id: null,
   verification_state: null,
   verified_at: null,
   verification_evidence: null,
