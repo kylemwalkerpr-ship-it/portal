@@ -66,7 +66,7 @@ Finalization runs only when `verifyLiveUrl(input).ok === true` for that exact `c
 
 Repository audit: every `seo_interlinks` write is server/admin (`lib/seoEngine/interlink.ts`, `lib/seoFactory/interlinkVerification.ts`); the browser only subscribes read-only via `subscribeToTables` (pinned by `tests/p1-base-table-least-privilege.test.ts`). The migration therefore replaces the open `FOR ALL` policy with a `service_role` full-access policy plus an explicit `anon, authenticated` SELECT policy for the existing Realtime read contract, revokes all privileges from `public, anon, authenticated`, grants SELECT back to `anon, authenticated`, and grants all to `service_role`.
 
-## Tests authored (run by CI)
+## Tests authored (NOT yet run — Jest/tsc unavailable locally, and PR CI has not been run for P6)
 
 - `tests/p6-interlink-verification-db-contract.test.ts` — migration/order/contract/least-privilege SQL.
 - `tests/p6-interlink-exact-href-proof.test.ts` — exact anchor proof; plain text/script/JSON rejected.
@@ -90,6 +90,12 @@ Jest/tsc are unavailable in this worktree (`node_modules` resolves to an empty d
 - exhaustive grep: no `markInterlinkApplied`, no `recordAppliedEngineInterlinks`, and the only `status: 'applied'` writer is `lib/seoFactory/interlinkVerification.ts`;
 - `git diff --check` clean.
 
+**Supervisor-review repair (autosquash `fixup!` commits — NOT amended in place).** Review rejected the first foundation commit `e9bfe607` on one material blocker: ordinary successful shipping could leave valid staged links planned indefinitely, because finalization was reachable only from the admin `verify-published` path and both ship success paths launched `verifyLiveInBackground()` before awaiting staging. Repaired in `c7f2b43d` (new `runBackgroundLiveVerification()` finalizes for the exact `input.canonicalUrl` only when the `verifyLiveUrl` it just ran resolved `ok === true`, isolated from content-verification failure; both ship success paths now await staging before launching verification; new `tests/p6-interlink-background-finalize.test.ts` and `tests/p6-ship-interlink-lifecycle-order.test.ts`) and `eb2b1133` (test-lifecycle hardening so the background-finalize negative cases cannot pass vacuously). Repair evidence: temporary no-dependency harness over the real `lib/seoFactory/liveVerify.ts` **14 PASS / 0 FAIL**, including a RED control showing pre-repair fire-and-forget semantics finalize nothing; git-proven ordering against the rejected tree (`e9bfe607` verify 853/1011 before stage 857/1013; repaired tree stage 862/1020 before verify 867/1025).
+
+**Branch shape (truthful).** This branch is **three commits above base** `e44fa01944423babe906c45f36c06bf4b6a8b4d4`: `e9bfe607` (foundation) → `c7f2b43d` (supervisor-review repair) → `eb2b1133` (test-lifecycle hardening), plus a docs-only correction commit that removes stale "same commit / amended in place / proven by PR CI" claims. The intended in-place amend of `e9bfe607` was denied by the runtime's Git broker (no destructive-git authority; no bypass attempted), so **nothing here is amended in place and the branch is not a single commit today**. Collapsing later needs no further local history rewrite: `git rebase -i --autosquash e44fa019` under destructive-git authority, or a normal **squash-merge** landing one commit on `main`.
+
+**CI status (truthful).** Jest and `tsc` are unproven **everywhere**: they could not run locally (`node_modules` resolves to an empty directory; no install attempted, no manifest change) and **PR CI has not yet been run for P6** — the branch has not been pushed and no PR exists. PR CI remains required and unexecuted; nothing at this checkpoint is claimed proven by CI.
+
 ## Explicitly not done (frozen)
 
 - No migration applied, no Supabase/production mutation, no `seo_interlinks` row changed.
@@ -101,5 +107,5 @@ Jest/tsc are unavailable in this worktree (`node_modules` resolves to an empty d
 
 1. Apply the migration through the official workflow and prove the ledger entry (supervisor).
 2. Authorized read-only disposition run against production; then the bounded reconciliation/rejection/retarget decision for the 1,643 404 and 183 legacy auth-wall rows (separate authorization; **not** part of this foundation commit).
-3. Verify staged rows against live sources (the finalize path) to move verified rows from `planned` to proven `applied`.
+3. Move rows from `planned` to proven `applied`: after a ship the background path finalizes automatically (`verifyLiveInBackground` → `runBackgroundLiveVerification`), and the admin `verify-published` path remains available; backlog rows with no ship/verify event still need an authorized verification run.
 4. Re-evaluate the ≥80% gate only after the approved-useful denominator is defined from real live-target evidence.
