@@ -40,8 +40,10 @@
       "Persisted-window evidence only: it proves the classification of the persisted 2026-06-22 → 2026-09-19 rows, not live Google index state.",
       "Off-mission rows stay observable in raw GSC reporting/measurement surfaces; this contract only governs action surfaces.",
       "Per-URL off-mission clicks and per-URL qualified rows/clicks are UNKNOWN (null) for all eight entries; per-URL off-mission rows are UNKNOWN for Cornell, Oregon and Howard; Howard's exact off-mission impressions are UNKNOWN (audit display range 20–29 only).",
-      "Live observations (HTTP 200, not in sitemap, robots allowed) are date-level 2026-09-20 read-only checks: the exact capture time was not recorded, so liveObservations.observedAt carries the date plus that caveat rather than a fabricated timestamp.",
-      "Utah's ownership registry row (57) is the only cohort URL with an identified ownership row; the other seven report null because no ownership row was identified, which is not the same as proving none exists."
+      "Live observations (HTTP 200, not in sitemap) are date-level 2026-09-20 read-only checks: the exact capture time was not recorded, so liveObservations.observedAt carries the date plus that caveat rather than a fabricated timestamp.",
+      "liveObservations.robotsState records robots.txt crawl permission ONLY (from a robots.txt check). The P5 audit did NOT inspect HTML meta robots tags, so it must never be read as an index/follow observation for any cohort URL.",
+      "Utah's ownership registry row (57) is the only cohort URL with an identified ownership row; the other seven report null because no ownership row was identified, which is not the same as proving none exists.",
+      "Ownership registry row 57 records the Utah Legal housing guide as live noindex/follow while the P5 audit only established robots.txt crawl allowance for it; HTML meta robots state was not measured in P5, so this registry cannot contradict row 57. The pre-repair noindex mutation gap this implied was therefore a potential live mutation risk, and it is closed at the mutation boundary by commit 7807aafd."
     ]
   },
   "entries": [
@@ -64,7 +66,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -99,7 +101,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -134,7 +136,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -169,7 +171,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -204,7 +206,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": 57,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -218,7 +220,7 @@
       },
       "unknownReason": "Per-URL off-mission clicks, per-URL qualified rows/clicks and the exact live-observation time were not published; those fields stay UNKNOWN (null), never 0.",
       "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
-      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone. Ownership registry row 57 records the Legal housing guide as live noindex/follow; the P5 audit only established robots.txt crawl allowance for this URL and did not independently inspect HTML meta robots state."
     },
     {
       "url": "https://legal.yousafeconsultancy.com/guide/arizona-state-university-student-housing/",
@@ -239,7 +241,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -274,7 +276,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },
@@ -309,7 +311,7 @@
       "liveObservations": {
         "httpStatus": 200,
         "inSitemap": false,
-        "robotsState": "allowed",
+        "robotsState": "robots.txt allowed (HTML meta robots state not observed in P5 audit)",
         "ownershipRegistryRowId": null,
         "observedAt": "2026-09-20 (date-level; exact capture time not recorded)"
       },

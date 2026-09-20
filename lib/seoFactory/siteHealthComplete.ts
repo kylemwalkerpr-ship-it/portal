@@ -16,6 +16,7 @@ import { verifyLiveUrl, type LiveVerifyResult } from './liveVerify'
 import type {
   SiteHealthScope,
   SiteHealthPage,
+  OrphanFixOutcome,
 } from './siteHealth'
 import {
   CONFIGS,
@@ -76,6 +77,8 @@ export interface FullSiteHealthReport {
 
 export interface FullRepairResult {
   orphansFixed: number
+  /** Orphans the P5 disposition contract refused to repair (protected skips). */
+  orphansProtectedSkipped: number
   noindexFixed: number
   /** Noindex candidates the P5 disposition contract refused to mutate. */
   noindexProtectedSkipped: number
@@ -92,6 +95,31 @@ export interface NoIndexFixOutcome {
   url: string
   title: string
   words: number
+}
+
+/**
+ * Build history entries for ACTUAL orphan fix outcomes only.
+ *
+ * `repairSiteHealthChunked()` returns `fixedOrphans` exclusively for orphans
+ * whose hub rewrite really happened; P5-protected orphans are excluded there
+ * (and reported in `protectedOrphansSkipped`), as are orphans whose repo had
+ * no usable hub. Logging from the candidate list (as this orchestrator used
+ * to) could therefore report a protected or unrepaired orphan as "Repaired
+ * orphan page", so the log is now derived from the returned outcomes.
+ */
+export function buildOrphanFixLogEntries(
+  fixed: OrphanFixOutcome[],
+  limit = 20,
+): SiteHealthFixRecord[] {
+  return fixed.slice(0, limit).map((f) => ({
+    id: `orphan_${Date.now().toString(36)}_${f.path.replace(/\//g, '_').slice(0, 30)}`,
+    timestamp: new Date().toISOString(),
+    action: 'orphan',
+    repo: f.repo,
+    path: f.path,
+    url: f.url,
+    detail: `Repaired orphan page: ${f.title || f.path}`,
+  }))
 }
 
 /**
@@ -257,26 +285,27 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
   }
 
   // ── Phase 4: Repairs ─────────────────────────────────────────────
-  const repairResult: FullRepairResult = { orphansFixed: 0, noindexFixed: 0, noindexProtectedSkipped: 0, sitemapsUpdated: 0, prUrls: [], errors: [], dryRun: opts.dryRun !== false }
+  const repairResult: FullRepairResult = { orphansFixed: 0, orphansProtectedSkipped: 0, noindexFixed: 0, noindexProtectedSkipped: 0, sitemapsUpdated: 0, prUrls: [], errors: [], dryRun: opts.dryRun !== false }
   const logEntries: SiteHealthFixRecord[] = []
 
   if (opts.fixOrphans && orphans.length && !opts.dryRun) {
     try {
+      const fixedOrphanOutcomes: OrphanFixOutcome[] = []
       let oc: number | null = 0
       while (oc !== null) {
         const r = await repairSiteHealthChunked(scope, oc, batchSize, false)
         repairResult.orphansFixed += r.orphansFixed
+        // Scope-wide count recomputed by every chunked call: assign rather
+        // than accumulate so a multi-batch run cannot double-count it.
+        repairResult.orphansProtectedSkipped = r.protectedOrphansSkipped
         if (r.prUrl) repairResult.prUrls.push(r.prUrl)
+        fixedOrphanOutcomes.push(...r.fixedOrphans)
         oc = r.nextBatch
       }
-      for (const o of orphans.slice(0, 20)) {
-        logEntries.push({
-          id: `orphan_${Date.now().toString(36)}_${o.path.replace(/\//g, '_').slice(0, 30)}`,
-          timestamp: new Date().toISOString(),
-          action: 'orphan', repo: o.repo, path: o.path, url: o.url,
-          detail: `Repaired orphan page: ${o.title || o.path}`,
-        })
-      }
+      // Truthful logging: only outcomes the chunked repair actually performed.
+      // A P5-protected orphan (or one whose repo had no usable hub) is never
+      // logged as "Repaired orphan page".
+      logEntries.push(...buildOrphanFixLogEntries(fixedOrphanOutcomes))
     } catch (e: any) {
       repairResult.errors.push(`orphan repair: ${String(e?.message ?? e).slice(0, 200)}`)
     }
@@ -325,7 +354,10 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
         const urls = repoPages.map((p) => p.url)
         const diff = await generateSitemapDiff(config.repo, urls)
         if (diff && diff.status !== 'ok') {
-          // Regenerate sitemap via repairSiteHealthChunked (it handles sitemap writes)
+          // Trigger the chunked repair for this repo. NOTE: the chunked path
+          // does not write sitemap files (it only reports `sitemapPaths` on its
+          // `repaired` entries), so this call repairs orphan interlinks and
+          // `sitemapsUpdated` counts the requested sync, not a sitemap write.
           const r = await repairSiteHealthChunked(config.repo, 0, batchSize, false)
           repairResult.sitemapsUpdated++
           if (r.prUrl) repairResult.prUrls.push(r.prUrl)

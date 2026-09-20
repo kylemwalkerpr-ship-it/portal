@@ -10,7 +10,7 @@ import { normalizeP5Url, p5ProtectedUrlKeys } from './p5OffMissionDispositions'
 
 export type SiteHealthScope = 'all' | 'caseworks' | 'yousafe-consultancy' | 'portal'
 
-type RepoId = Exclude<SiteHealthScope, 'all'>
+export type RepoId = Exclude<SiteHealthScope, 'all'>
 type RepoConfig = {
   repo: RepoId
   host: string
@@ -833,6 +833,18 @@ export async function repairSiteHealth(
 
 
 /**
+ * One orphan page `repairSiteHealthChunked()` actually repaired. Returned as
+ * an exact outcome list so callers report/log real repairs, never candidates.
+ */
+export interface OrphanFixOutcome {
+  repo: RepoId
+  /** URL pathname of the repaired page (the audit's `path` value for it). */
+  path: string
+  url: string
+  title: string
+}
+
+/**
  * Chunked repair: processes one batch and returns partial results.
  *
  * Same P5 protection semantics as `repairSiteHealth()`: the registry cohort is
@@ -844,6 +856,13 @@ export async function repairSiteHealth(
  * (`protectedOrphansSkipped`) but never mutated; they are excluded from the
  * repair cursor so pagination always makes progress. Unregistered URLs are
  * unchanged.
+ *
+ * Outcome accounting is EXACT, not candidate-based: `fixedOrphans` (and
+ * therefore `orphansFixed`) contains only the orphans whose hub rewrite really
+ * happened. A protected orphan, a repo with no usable hub, or a hub whose
+ * rewrite would not change its content contributes no outcome. The batch
+ * cursor still advances past unrepairable candidates so pagination never gets
+ * stuck on one of them.
  */
 export async function repairSiteHealthChunked(
   scope: SiteHealthScope,
@@ -853,6 +872,9 @@ export async function repairSiteHealthChunked(
   opts: { protectedUrls?: string[] } = {},
 ): Promise<{
   repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }>
+  /** ACTUAL orphan outcomes: one entry per orphan whose hub rewrite happened. */
+  fixedOrphans: OrphanFixOutcome[]
+  /** `fixedOrphans.length` — never the candidate batch length. */
   orphansFixed: number
   totalOrphans: number
   protectedOrphansSkipped: number
@@ -926,6 +948,7 @@ export async function repairSiteHealthChunked(
   const repairableOrphans = orphans.filter((orphan) => !isProtected(orphan.url))
   const batchOrphans = repairableOrphans.slice(batchStart, batchStart + batchSize)
   const repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }> = []
+  const fixedOrphans: OrphanFixOutcome[] = []
 
   for (const config of configs) {
     const configOrphans = batchOrphans.filter((o) => o.repo === config.repo)
@@ -941,11 +964,16 @@ export async function repairSiteHealthChunked(
         if (c) { hub = { path: candidate, content: c }; break }
       } catch { /* try next */ }
     }
+    // No usable hub means these candidates could not be repaired at all. They
+    // are NOT outcomes; the batch cursor still advances past them.
     if (!hub) continue
 
     const links = configOrphans.map((orphan) => ({ url: orphan.url, label: orphan.title }))
-    _repairOrphanPaths.set(config.repo, configOrphans.map((o) => o.url))
     const updatedHubContent = injectRepairSection(hub.content, links)
+    // An orphan is only fixed when the hub rewrite that links it really
+    // changed content (a live write, or the write a dry run would perform).
+    // An unchanged hub means no write occurred, so nothing is repaired.
+    if (updatedHubContent === hub.content) continue
 
     if (!dryRun) {
       const branch = `seo/orphan-repair-${Date.now()}`
@@ -961,6 +989,10 @@ export async function repairSiteHealthChunked(
       })
     }
 
+    _repairOrphanPaths.set(config.repo, configOrphans.map((o) => o.url))
+    fixedOrphans.push(...configOrphans.map((o) => ({
+      repo: config.repo, path: o.path, url: o.url, title: o.title,
+    })))
     repaired.push({ repo: config.repo, hubPath: hub.path, links: links.length, sitemapPaths: config.sitemapPaths })
   }
 
@@ -971,9 +1003,10 @@ export async function repairSiteHealthChunked(
         owner: 'kylemwalkerpr-ship-it', repo: repaired[0].repo,
         head: `seo/orphan-repair-${Date.now()}`,
         base: 'main',
-        title: `[Content Studio] Repair ${batchOrphans.length} orphan page(s) — chunked batch`,
+        title: `[Content Studio] Repair ${fixedOrphans.length} orphan page(s) — chunked batch`,
         body: `- Batch: ${batchStart}-${batchStart + batchSize}
-- Orphans: ${batchOrphans.length}
+- Candidates in batch: ${batchOrphans.length}
+- Orphans actually repaired: ${fixedOrphans.length}
 - Repos: ${repaired.map((r) => r.repo).join(', ')}`,
       })
       prUrl = pr.html_url
@@ -996,7 +1029,8 @@ export async function repairSiteHealthChunked(
 
   return {
     repaired,
-    orphansFixed: batchOrphans.length,
+    fixedOrphans,
+    orphansFixed: fixedOrphans.length,
     totalOrphans: orphans.length,
     protectedOrphansSkipped: protectedOrphans.length,
     nextBatch: batchStart + batchSize < repairableOrphans.length ? batchStart + batchSize : null,

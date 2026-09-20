@@ -163,6 +163,9 @@ describe('P5 site-health protection — chunked/complete mutation path', () => {
 
     expect(result.protectedOrphansSkipped).toBe(2)
     expect(result.orphansFixed).toBe(1)
+    // Exact outcome list: only the unregistered orphan was actually repaired.
+    expect(result.fixedOrphans.map((o) => o.url)).toEqual([PLAIN_URL])
+    expect(result.fixedOrphans.map((o) => o.repo)).toEqual([CASE])
     expect(result.nextBatch).toBeNull()
 
     const hubWrite = writes().find((call) => call.path === HUB_PATH)
@@ -181,6 +184,7 @@ describe('P5 site-health protection — chunked/complete mutation path', () => {
 
     expect(result.protectedOrphansSkipped).toBe(3)
     expect(result.orphansFixed).toBe(0)
+    expect(result.fixedOrphans).toEqual([])
     expect(result.repaired).toEqual([])
     expect(result.nextBatch).toBeNull()
     expect(mockPutRepoFile).not.toHaveBeenCalled()
@@ -191,6 +195,32 @@ describe('P5 site-health protection — chunked/complete mutation path', () => {
     const result = await repairSiteHealthChunked(CASE, 0, 10, true)
     expect(result.protectedOrphansSkipped).toBe(2)
     expect(result.orphansFixed).toBe(1)
+    expect(result.fixedOrphans.map((o) => o.url)).toEqual([PLAIN_URL])
+  })
+
+  it('advances the batch cursor through repairable orphans it cannot repair (no usable hub)', async () => {
+    // Same cohorts, but no repair-hub file exists, so nothing is repairable.
+    // The cursor must still advance past every repairable candidate instead of
+    // getting stuck on an unrepaired batch.
+    const PLAIN_B_PATH = 'app/us/student-visas/y/page.tsx'
+    const filesWithoutHub: Record<string, string> = { ...FILE_CONTENT }
+    delete filesWithoutHub[HUB_PATH]
+    filesWithoutHub[PLAIN_B_PATH] = 'export const metadata = { title: "Second repair target" }\n\nexport default function Page() {\n  return <main>Second target</main>\n}\n'
+    mockGithubFetch.mockImplementation(makeGithubFetchImpl(filesWithoutHub))
+
+    const first = await repairSiteHealthChunked(CASE, 0, 1, false)
+    expect(first.orphansFixed).toBe(0)
+    expect(first.fixedOrphans).toEqual([])
+    expect(first.protectedOrphansSkipped).toBe(2)
+    expect(first.nextBatch).toBe(1)
+
+    const second = await repairSiteHealthChunked(CASE, 1, 1, false)
+    expect(second.orphansFixed).toBe(0)
+    expect(second.fixedOrphans).toEqual([])
+    expect(second.nextBatch).toBeNull()
+
+    expect(mockPutRepoFile).not.toHaveBeenCalled()
+    expect(mockOpenPullRequest).not.toHaveBeenCalled()
   })
 })
 

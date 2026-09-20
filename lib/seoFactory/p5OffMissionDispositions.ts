@@ -66,6 +66,16 @@ export interface P5QualifiedDemand {
 export interface P5LiveObservations {
   httpStatus: number | null
   inSitemap: boolean | null
+  /**
+   * ROBOTS.TXT crawl permission ONLY — recorded as an explicit string such as
+   * `robots.txt allowed (HTML meta robots state not observed in P5 audit)`.
+   *
+   * This is NOT an HTML meta robots / noindex observation: the P5 audit
+   * checked robots.txt, it did not inspect meta tags, so this value must never
+   * be read as "index/follow". Ownership registry row 57 records the Utah
+   * Legal housing guide as live noindex/follow; that row is the only evidence
+   * about meta robots state, and this field cannot contradict or hide it.
+   */
   robotsState: string | null
   ownershipRegistryRowId: number | null
   observedAt: string | null
@@ -343,6 +353,15 @@ export function validateP5Registry(
       if (!live || !(field in live)) {
         push(`entry ${url} liveObservations.${field} is missing (use null for UNKNOWN)`)
       }
+    }
+    // robotsState is a robots.txt observation only. Enforce the scope in the
+    // string itself so it can never silently regress to an ambiguous "allowed"
+    // that a reader could mistake for an HTML meta robots / indexability claim.
+    if (live?.robotsState != null && !/robots\.txt/i.test(String(live.robotsState))) {
+      push(
+        `entry ${url} liveObservations.robotsState must be an explicit robots.txt-scope string ` +
+        `(it is not an HTML meta robots observation)`,
+      )
     }
 
     const hasUnknown =

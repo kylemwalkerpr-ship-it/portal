@@ -230,15 +230,42 @@ describe('P5 registry contract', () => {
     for (const entry of P5_OFF_MISSION_REGISTRY.entries) {
       expect(entry.liveObservations.httpStatus).toBe(200)
       expect(entry.liveObservations.inSitemap).toBe(false)
-      expect(entry.liveObservations.robotsState).toBe('allowed')
+      // robotsState is a ROBOTS.TXT observation only — never an HTML meta
+      // robots / indexability claim. The bare, ambiguous "allowed" is gone.
+      expect(entry.liveObservations.robotsState).toBe(
+        'robots.txt allowed (HTML meta robots state not observed in P5 audit)',
+      )
+      expect(entry.liveObservations.robotsState).toMatch(/robots\.txt/)
+      expect(entry.liveObservations.robotsState).toMatch(/HTML meta robots state not observed/)
+      expect(entry.liveObservations.robotsState).not.toBe('allowed')
       // Date-level only: the exact capture time was not recorded, so none is fabricated.
       expect(String(entry.liveObservations.observedAt)).toMatch(/^2026-09-20 \(date-level/)
     }
+    // The registry itself must document the scope and the contradicting
+    // ownership-registry evidence, not just repeat an ambiguous value.
+    const limitations = P5_OFF_MISSION_REGISTRY.evidence.knownLimitations.join(' ')
+    expect(limitations).toMatch(/robots\.txt crawl permission ONLY/)
+    expect(limitations).toMatch(/did NOT inspect HTML meta robots/)
+    expect(limitations).toMatch(/row 57/)
+    expect(limitations).toMatch(/noindex\/follow/)
+    expect(limitations).toMatch(/7807aafd/)
+
+    const utah = p5DispositionEntry(COHORT[4])!
+    expect(utah.notes).toMatch(/row 57/)
+    expect(utah.notes).toMatch(/noindex\/follow/)
+    expect(utah.notes).toMatch(/did not independently inspect HTML meta robots state/)
     // Ownership row identified for Utah only; the others are UNKNOWN, not "none".
     expect(p5DispositionEntry(COHORT[4])!.liveObservations.ownershipRegistryRowId).toBe(57)
     for (const url of COHORT.filter((candidate) => candidate !== COHORT[4])) {
       expect(p5DispositionEntry(url)!.liveObservations.ownershipRegistryRowId).toBeNull()
     }
+  })
+
+  it('rejects an ambiguous HTML-robots-style robotsState instead of accepting it silently', () => {
+    const weakened = JSON.parse(JSON.stringify(P5_OFF_MISSION_REGISTRY))
+    weakened.entries[0].liveObservations.robotsState = 'allowed'
+    const problems = validateP5Registry(weakened)
+    expect(problems.some((p) => /robots\.txt-scope/.test(p))).toBe(true)
   })
 
   it('no longer claims the audit published no per-URL split', () => {
