@@ -415,3 +415,52 @@ This section supersedes the earlier implementation-only reward/forecast acceptan
 - Every current P1 row in the parity matrix is now `PASS`.
 - Overall SEO parity is **not** complete: P2-P13 remain pending and should be treated as the next workstream.
 - Historical ledger sections that said P1 was incomplete remain preserved as dated evidence of their earlier state; this section is the current superseding P1 status.
+
+## 2026-09-20 — P2 technical-integrity production acceptance — FINAL P2 closure
+
+This section records the production evidence used to close all four current P2 rows. It is an evidence/documentation pass only; the implementation changes were already merged and deployed in the owning repositories. Historical P2 `PENDING` statements remain valid for their earlier dates and are superseded for current status by this section.
+
+### Public-estate status and sitemap truth
+
+- Final low-concurrency production crawl at `2026-09-20T04:25:10.833Z` fetched all seven public sitemap roots: apex `70`, Market `350`, Legal `421`, USA `433`, Canada `318`, UK `134`, Australia `18`.
+- Aggregate result: **1,744 entries = 1,744 unique URLs**, **0 duplicate sitemap URLs**, **0 sitemap-root errors**, **0 sitemap redirects**, and **0 invalid final statuses**. Artifact: `/tmp/yousafe-p2-low-concurrency-audit.json` on the supervisor host.
+- A fresh sitemap-only parameter check after the repair reported **0 query-string sitemap URLs** across the same 1,744 URLs.
+- The earlier 1,748-URL canonical audit had isolated the real defects rather than hiding them: seven Legal sitemap URLs redirected; `/us/personal-statement/` ended at a missing apex winner with 404 + canonical mismatch + noindex; the only missing canonical was `https://legal.yousafeconsultancy.com/llms-full.txt`, a plain-text machine file rather than an HTML canonical defect.
+
+### Caseworks/Legal redirect and canonical repair
+
+- PR #151 (`fix: align Legal sitemap with deployed redirect authority`) merged to Caseworks `main` as `0460210007832ed40f3fbd37ce3b7af64bba957`. Exact-main deploy run `35480037188` succeeded; SEO integrity run `35480037165` succeeded.
+- The repair made `public/_redirects` a first-class deployed redirect source beside Worker `REDIRECT_MAP` and the dual graph, restored three Legal owners whose redirects targeted missing/unshipped apex winners (`/us/admissions-consultant/`, `/us/personal-statement/`, `/us/research-proposal/`), and excluded every effective redirect source from sitemap output.
+- Local/CI acceptance for #151: TypeScript PASS; redirect-integrity 17/17 PASS; sitemap authority 6/6 PASS after build; sitemap drift **421 expected / 421 emitted / 0% drift / 0 redirect sources**; redirect shadowing **0** and dead redirect targets **0**; redirect-intent safety **304 definitions PASS**; production Next build **801 static pages**.
+- Live post-deploy proof: all three restored owners return HTTP 200, self-canonical, `index,follow`; the reviewed consolidation redirects remain 301→200; Legal sitemap contains the restored owners and excludes the redirect sources.
+- A slow rendered-link recheck before the fix had isolated exactly three durable 404 targets — the same restored owners above. Two Market query URLs that had transiently returned 503 under crawl load (`?q=IRCC study permit`, `?q=vector cut files`) now return HTTP 200 individually; they were load noise, not broken public pages.
+
+### Apex and Marketplace runtime integrity needed for P2
+
+- Marketplace true-static/OpenNext cache architecture was restored through PR #244 and the gig-supply regression through PR #246. PR #246 merged to Portal `main` as `665c6af16c7c24b20c80ff5348d83e87bfc872aa`; its production deploy run `35478073868` succeeded. Live acceptance showed the Market landing again rendering **217 active briefs**, subcategories populated, and a previously failing gig detail URL returning its full page instead of 404.
+- The apex site independently exposed the same OpenNext static-cache failure class: homepage returned Cloudflare **1102 CPU exceeded** and `/sitemap.xml` returned 500 while prerender cache files existed. Apex PR #188 configured the static-assets incremental cache and interception, made the custom Wrangler uploader copy `.open-next/cache` into deployable `cdn-cgi/_next_cache`, and added fail-closed parity + live smoke gates. It merged as `8dfd23ea98d947839682845a0d3aa2220c2f8102`; exact-main `Deploy Landing Page` run `35488882026` succeeded.
+- Post-deploy supervisor proof: homepage, sitemap, representative blog and guide routes returned 200 in five independent rounds with no 1102 recurrence before the final estate crawl.
+
+### Priority orphan classification and repair
+
+- A rendered-HTML estate graph crawl found **164 sitemap pages with zero inbound rendered links** before repair. P2 does not require pretending every indexable utility/provider/deep-tail page is a priority owner; priority was derived from existing program truth.
+- Persisted GSC rows for those 164 pages were classified with the shipped `classifyPersistedGscRow` boundary. Exactly **4** orphan pages had any `qualified` demand:
+  - `https://legal.yousafeconsultancy.com/guide/dependent-visa-uk-international-students/` — 499 qualified impressions across 17 rows;
+  - `https://legal.yousafeconsultancy.com/guide/health-insurance-requirements-f1-students/` — 14 qualified impressions;
+  - `https://legal.yousafeconsultancy.com/guide/stem-designated-mba-programs/` — 10 qualified impressions;
+  - `https://legal.yousafeconsultancy.com/guide/masters-data-science-ca/` — 2 qualified impressions.
+- Ownership-registry owner/supporting URL intersection added **3 distinct priority destinations beyond those four**:
+  - `/guide/day-1-cpt-vs-regular-cpt/`;
+  - `/guide/mba-vs-mim/`;
+  - `/guide/optional-practical-training-opt-application/`.
+- PR #152 made article topic groups native `<details>/<summary>` so closed groups remain in server-rendered HTML; PR #153 (`fix: narrow P2 orphan repair to crawlable guide directory`) intentionally retained only the priority-scope crawlability fix and removed unrelated non-priority registry mutations. PR #153 merged as `105abaddc5b49fb152ee3738a6537560dae1b670`; exact-main deploy run `35490884109`, SEO integrity `35490884108`, and content-quality `35490884121` all succeeded.
+- Live `/articles/` production HTML after #153 contains real `<a href>` anchors for **all 7 priority URLs** above.
+- Legal-only rendered production recrawl at `2026-09-20T05:08:32.015Z`: **421 pages**, **0 fetch errors**, exactly **1** zero-inbound page: `https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply/`. That residual is an explicit P2 justification, not hidden debt: it has no strategic ownership-registry role and the persisted 2026-06-20→2026-09-17 GSC window contains **0 query rows / 0 impressions / 0 clicks** for it. It remains indexable inventory, but it is not an active P2 priority intent.
+
+### Result
+
+- `Sitemap contains zero invalid public URLs` → **PASS**.
+- `Meaningful canonical conflicts = 0` → **PASS** for the current sitemap estate; `llms-full.txt` is a plain-text machine file and not treated as an HTML canonical defect.
+- `Redirect/4xx/parameter duplicates/broken internal links reconciled` → **PASS** for the production evidence above; the final sitemap estate has no redirects/non-2xx/query-string duplicates, and the durable broken-link targets found in the pre-fix rendered crawl were repaired.
+- `Priority indexable orphans resolved or justified` → **PASS**: all 7 priority orphan destinations are live-linked; the one remaining Legal orphan is explicitly non-priority by both ownership and qualified-demand evidence.
+- Every current P2 row in `docs/superpowers/seo-parity-matrix.md` is now **PASS**. Overall SEO parity remains incomplete because P3-P13 are still gated.
