@@ -26,7 +26,9 @@
 - Window total: **2,660 rows** (re-verified read-only during this implementation).
 - Off-mission totals for the window: **613 impressions / 134 rows / 37 URLs / 0 clicks**.
 - Cohort rule: the 75% cumulative-share rule above; cohort size 8.
-- **Unknowns (deliberately `null`, never `0`):** per-URL off-mission impressions/rows/clicks, per-URL qualified demand, and live status / sitemap / robots / ownership observations for all eight URLs. The audit published cohort totals, not a per-URL split, so the registry records `null` plus the provenance needed to re-derive the values later (`classifyGscVisibility()` over persisted rows). Live-query coverage is therefore **UNKNOWN**.
+- **Published per-URL split (recorded per entry, never fabricated):** off-mission impressions / rows — South Carolina 141 / 16, Florida International 106 / 8, Portland State 57 / 7, Cornell 49 / UNKNOWN, Utah 46 / 1, Arizona State 23 / 6, Oregon 23 / UNKNOWN, Howard UNKNOWN (audit display range 20–29 only). Qualified impressions: measured **0** for South Carolina, FIU, Portland State, Cornell and Utah; **UNKNOWN** for Arizona State, Oregon and Howard.
+- **Published live observations (recorded per entry):** HTTP **200**, **not in sitemap**, **robots allowed** for all eight; ownership registry row identified for **Utah only** (row 57, confirmed read-only in `data/seo/ownership-registry.json`), null/UNKNOWN for the other seven because no ownership row was identified — which is not proof that none exists. Observation date 2026-09-20; the exact capture time was not recorded, so `observedAt` carries a date-level note rather than a fabricated timestamp.
+- **Unknowns (deliberately `null`, never `0`):** per-URL off-mission clicks and per-URL qualified rows/clicks for all eight; per-URL off-mission rows for Cornell, Oregon and Howard; Howard's exact impressions; and the exact live-observation time. Any of these can be re-derived read-only from persisted `seo_gsc_rows` with `classifyGscVisibility()` over the same window; until then they stay `null`.
 
 ## The eight cohort URLs (all `KEEP_BUT_SILO`)
 
@@ -54,9 +56,9 @@ A. **Planner/action boundary** — `lib/seoFactory/keywordPlanner.ts` now admits
 
 B. **Dispositions** — the eight URLs above, window and cohort rule recorded as data.
 
-C. **Fail-closed protection** — `computeIndexFix()` consults the registry first: a registered URL is `skipped` with an explicit P5 reason unless its disposition is `KEEP`. `resolveIndexCoverage()` also passes the registered URL set to the delegated `repairSiteHealth()` repair, which no longer injects orphan links or sitemap entries for protected URLs. URLs not in the registry are untouched.
+C. **Fail-closed protection** — `computeIndexFix()` consults the registry first: a registered URL is `skipped` with an explicit P5 reason unless its disposition is `KEEP`. The site-health mutation layer (`repairSiteHealth()` **and** `repairSiteHealthChunked()`) protects **every** `p5ProtectedUrlKeys()` URL by default: a registered URL is never an orphan/internal-link target, never the rewritten repair hub, and never a sitemap addition — and a protected URL already listed in a sitemap keeps its existing entry, because protection means "do not alter current state", not "force absent". `resolveIndexCoverage()` passes the union of the whole registry with its batch as defense in depth, and `opts.protectedUrls` may only union more URLs in — never narrow the registry set. URLs not in the registry are untouched.
 
-D. **Tests** — `tests/p5-off-mission-dispositions.test.ts`, `tests/p5-keyword-planner-demand-boundary.test.ts`, `tests/p5-auto-run-demand-boundary.test.ts`.
+D. **Tests** — `tests/p5-off-mission-dispositions.test.ts`, `tests/p5-site-health-protection.test.ts` (supervisor-repair regressions), `tests/p5-keyword-planner-demand-boundary.test.ts`, `tests/p5-auto-run-demand-boundary.test.ts`.
 
 E. **Records** — this plan, the parity matrix rows, and the execution ledger entry.
 
@@ -64,20 +66,29 @@ E. **Records** — this plan, the parity matrix rows, and the execution ledger e
 
 - **Off-mission strike-seed keyword.** The locked 2026-08 strike seed `university of the pacific student housing` is off-mission-classified, so it can no longer enter GSC-driven planning. Strike-seed *routing* is unchanged for terms that do clear the boundary.
 - **`seoEngine` planner persistence.** `lib/seoEngine/planner.ts` can still persist an off-mission-titled `seo_cluster_plans` row for diagnostic surfaces; the auto-run admission boundary now refuses to turn it into a mission. Tightening the planner's own persistence was out of this pass's scope.
-- **Per-URL and live observations remain UNKNOWN** (above). P5 cannot claim page-level or live-index truth it does not have.
+- **Some per-URL fields remain UNKNOWN** (above): per-URL off-mission clicks and qualified rows/clicks, per-URL rows for Cornell/Oregon/Howard, Howard's exact impressions, and the exact live-observation time. P5 records the page-level facts the audit did establish and claims no truth it does not have.
 - **No destructive action.** No redirect/noindex/canonical/robots/internal-link change is implemented for any of the eight pages.
+
+## Supervisor repair (post-checkpoint `dda62b09`, before the follow-up commit)
+
+`dda62b09` was **not** supervisor-approved. Two blockers were repaired in the follow-up commit and the evidence contract was corrected:
+
+1. **BLOCKER 1 — full registry protection, not current-batch-only.** The mutation layer now protects all `p5ProtectedUrlKeys()` by default; caller-provided URLs may only union in. A repo-wide repair triggered by an unrelated URL can therefore no longer touch a different registered `KEEP_BUT_SILO` URL.
+2. **BLOCKER 2 — chunked mutation path.** `repairSiteHealthChunked()` (live path from `app/api/content-studio/site-health/route.ts` and `lib/seoFactory/siteHealthComplete.ts`) enforces the same semantics: protected cohort URLs are never injected as orphan/internal-link targets, never used as the rewritten hub and never added to a sitemap; unregistered behavior is unchanged.
+3. **Evidence-contract repair.** The earlier claim that "the audit published no per-URL split" was false and has been removed from this plan, the registry, the ledger and the parity matrix; the concrete per-URL values above are now recorded, with `null` only where a value genuinely was not published.
+4. **Safety semantics.** No second disposition vocabulary, no destructive change, no fail-closed behavior for unregistered URLs, no broad-CREATE change, and no removal of an already-present protected sitemap entry.
 
 ## Verification status at this checkpoint
 
-- Environment limitation: this worktree's `node_modules` symlink resolves to an empty/inaccessible directory, so Jest and `tsc` could not run locally (no dependency install was attempted, and no manifest was modified).
-- Substitute local evidence: a Node-based smoke harness over the real modules (registry validation, normalization/idempotence, UNKNOWN-never-0, mutation verdicts for all eight URLs, unregistered-URL pass-through, byte-identical data/public copies, and the exact classification facts used by the three Jest suites) — **23 checks PASS**.
+- Environment limitation (re-verified): this worktree's `node_modules` symlink resolves to an **empty** directory and no sibling worktree or main checkout has a populated `node_modules`, so Jest and `tsc` could not run locally (no dependency install was attempted, and no manifest was modified).
+- Substitute local evidence: a Node smoke harness over the real modules (temporary, removed before commit; GitHub/IndexNow boundaries stubbed) — **19 checks PASS**: registry validation; per-URL audit evidence with UNKNOWN only where actually unknown; byte-identical data/public copies; registry protection cannot be narrowed by a caller list; `repairSiteHealth` with no caller list still protects all eight cohort URLs, retains an existing protected sitemap entry and never adds an absent one; `repairSiteHealthChunked` skips both protected orphans, repairs the unregistered one, and writes no protected URL; and the delegated `resolveIndexCoverage` repair runs through the real site-health layer with the same protection.
 - `node --check` parses every changed/added TypeScript file; `git diff --check` is clean.
-- The three Jest suites and `tsc` must run in CI; P5 stays **IN_PROGRESS** until they pass on the exact merge commit and deployment evidence is recorded by the supervisor.
+- The four P5 Jest suites and `tsc` must run in CI; P5 stays **IN_PROGRESS** until they pass on the exact merge commit and deployment evidence is recorded by the supervisor.
 
 ## Acceptance criteria (not yet met)
 
-- All three P5 suites pass in CI; `tsc` and `git diff --check` pass on the reviewed head.
+- All four P5 suites pass in CI; `tsc` and `git diff --check` pass on the reviewed head.
 - Auto-run cannot produce an off-mission mission from a cluster plan or a keyword-plan fill.
-- Registered `KEEP_BUT_SILO` URLs cannot be mutated by automated index-coverage/site-health repair.
+- Registered `KEEP_BUT_SILO` URLs cannot be mutated by automated index-coverage/site-health repair — in the bulk path or the chunked path — even when the triggering batch contains none of them.
 - Unregistered URLs keep their pre-P5 behavior.
 - P5 moves to PASS only after merge + exact-main production verification by the supervisor. Broad net-new CREATE remains frozen until P13.

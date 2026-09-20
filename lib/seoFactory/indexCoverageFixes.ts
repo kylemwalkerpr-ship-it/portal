@@ -38,7 +38,7 @@ import {
 } from './siteHealth'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { type GscFixAction, type GscIndexIssue } from '@/lib/gscIndexCoverage'
-import { normalizeP5Url, p5MutationVerdict } from './p5OffMissionDispositions'
+import { normalizeP5Url, p5MutationVerdict, p5ProtectedUrlKeys } from './p5OffMissionDispositions'
 
 export interface IndexFixItem {
   issue: GscIndexIssue
@@ -369,17 +369,21 @@ export async function resolveIndexCoverage(
   const requestedIndexing: Array<{ url: string; ok: boolean; detail: string }> = []
   const warnings: string[] = []
 
-  // P5 protection set for this run: the registered P5 URLs present in the
-  // batch, so the delegated repo-wide site-health repair below cannot inject an
-  // orphan link or a sitemap entry for a siloed page as a side effect of
-  // repairing an unrelated URL in the same repo.
+  // P5 protection set for this run. The site-health mutation layer protects
+  // every registered URL by default (`p5ProtectedUrlKeys()` is its floor), so a
+  // delegated repo-wide repair triggered by an unrelated URL can never touch a
+  // registered KEEP_BUT_SILO page. This list is passed explicitly as defense in
+  // depth and is the UNION of the whole registry with the registered URLs
+  // present in this batch — a missing current-batch URL can therefore never
+  // narrow the protection set.
   const protectedUrls = [
-    ...new Set(
-      items
+    ...new Set([
+      ...p5ProtectedUrlKeys(),
+      ...items
         .filter((item) => p5MutationVerdict(item.issue.url).registered)
         .map((item) => normalizeP5Url(item.issue.url))
         .filter((key): key is string => Boolean(key)),
-    ),
+    ]),
   ]
 
   // Partition.

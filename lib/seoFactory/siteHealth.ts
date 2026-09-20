@@ -6,7 +6,7 @@ import {
   putRepoFile,
 } from '@/lib/githubContents'
 import { frontmatterBlock, logRepairs } from './siteHealthFixes'
-import { normalizeP5Url } from './p5OffMissionDispositions'
+import { normalizeP5Url, p5ProtectedUrlKeys } from './p5OffMissionDispositions'
 
 export type SiteHealthScope = 'all' | 'caseworks' | 'yousafe-consultancy' | 'portal'
 
@@ -403,6 +403,52 @@ function updateSitemap(content: string, entries: Array<{ path: string; priority:
   return out
 }
 
+type StudioSitemapEntry = { path: string; priority: number; changefreq: string }
+
+/**
+ * Entries already present inside the Content Studio sitemap block, keyed by
+ * trailing-slash-insensitive path.
+ *
+ * Used only to RETAIN the current state of P5-protected pages: a protected URL
+ * that is already listed keeps its exact entry, and a protected URL that is not
+ * listed is never added. Protection must mean "do not alter its current state",
+ * never "force it absent".
+ */
+function currentStudioSitemapEntries(content: string): Map<string, StudioSitemapEntry> {
+  const map = new Map<string, StudioSitemapEntry>()
+  const start = content.indexOf('// SITEMAP_ORPHAN_FIX_START')
+  const endMark = '// SITEMAP_ORPHAN_FIX_END'
+  const end = content.indexOf(endMark)
+  if (start < 0 || end <= start) return map
+  const block = content.slice(start, end + endMark.length)
+  const jsonMatch = block.match(/=\s*(\[[\s\S]*?\])\s*(?:\n|\/\/)/)
+  if (!jsonMatch) return map
+  try {
+    const parsed = JSON.parse(jsonMatch[1]) as Array<
+      string | { path?: string; priority?: number; changefreq?: string; changeFrequency?: string }
+    >
+    for (const item of parsed) {
+      const rawPath = typeof item === 'string' ? item : String(item?.path || '')
+      if (!rawPath) continue
+      map.set(studioSitemapKey(rawPath), {
+        path: rawPath,
+        priority: typeof item === 'string' ? 0.7 : Number(item.priority) || 0.7,
+        changefreq: typeof item === 'string' ? 'weekly' : String(item.changefreq || item.changeFrequency || 'weekly'),
+      })
+    }
+  } catch {
+    // Unparseable studio block → no retainable entries. Retention is a
+    // safety-preserving read: failing to parse can only mean "don't re-add",
+    // never "add something the page did not have".
+  }
+  return map
+}
+
+/** Shared key for comparing studio sitemap entries with scanned page URLs. */
+function studioSitemapKey(path: string): string {
+  return normalizeStudioSitemapPath(path).replace(/\/+$/, '') || '/'
+}
+
 function routeEntry(page: SiteHealthPage): { path: string; priority: number; changefreq: string } {
   const path = new URL(page.url).pathname.replace(/\/+$/, '') || '/'
   return { path, priority: 0.55, changefreq: 'monthly' }
@@ -646,14 +692,44 @@ export async function auditSiteHealthChunked(
 
 
 /**
+ * Build the P5 protection predicate for site-health mutation.
+ *
+ * The registry cohort is protected by DEFAULT — `p5ProtectedUrlKeys()` is always
+ * the floor, so a repair triggered by an unrelated URL (or a delegated repair
+ * that only knows about its current batch) can never touch a registered
+ * KEEP_BUT_SILO page. `extra` may only UNION more URLs in; it can never narrow
+ * the registry set.
+ */
+function p5MutationProtection(extra?: string[]): { keys: Set<string>; isProtected: (url: string | null | undefined) => boolean } {
+  const keys = new Set<string>()
+  for (const key of p5ProtectedUrlKeys()) {
+    const normalized = normalizeP5Url(key)
+    if (normalized) keys.add(normalized)
+  }
+  for (const url of extra ?? []) {
+    const normalized = normalizeP5Url(url)
+    if (normalized) keys.add(normalized)
+  }
+  const isProtected = (url: string | null | undefined) => {
+    const normalized = normalizeP5Url(url)
+    return Boolean(normalized && keys.has(normalized))
+  }
+  return { keys, isProtected }
+}
+
+/**
  * Repair orphan interlinks + sitemap routes for a scope.
  *
- * `opts.protectedUrls` is the P5 protection set (normalized keys from
- * `lib/seoFactory/p5OffMissionDispositions.ts`): registered P5 URLs are never
- * used as an orphan link target and never injected into a sitemap by this
- * automated repair, so a repo-wide repair triggered by an unrelated URL cannot
- * silently re-expand a siloed page's internal authority. An empty/omitted set
- * changes nothing.
+ * P5 protection is always active for the registry cohort
+ * (`lib/seoFactory/p5OffMissionDispositions.ts`): a registered URL is never used
+ * as an orphan link target, never used as the repair hub whose content is
+ * rewritten, and is never added to a sitemap by this automated repair — so a
+ * repo-wide repair triggered by an unrelated URL cannot silently re-expand a
+ * siloed page's internal authority. A protected URL that is ALREADY listed in a
+ * sitemap keeps its existing entry (protection never removes current state).
+ *
+ * `opts.protectedUrls` may only union additional URLs into the protection set.
+ * Unregistered URLs behave exactly as before.
  */
 export async function repairSiteHealth(
   scope: SiteHealthScope = 'all',
@@ -662,14 +738,7 @@ export async function repairSiteHealth(
 ) {
   const report = await auditSiteHealth(scope)
   if (dryRun) return { ...report, dryRun: true, repaired: [], pullRequests: [] }
-  const protectedKeys = new Set(
-    (opts.protectedUrls ?? []).map((url) => normalizeP5Url(url)).filter((key): key is string => Boolean(key)),
-  )
-  const isProtected = (url: string | null | undefined) => {
-    if (!protectedKeys.size) return false
-    const key = normalizeP5Url(url)
-    return Boolean(key && protectedKeys.has(key))
-  }
+  const { isProtected } = p5MutationProtection(opts.protectedUrls)
   const configs = (Object.values(CONFIGS) as RepoConfig[]).filter((config) => scope === 'all' || config.repo === scope)
   const repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }> = []
   const pullRequests: Array<{ repo: RepoId; branch: string; files: string[]; prNumber: number; prUrl: string }> = []
@@ -681,8 +750,13 @@ export async function repairSiteHealth(
     // even when this repository currently has zero orphan pages.
     const files = await scanRepo(config)
     const indexablePages = files.filter((file) => file.page && file.indexable && !isProtected(file.url))
-    if (!orphans.length && !indexablePages.length) continue
-    const hub = orphans.length ? chooseRepairHub(files, config) : null
+    // Protected pages are tracked separately: they are never link targets and
+    // never sitemap additions, but their existing sitemap state is retained.
+    const protectedPages = files.filter((file) => file.page && isProtected(file.url))
+    if (!orphans.length && !indexablePages.length && !protectedPages.length) continue
+    const hub = orphans.length
+      ? chooseRepairHub(files.filter((file) => !isProtected(file.url)), config)
+      : null
     const branch = `content-studio/site-health-${Date.now().toString(36)}`.slice(0, 240)
     const mainSha = await getBranchHeadSha('kylemwalkerpr-ship-it', config.repo, 'main')
     await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/refs`, {
@@ -705,18 +779,27 @@ export async function repairSiteHealth(
       const sitemapContent = await readRepoFile(config.repo, sitemapPath)
       if (sitemapContent == null) continue
       const prefix = config.repo === 'yousafe-consultancy' ? sitemapPath.split('/')[0] : ''
-      const entries = indexablePages
-        .filter((page) => !prefix || page.path.startsWith(`${prefix}/`))
-        .map((page) => routeEntry({
-          repo: page.repo,
-          host: new URL(page.url).hostname,
-          path: page.path,
-          url: page.url,
-          title: titleFromContent(page.content, new URL(page.url).pathname),
-          indexable: true,
-          inboundLinks: 0,
-          sampleSources: [],
-        }))
+      const existingEntries = currentStudioSitemapEntries(sitemapContent)
+      const entries: StudioSitemapEntry[] = [
+        ...indexablePages
+          .filter((page) => !prefix || page.path.startsWith(`${prefix}/`))
+          .map((page) => routeEntry({
+            repo: page.repo,
+            host: new URL(page.url).hostname,
+            path: page.path,
+            url: page.url,
+            title: titleFromContent(page.content, new URL(page.url).pathname),
+            indexable: true,
+            inboundLinks: 0,
+            sampleSources: [],
+          })),
+        // Protected P5 pages: retain their CURRENT sitemap state exactly —
+        // never added, never removed merely because they are protected.
+        ...protectedPages
+          .filter((page) => !prefix || page.path.startsWith(`${prefix}/`))
+          .map((page) => existingEntries.get(studioSitemapKey(new URL(page.url).pathname)))
+          .filter((entry): entry is StudioSitemapEntry => Boolean(entry)),
+      ]
       const kind = config.repo === 'caseworks' ? 'caseworks' : config.repo === 'portal' ? 'portal' : 'regional'
       const updated = updateSitemap(sitemapContent, entries, kind)
       if (updated !== sitemapContent) {
@@ -751,22 +834,35 @@ export async function repairSiteHealth(
 
 /**
  * Chunked repair: processes one batch and returns partial results.
+ *
+ * Same P5 protection semantics as `repairSiteHealth()`: the registry cohort is
+ * protected BY DEFAULT (`opts.protectedUrls` may only union more URLs in), so a
+ * registered KEEP_BUT_SILO page can never be injected as an orphan/internal-link
+ * target, used as the rewritten repair hub, or added to a sitemap by a
+ * chunked/complete automated repair — including the complete-flow sitemap-sync
+ * caller in `siteHealthComplete.ts`. Protected orphans are counted
+ * (`protectedOrphansSkipped`) but never mutated; they are excluded from the
+ * repair cursor so pagination always makes progress. Unregistered URLs are
+ * unchanged.
  */
 export async function repairSiteHealthChunked(
   scope: SiteHealthScope,
   batchStart: number,
   batchSize: number,
   dryRun: boolean,
+  opts: { protectedUrls?: string[] } = {},
 ): Promise<{
   repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }>
   orphansFixed: number
   totalOrphans: number
+  protectedOrphansSkipped: number
   nextBatch: number | null
   prUrl: string | null
 }> {
   const configs = scope === 'all'
     ? [CONFIGS.caseworks, CONFIGS['yousafe-consultancy'], CONFIGS.portal]
     : [CONFIGS[scope]]
+  const { isProtected } = p5MutationProtection(opts.protectedUrls)
 
   // Re-scan for full page graph (Phase 1: trees)
   const allCandidates: Array<{ repo: RepoId; path: string; sha: string; config: RepoConfig }> = []
@@ -824,8 +920,11 @@ export async function repairSiteHealthChunked(
       }
     })
 
-  // Process batch of orphans
-  const batchOrphans = orphans.slice(batchStart, batchStart + batchSize)
+  // Process batch of orphans. Protected orphans are reported but never
+  // repaired, and are excluded from the cursor so batches still advance.
+  const protectedOrphans = orphans.filter((orphan) => isProtected(orphan.url))
+  const repairableOrphans = orphans.filter((orphan) => !isProtected(orphan.url))
+  const batchOrphans = repairableOrphans.slice(batchStart, batchStart + batchSize)
   const repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }> = []
 
   for (const config of configs) {
@@ -835,6 +934,8 @@ export async function repairSiteHealthChunked(
     // Find/update hub file
     let hub: { path: string; content: string } | null = null
     for (const candidate of config.repairCandidates) {
+      const mapped = configForFile(config.repo, candidate)
+      if (mapped && isProtected(`${mapped.baseUrl}${mapped.route}`)) continue
       try {
         const c = await readRepoFile(config.repo, candidate)
         if (c) { hub = { path: candidate, content: c }; break }
@@ -897,7 +998,8 @@ export async function repairSiteHealthChunked(
     repaired,
     orphansFixed: batchOrphans.length,
     totalOrphans: orphans.length,
-    nextBatch: batchStart + batchSize < orphans.length ? batchStart + batchSize : null,
+    protectedOrphansSkipped: protectedOrphans.length,
+    nextBatch: batchStart + batchSize < repairableOrphans.length ? batchStart + batchSize : null,
     prUrl,
   }
 }

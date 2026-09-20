@@ -44,6 +44,25 @@ const COHORT = [
 /** Unrelated URL: never named by the P5 registry. */
 const UNRELATED = 'https://legal.yousafeconsultancy.com/us/student-visas/x/'
 
+/**
+ * The per-URL off-mission split the 2026-09-20 P5 audit DID publish (supervisor
+ * evidence). `null` means the audit did not publish that field for that URL —
+ * UNKNOWN, never a fabricated 0.
+ */
+const AUDIT_PER_URL: Record<
+  string,
+  { impressions: number | null; rows: number | null; qualifiedImpressions: number | null }
+> = {
+  [COHORT[0]]: { impressions: 141, rows: 16, qualifiedImpressions: 0 },
+  [COHORT[1]]: { impressions: 106, rows: 8, qualifiedImpressions: 0 },
+  [COHORT[2]]: { impressions: 57, rows: 7, qualifiedImpressions: 0 },
+  [COHORT[3]]: { impressions: 49, rows: null, qualifiedImpressions: 0 },
+  [COHORT[4]]: { impressions: 46, rows: 1, qualifiedImpressions: 0 },
+  [COHORT[5]]: { impressions: 23, rows: 6, qualifiedImpressions: null },
+  [COHORT[6]]: { impressions: 23, rows: null, qualifiedImpressions: null },
+  [COHORT[7]]: { impressions: null, rows: null, qualifiedImpressions: null },
+}
+
 const mockGithubFetch = jest.fn()
 const mockPutRepoFile = jest.fn()
 const mockOpenPullRequest = jest.fn()
@@ -182,29 +201,53 @@ describe('P5 registry contract', () => {
     expect(normalizeP5Url('')).toBeNull()
   })
 
-  it('keeps unmeasured evidence UNKNOWN — never coerced to zero', () => {
+  it('records the per-URL split the audit DID publish — never a fabricated 0', () => {
+    expect(P5_OFF_MISSION_REGISTRY.evidence.perUrlOffMissionSplit).toMatchObject({ state: 'published' })
     for (const entry of P5_OFF_MISSION_REGISTRY.entries) {
-      expect(entry.offMissionImpressions).toBeNull()
-      expect(entry.offMissionRows).toBeNull()
+      const expected = AUDIT_PER_URL[entry.url]
+      expect(expected).toBeDefined()
+      expect(entry.offMissionImpressions).toBe(expected.impressions)
+      expect(entry.offMissionRows).toBe(expected.rows)
+      expect(entry.qualifiedDemand.impressions).toBe(expected.qualifiedImpressions)
+      // Never published per URL → UNKNOWN (null), never a measured 0.
       expect(entry.offMissionClicks).toBeNull()
-      expect(entry.qualifiedDemand).toEqual({ impressions: null, rows: null, clicks: null })
-      expect(entry.liveObservations).toEqual({
-        httpStatus: null,
-        inSitemap: null,
-        robotsState: null,
-        ownershipRegistryRowId: null,
-        observedAt: null,
-      })
+      expect(entry.qualifiedDemand.rows).toBeNull()
+      expect(entry.qualifiedDemand.clicks).toBeNull()
       expect(entry.unknownReason.trim().length).toBeGreaterThan(0)
-      // A lookup must not silently turn UNKNOWN into a measured 0.
-      const viaLookup = p5DispositionEntry(entry.url)!
-      expect(viaLookup.offMissionImpressions).toBeNull()
-      expect(viaLookup.offMissionImpressions).not.toBe(0)
-      expect(viaLookup.offMissionClicks).not.toBe(0)
     }
-    // Per-URL split was never published, so the registry says so with provenance.
-    expect(P5_OFF_MISSION_REGISTRY.evidence.perUrlOffMissionSplit).toBeNull()
-    expect(P5_OFF_MISSION_REGISTRY.evidence.perUrlOffMissionSplitReason).toMatch(/classifyGscVisibility/)
+    // Measured qualified zero stays a measured zero.
+    expect(p5DispositionEntry(COHORT[0])!.qualifiedDemand.impressions).toBe(0)
+    // Howard's exact impressions were published only as an audit display range.
+    const howard = p5DispositionEntry(COHORT[7])!
+    expect(howard.offMissionImpressions).toBeNull()
+    expect(howard.offMissionImpressions).not.toBe(0)
+    expect(howard.offMissionClicks).toBeNull()
+    expect(howard.offMissionClicks).not.toBe(0)
+    expect(howard.unknownReason).toMatch(/20\u201329/)
+  })
+
+  it('records the live observations the audit published instead of blanket UNKNOWN', () => {
+    for (const entry of P5_OFF_MISSION_REGISTRY.entries) {
+      expect(entry.liveObservations.httpStatus).toBe(200)
+      expect(entry.liveObservations.inSitemap).toBe(false)
+      expect(entry.liveObservations.robotsState).toBe('allowed')
+      // Date-level only: the exact capture time was not recorded, so none is fabricated.
+      expect(String(entry.liveObservations.observedAt)).toMatch(/^2026-09-20 \(date-level/)
+    }
+    // Ownership row identified for Utah only; the others are UNKNOWN, not "none".
+    expect(p5DispositionEntry(COHORT[4])!.liveObservations.ownershipRegistryRowId).toBe(57)
+    for (const url of COHORT.filter((candidate) => candidate !== COHORT[4])) {
+      expect(p5DispositionEntry(url)!.liveObservations.ownershipRegistryRowId).toBeNull()
+    }
+  })
+
+  it('no longer claims the audit published no per-URL split', () => {
+    const reason = String(P5_OFF_MISSION_REGISTRY.evidence.perUrlOffMissionSplitReason)
+    expect(reason).toMatch(/DID publish/)
+    expect(reason).toMatch(/classifyGscVisibility/)
+    expect(reason).not.toMatch(/did not publish a per-URL split/i)
+    expect(reason).not.toMatch(/not a per-URL split/i)
+    expect(P5_OFF_MISSION_REGISTRY.evidence.knownLimitations.join(' ')).toMatch(/20\u201329/)
   })
 })
 
@@ -303,7 +346,7 @@ describe('P5 fail-closed index-coverage mutation gate', () => {
     expect(mockSubmitIndexNow).not.toHaveBeenCalled()
   })
 
-  it('passes the P5 protection set to a delegated repair without changing the unrelated URL', async () => {
+  it('hands a delegated repair the FULL registry protection set without changing the unrelated URL', async () => {
     const registeredUrl = COHORT[3]
     const items: IndexFixItem[] = [
       {
@@ -326,9 +369,28 @@ describe('P5 fail-closed index-coverage mutation gate', () => {
     expect(unrelated.status).toBe('fixed')
     expect(mockRepairSiteHealth).toHaveBeenCalledTimes(1)
     expect(mockRepairSiteHealth).toHaveBeenCalledWith('caseworks', false, {
-      protectedUrls: [registeredUrl],
+      protectedUrls: COHORT,
     })
     // The protection set is what stops a repo-wide repair re-expanding the silo.
     expect(mockGithubFetch).not.toHaveBeenCalled()
+  })
+
+  it('protects ALL registry URLs even when the delegated batch contains none of them', async () => {
+    const items: IndexFixItem[] = [
+      {
+        issue: issue({ url: UNRELATED, fixAction: 'ADD_INTERNAL_LINK' }),
+        page: page({ url: UNRELATED, path: 'app/us/student-visas/x/page.tsx' }),
+      },
+    ]
+
+    const result = await resolveIndexCoverage(items, { requestIndexing: false })
+
+    expect(result.outcomes[0].status).toBe('fixed')
+    // A repo-wide repair is still told to protect every registered cohort URL —
+    // the registry, not the current batch, is the floor.
+    expect(mockRepairSiteHealth).toHaveBeenCalledTimes(1)
+    expect(mockRepairSiteHealth).toHaveBeenCalledWith('caseworks', false, {
+      protectedUrls: COHORT,
+    })
   })
 })
