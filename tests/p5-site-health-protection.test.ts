@@ -16,8 +16,9 @@
  * it and never adds a protected URL that was absent.
  */
 import { Buffer } from 'node:buffer'
-import { p5ProtectedUrlKeys } from '@/lib/seoFactory/p5OffMissionDispositions'
+import { p5MutationVerdict, p5ProtectedUrlKeys } from '@/lib/seoFactory/p5OffMissionDispositions'
 import { repairSiteHealth, repairSiteHealthChunked } from '@/lib/seoFactory/siteHealth'
+import { fixNoIndexPagesChunked, hasNoIndexFlag } from '@/lib/seoFactory/siteHealthFixes'
 
 const CASE = 'caseworks'
 const HOST = 'https://legal.yousafeconsultancy.com'
@@ -72,33 +73,37 @@ jest.mock('@/lib/githubContents', () => ({
   getRepoFileContent: jest.fn(),
 }))
 
-/** Deterministic GitHub boundary over the caseworks fixture above. */
-const githubFetchImpl = async (endpoint: string, init?: { method?: string }) => {
-  const url = String(endpoint)
-  const tree = url.match(/^\/repos\/kylemwalkerpr-ship-it\/([^/]+)\/git\/trees\/main\?recursive=1$/)
-  if (tree) {
-    return {
-      tree: tree[1] === CASE
-        ? Object.keys(FILE_CONTENT).map((path) => ({ path, type: 'blob', sha: shaFor(path) }))
-        : [],
+/** Deterministic GitHub boundary over a fixture map. */
+const makeGithubFetchImpl = (files: Record<string, string>) =>
+  async (endpoint: string, init?: { method?: string }) => {
+    const url = String(endpoint)
+    const tree = url.match(/^\/repos\/kylemwalkerpr-ship-it\/([^/]+)\/git\/trees\/main\?recursive=1$/)
+    if (tree) {
+      return {
+        tree: tree[1] === CASE
+          ? Object.keys(files).map((path) => ({ path, type: 'blob', sha: shaFor(path) }))
+          : [],
+      }
     }
-  }
-  const blob = url.match(/\/git\/blobs\/(.+)$/)
-  if (blob) {
-    for (const [path, content] of Object.entries(FILE_CONTENT)) {
-      if (shaFor(path) === blob[1]) return { content: Buffer.from(content, 'utf8').toString('base64') }
+    const blob = url.match(/\/git\/blobs\/(.+)$/)
+    if (blob) {
+      for (const [path, content] of Object.entries(files)) {
+        if (shaFor(path) === blob[1]) return { content: Buffer.from(content, 'utf8').toString('base64') }
+      }
+      throw new Error('GitHub 404: blob not found')
     }
-    throw new Error('GitHub 404: blob not found')
+    const contents = url.match(/\/contents\/(.+?)\?ref=main$/)
+    if (contents) {
+      const content = files[contents[1]]
+      if (content == null) throw new Error('GitHub 404: Not Found')
+      return { content: Buffer.from(content, 'utf8').toString('base64'), sha: shaFor(contents[1]) }
+    }
+    if (init?.method === 'PUT' || init?.method === 'POST') return { ok: true }
+    return {}
   }
-  const contents = url.match(/\/contents\/(.+?)\?ref=main$/)
-  if (contents) {
-    const content = FILE_CONTENT[contents[1]]
-    if (content == null) throw new Error('GitHub 404: Not Found')
-    return { content: Buffer.from(content, 'utf8').toString('base64'), sha: shaFor(contents[1]) }
-  }
-  if (init?.method === 'PUT') return { ok: true }
-  return {}
-}
+
+/** Deterministic GitHub boundary over the caseworks fixtures above. */
+const githubFetchImpl = makeGithubFetchImpl(FILE_CONTENT)
 
 type WriteCall = { repo: string; path: string; content: string }
 const writes = (): WriteCall[] => mockPutRepoFile.mock.calls.map(([arg]) => arg as WriteCall)
@@ -186,5 +191,162 @@ describe('P5 site-health protection — chunked/complete mutation path', () => {
     const result = await repairSiteHealthChunked(CASE, 0, 10, true)
     expect(result.protectedOrphansSkipped).toBe(2)
     expect(result.orphansFixed).toBe(1)
+  })
+})
+
+/**
+ * BLOCKER 3 (final supervisor repair): the noindex mutation boundary itself —
+ * `fixNoIndexPagesChunked()` — must consult the P5 disposition contract before
+ * any read/write/branch/PR/history write for every candidate URL. A registered
+ * KEEP_BUT_SILO candidate is skipped in place: it is never returned as fixed,
+ * never rewritten, and never reaches a PR or the fix history. Unregistered
+ * candidates keep the pre-P5 fix path exactly.
+ */
+const PLAIN_CONTENT_PATH = 'content/guides/plain-student-guide.mdx'
+const PLAIN_CONTENT_URL = 'https://yousafeconsultancy.com/guides/plain-student-guide/'
+
+const NOINDEX_FILES: Record<string, string> = {
+  // Registered KEEP_BUT_SILO cohort page, carrying a real noindex directive.
+  [UTAH_PATH]: [
+    'export const metadata = { title: "University of Utah student housing", robots: "noindex, nofollow" }',
+    '',
+    'export default function Page() {',
+    `  return <main>${'Utah student housing guide. '.repeat(60)}</main>`,
+    '}',
+    '',
+  ].join('\n'),
+  // Unregistered fully-expanded content page with front-matter index: false.
+  [PLAIN_CONTENT_PATH]: [
+    '---',
+    'title: Plain student guide',
+    'slug: /guides/plain-student-guide',
+    'index: false',
+    '---',
+    '',
+    `${'Plain student guide body. '.repeat(60)}`,
+    '',
+  ].join('\n'),
+}
+
+const protectedNoIndexCandidate = {
+  repo: 'caseworks' as const,
+  path: UTAH_PATH,
+  url: UTAH_URL,
+  title: 'University of Utah student housing',
+  words: 500,
+}
+const plainNoIndexCandidate = {
+  repo: 'yousafe-consultancy' as const,
+  path: PLAIN_CONTENT_PATH,
+  url: PLAIN_CONTENT_URL,
+  title: 'Plain student guide',
+  words: 500,
+}
+
+/** Decoded entries of the fix-history PUT, or null when no history write happened. */
+const historyPutEntries = (): Array<Record<string, unknown>> | null => {
+  const call = mockGithubFetch.mock.calls.find(
+    ([endpoint, init]) =>
+      String(endpoint).includes('.content-studio/site-health-fixes.json') &&
+      (init as { method?: string } | undefined)?.method === 'PUT',
+  )
+  if (!call) return null
+  const body = JSON.parse(String((call[1] as { body?: string }).body))
+  return JSON.parse(Buffer.from(String(body.content), 'base64').toString('utf8'))
+}
+
+describe('P5 noindex mutation boundary — protected candidates are skipped before any write', () => {
+  it('uses real registry URLs and real noindex content so the regressions cannot be vacuous', () => {
+    expect(p5MutationVerdict(UTAH_URL)).toMatchObject({
+      registered: true,
+      disposition: 'KEEP_BUT_SILO',
+      blocked: true,
+    })
+    expect(p5MutationVerdict(PLAIN_CONTENT_URL).blocked).toBe(false)
+    expect(hasNoIndexFlag(NOINDEX_FILES[UTAH_PATH])).toBe(true)
+    expect(hasNoIndexFlag(NOINDEX_FILES[PLAIN_CONTENT_PATH])).toBe(true)
+  })
+
+  it('does not read, rewrite, branch, PR or log a registered KEEP_BUT_SILO noindex candidate', async () => {
+    mockGithubFetch.mockImplementation(makeGithubFetchImpl(NOINDEX_FILES))
+
+    for (const dryRun of [false, true]) {
+      const result = await fixNoIndexPagesChunked('caseworks', 0, 10, [protectedNoIndexCandidate], dryRun)
+
+      expect(result.fixed).toEqual([])
+      expect(result.skipped).toEqual([])
+      expect(result.protectedSkipped).toHaveLength(1)
+      expect(result.protectedSkipped[0]).toMatchObject({
+        repo: 'caseworks',
+        path: UTAH_PATH,
+        url: UTAH_URL,
+        disposition: 'KEEP_BUT_SILO',
+      })
+      expect(result.protectedSkipped[0].reason).toContain('KEEP_BUT_SILO')
+      expect(result.totalCandidates).toBe(1)
+      expect(result.nextBatch).toBeNull()
+    }
+
+    // The guard runs before even the contents read, so nothing touched GitHub.
+    expect(mockGithubFetch).not.toHaveBeenCalled()
+    expect(mockPutRepoFile).not.toHaveBeenCalled()
+    expect(mockOpenPullRequest).not.toHaveBeenCalled()
+  })
+
+  it('still fixes an unregistered fully-expanded noindex candidate through the existing path', async () => {
+    mockGithubFetch.mockImplementation(makeGithubFetchImpl(NOINDEX_FILES))
+
+    const result = await fixNoIndexPagesChunked('yousafe-consultancy', 0, 10, [plainNoIndexCandidate], false)
+
+    expect(result.protectedSkipped).toEqual([])
+    expect(result.fixed).toEqual([
+      {
+        repo: 'yousafe-consultancy',
+        path: PLAIN_CONTENT_PATH,
+        url: PLAIN_CONTENT_URL,
+        title: 'Plain student guide',
+      },
+    ])
+    const write = writes().find((call) => call.path === PLAIN_CONTENT_PATH)
+    expect(write).toBeDefined()
+    expect(write!.content).toContain('index: true')
+    expect(write!.content).not.toContain('index: false')
+    expect(mockOpenPullRequest).toHaveBeenCalledTimes(1)
+
+    const entries = historyPutEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries![0]).toMatchObject({
+      action: 'noindex',
+      repo: 'yousafe-consultancy',
+      path: PLAIN_CONTENT_PATH,
+      url: PLAIN_CONTENT_URL,
+    })
+  })
+
+  it('skips the protected candidate inside a mixed batch and never logs it as fixed', async () => {
+    mockGithubFetch.mockImplementation(makeGithubFetchImpl(NOINDEX_FILES))
+
+    const result = await fixNoIndexPagesChunked(
+      'all',
+      0,
+      10,
+      [protectedNoIndexCandidate, plainNoIndexCandidate],
+      false,
+    )
+
+    expect(result.fixed.map((f) => f.path)).toEqual([PLAIN_CONTENT_PATH])
+    expect(result.protectedSkipped.map((s) => s.path)).toEqual([UTAH_PATH])
+    expect(result.skipped).toEqual([])
+    expect(writes().map((call) => call.path)).toEqual([PLAIN_CONTENT_PATH])
+
+    const prBody = String((mockOpenPullRequest.mock.calls[0][0] as { body?: string }).body)
+    expect(prBody).toContain(PLAIN_CONTENT_PATH)
+    expect(prBody).not.toContain(UTAH_PATH)
+    expect(prBody).not.toContain('university-of-utah-student-housing')
+
+    const entries = historyPutEntries()
+    expect(entries).toHaveLength(1)
+    expect(JSON.stringify(entries)).not.toContain(UTAH_URL)
+    expect(JSON.stringify(entries)).not.toContain('university-of-utah-student-housing')
   })
 })

@@ -77,10 +77,45 @@ export interface FullSiteHealthReport {
 export interface FullRepairResult {
   orphansFixed: number
   noindexFixed: number
+  /** Noindex candidates the P5 disposition contract refused to mutate. */
+  noindexProtectedSkipped: number
   sitemapsUpdated: number
   prUrls: string[]
   errors: string[]
   dryRun: boolean
+}
+
+/** A noindex fix the mutation boundary actually performed (not a candidate). */
+export interface NoIndexFixOutcome {
+  repo: RepoId
+  path: string
+  url: string
+  title: string
+  words: number
+}
+
+/**
+ * Build history entries for ACTUAL noindex fix outcomes only.
+ *
+ * `fixNoIndexPagesChunked()` returns `fixed` exclusively for candidates it
+ * really rewrote; P5-protected candidates come back in `protectedSkipped`.
+ * Logging from the candidate list (as this orchestrator used to) could report
+ * a protected/skipped page as "Removed noindex", so the log is now derived
+ * from the fixed outcomes the boundary returned.
+ */
+export function buildNoIndexFixLogEntries(
+  fixed: NoIndexFixOutcome[],
+  limit = 20,
+): SiteHealthFixRecord[] {
+  return fixed.slice(0, limit).map((f) => ({
+    id: `idx_${Date.now().toString(36)}_${f.path.replace(/\//g, '_').slice(0, 30)}`,
+    timestamp: new Date().toISOString(),
+    action: 'noindex',
+    repo: f.repo,
+    path: f.path,
+    url: f.url,
+    detail: `Removed noindex from fully-expanded page (${f.words}w): ${f.title || f.path}`,
+  }))
 }
 
 export interface SitemapDiffResult {
@@ -222,7 +257,7 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
   }
 
   // ── Phase 4: Repairs ─────────────────────────────────────────────
-  const repairResult: FullRepairResult = { orphansFixed: 0, noindexFixed: 0, sitemapsUpdated: 0, prUrls: [], errors: [], dryRun: opts.dryRun !== false }
+  const repairResult: FullRepairResult = { orphansFixed: 0, noindexFixed: 0, noindexProtectedSkipped: 0, sitemapsUpdated: 0, prUrls: [], errors: [], dryRun: opts.dryRun !== false }
   const logEntries: SiteHealthFixRecord[] = []
 
   if (opts.fixOrphans && orphans.length && !opts.dryRun) {
@@ -261,21 +296,21 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
         contentCursor = contentBatch.nextBatch
       }
       if (candidates.length) {
+        const fixedOutcomes: NoIndexFixOutcome[] = []
         let nc: number | null = 0
         while (nc !== null) {
           const r = await fixNoIndexPagesChunked(scope, nc, batchSize, candidates, false)
           repairResult.noindexFixed += r.fixed.length
+          repairResult.noindexProtectedSkipped += r.protectedSkipped.length
           if (r.prUrl) repairResult.prUrls.push(r.prUrl)
+          for (const f of r.fixed) {
+            const candidate = candidates.find((c) => c.repo === f.repo && c.path === f.path)
+            fixedOutcomes.push({ ...f, words: candidate?.words ?? 0 })
+          }
           nc = r.nextBatch
         }
-        for (const f of candidates.slice(0, 20)) {
-          logEntries.push({
-            id: `idx_${Date.now().toString(36)}_${f.path.replace(/\//g, '_').slice(0, 30)}`,
-            timestamp: new Date().toISOString(),
-            action: 'noindex', repo: f.repo, path: f.path, url: f.url,
-            detail: `Removed noindex from fully-expanded page (${f.words}w): ${f.title || f.path}`,
-          })
-        }
+        // Truthful logging: only outcomes the mutation boundary actually fixed.
+        logEntries.push(...buildNoIndexFixLogEntries(fixedOutcomes))
       }
     } catch (e: any) {
       repairResult.errors.push(`noindex fix: ${String(e?.message ?? e).slice(0, 200)}`)
