@@ -638,3 +638,56 @@ Truthful summary: **three exact qualified historical overlaps exist, but all are
 - `Major priority-cluster cannibalization resolved` → **PASS**.
 - **P4 is closed. P5 is next.**
 - Broad net-new CREATE remains frozen until P13.
+
+## 2026-09-20 — P5 off-mission dispositions and action boundary — IN_PROGRESS checkpoint
+
+**Supervisor:** ChatGPT (final authority). **Executor:** repository implementation pass.
+**Branch:** `seo/p5-off-mission-cleanup-20260920` (base `d5688e9f7144d7ae34526db9f6a18dd88d292d32`).
+**Status:** **IN_PROGRESS**. Not merged, not deployed, not production-verified. No P5 PASS is claimed here.
+
+### Supervisor decisions recorded
+
+1. Gate 1 (raw vs qualified/off-mission visibility) remains as previously evidenced PASS and is preserved exactly — off-mission rows stay observable in raw measurement and are not rewritten into junk.
+2. Gate 2 was **not** accepted as PASS: action-facing keyword planning admitted off-mission GSC terms before the final pipeline backstop. This pass fixes that boundary.
+3. "High-impression" for P5 is defined as the smallest descending URL cohort whose cumulative off-mission impressions reach at least **75% of all off-mission impressions, including every URL tied at the boundary**. For `2026-06-22 → 2026-09-19` that is the eight URLs below.
+4. Explicit disposition for all eight cohort URLs is **`KEEP_BUT_SILO`**: retain the useful campus-lifestyle page in its current live state; it remains observable but non-mission/non-actionable; no redirect, noindex, retirement, canonical change, and no automatic internal-authority expansion from P5 evidence alone.
+5. Dispositions use only the existing program vocabulary `KEEP | KEEP_BUT_SILO | MOVE | MERGE_301 | NOINDEX | RETIRE`.
+6. No production mutation was required or performed.
+
+### Cohort and evidence
+
+- Cohort (75% cumulative share), all `https://legal.yousafeconsultancy.com/guide/<slug>/`, all `KEEP_BUT_SILO`: `university-of-south-carolina-student-housing`, `florida-international-university-student-housing`, `portland-state-university-student-housing`, `cornell-university-student-housing`, `university-of-utah-student-housing`, `arizona-state-university-student-housing`, `university-of-oregon-student-housing`, `howard-university-student-housing`.
+- Evidence source: persisted GSC query×page rows for `sc-domain:yousafeconsultancy.com`, **read-only**; **no live GSC API pull**, so live-query coverage remains UNKNOWN.
+- Window `2026-06-22 → 2026-09-19`, persisted sync `2026-09-20 05:39 UTC`; window holds **2,660 rows** (re-verified read-only during this pass).
+- Off-mission totals for the window: **613 impressions / 134 rows / 37 URLs / 0 clicks**.
+- Recorded as **UNKNOWN (`null`)** with explicit provenance, never as fabricated `0`: per-URL off-mission impressions/rows/clicks, per-URL qualified demand, and live status / sitemap / robots / ownership observations for all eight URLs.
+
+### Changes in this checkpoint
+
+- New durable contract: `data/seo/p5-off-mission-dispositions.json` (versioned `p5-off-mission-dispositions-v1`, mirrored byte-identical at `public/seo-data/p5-off-mission-dispositions.json`) plus typed helper `lib/seoFactory/p5OffMissionDispositions.ts` (strategic vocabulary, deterministic normalization, lookup, `p5MutationVerdict()`, `validateP5Registry()`). Static import is deliberate so the fail-closed gate cannot depend on an unavailable fetch; no table/migration was added because a committed repository file satisfies runtime gating.
+- `lib/seoFactory/keywordPlanner.ts`: GSC-derived board/plan admission now requires the metric-aware `isQualifiedGscDemandQuery()` boundary instead of junk-only filtering; the explicit `includeBrand` opt-in is preserved.
+- `app/api/seo-factory/auto-run/route.ts`: Master Planner top-up uses the shared metric-free `isActionableDemandQuery()` boundary; the keyword-plan branch enforces the same guard before candidates are built.
+- `app/api/seo-factory/auto-run-stream/route.ts`: keyword-plan fill enforces `isActionableDemandQuery()` (fail-closed defense in depth). Note for the record: this revision has no cluster-plan top-up path; its GSC-derived top-up is the keyword-plan fill.
+- `lib/seoFactory/indexCoverageFixes.ts`: `computeIndexFix()` consults the registry first and returns `skipped` with an explicit P5 reason for registered URLs whose disposition is not `KEEP`; `resolveIndexCoverage()` passes the registered URL set to the delegated repair.
+- `lib/seoFactory/siteHealth.ts`: `repairSiteHealth(scope, dryRun, { protectedUrls })` refuses to use protected URLs as orphan link targets or sitemap entries, so a repo-wide repair triggered by an unrelated URL cannot re-expand a siloed page.
+- Tests: `tests/p5-off-mission-dispositions.test.ts`, `tests/p5-keyword-planner-demand-boundary.test.ts`, `tests/p5-auto-run-demand-boundary.test.ts`.
+- Docs: `docs/superpowers/plans/2026-09-20-seo-parity-p5-off-mission.md`; both P5 matrix rows moved `PENDING` → `IN_PROGRESS` with evidence.
+
+### Verification performed (local)
+
+- `git diff --check`: clean.
+- `node --check` parses every added/changed TypeScript file.
+- Node smoke harness over the real modules: **23 checks PASS** — registry validates with no problems; all eight URLs `KEEP_BUT_SILO` in the closed vocabulary; normalization deterministic/idempotent across host-case, scheme, trailing-slash, tracker, `www.` and hash variants; UNKNOWN stays `null` and is never coerced to `0`; every registered URL blocks with an explicit P5 reason naming disposition and window; an unregistered URL is not blocked; `data/` and `public/` copies are byte-identical; and each classification fixture used by the Jest suites is the real boundary case (off-mission campus demand is non-junk and fails the qualified boundary; qualified immigration/admissions/tenancy demand passes).
+- **Environment limitation:** this worktree's `node_modules` symlink resolves to an empty/inaccessible directory, so Jest and `tsc` could not run locally. No dependency install, no manifest change, no arbitrary Jest version was introduced. The three new suites and `tsc` therefore remain unproven locally and must pass in CI.
+
+### Explicitly not done
+
+- No redirect, noindex, canonical, robots, retirement or internal-link mutation for any of the eight pages.
+- No database write, migration, PR, push, merge, deployment, or production change.
+- No P6 work.
+
+### Next gate
+
+1. PR checks: the three P5 suites, full Jest where available, `tsc --noEmit`, and the repository's SEO guard.
+2. Merge through GitHub, then exact-main deployment verification by the supervisor.
+3. Only then may the two P5 matrix rows move from `IN_PROGRESS` toward PASS. Broad net-new CREATE remains frozen until P13.

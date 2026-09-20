@@ -38,6 +38,7 @@ import {
 } from './siteHealth'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { type GscFixAction, type GscIndexIssue } from '@/lib/gscIndexCoverage'
+import { normalizeP5Url, p5MutationVerdict } from './p5OffMissionDispositions'
 
 export interface IndexFixItem {
   issue: GscIndexIssue
@@ -232,10 +233,23 @@ function outcome(
 /**
  * Decide what a fix looks like for one issue, without touching GitHub.
  * `newContent` is set when the page source should be rewritten in a PR.
+ *
+ * P5 fail-closed gate (first check, before any action): a URL covered by the
+ * versioned P5 off-mission disposition registry may only be mutated
+ * automatically when its disposition is `KEEP`. Registered KEEP_BUT_SILO /
+ * MOVE / MERGE_301 / NOINDEX / RETIRE URLs (and any unrecognized disposition)
+ * return `skipped` with the explicit P5 reason, so no PR, no fix, no
+ * re-indexing request and no delegated site-health repair can be derived from
+ * them. URLs that are not in the registry are untouched by this gate.
  */
 export function computeIndexFix(item: IndexFixItem): FixOutcome {
   const { issue, page } = item
   const content = page.content ?? ''
+
+  const p5 = p5MutationVerdict(issue.url)
+  if (p5.blocked) {
+    return outcome(item, 'skipped', p5.reason || 'P5 disposition — automated mutation blocked')
+  }
 
   switch (issue.fixAction) {
     case 'REMOVE_NOINDEX': {
@@ -355,6 +369,19 @@ export async function resolveIndexCoverage(
   const requestedIndexing: Array<{ url: string; ok: boolean; detail: string }> = []
   const warnings: string[] = []
 
+  // P5 protection set for this run: the registered P5 URLs present in the
+  // batch, so the delegated repo-wide site-health repair below cannot inject an
+  // orphan link or a sitemap entry for a siloed page as a side effect of
+  // repairing an unrelated URL in the same repo.
+  const protectedUrls = [
+    ...new Set(
+      items
+        .filter((item) => p5MutationVerdict(item.issue.url).registered)
+        .map((item) => normalizeP5Url(item.issue.url))
+        .filter((key): key is string => Boolean(key)),
+    ),
+  ]
+
   // Partition.
   const perFile: IndexFixItem[] = []
   const delegatedRepos = new Set<SiteHealthScope>()
@@ -404,7 +431,7 @@ export async function resolveIndexCoverage(
   // 2) orphan + sitemap delegated items → Site Health repair (once per repo).
   for (const repo of delegatedRepos) {
     try {
-      const report = await repairSiteHealth(repo, false)
+      const report = await repairSiteHealth(repo, false, { protectedUrls })
       const prs = report.pullRequests?.map((p) => p.prUrl) ?? []
       if (prs.length) prUrls.push(...prs)
       for (const o of outcomes) {

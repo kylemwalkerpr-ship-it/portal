@@ -13,6 +13,7 @@ import {
   type RequestedShipMode,
 } from '@/lib/seoFactory/pipeline'
 import { buildKeywordPlan, planTermsForAutoRun } from '@/lib/seoFactory/keywordPlanner'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 import {
   buildSeoWarRoom,
   playToOpportunityAction,
@@ -267,6 +268,10 @@ export async function POST(request: NextRequest) {
       const terms = orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)
       candidates = []
       for (const term of terms) {
+        // P5 action boundary (defense in depth): the board is already
+        // qualified-only, but plan terms must not become candidates on the
+        // strength of their provenance alone.
+        if (!isActionableDemandQuery(term)) continue
         const item = kwPlan.plan.find((p) => p.term === term)
         const region = item?.region || 'US'
         const contentType = item?.contentType || 'legal_guide'
@@ -313,13 +318,17 @@ export async function POST(request: NextRequest) {
     if (candidates.length < limit) {
       try {
         const { loadPlansDashboard } = await import('@/lib/seoEngine/planner')
-        const { isJunkQuery } = await import('@/lib/seoFactory/queryNoise')
+        // P5 action boundary: cluster plans reach this loop with no row metrics
+        // (est_monthly_* are estimates, not the GSC row), so the metric-free
+        // actionable-demand guard is the correct admission filter. Junk-only
+        // admission let an off-mission campus-lifestyle plan become an
+        // auto-run mission whenever the primary source under-filled.
         const { plans } = await loadPlansDashboard(Math.max(limit * 6, 30))
         const have = new Set(candidates.map((c) => c.term.toLowerCase()))
         for (const p of plans) {
           if (candidates.length >= limit) break
           const term = String(p.primary_term || '')
-          if (!term || isJunkQuery(term)) continue
+          if (!term || !isActionableDemandQuery(term)) continue
           if (String(p.status || '') !== 'planned') continue
           if (have.has(term.toLowerCase())) continue
           if (skipRecent && recent.has(term.toLowerCase())) continue

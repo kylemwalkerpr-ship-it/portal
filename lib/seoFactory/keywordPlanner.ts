@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { CATEGORIES } from '@/lib/categories'
-import { isJunkQuery } from './queryNoise'
+import { isQualifiedGscDemandQuery } from './queryNoise'
 
 /**
  * Marketplace category demand signal — when the marketplace has active
@@ -495,10 +495,24 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
 
   const board: KeywordSignal[] = []
   for (const q of queries) {
-    // Drop junk (PDF filenames, quoted document blobs, file paths) before
-    // clustering — a junk query can never resolve to an owner or a cluster.
-    // Brand terms are still allowed when the caller explicitly opts in.
-    if (isJunkQuery(q.term) && !(includeBrand && brandTerm(q.term))) continue
+    // Action boundary (P5): a GSC term may enter the research board — and
+    // therefore the editorial plan, auto-run candidates and every downstream
+    // action — ONLY through the metric-aware qualified boundary. Junk-only
+    // filtering admitted two things it must not: real off-mission
+    // campus-lifestyle demand (student housing / parking / "is X safe for
+    // international students") and on-mission deep-tail noise. Both stay
+    // observable in raw GSC measurement; neither may become a mission.
+    //
+    // The explicit `includeBrand` opt-in is preserved verbatim: brand terms are
+    // junk-class by design, so a caller that deliberately asks for them still
+    // gets them.
+    const brandOptIn = includeBrand && brandTerm(q.term)
+    const qualified = isQualifiedGscDemandQuery(q.term, {
+      impressions: q.impressions,
+      position: q.position,
+      clicks: q.clicks,
+    })
+    if (!qualified && !brandOptIn) continue
     const region = inferRegion(q.term)
     if (regionFilter && region !== regionFilter) continue
 

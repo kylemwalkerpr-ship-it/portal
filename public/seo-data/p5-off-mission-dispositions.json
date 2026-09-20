@@ -1,0 +1,250 @@
+{
+  "version": "p5-off-mission-dispositions-v1",
+  "program": "docs/superpowers/specs/2026-09-15-seo-cleanup-expansion-parity-design.md",
+  "plan": "docs/superpowers/plans/2026-09-20-seo-parity-p5-off-mission.md",
+  "capturedAt": "2026-09-20T14:39:20Z",
+  "evidence": {
+    "source": "persisted GSC query×page rows (public.seo_gsc_rows), read-only; no live GSC API pull was made",
+    "siteUrl": "sc-domain:yousafeconsultancy.com",
+    "window": { "start": "2026-06-22", "end": "2026-09-19" },
+    "persistedSyncAt": "2026-09-20T05:39:00Z",
+    "persistedWindowRows": 2660,
+    "cohortRule": "smallest descending URL cohort whose cumulative off-mission impressions reach at least 75% of all off-mission impressions, including every URL tied at the boundary",
+    "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+    "cohortUrlCount": 8,
+    "offMissionTotals": { "impressions": 613, "rows": 134, "urls": 37, "clicks": 0 },
+    "perUrlOffMissionSplit": null,
+    "perUrlOffMissionSplitReason": "The 2026-09-20 P5 audit measured off-mission cohort totals (613 impressions / 134 rows / 37 URLs / 0 clicks) and the 75% leading cohort, but did not publish a per-URL off-mission split. Per-URL values must be re-derived from persisted rows with classifyGscVisibility() before a number is recorded here — they are left null (UNKNOWN) rather than fabricated as 0.",
+    "knownLimitations": [
+      "Persisted-window evidence only: it proves the classification of the persisted 2026-06-22 → 2026-09-19 rows, not live Google index state.",
+      "Off-mission rows stay observable in raw GSC reporting/measurement surfaces; this contract only governs action surfaces.",
+      "Per-URL impressions/rows/clicks and live status/sitemap/robots/ownership observations are UNKNOWN (null) for all eight entries."
+    ]
+  },
+  "entries": [
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-south-carolina-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/florida-international-university-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/portland-state-university-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/cornell-university-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-utah-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/arizona-state-university-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-oregon-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/howard-university-student-housing/",
+      "disposition": "KEEP_BUT_SILO",
+      "cohortId": "off-mission-75pct-2026-06-22_2026-09-19",
+      "evidenceWindow": { "start": "2026-06-22", "end": "2026-09-19" },
+      "offMissionImpressions": null,
+      "offMissionRows": null,
+      "offMissionClicks": null,
+      "qualifiedDemand": { "impressions": null, "rows": null, "clicks": null },
+      "liveObservations": {
+        "httpStatus": null,
+        "inSitemap": null,
+        "robotsState": null,
+        "ownershipRegistryRowId": null,
+        "observedAt": null
+      },
+      "permits": {
+        "redirect": false,
+        "noindex": false,
+        "canonicalChange": false,
+        "retire": false,
+        "automatedIndexCoverageMutation": false,
+        "internalAuthorityExpansion": false
+      },
+      "unknownReason": "per-URL off-mission split and live observations were not measured by the 2026-09-20 audit",
+      "basis": "Campus-lifestyle demand (student housing family) with no immigration/document/admissions or tenancy-legal anchor — isOffMissionDemandQuery() true",
+      "notes": "Retain the live page in its current state: observable in raw/off-mission measurement, non-mission and non-actionable, no automated index-coverage/site-health mutation, no redirect/noindex/canonical change and no automatic internal-authority expansion from P5 evidence alone."
+    }
+  ]
+}

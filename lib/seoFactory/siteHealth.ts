@@ -6,6 +6,7 @@ import {
   putRepoFile,
 } from '@/lib/githubContents'
 import { frontmatterBlock, logRepairs } from './siteHealthFixes'
+import { normalizeP5Url } from './p5OffMissionDispositions'
 
 export type SiteHealthScope = 'all' | 'caseworks' | 'yousafe-consultancy' | 'portal'
 
@@ -644,18 +645,42 @@ export async function auditSiteHealthChunked(
 }
 
 
-export async function repairSiteHealth(scope: SiteHealthScope = 'all', dryRun = false) {
+/**
+ * Repair orphan interlinks + sitemap routes for a scope.
+ *
+ * `opts.protectedUrls` is the P5 protection set (normalized keys from
+ * `lib/seoFactory/p5OffMissionDispositions.ts`): registered P5 URLs are never
+ * used as an orphan link target and never injected into a sitemap by this
+ * automated repair, so a repo-wide repair triggered by an unrelated URL cannot
+ * silently re-expand a siloed page's internal authority. An empty/omitted set
+ * changes nothing.
+ */
+export async function repairSiteHealth(
+  scope: SiteHealthScope = 'all',
+  dryRun = false,
+  opts: { protectedUrls?: string[] } = {},
+) {
   const report = await auditSiteHealth(scope)
   if (dryRun) return { ...report, dryRun: true, repaired: [], pullRequests: [] }
+  const protectedKeys = new Set(
+    (opts.protectedUrls ?? []).map((url) => normalizeP5Url(url)).filter((key): key is string => Boolean(key)),
+  )
+  const isProtected = (url: string | null | undefined) => {
+    if (!protectedKeys.size) return false
+    const key = normalizeP5Url(url)
+    return Boolean(key && protectedKeys.has(key))
+  }
   const configs = (Object.values(CONFIGS) as RepoConfig[]).filter((config) => scope === 'all' || config.repo === scope)
   const repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }> = []
   const pullRequests: Array<{ repo: RepoId; branch: string; files: string[]; prNumber: number; prUrl: string }> = []
   for (const config of configs) {
-    const orphans = report.orphanPages.filter((page) => page.repo === config.repo)
+    const orphans = report.orphanPages
+      .filter((page) => page.repo === config.repo)
+      .filter((page) => !isProtected(page.url))
     // Re-scan so the sitemap is refreshed from the same current page graph,
     // even when this repository currently has zero orphan pages.
     const files = await scanRepo(config)
-    const indexablePages = files.filter((file) => file.page && file.indexable)
+    const indexablePages = files.filter((file) => file.page && file.indexable && !isProtected(file.url))
     if (!orphans.length && !indexablePages.length) continue
     const hub = orphans.length ? chooseRepairHub(files, config) : null
     const branch = `content-studio/site-health-${Date.now().toString(36)}`.slice(0, 240)
