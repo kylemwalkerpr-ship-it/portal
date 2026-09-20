@@ -1,12 +1,12 @@
 # SEO Parity P5 — Off-Mission Dispositions and the Action Boundary
 
-> **Implementation record.** P5 is **IN_PROGRESS**. Nothing in this plan authorizes a redirect, noindex, canonical change, retirement, merge, migration, deployment or any production mutation for the pages below.
+> **Implementation record.** P5 is **PASS — closed 2026-09-20** (production acceptance and closure below). Nothing in this plan authorizes a redirect, noindex, canonical change, retirement, merge, migration, deployment or any production mutation for the pages below.
 
 **Goal:** give the highest-impression off-mission URLs an explicit, durable disposition, and stop off-mission GSC demand from entering any action surface before the final pipeline backstop.
 
 **Design source:** `docs/superpowers/specs/2026-09-15-seo-cleanup-expansion-parity-design.md` (§7.2 strategic disposition vocabulary, §7.3 qualified visibility).
 
-**Branch:** `seo/p5-off-mission-cleanup-20260920` (base `d5688e9f7144d7ae34526db9f6a18dd88d292d32`).
+**Branch:** `seo/p5-off-mission-cleanup-20260920` (base `d5688e9f7144d7ae34526db9f6a18dd88d292d32`; final head `4745f89cb7be3ed75ee06990f73dec092ce8ae16`, merged as `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b` via PR #254).
 
 ---
 
@@ -90,7 +90,7 @@ Regression evidence (added to `tests/p5-site-health-protection.test.ts` and `tes
 
 ## Pre-PR review fixes (post-`1c7045b6`) — truthful orphan outcomes + robots evidence scope
 
-ChatGPT's pre-PR review (run `512570ba-1eea-49f6-9e80-bc2c0f691779`) accepted two blockers; both are fixed on top of `1c7045b6` with **no disposition change, no protected-URL auto-repair and no live mutation**. P5 remains **IN_PROGRESS**.
+ChatGPT's pre-PR review (run `512570ba-1eea-49f6-9e80-bc2c0f691779`) accepted two blockers; both are fixed on top of `1c7045b6` with **no disposition change, no protected-URL auto-repair and no live mutation**. P5 remained **IN_PROGRESS** at that checkpoint; it closed PASS later on 2026-09-20 (see "P5 production acceptance and closure" below).
 
 1. **Orphan outcome truthfulness.** `repairSiteHealthChunked()` now returns an additive exact `fixedOrphans` outcome list (only orphans whose hub rewrite really happened), `orphansFixed` is that list's length (never the candidate batch length), and `FullRepairResult.orphansProtectedSkipped` surfaces protected skips. A repo with no usable hub or an unchanged hub produces no outcome while the batch cursor still advances. `runFullSiteHealthCheck({ fixOrphans: true })` builds `orphan` history entries only from those outcomes (`buildOrphanFixLogEntries()`), so a P5-protected or otherwise unrepaired orphan is never written or logged as "Repaired orphan page".
 2. **Robots evidence scope.** `liveObservations.robotsState` is now recorded for all eight entries as the explicit robots.txt-scope string `robots.txt allowed (HTML meta robots state not observed in P5 audit)` (field name kept; `data/` and `public/` copies byte-identical). The type comment documents the scope, `validateP5Registry()` rejects a non-null `robotsState` that is not robots.txt-scoped, and the registry `knownLimitations` plus Utah's entry notes acknowledge ownership registry row 57: the P5 audit only established robots.txt crawl allowance and did **not** inspect HTML meta robots state, so the pre-repair noindex gap could have been a live mutation risk (closed at the automated boundary by `7807aafd`).
@@ -109,7 +109,7 @@ Repaired in `lib/seoEngine/planner.ts` using the shared `isActionableDemandQuery
 3. **Candidate/plan admission.** Off-mission signals never become cluster plans, so `runPlanner` cannot persist an off-mission-titled mission regardless of source (GSC, Ubersuggest, Ads, GA4).
 4. **Plan cluster terms.** The related-terms loop of an admitted plan applies the same boundary, so an off-mission term can never ride along as a cluster term, spoke or keyword-partition entry.
 
-This is an **admission boundary, not ontology deletion**: the housing lifecycle stage and its settlement/tenancy/legal seeds are unchanged, and qualified housing such as tenant rights, lease and newcomer-housing demand still plans (the stage/housing-filter inclusion semantics are untouched). No CREATE freeze change.
+This is an **admission boundary, not ontology deletion**: the housing lifecycle stage and its settlement/tenancy/legal seeds are unchanged; tenancy/lease/deposit-anchored and immigration-anchored housing demand still plans (bare housing/newcomer-lifestyle queries may remain off-mission under the shared classifier), and the stage/housing-filter inclusion semantics are untouched. No CREATE freeze change.
 
 Regression: `tests/p5-planner-demand-boundary.test.ts` drives the REAL planner (only Supabase/interlink boundaries mocked) and proves: off-mission GSC + Ubersuggest never plan, never persist and never leak into an admitted cluster; qualified immigration and tenancy-legal housing demand in the same batch still plans and persists; the Ubersuggest-only housing score is bit-identical with and without the off-mission GSC signal (no corroboration); off-mission-only demand issues no marketplace (`gigs`) lookup, while qualified housing demand does (non-vacuous control); and `tests/planner-filter-inclusion.test.ts` keeps its inclusion/no-relabelling purpose with the on-mission fixture `stockton student housing tenant rights` (asserted actionable and housing-mapped).
 
@@ -122,15 +122,31 @@ Local evidence for this fix: a temporary Node smoke harness over the real planne
 - Substitute local evidence for this repair (temporary Node smoke harness, removed before commit; only GitHub Contents, audit scan, live-verify, snapshot and sitemap-fetch boundaries stubbed): **41 checks PASS**, 25 driving the real `fixNoIndexPagesChunked()` and 16 driving the real `runFullSiteHealthCheck()`. The harness caught a real first-draft defect (the function's final `return` omitted `protectedSkipped` — a `tsc` error) that was fixed before commit.
 - Substitute local evidence: a Node smoke harness over the real modules (temporary, removed before commit; GitHub/IndexNow boundaries stubbed) — **19 checks PASS**: registry validation; per-URL audit evidence with UNKNOWN only where actually unknown; byte-identical data/public copies; registry protection cannot be narrowed by a caller list; `repairSiteHealth` with no caller list still protects all eight cohort URLs, retains an existing protected sitemap entry and never adds an absent one; `repairSiteHealthChunked` skips both protected orphans, repairs the unregistered one, and writes no protected URL; and the delegated `resolveIndexCoverage` repair runs through the real site-health layer with the same protection.
 - `node --check` parses every changed/added TypeScript file; `git diff --check` is clean.
-- The seven P5 Jest suites and `tsc` must run in CI; P5 stays **IN_PROGRESS** until they pass on the exact merge commit and deployment evidence is recorded by the supervisor.
+- The seven P5 Jest suites and `tsc` were unproven in this worktree; CI later ran them green on the reviewed head `4745f89c` and on exact main `3a041a07…` (see the closure section below).
 
-## Acceptance criteria (not yet met)
+## P5 production acceptance and closure (2026-09-20) — PASS
 
-- All P5 suites (including `tests/p5-planner-demand-boundary.test.ts`) pass in CI; `tsc` and `git diff --check` pass on the reviewed head.
-- Auto-run cannot produce an off-mission mission from a cluster plan or a keyword-plan fill.
-- `runPlanner()` itself cannot persist an off-mission-titled `seo_cluster_plans` mission, corroborate an off-mission cell, or derive actionable-cell marketplace work from off-mission demand.
-- Registered `KEEP_BUT_SILO` URLs cannot be mutated by automated index-coverage/site-health repair — in the bulk path or the chunked path — even when the triggering batch contains none of them.
-- Registered `KEEP_BUT_SILO` URLs cannot be mutated by the noindex fixer (`fixNoIndexPagesChunked()` and the complete-flow `runFullSiteHealthCheck({ fixNoindex: true })`) and can never be reported/logged as a completed noindex fix.
-- Complete-flow orphan repair reports and logs only actually repaired outcomes: protected orphans are surfaced in `repairs.orphansProtectedSkipped` and can never be reported/logged as "Repaired orphan page" or written.
-- Unregistered URLs keep their pre-P5 behavior.
-- P5 moves to PASS only after merge + exact-main production verification by the supervisor. Broad net-new CREATE remains frozen until P13.
+**P5 PASS — phase closed.** Release: implementation PR [#254](https://github.com/kylemwalkerpr-ship-it/portal/pull/254), final implementation branch head `4745f89cb7be3ed75ee06990f73dec092ce8ae16`, merged `2026-09-20T17:49:32Z` as the exact-main merge commit `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b`. Both P5 matrix rows moved `IN_PROGRESS` → `PASS`; P6+ rows were not changed.
+
+- **PR checks on `4745f89c`:** `Content Studio Review` run `35526811862` SUCCESS; `Deploy YouSafe Portal` PR-context run `35526811883` SUCCESS — typecheck, full unit tests, Next/OpenNext build and the SEO audit guard all passed; the deployment-specific production steps were skipped as expected in PR context.
+- **CI-discovered regression, repaired before merge:** PR CI on an earlier head caught a spaced self-brand regression (the spaced brand form `you safe`); it was repaired in final implementation head `4745f89c…`, after which both PR workflows were re-run green on that head. Recorded for truthful provenance only — no further mechanism is claimed here.
+- **Exact-main `Deploy YouSafe Portal` run `35527092062`** on SHA `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b` completed **SUCCESS** at `2026-09-20T17:56:03Z`: unit tests 454 suites passed / 2 skipped (454 of 456 executed result lines), 4,828 tests passed / 4 skipped (4,832 total), 0 failures; typecheck PASS; Next + OpenNext build PASS; static incremental cache PASS; SEO audit guard PASS; Cloudflare credential check PASS; Worker deploy PASS with 28 ms startup.
+- **Worker secrets health PASS** (HTTP 200, `ok=true`, `healthy=true`, `failures=[]`): Clerk live OK; Supabase profiles live OK; service-role legacy-JWT auth mode healthy.
+- **Post-deploy smoke:** the first attempts saw the normal propagation transients; attempt 3 passed **all 4/4** — portal root 200; studio auth gate 307 → `/sign-in/student` with sign-in 200; GSC connect API guard 401 JSON; exact build freshness `buildId 6Lo03t2kpJg9ql9lJ2UAI` with CDN consistency. Final line: `deployment healthy`.
+- **Audit evidence window unchanged:** the P5 audit remains the persisted `2026-06-22 → 2026-09-19` window (2,660 rows, last sync `2026-09-20 05:39 UTC`). **No fresh GSC live pull is claimed.**
+- **Nonblocking residuals (recorded; not fixed by P5 and none reopens the automated P5 gate):** (1) the human-initiated single-page admin `repairSinglePage(repo, path, 'remove-noindex')` path remains outside the automated P5 mutation boundary; (2) complete-flow noindex duplicate-history noise remains separately tracked; (3) legacy `fixSitemaps` counter/UI wording can imply a sitemap write although the chunked helper does not write sitemap files; (4) admin noindex candidate protection keys on caller-supplied `candidate.url`, so a path/url mismatch is a defense-in-depth opportunity (automated flows derive consistent path+url); (5) broad net-new CREATE remains frozen until P13. None of these is claimed fixed.
+
+### Documentation wording correction (reviewer-noted)
+
+The earlier overbroad statement "newcomer housing still plans" was tightened in this plan, the matrix and the ledger to: **tenancy/lease/deposit-anchored and immigration-anchored housing demand still plans; bare housing / newcomer-lifestyle queries may remain off-mission under the shared classifier.** No evidence about the ontology seeds themselves changed.
+
+## Acceptance criteria — MET (P5 closed PASS, 2026-09-20)
+
+- **MET** — All P5 suites (including `tests/p5-planner-demand-boundary.test.ts`) passed in CI and `tsc` passed on the reviewed head: PR-context run `35526811883` (typecheck + full unit tests, Next/OpenNext build, SEO audit guard) and exact-main run `35527092062` (454 suites passed / 2 skipped; 4,828 tests passed / 4 skipped; 0 failures; typecheck PASS). `git diff --check` was clean at each implementation checkpoint recorded above.
+- **MET** — Auto-run cannot produce an off-mission mission from a cluster plan or a keyword-plan fill (pinned by the green `tests/p5-auto-run-demand-boundary.test.ts` and `tests/p5-keyword-planner-demand-boundary.test.ts` runs in the CI above).
+- **MET** — `runPlanner()` itself cannot persist an off-mission-titled `seo_cluster_plans` mission, corroborate an off-mission cell, or derive actionable-cell marketplace work from off-mission demand (pinned by `tests/p5-planner-demand-boundary.test.ts`, including the bit-identical Ubersuggest score control, in the green CI above).
+- **MET** — Registered `KEEP_BUT_SILO` URLs cannot be mutated by automated index-coverage/site-health repair — bulk or chunked — even when the triggering batch contains none of them (pinned by `tests/p5-site-health-protection.test.ts` in the green CI above).
+- **MET** — Registered `KEEP_BUT_SILO` URLs cannot be mutated by the noindex fixer (`fixNoIndexPagesChunked()` and the complete-flow `runFullSiteHealthCheck({ fixNoindex: true })`) and can never be reported/logged as a completed noindex fix (pinned by `tests/p5-site-health-protection.test.ts` and `tests/p5-noindex-orchestrator-truthfulness.test.ts` in the green CI above).
+- **MET** — Complete-flow orphan repair reports and logs only actually repaired outcomes; protected orphans are surfaced in `repairs.orphansProtectedSkipped` and can never be reported/logged as "Repaired orphan page" or written (pinned by `tests/p5-orphan-orchestrator-truthfulness.test.ts` in the green CI above).
+- **MET** — Unregistered URLs keep their pre-P5 behavior (same protection/truthfulness suites).
+- **MET** — P5 moved to PASS after merge to exact main `3a041a07a12c9e9cb4465bbf3d37cedd78241a6b` and exact-main production verification run `35527092062` (SUCCESS `2026-09-20T17:56:03Z`), as recorded above. Broad net-new CREATE remains frozen until P13.
