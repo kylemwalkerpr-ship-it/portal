@@ -850,15 +850,21 @@ export async function shipContent(opts: {
       })
     }
 
-    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-    // Stage (never "apply") engine-planned edges for live verification: record
-    // the real source canonicalUrl and leave the row planned. `applied` is only
-    // ever written after verifyLiveUrl + exact live-anchor proof.
+    // Lifecycle ordering is load-bearing (P6): STAGE (never "apply")
+    // engine-planned edges for live verification first — recording the real
+    // source canonicalUrl and leaving the row planned — and only THEN launch
+    // background live verification, which finalizes staged rows for this exact
+    // canonicalUrl once verifyLiveUrl establishes ok=true. Launching
+    // verification before staging would race the staging write and could leave
+    // valid staged rows planned indefinitely (nothing would finalize them).
+    // `applied` is only ever written after verifyLiveUrl + exact live-anchor
+    // proof.
     await stageEngineInterlinksForVerification({
       canonicalUrl: opts.plan.canonicalUrl,
       primaryKeyword: opts.primaryKeyword,
       body: shipContent_,
     })
+    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
     return {
       mode: 'autodeploy',
       owner,
@@ -1008,13 +1014,15 @@ export async function shipContent(opts: {
         if (opts.plan.canonicalUrl) {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
-        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-        // Stage (never "apply") the engine's planned edges for live verification.
+        // Stage FIRST, then launch background verification (see the
+        // direct-main path above): staged rows must exist before a background
+        // verifier can finalize them, otherwise valid links stay planned.
         await stageEngineInterlinksForVerification({
           canonicalUrl: opts.plan.canonicalUrl,
           primaryKeyword: opts.primaryKeyword,
           body: shipContent_,
         })
+        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
         return {
           mode: 'merge',
           owner,

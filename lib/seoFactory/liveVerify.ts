@@ -5,6 +5,10 @@ import { countBodyWords } from './contentDepth'
 import { reconcilePublicationDeployment } from './publicationMonitor'
 import { extractRevisionMarkerFromHtml, withPublicationManifest } from './publicationProof'
 import { evaluateLiveArtifact } from './publicationStates'
+import {
+  finalizeStagedInterlinksForLiveSource,
+  type FinalizeStagedInterlinksResult,
+} from './interlinkVerification'
 
 export interface LiveVerifyInput {
   canonicalUrl:string; title?:string; primaryKeyword?:string; contentType?:string; jobId?:string|null; commitSha?:string|null; host?:string|null; repo?:string|null
@@ -90,4 +94,59 @@ export async function verifyLiveUrl(input:LiveVerifyInput):Promise<LiveVerifyRes
   return{ok,liveUrl:url,responseUrl,responseUrlMatches,httpStatus,verifiedAt,wordCount:wc,auditScore,humanScore,hasNoIndex,canonicalHref,hasCanonical,purgeStatus,sitemapStatus,indexNowStatus:indexNowRes,expectedMarker:proof?.expectedMarker||null,liveMarker,publicationPhase,lineageVerified:proof?.lineageVerified??null,error:ok?null:proofReason}
 }
 
-export function verifyLiveInBackground(input:LiveVerifyInput){verifyLiveUrl(input).catch(e=>console.warn('[liveVerify] background failed',e))}
+export interface BackgroundLiveVerifyDeps {
+  verify:(input:LiveVerifyInput)=>Promise<LiveVerifyResult>
+  finalize:(input:{canonicalUrl:string})=>Promise<FinalizeStagedInterlinksResult>
+}
+
+/**
+ * Background live verification + interlink finalization.
+ *
+ * Lifecycle contract (P6): a successful live verification is the ONLY thing
+ * that may finalize staged `seo_interlinks` rows, so the normal background
+ * path must run the same proof the admin path runs instead of leaving staged
+ * rows planned forever. Ordering on the ship side is load-bearing: ship.ts
+ * awaits staging BEFORE calling this, otherwise verification can finish
+ * before rows exist and never finalize them.
+ *
+ * Never rejects: a failed content verification simply does not finalize
+ * (nothing is applied), and an interlink finalization failure is logged in
+ * isolation so it can never weaken a successful content verification.
+ */
+export async function runBackgroundLiveVerification(
+  input:LiveVerifyInput,
+  deps?:Partial<BackgroundLiveVerifyDeps>,
+):Promise<void>{
+  const verify=deps?.verify||verifyLiveUrl
+  const finalize=deps?.finalize||finalizeStagedInterlinksForLiveSource
+  let result:LiveVerifyResult
+  try{
+    result=await verify(input)
+  }catch(e){
+    console.warn('[liveVerify] background failed',e)
+    return
+  }
+  // Fail closed: only an explicit ok=true verdict may finalize interlinks.
+  if(!result?.ok)return
+  const canonicalUrl=String(input?.canonicalUrl||'').trim()
+  if(!canonicalUrl)return
+  try{
+    const summary=await finalize({canonicalUrl})
+    if(summary?.applied>0||summary?.error){
+      console.warn('[liveVerify] interlink finalization',{
+        sourceUrl:summary?.sourceUrl||canonicalUrl,
+        checked:summary?.checked,
+        applied:summary?.applied,
+        absent:summary?.absent,
+        targetNotLive:summary?.targetNotLive,
+        sourceNotLive:summary?.sourceNotLive,
+        unverifiable:summary?.unverifiable,
+        error:summary?.error||null,
+      })
+    }
+  }catch(e){
+    console.warn('[liveVerify] interlink finalization failed',e)
+  }
+}
+
+export function verifyLiveInBackground(input:LiveVerifyInput){return runBackgroundLiveVerification(input)}

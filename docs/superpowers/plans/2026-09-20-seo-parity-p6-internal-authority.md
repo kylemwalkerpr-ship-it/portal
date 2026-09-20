@@ -34,9 +34,11 @@
 
 `lib/seoFactory/interlinkVerification.ts` `stageEngineInterlinksForVerification()` replaces the old ship-time applied writer. After a successful direct-main write or merge, a planned row whose exact target URL is **structurally embedded** in the shipped draft (markdown link / HTML anchor only) records `source_url = <plan canonicalUrl>` and stays `planned` (`applied_at` null, no `present` verdict). Planner slugs locate candidate rows; the canonicalUrl is the only source identity, and a different durable source identity is never overwritten.
 
+**Lifecycle ordering is load-bearing:** both ship success paths `await` staging **first** and only then launch live verification (`ship.ts` line order: `stageEngineInterlinksForVerification` → `verifyLiveInBackground`). Launching verification first would race the staging write, and a verifier that finished before the rows existed could never finalize them.
+
 ### C. `applied` only after `verifyLiveUrl` ok=true + exact live proof
 
-Finalization runs only when `verifyLiveUrl(input).ok === true` for that exact `canonicalUrl` (wired into `POST /api/content-studio/verify-published`):
+Finalization runs only when `verifyLiveUrl(input).ok === true` for that exact `canonicalUrl`. Two callers reach it: `POST /api/content-studio/verify-published` (admin, explicit) and the **normal background ship path** — `verifyLiveInBackground()` → `runBackgroundLiveVerification()`, which finalizes for `input.canonicalUrl` when, and only when, the verification it just ran resolved `ok === true`. A finalization failure is logged in isolation and can never weaken or fail a successful content verification:
 
 - exact, normalized `<a href>` match against the LIVE source HTML (`live_exact_href`) — never plain text, `<script>` or JSON substring; trailing-slash tolerant, query/fragment strict;
 - the target must also be live via the existing link-validity authority (`verifyUrlsLive` + `classifyLiveStatus`);
