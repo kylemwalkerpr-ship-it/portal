@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
+import { assertBroadCreateDestinationAllowed } from './broadCreateFreeze'
 import { collectTinyfishResearch, type TinyfishRun } from './tinyfishAdapter'
 import {
   buildWritingContract,
@@ -55,6 +56,7 @@ export async function startSuggestBriefContract(input: {
     indexable: true,
   })
   assertPlanRepoConsistency(plan)
+  await assertBroadCreateDestinationAllowed(plan, { primaryKeyword: input.primaryKeyword })
   const db = createSupabaseAdminClient()
   const reservation = await reserveOpportunityJob(db, {
     topic: input.topic,

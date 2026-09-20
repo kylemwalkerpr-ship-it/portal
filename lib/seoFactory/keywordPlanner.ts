@@ -48,7 +48,12 @@ function marketplaceDemandBoost(term: string): number {
   }
   return Math.min(25, best)
 }
-import { classifyDestinationType, resolveOwner, type OwnerPlan } from './ownership'
+import {
+  classifyDestinationType,
+  isAuthoritativeOwnershipRow,
+  resolveOwner,
+  type OwnerPlan,
+} from './ownership'
 import {
   authorityPromptHints,
   scoreTopicAuthority,
@@ -358,6 +363,29 @@ function findRelatedPage(
   return bestN >= 2 ? best : null
 }
 
+function registryRowAuthorizesOwner(plan: OwnerPlan): boolean {
+  if (plan.routingSource !== 'registry_owner_url') return Boolean(plan.matched?.owner_url)
+  return isAuthoritativeOwnershipRow(plan.matched)
+}
+
+/**
+ * Owner URL that may drive related-page matching.
+ *
+ * A registry-routed plan may only reuse `matched.owner_url` when the row is an
+ * authoritative existing owner. For a proposed / needs_decision / supply-first
+ * row the URL is unratified, and `plan.canonicalUrl` is derived from that same
+ * row — so there is no owner hint at all (never fall back to the canonical
+ * URL, which would reintroduce the unratified destination). Non-registry
+ * routes (standing rules, strike seed, host defaults) keep the prior
+ * owner-else-canonical behavior.
+ */
+function relatedOwnerUrl(plan: OwnerPlan): string | null {
+  if (plan.routingSource === 'registry_owner_url') {
+    return isAuthoritativeOwnershipRow(plan.matched) ? plan.matched.owner_url : null
+  }
+  return plan.matched?.owner_url || plan.canonicalUrl || null
+}
+
 function classifyLane(opts: {
   q: { term: string; impressions: number; clicks: number; ctr: number; position: number }
   plan: OwnerPlan
@@ -371,6 +399,14 @@ function classifyLane(opts: {
   if (q.impressions < 8) {
     return { lane: 'defer', reason: 'Impressions too low for investment' }
   }
+  const matchedStatus = String(plan.matched?.status || 'missing')
+  const matchedAction = String(plan.matched?.action || 'unknown')
+  if (plan.routingSource === 'registry_owner_url' && !isAuthoritativeOwnershipRow(plan.matched)) {
+    return {
+      lane: 'monitor',
+      reason: `Non-authoritative registry owner (status=${matchedStatus} action=${matchedAction}) — no refresh/expand/build_new`,
+    }
+  }
   if (plan.blockers.some((b) => /blocked_on_supply|301|merge/i.test(b))) {
     return { lane: 'defer', reason: plan.blockers[0] || 'Ownership blocked' }
   }
@@ -378,7 +414,7 @@ function classifyLane(opts: {
     return { lane: 'monitor', reason: 'Recently covered by Content Studio job' }
   }
 
-  const hasOwner = Boolean(plan.matched?.owner_url)
+  const hasOwner = registryRowAuthorizesOwner(plan)
   const expectedCtr =
     q.position <= 3 ? 0.1 : q.position <= 10 ? 0.045 : q.position <= 20 ? 0.025 : 0.012
 
@@ -485,7 +521,7 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
           recentlyCovered,
           includeBrand,
         })
-    const relatedPage = findRelatedPage(q.term, pages, plan.matched?.owner_url || plan.canonicalUrl)
+    const relatedPage = findRelatedPage(q.term, pages, relatedOwnerUrl(plan))
     const dScore = demandScore(q)
     const authority = scoreTopicAuthority({
       term: q.term,
@@ -493,7 +529,7 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       clicks: q.clicks,
       ctr: q.ctr,
       position: q.position,
-      hasOwner: Boolean(plan.matched?.owner_url),
+      hasOwner: registryRowAuthorizesOwner(plan),
       host: plan.host,
       recentlyCovered,
       registryAction: plan.action,

@@ -9,15 +9,36 @@ const finalPlan = {
   filePath: 'content/blog/custom-model-slug.md',
   canonicalUrl: 'https://yousafeconsultancy.com/blog/custom-model-slug/',
 }
-const mockResolveOwner = jest.fn(async (input: any) => input?.slug ? finalPlan : initialPlan)
+let mockOwnerStatus = 'confirmed'
+let mockOwnerAction = 'keep'
+const mockResolveOwner = jest.fn(async (input: any) => {
+  const base = input?.slug ? finalPlan : initialPlan
+  return {
+    ...base,
+    routingSource: 'registry_owner_url',
+    matched: {
+      id: input?.slug ? 902 : 901,
+      owner_url: base.canonicalUrl,
+      status: mockOwnerStatus,
+      action: mockOwnerAction,
+      notes: '',
+    },
+  }
+})
+const mockLiveFetch = jest.fn(async (url: string) => ({ status: 200, url: String(url), ok: true }))
+const originalFetch = global.fetch
 const mockAttach = jest.fn(async (..._args: any[]) => undefined)
 const mockPersist = jest.fn(async (...args: any[]) => args[1])
 const mockTargetUpdates: any[] = []
 
-jest.mock('@/lib/seoFactory/ownership', () => ({
-  resolveOwner: (input: any) => mockResolveOwner(input),
-  assertPlanRepoConsistency: jest.fn(),
-}))
+jest.mock('@/lib/seoFactory/ownership', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/ownership')
+  return {
+    ...actual,
+    resolveOwner: (input: any) => mockResolveOwner(input),
+    assertPlanRepoConsistency: jest.fn(),
+  }
+})
 
 jest.mock('@/lib/seoFactory/tinyfishAdapter', () => ({
   collectTinyfishResearch: jest.fn(async (input: any) => ({
@@ -77,7 +98,59 @@ const sealedBrief = {
 }
 
 describe('suggest-brief final slug ownership', () => {
-  beforeEach(() => { mockResolveOwner.mockClear(); mockAttach.mockClear(); mockPersist.mockClear(); mockTargetUpdates.length = 0 })
+  beforeEach(() => {
+    mockResolveOwner.mockClear()
+    mockAttach.mockClear()
+    mockPersist.mockClear()
+    mockTargetUpdates.length = 0
+    mockOwnerStatus = 'confirmed'
+    mockOwnerAction = 'keep'
+    mockLiveFetch.mockReset()
+    mockLiveFetch.mockImplementation(async (url: string) => ({ status: 200, url: String(url), ok: true }))
+    ;(global as any).fetch = mockLiveFetch
+    const freeze = require('@/lib/seoFactory/broadCreateFreeze') as { resetBroadCreateLiveCache?: () => void }
+    freeze.resetBroadCreateLiveCache?.()
+    const store = jest.requireMock('@/lib/seoFactory/writingContractStore') as { reserveOpportunityJob: jest.Mock }
+    store.reserveOpportunityJob.mockClear()
+    const tinyfish = jest.requireMock('@/lib/seoFactory/tinyfishAdapter') as { collectTinyfishResearch: jest.Mock }
+    tinyfish.collectTinyfishResearch.mockClear()
+  })
+
+  afterAll(() => {
+    ;(global as any).fetch = originalFetch
+  })
+
+  it('refuses ownership before reserving an opportunity or starting research', async () => {
+    mockOwnerStatus = 'proposed'
+    const store = jest.requireMock('@/lib/seoFactory/writingContractStore') as { reserveOpportunityJob: jest.Mock }
+    const tinyfish = jest.requireMock('@/lib/seoFactory/tinyfishAdapter') as { collectTinyfishResearch: jest.Mock }
+
+    await expect(startSuggestBriefContract({
+      topic: 'F-1 options', primaryKeyword: 'f-1 options', contentType: 'blog', region: 'US', audienceStage: 'researching',
+    })).rejects.toThrow(/broad net-new CREATE/i)
+
+    expect(store.reserveOpportunityJob).not.toHaveBeenCalled()
+    expect(tinyfish.collectTinyfishResearch).not.toHaveBeenCalled()
+    expect(mockLiveFetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses final ownership before persisting a model-selected target', async () => {
+    const session = await startSuggestBriefContract({
+      topic: 'F-1 options', primaryKeyword: 'f-1 options', contentType: 'blog', region: 'US', audienceStage: 'researching',
+    })
+    mockOwnerStatus = 'proposed'
+
+    await expect(finalizeSuggestBriefContract({
+      session, topic: 'F-1 options', primaryKeyword: 'f-1 options', contentType: 'blog', region: 'US',
+      audience: 'F-1 students', audienceStage: 'researching', sealedBrief,
+      requiredShortKeywords: [], requiredLongTailKeywords: [], shortKeywordTerms: [], longTailKeywordTerms: [],
+      minWords: 800, targetWords: 1000, maxWords: 1300, sources: [], interlinks: [],
+      title: 'F-1 Options', targetSlug: 'custom-model-slug', engineOk: true, ubersuggestTerms: [],
+    })).rejects.toThrow(/broad net-new CREATE/i)
+
+    expect(mockTargetUpdates).toEqual([])
+    expect(mockAttach).not.toHaveBeenCalled()
+  })
 
   it('re-resolves a legitimate model slug before sealing and attaching the immutable contract', async () => {
     const session = await startSuggestBriefContract({

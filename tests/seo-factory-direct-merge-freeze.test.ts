@@ -435,8 +435,12 @@ const ROW45_KEYWORD = 'stem opt extension 2026 news'
 const ROW45_OWNER_URL = 'https://legal.yousafeconsultancy.com/blog/stem-opt-extension-2026/'
 const ROW46_KEYWORD = 'f-1 requirements 2026 overview'
 const ROW46_OWNER_URL = 'https://yousafeconsultancy.com/blog/'
+/** Registry id 55: proposed/expand with a specific article URL (not a section root). */
+const PROPOSED_LIVE_EXACT_KEYWORD = 'uk renters rights act 2025 complete guide'
+const PROPOSED_LIVE_EXACT_OWNER_URL =
+  'https://legal.yousafeconsultancy.com/uk/tenancy/uk-renters-rights-act-2025-complete-guide/'
 
-const BLOG_OWNER_ROWS = [
+const CONFIRMED_BLOG_OWNER_ROWS = [
   {
     label: 'registry row 45 (legal /blog owner)',
     keyword: ROW45_KEYWORD,
@@ -444,16 +448,19 @@ const BLOG_OWNER_ROWS = [
     repo: 'caseworks',
     contentPath: 'app/blog/stem-opt-extension-2026/page.tsx',
   },
-  {
-    label: 'registry row 46 (apex /blog owner)',
-    keyword: ROW46_KEYWORD,
-    ownerUrl: ROW46_OWNER_URL,
-    repo: 'yousafe-consultancy',
-    contentPath: 'landing-page/content/blog.md',
-  },
 ]
 
-function blogOwnerJob(row: (typeof BLOG_OWNER_ROWS)[number]) {
+const PROPOSED_BLOG_OWNER_ROW = {
+  label: 'registry row 46 (proposed apex /blog index)',
+  keyword: ROW46_KEYWORD,
+  ownerUrl: ROW46_OWNER_URL,
+  repo: 'yousafe-consultancy',
+  contentPath: 'landing-page/content/blog.md',
+}
+
+function blogOwnerJob(
+  row: (typeof CONFIRMED_BLOG_OWNER_ROWS)[number] | typeof PROPOSED_BLOG_OWNER_ROW,
+) {
   return baseJob({
     primary_keyword: row.keyword,
     topic: row.keyword,
@@ -465,7 +472,7 @@ function blogOwnerJob(row: (typeof BLOG_OWNER_ROWS)[number]) {
 }
 
 describe('direct existing-PR merges — persisted blog_post rendering type still proves the existing owner', () => {
-  it.each(BLOG_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     'legacyCore merge_pr merges $label when the live owner answers 200 exactly',
     async (row) => {
       mockDbRef = makeDb(blogOwnerJob(row))
@@ -478,7 +485,7 @@ describe('direct existing-PR merges — persisted blog_post rendering type still
     },
   )
 
-  it.each(BLOG_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     'legacyCore approve (existing-PR shortcut) merges $label when the live owner answers 200 exactly',
     async (row) => {
       mockDbRef = makeDb(blogOwnerJob(row))
@@ -490,7 +497,7 @@ describe('direct existing-PR merges — persisted blog_post rendering type still
     },
   )
 
-  it.each(BLOG_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     'strictManualPublication merge_pr merges $label when the live owner answers 200 exactly',
     async (row) => {
       mockDbRef = makeDb(blogOwnerJob(row))
@@ -502,7 +509,26 @@ describe('direct existing-PR merges — persisted blog_post rendering type still
     },
   )
 
-  it.each(BLOG_OWNER_ROWS)(
+  it('freezes proposed row 46 statically at every direct existing-PR publication door', async () => {
+    const cases = [
+      () => legacyJobsPatch(request({ id: JOB_ID, action: 'merge_pr' })),
+      () => legacyJobsPatch(request({ id: JOB_ID, action: 'approve', humanApproved: true })),
+      () => strictManualPublicationPATCH(request({ id: JOB_ID, action: 'merge_pr' })),
+    ]
+
+    for (const invoke of cases) {
+      mockDbRef = makeDb(blogOwnerJob(PROPOSED_BLOG_OWNER_ROW))
+      liveFetchMock.mockClear()
+      mockMergePullRequest.mockClear()
+      const res = await invoke()
+      expect(res.status).toBe(409)
+      expect((await res.clone().json()).error).toMatch(/broad net-new CREATE/i)
+      expect(mockMergePullRequest).not.toHaveBeenCalled()
+      expect(liveFetchMock).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     'legacyCore merge_pr still freezes $label when the live owner redirects elsewhere',
     async (row) => {
       mockDbRef = makeDb(blogOwnerJob(row))
@@ -515,7 +541,7 @@ describe('direct existing-PR merges — persisted blog_post rendering type still
     },
   )
 
-  it.each(BLOG_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     'strictManualPublication merge_pr still freezes $label when the live owner answers 404',
     async (row) => {
       mockDbRef = makeDb(blogOwnerJob(row))
@@ -545,6 +571,29 @@ describe('direct existing-PR merges — persisted blog_post rendering type still
     expect((await res.clone().json()).error).toMatch(/broad net-new CREATE/i)
     expect(mockMergePullRequest).not.toHaveBeenCalled()
     // Static refusal: an untrusted net-new destination is never probed live.
+    expect(liveFetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('direct existing-PR merges — proposed live-exact article owner is refused statically', () => {
+  it.each([
+    ['merge_pr', { action: 'merge_pr' }],
+    ['approve existing-PR shortcut', { action: 'approve', humanApproved: true }],
+  ])('legacyCore %s refuses a proposed live-exact owner before mergePullRequest', async (_label, body) => {
+    mockDbRef = makeDb(
+      baseJob({
+        primary_keyword: PROPOSED_LIVE_EXACT_KEYWORD,
+        topic: PROPOSED_LIVE_EXACT_KEYWORD,
+        canonical_url: PROPOSED_LIVE_EXACT_OWNER_URL,
+        content_path: 'app/uk/tenancy/uk-renters-rights-act-2025-complete-guide/page.tsx',
+      }),
+    )
+    mockLive({ status: 200, url: PROPOSED_LIVE_EXACT_OWNER_URL })
+    const res = await legacyJobsPatch(request({ id: JOB_ID, ...body }))
+    expect(res.status).toBe(409)
+    expect((await res.clone().json()).error).toMatch(/broad net-new CREATE/i)
+    expect(mockMergePullRequest).not.toHaveBeenCalled()
+    expect(mockShipContent).not.toHaveBeenCalled()
     expect(liveFetchMock).not.toHaveBeenCalled()
   })
 })

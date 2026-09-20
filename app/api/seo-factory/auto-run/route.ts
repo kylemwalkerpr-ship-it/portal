@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { resolveOwner } from '@/lib/seoFactory/ownership'
+import { isAuthoritativeOwnershipRow, resolveOwner } from '@/lib/seoFactory/ownership'
 import {
   loadFactoryOpportunities,
   pickAutoRunCandidates,
@@ -399,6 +399,12 @@ export async function POST(request: NextRequest) {
         candidates = pool.slice(0, limit)
       }
     }
+
+    candidates = candidates.filter((c) => {
+      const hint = c.ownerHint
+      if (hint?.routingSource !== 'registry_owner_url') return true
+      return isAuthoritativeOwnershipRow(hint.matched)
+    })
 
     if (!candidates.length) {
       return NextResponse.json({

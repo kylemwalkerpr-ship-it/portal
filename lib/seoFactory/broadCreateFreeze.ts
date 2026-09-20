@@ -57,7 +57,7 @@
  * the liveVerify DB/CDN stack or the AI stack to evaluate the gate.
  */
 
-import type { OwnerPlan } from './ownership'
+import { isAuthoritativeOwnershipRow, type OwnerPlan } from './ownership'
 import { GSC_STRIKE_SEEDS_2026_08 } from './strikeSeeds'
 
 export const BROAD_CREATE_UNLOCK_ENV = 'SEO_FACTORY_UNLOCK_BROAD_CREATE'
@@ -137,7 +137,8 @@ export function isAuthoritativeDestination(
   const final = normalizeDestinationKey(finalCanonicalUrl)
   if (!final) return false
   if (authority.routingSource === 'registry_owner_url') {
-    const owner = normalizeDestinationKey(authority.matched?.owner_url)
+    if (!isAuthoritativeOwnershipRow(authority.matched)) return false
+    const owner = normalizeDestinationKey(authority.matched.owner_url)
     return owner !== null && owner === final
   }
   if (authority.routingSource === 'strike_seed') {
@@ -183,10 +184,13 @@ export function broadCreateFreezeMessage(
   const canonical = (plan as { canonicalUrl?: string }).canonicalUrl
   const filePath = (plan as { filePath?: string }).filePath
   const destination = [canonical, filePath].filter(Boolean).join(' · ')
+  const matchedStatus = String(plan.matched?.status ?? '').trim() || '(missing)'
+  const matchedAction = String(plan.matched?.action ?? '').trim() || '(missing)'
+  const matchedNotes = String(plan.matched?.notes ?? '').trim()
   return [
     'Broad net-new CREATE is frozen pending cleanup-to-expansion parity (P13 controlled expansion not yet started).',
-    `Refused plan for ${keyword}(action=${plan.action}, routingSource=${plan.routingSource})${destination ? ` → ${destination}` : ''}.`,
-    'That routing source does not prove the final destination already exists — an action label alone is not an existing owner.',
+    `Refused plan for ${keyword}(action=${plan.action}, routingSource=${plan.routingSource}, ownerStatus=${matchedStatus}, ownerAction=${matchedAction})${destination ? ` → ${destination}` : ''}.`,
+    `That routing source/ownership state does not prove the final destination already exists${matchedNotes ? ` (${matchedNotes})` : ''} — an action label alone is not an existing owner.`,
     'No drafting job was created and no AI generation was started.',
     'Resolve this keyword to an existing owner (matched registry owner URL or strike-seed owner), or deliberately unlock '
       + `${BROAD_CREATE_UNLOCK_ENV}=1 once the P13 expansion gates are proven.`,
@@ -205,10 +209,13 @@ export function publicationFreezeMessage(
     authority.routingSource === 'registry_owner_url'
       ? String(authority.matched?.owner_url ?? '').trim() || '(none)'
       : String(authority.canonicalUrl ?? '').trim() || '(none)'
+  const matchedStatus = String(authority.matched?.status ?? '').trim() || '(missing)'
+  const matchedAction = String(authority.matched?.action ?? '').trim() || '(missing)'
+  const matchedNotes = String(authority.matched?.notes ?? '').trim()
   return [
     'Broad net-new CREATE is frozen pending cleanup-to-expansion parity (P13 controlled expansion not yet started).',
-    `Refused publication for ${keyword}(routingSource=${authority.routingSource}) → final destination ${final}.`,
-    `That destination does not match the currently resolved existing owner (${resolvedOwner}). A registry row, an ownerUrlHint, or a YouSafe hostname is authority only when the final canonical equals the resolved owner.`,
+    `Refused publication for ${keyword}(routingSource=${authority.routingSource}, ownerStatus=${matchedStatus}, ownerAction=${matchedAction}) → final destination ${final}.`,
+    `That destination/ownership state does not match a currently authoritative existing owner (${resolvedOwner})${matchedNotes ? ` (${matchedNotes})` : ''}. A registry row, an ownerUrlHint, or a YouSafe hostname is authority only when the row is authoritative and the final canonical equals the resolved owner.`,
     'No Git write was performed.',
     `Resolve this keyword to its current existing owner, or deliberately unlock ${BROAD_CREATE_UNLOCK_ENV}=1 once the P13 expansion gates are proven.`,
   ].join(' ')

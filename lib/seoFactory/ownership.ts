@@ -152,6 +152,54 @@ export const HOST_PUBLIC: Record<OwnerHost, string> = {
   market: 'https://market.yousafeconsultancy.com',
 }
 
+export const AUTHORITATIVE_OWNERSHIP_STATUS = 'confirmed' as const
+
+export const AUTHORITATIVE_OWNERSHIP_ACTIONS: ReadonlySet<string> = new Set([
+  'keep',
+  'expand',
+  'merge',
+])
+
+const AUTHORITATIVE_OWNERSHIP_HOSTS: ReadonlySet<string> = new Set(
+  Object.values(HOST_PUBLIC).map((baseUrl) => new URL(baseUrl).hostname),
+)
+
+/** Generic estate section/index URLs must never authorize a specific article. */
+export function isSectionRootCanonical(url: string): boolean {
+  try {
+    const parsed = new URL(String(url || '').trim())
+    const path = parsed.pathname.replace(/\/+$/, '') || '/'
+    if (path === '/' || /^\/(us|uk|ca|au)$/i.test(path)) return true
+    if (/^\/(guide|blog|articles|universities|from)$/i.test(path)) return true
+    if (/^\/categor(?:y|ies)(?:\/.*)?$/i.test(path)) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A registry row may authorize authoring/publication only when it represents a
+ * confirmed existing owner on the known YouSafe estate. Proposed, undecided,
+ * supply-first, build, missing, unknown and generic section-root rows fail closed.
+ */
+export function isAuthoritativeOwnershipRow(
+  row: OwnershipRow | null | undefined,
+): row is OwnershipRow {
+  if (!row) return false
+  if (String(row.status || '').trim() !== AUTHORITATIVE_OWNERSHIP_STATUS) return false
+  if (!AUTHORITATIVE_OWNERSHIP_ACTIONS.has(String(row.action || '').trim())) return false
+  const ownerUrl = String(row.owner_url || '').trim()
+  try {
+    const parsed = new URL(ownerUrl)
+    if (parsed.protocol !== 'https:') return false
+    if (!AUTHORITATIVE_OWNERSHIP_HOSTS.has(parsed.hostname)) return false
+  } catch {
+    return false
+  }
+  return !isSectionRootCanonical(ownerUrl)
+}
+
 /** Collapse `https://host//path` so CS never ships Ahrefs "Double slash in URL". */
 export function sanitizeOwnerUrl(url: string): string {
   const raw = String(url || '').trim()

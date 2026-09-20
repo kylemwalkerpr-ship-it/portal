@@ -35,11 +35,14 @@ const plan = {
   // Genuine existing owner for the P0 global publication freeze: the direct
   // merge gate re-resolves via this mocked resolver and requires the persisted
   // canonical to equal the matched registry owner URL.
-  matched: { id: 1, owner_url: 'https://legal.yousafeconsultancy.com/us/manual/' },
+  matched: { id: 1, owner_url: 'https://legal.yousafeconsultancy.com/us/manual/', status: 'confirmed', action: 'expand', notes: '' },
   routingSource: 'registry_owner_url',
   action: 'expand',
 }
-jest.mock('@/lib/seoFactory/ownership', () => ({ resolveOwner: jest.fn(async () => plan) }))
+jest.mock('@/lib/seoFactory/ownership', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/ownership')
+  return { ...actual, resolveOwner: jest.fn(async () => plan) }
+})
 jest.mock('@/lib/seoFactory/audit', () => ({
   auditContent: jest.fn(() => ({ score: 100, wordCount: 320, blockers: [], warnings: [] })),
 }))

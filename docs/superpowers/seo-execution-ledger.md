@@ -464,3 +464,41 @@ This section records the production evidence used to close all four current P2 r
 - `Redirect/4xx/parameter duplicates/broken internal links reconciled` → **PASS** for the production evidence above; the final sitemap estate has no redirects/non-2xx/query-string duplicates, and the durable broken-link targets found in the pre-fix rendered crawl were repaired.
 - `Priority indexable orphans resolved or justified` → **PASS**: all 7 priority orphan destinations are live-linked; the one remaining Legal orphan is explicitly non-priority by both ownership and qualified-demand evidence.
 - Every current P2 row in `docs/superpowers/seo-parity-matrix.md` is now **PASS**. Overall SEO parity remains incomplete because P3-P13 are still gated.
+
+
+## 2026-09-20 — P3 intent ownership implementation + ratification acceptance — pre-deploy
+
+This section records the P3 ownership contract, live owner ratification, and local release gates. P3 remains `IN_PROGRESS` until the exact reviewed Portal candidate is merged and deployed; later phases remain gated.
+
+### Authority contract implemented
+
+- `lib/seoFactory/ownership.ts` now exposes one authority predicate: a row authorizes authoring/publication only when `status=confirmed`, its action is one of `keep | expand | merge`, its owner is HTTPS on a known YouSafe estate host, and the owner is not a generic section/index root.
+- Generic roots fail closed, including `/`, country roots, `/guide/`, `/blog/`, `/articles/`, `/universities/`, `/from/`, and category roots. Specific hubs such as `/us/student-visas/` and `/uk/family-visas/` remain valid.
+- `supply_first`, `build`, missing/unknown action/status, proposed/needs-decision/blocked statuses, and generic roots cannot authorize CREATE even when the destination is live.
+- `broadCreateFreeze`, Content Studio contract binding, planner/auto-run operator truth, and the publication/direct-merge paths use the same authority boundary rather than independent policy copies. P0 exact-live destination proof and the P13 broad-create unlock remain intact.
+
+### Registry ratification and production probes
+
+- The authoritative ownership source was ratified on 2026-09-20, merged through `yousafe-seo-strategies` PR #1 as `dad9e2251a36422e159a834c927d739afadb0b58`, and regenerated into `data/seo/ownership-registry.json` and `public/seo-data/ownership-registry.json`; both files are byte-identical and contain 76 rows.
+- Final status distribution: **76 confirmed / 0 unresolved statuses**. Final action distribution includes **3 `build`** and **2 `supply_first`** rows that are deliberately mapped but non-authoritative.
+- Live probes verified exact/self-canonical/indexed owners for the resolved leaf rows, including OPT travel, SEVIS reinstatement, MIT, University of Washington, F-1 Requirements 2026, UK family visas, marriage-green-card timeline, spouse checklist, Australia 485 English requirements, Ministerial Direction 111, UK skilled-worker healthcare, STEM MBA, Canada spousal sponsorship, Sri Lanka/UAE UK routes, and the UK student-tenant city guide.
+- University dual-graph truth was reconciled to the indexed regional owner. Auburn, Missouri, Kansas State, Utah, American University, King’s College London, and Creighton now map to regional `/universities/{slug}` owners; their Legal university/housing pages are supporting/noindex or redirecting surfaces where applicable.
+- Row 39 is a confirmed **family namespace** at USA `/universities/` with `action=build`; the root itself is generic and non-authoritative, so each concrete university leaf must resolve before authoring.
+- Row 65 reserves the UK dependent-child destination but the target is currently a live 404; `status=confirmed, action=build` records ownership without permitting CREATE/publication until the leaf exists and is separately ratified.
+- Marketplace supply was re-proven before ratifying rows 40–41: live search returned **4 F-1-specific gigs** and **23 study-permit gigs**. Both rows are therefore mapped `confirmed/supply_first`, but `supply_first` remains non-authoritative by code contract.
+- The old generic `/blog/` mapping for F-1 requirements was corrected to the specific live self-canonical `https://yousafeconsultancy.com/blog/f1-visa-requirements-2026` owner.
+
+### Verification
+
+- P3 ratified focused gate: **23 suites / 259 tests PASS**.
+- `npx --no-install tsc --noEmit`: PASS.
+- `git diff --check`: PASS.
+- Earlier integrated full repository gate: **439 suites passed / 2 skipped; 4,668 tests passed / 4 skipped; exit 0**.
+- Production build initially failed closed only because the fresh worktree lacked the untracked Supabase service-role JWT. Re-running with the authorized machine’s existing JWT injected into the process environment completed Next.js 16.2.11 compilation, TypeScript, 1,031-page static generation, and OpenNext Cloudflare bundle generation with **exit 0**. No secret value was copied or printed.
+
+### Result before production deploy
+
+- Registry mapping evidence is complete: 76/76 rows are confirmed and mapped, and current strategic mapping coverage is 100%.
+- Local enforcement evidence is complete: only confirmed, allowed-action, non-generic owners can authorize authoring/publication; mapped build/supply/family rows remain fail-closed.
+- The three P3 matrix rows remain **IN_PROGRESS**, not PASS, until this exact Portal enforcement candidate is merged to `main` and the exact-main deployment succeeds.
+- P4+ remain pending and broad net-new expansion remains frozen until the later P13 expansion gate.

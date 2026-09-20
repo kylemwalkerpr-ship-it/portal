@@ -23,6 +23,7 @@ import {
 import type { WritingContractV2 } from './writingContract'
 import { BriefInvalidError } from './sealedBrief'
 import { resolveOwner } from './ownership'
+import { assertBroadCreateDestinationAllowed } from './broadCreateFreeze'
 import {
   ProviderDestinationViolationError,
   ProviderSelectionRequiredError,
@@ -130,6 +131,7 @@ async function assertContractOwnershipBeforeAuthoring(contract: WritingContractV
     indexable: true,
     slug: contract.metadata.targetSlug,
   })
+  await assertBroadCreateDestinationAllowed(plan, { primaryKeyword: contract.primaryKeyword })
   const norm = (value: unknown) => String(value || '').trim().replace(/\/+$/, '').toLowerCase()
   if (
     norm(plan.host) !== norm(contract.ownership.host)

@@ -72,14 +72,10 @@ const REGISTRY_KEYWORD = 'f-1 document checklist'
 const REGISTRY_OWNER_URL =
   'https://legal.yousafeconsultancy.com/us/student-visas/f1-document-checklist-2026/'
 const REGISTRY_REGION = 'US'
-/**
- * Known-redirecting registry row (id 58, proposed). Its owner URL answers 200
- * only after redirecting to the Canada spousal-sponsorship checklist, so static
- * registry agreement alone is not proof of existence.
- */
-const REDIRECTING_KEYWORD = 'uk spouse visa document checklist 2026'
-const REDIRECTING_OWNER_URL =
-  'https://legal.yousafeconsultancy.com/uk/immigration/uk-spouse-visa-document-checklist-2026/'
+/** Final P3 mapped-but-not-authoritative row (id 65): confirmed/build, live target still 404. */
+const BUILD_ONLY_KEYWORD = 'uk dependent visa child requirements'
+const BUILD_ONLY_OWNER_URL =
+  'https://legal.yousafeconsultancy.com/uk/immigration/uk-dependent-visa-child-requirements-2026/'
 const REDIRECT_TARGET_URL =
   'https://legal.yousafeconsultancy.com/ca/family/canada-spousal-sponsorship-document-checklist-2026/'
 const STRIKE_SEED_KEYWORD = 'uk university of bristol international student guide'
@@ -95,6 +91,17 @@ const plan = (over: Partial<GatePlan>): GatePlan => ({
   canonicalUrl: 'https://legal.yousafeconsultancy.com/uk/x/',
   ...over,
 })
+
+const authoritativeMatched = (
+  over: Record<string, unknown> = {},
+): OwnerPlan['matched'] => ({
+  id: 1,
+  owner_url: REGISTRY_OWNER_URL,
+  status: 'confirmed',
+  action: 'keep',
+  notes: '',
+  ...over,
+} as OwnerPlan['matched'])
 
 describe('broad-create freeze · gate predicate', () => {
   it('freezes every fallback route regardless of action label', () => {
@@ -122,17 +129,17 @@ describe('broad-create freeze · gate predicate', () => {
 
   it('does not freeze plans whose routing proves an existing destination', () => {
     // Exact registry owner URL: matched owner_url must agree with the final
-    // canonical (harmless trailing slash aside).
+    // canonical (harmless trailing slash aside) AND the row must be ratified.
     expect(
       isBroadNetNewCreate(plan({
-        matched: { id: 1, owner_url: REGISTRY_OWNER_URL } as OwnerPlan['matched'],
+        matched: authoritativeMatched(),
         routingSource: 'registry_owner_url',
         canonicalUrl: REGISTRY_OWNER_URL,
       })),
     ).toBe(false)
     expect(
       isBroadNetNewCreate(plan({
-        matched: { id: 1, owner_url: REGISTRY_OWNER_URL } as OwnerPlan['matched'],
+        matched: authoritativeMatched(),
         routingSource: 'registry_owner_url',
         canonicalUrl: REGISTRY_OWNER_URL.replace(/\/$/, ''),
       })),
@@ -153,6 +160,60 @@ describe('broad-create freeze · gate predicate', () => {
         canonicalUrl: STRIKE_SEED_CANONICAL,
       })),
     ).toBe(false)
+  })
+
+  it('freezes non-authoritative registry rows even when the final URL matches', () => {
+    for (const status of ['proposed', 'needs_decision', 'blocked_on_supply', '', 'unknown']) {
+      expect(
+        isBroadNetNewCreate(plan({
+          matched: authoritativeMatched({ status }),
+          routingSource: 'registry_owner_url',
+          canonicalUrl: REGISTRY_OWNER_URL,
+        })),
+      ).toBe(true)
+    }
+    for (const action of ['build', 'needs_decision', 'supply_first', '', 'unknown']) {
+      expect(
+        isBroadNetNewCreate(plan({
+          matched: authoritativeMatched({ action }),
+          routingSource: 'registry_owner_url',
+          canonicalUrl: REGISTRY_OWNER_URL,
+        })),
+      ).toBe(true)
+    }
+  })
+
+  it('rejects generic section/index owners but preserves specific hubs', () => {
+    const rejected = [
+      'https://yousafeconsultancy.com/',
+      'https://legal.yousafeconsultancy.com/guide/',
+      'https://yousafeconsultancy.com/blog/',
+      'https://legal.yousafeconsultancy.com/articles/',
+      'https://market.yousafeconsultancy.com/categories/immigration',
+      'https://legal.yousafeconsultancy.com/us/',
+    ]
+    for (const owner_url of rejected) {
+      expect(
+        isBroadNetNewCreate(plan({
+          matched: authoritativeMatched({ owner_url }),
+          routingSource: 'registry_owner_url',
+          canonicalUrl: owner_url,
+        })),
+      ).toBe(true)
+    }
+
+    for (const owner_url of [
+      'https://legal.yousafeconsultancy.com/us/student-visas/',
+      'https://legal.yousafeconsultancy.com/uk/family-visas/',
+    ]) {
+      expect(
+        isBroadNetNewCreate(plan({
+          matched: authoritativeMatched({ owner_url }),
+          routingSource: 'registry_owner_url',
+          canonicalUrl: owner_url,
+        })),
+      ).toBe(false)
+    }
   })
 
   it('freezes registry_owner_url claims that do not carry the matched owner or final canonical agreement', () => {
@@ -267,18 +328,21 @@ describe('broad-create freeze · real ownership routing stays untouched', () => 
     expect(isBroadNetNewCreate(resolved)).toBe(false)
   })
 
-  it('keeps static authority for the known-redirecting registry row (static proof alone is not live proof)', async () => {
-    // Registry agreement is NECESSARY but NOT SUFFICIENT: the live URL for id 58
-    // currently redirects elsewhere, and only the async live proof can see that.
+  it('freezes a real confirmed/build registry mapping before live proof', async () => {
+    // Row 65 is intentionally mapped but not authorable: status=confirmed proves
+    // ownership assignment, while action=build keeps CREATE frozen until the URL
+    // actually exists and is separately ratified.
     const resolved = await resolveOwner({
-      primaryKeyword: REDIRECTING_KEYWORD,
+      primaryKeyword: BUILD_ONLY_KEYWORD,
       contentType: 'legal_guide',
       region: 'UK',
     })
     expect(resolved.routingSource).toBe('registry_owner_url')
-    expect(resolved.matched?.owner_url).toBe(REDIRECTING_OWNER_URL)
-    expect(resolved.canonicalUrl).toBe(REDIRECTING_OWNER_URL)
-    expect(isBroadNetNewCreate(resolved)).toBe(false)
+    expect(resolved.matched?.status).toBe('confirmed')
+    expect(resolved.matched?.action).toBe('build')
+    expect(resolved.matched?.owner_url).toBe(BUILD_ONLY_OWNER_URL)
+    expect(resolved.canonicalUrl).toBe(BUILD_ONLY_OWNER_URL)
+    expect(isBroadNetNewCreate(resolved)).toBe(true)
   })
 
   it('does not freeze a real strike-seed expansion', async () => {
@@ -914,7 +978,7 @@ describe('broad-create freeze · exact live checker contract (injected fetch)', 
   it('publication assertion requires the live proof after static authority passes', async () => {
     const fetchImpl = jest.fn(async () => response(200, REGISTRY_OWNER_URL))
     const authority = plan({
-      matched: { id: 3, owner_url: REGISTRY_OWNER_URL } as OwnerPlan['matched'],
+      matched: authoritativeMatched({ id: 3 }),
       routingSource: 'registry_owner_url',
       canonicalUrl: REGISTRY_OWNER_URL,
     })
@@ -959,5 +1023,39 @@ describe('broad-create freeze · call sites are wired before authoring', () => {
     expect(resolveAt).toBeGreaterThan(-1)
     expect(gateAt).toBeGreaterThan(resolveAt)
     expect(draftingRowAt).toBeGreaterThan(gateAt)
+  })
+
+  it('suggest-brief start gate runs after resolveOwner and before reservation/Tinyfish', () => {
+    const src = read('lib/seoFactory/suggestBriefContractCore.ts')
+    const resolveAt = src.indexOf('const plan = await resolveOwner(')
+    const gateAt = src.indexOf('await assertBroadCreateDestinationAllowed(plan')
+    const reserveAt = src.indexOf('reserveOpportunityJob(')
+    const tinyfishAt = src.indexOf('collectTinyfishResearch(')
+    expect(resolveAt).toBeGreaterThan(-1)
+    expect(gateAt).toBeGreaterThan(resolveAt)
+    expect(reserveAt).toBeGreaterThan(gateAt)
+    expect(tinyfishAt).toBeGreaterThan(gateAt)
+  })
+
+  it('suggest-brief finalize gate runs after resolveOwner and before DB target binding', () => {
+    const src = read('lib/seoFactory/suggestBriefContract.ts')
+    const resolveAt = src.indexOf('const finalPlan = await resolveOwner(')
+    const gateAt = src.indexOf('await assertBroadCreateDestinationAllowed(finalPlan')
+    const bindAt = src.indexOf(".from('content_jobs')")
+    expect(resolveAt).toBeGreaterThan(-1)
+    expect(gateAt).toBeGreaterThan(resolveAt)
+    expect(bindAt).toBeGreaterThan(gateAt)
+  })
+
+  it('content-studio authoring gate runs after resolveOwner and before contract drift comparison', () => {
+    const src = read('lib/seoFactory/contentStudioPipelineCore.ts')
+    const fnAt = src.indexOf('async function assertContractOwnershipBeforeAuthoring')
+    const resolveAt = src.indexOf('const plan = await resolveOwner(', fnAt)
+    const gateAt = src.indexOf('await assertBroadCreateDestinationAllowed(plan', fnAt)
+    const driftAt = src.indexOf('writing contract ownership drift', fnAt)
+    expect(fnAt).toBeGreaterThan(-1)
+    expect(resolveAt).toBeGreaterThan(fnAt)
+    expect(gateAt).toBeGreaterThan(resolveAt)
+    expect(driftAt).toBeGreaterThan(gateAt)
   })
 })

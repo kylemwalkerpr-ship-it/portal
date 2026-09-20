@@ -10,7 +10,14 @@ jest.mock('@/lib/seoFactory/pipelineStream', () => ({ runSeoFactoryPipelineStrea
 jest.mock('@/lib/seoFactory/pipelineContract', () => ({
   resolvePipelineWritingContract: (...args: unknown[]) => resolvePipelineWritingContract(...args),
 }))
-jest.mock('@/lib/seoFactory/ownership', () => ({ resolveOwner: (...args: unknown[]) => resolveOwner(...args) }))
+jest.mock('@/lib/seoFactory/ownership', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/ownership')
+  return { ...actual, resolveOwner: (...args: unknown[]) => resolveOwner(...args) }
+})
+jest.mock('@/lib/seoFactory/broadCreateFreeze', () => ({
+  assertBroadCreateDestinationAllowed: jest.fn(async () => undefined),
+}))
+
 jest.mock('@/lib/supabase', () => ({
   createSupabaseAdminClient: () => ({
     rpc: jest.fn(async (fn:string,args:Record<string,any>) => {
@@ -68,7 +75,7 @@ const request: any = {
 beforeEach(() => {
   jest.clearAllMocks(); persistedPatch=null; filters={}; lease={ owner:'', attempt:0, expiresAt:'' }
   resolvePipelineWritingContract.mockResolvedValue({ contract, input:request })
-  resolveOwner.mockResolvedValue({ ...ownership, blockers:[], warnings:[], indexable:true, contentType:'legal_guide' })
+  resolveOwner.mockResolvedValue({ ...ownership, blockers:[], warnings:[], indexable:true, contentType:'legal_guide', action:'expand', routingSource:'registry_owner_url', matched:{ id:1, owner_url:ownership.canonicalUrl, status:'confirmed', action:'expand', notes:'' } })
 })
 
 describe('contract runner failure recovery', () => {

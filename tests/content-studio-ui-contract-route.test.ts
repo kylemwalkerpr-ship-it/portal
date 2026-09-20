@@ -8,7 +8,14 @@ jest.mock('@/lib/seoFactory/pipelineContract', () => {
 })
 jest.mock('@/lib/seoFactory/pipeline', () => ({ runSeoFactoryPipeline: jest.fn() }))
 jest.mock('@/lib/seoFactory/pipelineStream', () => ({ runSeoFactoryPipelineStream: jest.fn() }))
-jest.mock('@/lib/seoFactory/ownership', () => ({ resolveOwner: jest.fn() }))
+jest.mock('@/lib/seoFactory/ownership', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/ownership')
+  return { ...actual, resolveOwner: jest.fn() }
+})
+jest.mock('@/lib/seoFactory/broadCreateFreeze', () => ({
+  assertBroadCreateDestinationAllowed: jest.fn(async () => undefined),
+}))
+
 jest.mock('@/app/api/seo-factory/generate-stream/legacy', () => ({ POST: jest.fn() }))
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -96,7 +103,7 @@ describe('normal Studio UI contract boundary', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
     jest.mocked(createSupabaseAdminClient).mockReturnValue(makeDb())
-    jest.mocked(resolveOwner).mockResolvedValue({ ...ownership, blockers: [], warnings: [], indexable: true, contentType: contract.contentType } as any)
+    jest.mocked(resolveOwner).mockResolvedValue({ ...ownership, blockers: [], warnings: [], indexable: true, contentType: contract.contentType, action: 'expand', routingSource: 'registry_owner_url', matched: { id: 1, owner_url: ownership.canonicalUrl, status: 'confirmed', action: 'expand', notes: '' } } as any)
     jest.mocked(resolvePipelineWritingContract).mockImplementation(async (input: any) => ({
       input: {
         ...input,

@@ -106,6 +106,10 @@ jest.mock('@/lib/seoFactory/ownership', () => ({
   resolveOwner: (...args: unknown[]) => mockResolveOwner(...args),
   assertPlanRepoConsistency: jest.fn(),
 }))
+const mockAssertBroadCreateDestinationAllowed = jest.fn(async (..._args: unknown[]) => undefined)
+jest.mock('@/lib/seoFactory/broadCreateFreeze', () => ({
+  assertBroadCreateDestinationAllowed: (...args: unknown[]) => mockAssertBroadCreateDestinationAllowed(...args),
+}))
 
 // ── suggestBriefContractCore attach ─────────────────────────────────────────
 jest.mock('@/lib/seoFactory/tinyfishAdapter', () => ({
@@ -186,6 +190,8 @@ beforeEach(() => {
   mockRunSeoFactoryPipeline.mockImplementation(async () => ({ ok: true, args: [] }))
   mockRunContentStudioPipeline.mockReset()
   mockRunContentStudioPipeline.mockImplementation(async () => ({ ok: true, args: [] }))
+  mockAssertBroadCreateDestinationAllowed.mockReset()
+  mockAssertBroadCreateDestinationAllowed.mockResolvedValue(undefined)
 })
 
 describe('mapPipelineJobRow — requested vs actual provider durability', () => {
@@ -412,6 +418,18 @@ describe('contentStudioPipelineCore — failure persistence records provider/err
         },
       },
     }
+  })
+
+  it('refuses non-authoritative ownership before any authoring pipeline work starts', async () => {
+    mockAssertBroadCreateDestinationAllowed.mockRejectedValueOnce(new Error('P3_AUTHORITY_FROZEN'))
+
+    await expect(runContentStudioPipeline(contractRequest)).rejects.toThrow(/P3_AUTHORITY_FROZEN/)
+
+    expect(mockAssertBroadCreateDestinationAllowed).toHaveBeenCalledWith(
+      expect.objectContaining({ canonicalUrl: contract.ownership.canonicalUrl }),
+      { primaryKeyword: contract.primaryKeyword },
+    )
+    expect(mockRunSeoFactoryPipeline).not.toHaveBeenCalled()
   })
 
   it('persists provider_error_class, actual provider/model, and a bounded error attempt on provider failure', async () => {
