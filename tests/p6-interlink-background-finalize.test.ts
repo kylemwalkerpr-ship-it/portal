@@ -58,6 +58,8 @@ const throwingVerify = jest.fn(async () => {
   throw new Error('network unreachable')
 })
 
+let warnSpy: jest.SpyInstance
+
 beforeEach(() => {
   mockFinalize.mockClear()
   mockFinalize.mockResolvedValue({
@@ -70,14 +72,23 @@ beforeEach(() => {
     sourceNotLive: 0,
     sourceFetchOk: true,
   })
+  // Implementations are re-established per test: a bare jest.restoreAllMocks()
+  // would strip jest.fn implementations and silently pass the negative cases.
   okVerify.mockClear()
+  okVerify.mockImplementation(async () => VERIFY_OK)
   failedVerify.mockClear()
+  failedVerify.mockImplementation(
+    async () => ({ ...VERIFY_OK, ok: false }) as unknown as LiveVerifyResult,
+  )
   throwingVerify.mockClear()
-  jest.spyOn(console, 'warn').mockImplementation(() => {})
+  throwingVerify.mockImplementation(async () => {
+    throw new Error('network unreachable')
+  })
+  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
-  jest.restoreAllMocks()
+  warnSpy.mockRestore()
 })
 
 describe('background live verification — interlink finalization', () => {
