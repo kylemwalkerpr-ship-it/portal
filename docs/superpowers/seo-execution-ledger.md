@@ -480,13 +480,13 @@ This section records the P3 ownership contract, live owner ratification, and loc
 ### Registry ratification and production probes
 
 - The authoritative ownership source was ratified on 2026-09-20, merged through `yousafe-seo-strategies` PR #2 as `8ab917638be52f456f7c4d74654e53e999e7837e`, and regenerated into `data/seo/ownership-registry.json` and `public/seo-data/ownership-registry.json`; both files are byte-identical and contain 76 rows.
-- Final status distribution: **76 confirmed / 0 unresolved statuses**. Final non-authoring action distribution is **2 `build` + 1 `family_scope` + 2 `supply_first`**; these five rows are deliberately mapped but cannot authorize CREATE/publication.
+- Final status distribution: **76 confirmed / 0 unresolved statuses**. Final non-authoring action distribution is **3 `build` + 2 `supply_first`**; these five rows are deliberately mapped but cannot authorize CREATE/publication.
 - Live probes verified exact/self-canonical/indexed owners for the resolved leaf rows, including OPT travel, SEVIS reinstatement, MIT, University of Washington, F-1 Requirements 2026, UK family visas, marriage-green-card timeline, spouse checklist, Australia 485 English requirements, Ministerial Direction 111, UK skilled-worker healthcare, STEM MBA, Canada spousal sponsorship, Sri Lanka/UAE UK routes, and the UK student-tenant city guide.
-- University dual-graph truth was reconciled by live owner. Auburn, American University, King’s College London, and Creighton use indexed regional `/universities/{slug}` owners; Missouri, Kansas State, and Utah retain their exact-live Legal housing owners. Supporting Legal university/housing surfaces remain noindex/redirecting where the regional journey owns the intent.
-- Row 39 is a confirmed Legal housing **family namespace** with `action=family_scope`: concrete ownership follows `/guide/{university}-student-housing/`; the `/guide/` root is metadata only and remains non-authoritative, so each concrete leaf must resolve before authoring.
+- University dual-graph truth was reconciled by live owner. Auburn, Missouri, Kansas State, Utah, American University, King’s College London, and Creighton use indexed regional `/universities/{slug}` owners. Their Legal university/housing surfaces are supporting noindex/redirecting pages where applicable.
+- Row 39 is a confirmed USA university **family namespace** with `action=build` at `/universities/`; the generic root is metadata only and remains non-authoritative, so each concrete university leaf must resolve before authoring.
 - Row 65 reserves the UK dependent-child destination but the target is currently a live 404; `status=confirmed, action=build` records ownership without permitting CREATE/publication until the leaf exists and is separately ratified.
 - Marketplace supply was re-proven before ratifying rows 40–41: live search returned **4 F-1-specific gigs** and **23 study-permit gigs**. Both rows are therefore mapped `confirmed/supply_first`, but `supply_first` remains non-authoritative by code contract.
-- The old generic `/blog/` mapping for F-1 requirements was corrected to the specific live self-canonical `https://yousafeconsultancy.com/blog/f1-visa-requirements-2026` owner.
+- The old generic `/blog/` mapping for F-1 requirements was corrected to the specific live self-canonical `https://yousafeconsultancy.com/blog/f1-visa-requirements-2026` owner. Row 23’s stale Legal renters-rights owner was corrected to the live apex Renters Rights 2026 canonical after the old Legal URL was proven to resolve there. Row 23’s stale Legal renters-rights owner was also corrected to the live apex Renters Rights 2026 canonical after the old Legal URL was proven to resolve there.
 - Final authority-wide live audit covered every one of the **67** registry rows eligible under `confirmed + keep|expand|merge`: **67 exact-live 2xx / 0 redirects / 0 404 or final-URL mismatches**. The audit found one stale pre-fix row (UK Renters Rights row 23) and corrected it to the same apex 2026 article owner before acceptance.
 
 ### Verification
@@ -500,6 +500,6 @@ This section records the P3 ownership contract, live owner ratification, and loc
 ### Result before production deploy
 
 - Registry mapping evidence is complete: 76/76 rows are confirmed and mapped, and current strategic mapping coverage is 100%.
-- Local enforcement evidence is complete: only confirmed, allowed-action, non-generic owners can authorize authoring/publication; mapped build/supply/family rows remain fail-closed.
+- Local enforcement evidence is complete: only confirmed, allowed-action, non-generic owners can authorize authoring/publication; mapped build/supply rows and generic family roots remain fail-closed.
 - The three P3 matrix rows remain **IN_PROGRESS**, not PASS, until this exact Portal enforcement candidate is merged to `main` and the exact-main deployment succeeds.
 - P4+ remain pending and broad net-new expansion remains frozen until the later P13 expansion gate.
