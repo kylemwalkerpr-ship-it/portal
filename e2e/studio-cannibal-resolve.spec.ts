@@ -1,20 +1,24 @@
 /**
  * studio-cannibal-resolve.spec.ts
  *
- * E2E for the Work Plan's one-click cannibal resolution.
+ * E2E for the Work Plan's P4 cannibal *evidence review*.
  *
  * The Discover stage's "WORK PLAN — ALL SIGNALS AGGREGATED" table lists
  * cannibalization alerts from `radarMeta.cannibalization`. Each CANNIBAL row
- * renders a "⚠ Resolve" button that POSTs /api/seo-factory/cannibal-merge
- * with the alert's search term and surfaces an action notice ("Cannibal
- * resolved: …") in the admin shell banner.
+ * renders a "🔍 Review evidence" button that POSTs the read-only
+ * /api/seo-factory/cannibal-pages endpoint and surfaces an action notice.
+ *
+ * P4 contract asserted here: destructive consolidation is NOT reachable from
+ * the Work Plan. The row must never POST /api/seo-factory/cannibal-merge, the
+ * cluster must stay on the Work Plan after a review, and the toolbar sweep is
+ * a read-only review too.
  *
  * ── Scenario ─────────────────────────────────────────────────────────────────
  *  1. Mock GSC suggestions → one cannibalization cluster (term + pages).
- *  2. Mock the cannibal-merge POST → success (winner + 1 redirect).
- *  3. Open Discover, click the row's ⚠ Resolve button.
- *  4. Assert the merge endpoint was called with the right term, and the
- *     "Cannibal resolved" notice appears.
+ *  2. Mock cannibal-pages → qualified evidence; mock cannibal-merge to record
+ *     any (unexpected) call.
+ *  3. Open Discover, click the row's Review button.
+ *  4. Assert only the read-only endpoint was called and the notice appears.
  *
  * ── Auth setup ──────────────────────────────────────────────────────────────
  *     CLERK_TEST_EMAIL=admin@example.com
@@ -87,11 +91,12 @@ const WINNER_URL = 'https://legal.yousafeconsultancy.com/uk/dependent-visa'
 // ones win.
 
 interface MockState {
-  mergeRequests: Array<Record<string, unknown>>
+  destructiveRequests: Array<Record<string, unknown>>
+  evidenceRequests: Array<Record<string, unknown>>
 }
 
 async function installRouteMocks(page: Page): Promise<MockState> {
-  const state: MockState = { mergeRequests: [] }
+  const state: MockState = { destructiveRequests: [], evidenceRequests: [] }
 
   // Catch-all: benign responses for every API the studio touches on mount
   // (jobs, gate runs, engine status, backlinks, visibility, merge history…).
@@ -137,18 +142,40 @@ async function installRouteMocks(page: Page): Promise<MockState> {
     })
   })
 
-  // Cannibal merge → success, capturing the request body for assertion.
+  // Destructive endpoint: recorded and hard-failed if a Work Plan action ever
+  // reaches it. P4 requires an explicit decision record + review PR instead.
   await page.route('**/api/seo-factory/cannibal-merge', async (route) => {
-    state.mergeRequests.push(route.request().postDataJSON() || {})
+    state.destructiveRequests.push(route.request().postDataJSON() || {})
+    return route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'P4 destructive consolidation is PR-only.', blockers: ['pr_mode_required'] }),
+    })
+  })
+
+  // Read-only competing-page evidence.
+  await page.route('**/api/seo-factory/cannibal-pages', async (route) => {
+    state.evidenceRequests.push(route.request().postDataJSON() || {})
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         ok: true,
-        winnerUrl: WINNER_URL,
-        redirectsAdded: [{ from: 'https://legal.yousafeconsultancy.com/uk/dependent-visa-guide', to: WINNER_URL }],
-        commits: [],
-        skipped: [],
+        term: CANNIBAL_TERM,
+        pages: [
+          { url: 'https://legal.yousafeconsultancy.com/uk/dependent-visa', impressions: 120, clicks: 4, position: 6.2 },
+          { url: 'https://legal.yousafeconsultancy.com/uk/dependent-visa-guide', impressions: 40, clicks: 1, position: 11.4 },
+        ],
+        source: 'gsc_live',
+        evidenceSource: 'gsc_live',
+        window: { startDate: '2026-06-22', endDate: '2026-09-19', capturedAt: '2026-09-20T05:39:02Z' },
+        metricsSynthetic: false,
+        eligibleForDestructiveAction: true,
+        destructiveEligible: true,
+        blockingReasons: [],
+        blockers: [],
+        suggestedWinner: null,
+        winnerSelection: 'authoritative_p3_owner_only',
       }),
     })
   })
@@ -160,15 +187,15 @@ async function installRouteMocks(page: Page): Promise<MockState> {
 // Tests
 // ══════════════════════════════════════════════════════════════════════════════
 
-test.describe('Studio cannibalization — Work Plan Resolve button', () => {
-  test('clicking a cannibal row Resolve button posts the merge and shows the notice', async ({ browser }) => {
+test.describe('Studio cannibalization — Work Plan evidence review (P4, non-destructive)', () => {
+  test('a cannibal row review requests evidence only — never a destructive merge', async ({ browser }) => {
     const page = await loginAsAdmin(browser)
     if (!page) {
       console.warn('[cannibal-resolve-e2e] skipping — Clerk credentials not configured')
       return
     }
 
-    const { mergeRequests } = await installRouteMocks(page)
+    const { destructiveRequests, evidenceRequests } = await installRouteMocks(page)
 
     // Reload with mocks active so the studio mounts against them.
     await page.goto(`${BASE}/dashboard/admin/content?tab=discover`, { waitUntil: 'domcontentloaded' })
@@ -180,35 +207,33 @@ test.describe('Studio cannibalization — Work Plan Resolve button', () => {
     // The cannibal row shows its "Consolidate: <term>" title.
     await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toBeVisible({ timeout: 10_000 })
 
-    // ── 2 · Click the row's Resolve button ──
-    // Unambiguous selector: the row button carries the "Auto-resolve" title;
-    // the toolbar's "Resolve all (N)" button has a different title.
-    const resolveBtn = page.locator('button[title*="Auto-resolve"]').first()
-    await expect(resolveBtn).toBeVisible({ timeout: 8_000 })
-    await resolveBtn.click()
+    // ── 2 · Click the row's read-only evidence review ──
+    // Unambiguous selector: the row button carries the P3-owner review title;
+    // the toolbar's "Review all (N)" button has a different title.
+    const reviewBtn = page.locator('button[title*="Inspect qualified GSC overlap"]').first()
+    await expect(reviewBtn).toBeVisible({ timeout: 8_000 })
+    await reviewBtn.click()
 
-    // ── 3 · Assert the merge endpoint was called with the right term ──
-    await expect.poll(() => mergeRequests.length, { timeout: 10_000 }).toBeGreaterThan(0)
-    expect(mergeRequests[0]?.term).toBe(CANNIBAL_TERM)
-    expect(mergeRequests[0]?.mode).toBe('merge')
+    // ── 3 · Only the read-only evidence endpoint was called ──
+    await expect.poll(() => evidenceRequests.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(evidenceRequests[0]?.term).toBe(CANNIBAL_TERM)
+    expect(destructiveRequests).toHaveLength(0)
 
-    // ── 4 · Assert the action notice appears ──
-    await expect(page.getByText(/Cannibal resolved/)).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/legal\.yousafeconsultancy\.com\/uk\/dependent-visa/)).toBeVisible({ timeout: 5_000 })
+    // ── 4 · Assert the review notice appears ──
+    await expect(page.getByText(/P4 evidence/)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(/no destructive/i)).toHaveCount(0)
 
     await page.close()
   })
 
-  test('cannibal row shows the Resolved badge after a successful merge', async ({ browser }) => {
+  test('a reviewed cluster stays on the Work Plan — nothing is auto-cleared', async ({ browser }) => {
     const page = await loginAsAdmin(browser)
     if (!page) {
       console.warn('[cannibal-resolve-e2e] skipping — Clerk credentials not configured')
       return
     }
 
-    // cannibal-merges returns an empty history here, so the row is NOT filtered
-    // out after the merge — the test isolates the inline badge state.
-    await installRouteMocks(page)
+    const { destructiveRequests } = await installRouteMocks(page)
 
     await page.goto(`${BASE}/dashboard/admin/content?tab=discover`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle').catch(() => {})
@@ -216,16 +241,16 @@ test.describe('Studio cannibalization — Work Plan Resolve button', () => {
     await page.locator('#studio-panel-discover').waitFor({ state: 'visible', timeout: 30_000 })
     await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toBeVisible({ timeout: 10_000 })
 
-    // Row starts with the Resolve button.
-    const resolveBtn = page.locator('button[title*="Auto-resolve"]').first()
-    await expect(resolveBtn).toBeVisible({ timeout: 8_000 })
+    const reviewBtn = page.locator('button[title*="Inspect qualified GSC overlap"]').first()
+    await expect(reviewBtn).toBeVisible({ timeout: 8_000 })
 
-    await resolveBtn.click()
+    await reviewBtn.click()
 
-    // After the merge, the cluster is removed from the Work Plan (not left
-    // as a skipped/resolved leftover).
-    await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toHaveCount(0)
-    await expect(page.locator('button[title*="Auto-resolve"]')).toHaveCount(0)
+    // P4: the cluster remains visible until a reviewed PR (or the ledger)
+    // clears it. A review must never hide it and never call the destructive API.
+    await expect(page.getByText(`Consolidate: ${CANNIBAL_TERM}`)).toBeVisible({ timeout: 5_000 })
+    await expect(reviewBtn).toBeVisible({ timeout: 5_000 })
+    expect(destructiveRequests).toHaveLength(0)
 
     await page.close()
   })
