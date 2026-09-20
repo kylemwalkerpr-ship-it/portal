@@ -24,6 +24,11 @@
  *      stays untouchable. First staging and every rebind write the durable
  *      nullable `staged_at` revision timestamp in the same planned-only update
  *      (never when job identity / the column is unavailable).
+ *      Every staging/rebind write is ALSO a compare-and-set on the row's
+ *      OBSERVED revision (exact id + planned + observed source_url +
+ *      observed source_job_id null/A + observed staged_at where available), so
+ *      an older overlapping ship can never overwrite a newer bind: a zero-row
+ *      update is a concurrency SKIP, never a successful rebind.
  *
  *   2. FINALIZE (`finalizeStagedInterlinksForLiveSource`)
  *      Only after `verifyLiveUrl` has actually established ok=true. Staged
@@ -35,6 +40,13 @@
  *        · live source, href missing → verification_state='absent' (planned);
  *        · target not live → verification_state='target_not_live' (planned);
  *        · source failure → never applied (source_not_live / unverifiable).
+ *      Scope is explicit and fail-closed (H1): with an exact `sourceJobId`
+ *      only rows staged by that exact job are even SELECTed; WITHOUT one
+ *      (legacy/admin/background source-only call) the SELECT is restricted to
+ *      `source_job_id IS NULL`, so a job-bound row is never read, never
+ *      verified and never finalized by a source-only call. A source-only call
+ *      that finds no jobless row returns checked/applied = 0 with an explicit
+ *      scope warning instead of silently broadening.
  *
  *   3. PROOF (`exactAnchorHrefMatch`)
  *      Only real anchor href attributes count. A target URL that appears in
@@ -342,6 +354,8 @@ interface InterlinkDbRow {
   status?: string | null
   source_url?: string | null
   source_job_id?: string | null
+  /** Durable staging/revision stamp (only read when the column exists). */
+  staged_at?: string | null
 }
 
 export interface StageEngineInterlinksInput {
@@ -439,23 +453,42 @@ export async function stageEngineInterlinksForVerification(
         .select(columns)
         .eq('source_slug', slug)
         .eq('status', 'planned')
-    let { data, error } = await readRows('id,target_url,status,source_url,source_job_id')
+    const baseColumns = 'id,target_url,status,source_url,source_job_id'
+    let { data, error } = await readRows(`${baseColumns},staged_at`)
     let jobIdentityAvailable = true
-    // Pre-migration compatibility: the additive P6 column may not exist yet.
+    // M2: the read must carry the observed revision (source_job_id + staged_at)
+    // so every staging/rebind UPDATE can compare-and-set on exactly that
+    // revision instead of last-writer-wins.
+    let revisionStampAvailable = true
+    // Pre-migration compatibility: the additive P6 columns may not exist yet.
     // Fall back to the legacy column set — staging then stays jobless (it must
     // NOT attempt to write a column the database does not have) and says so
     // explicitly instead of looking like a zero-candidate no-op.
-    if (error && /source_job_id/i.test(String(error.message || ''))) {
-      const message = String(error.message || 'source_job_id unavailable')
-      console.warn(
-        '[interlinkVerification] staging without job identity — source_job_id column unavailable (P6 migration not applied yet):',
-        message,
-      )
-      warning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
-      jobIdentityAvailable = false
-      const legacy = await readRows('id,target_url,status,source_url')
-      data = legacy.data
-      error = legacy.error
+    if (error) {
+      const message = String(error.message || 'staging read failed')
+      if (/source_job_id/i.test(message)) {
+        console.warn(
+          '[interlinkVerification] staging without job identity — source_job_id column unavailable (P6 migration not applied yet):',
+          message,
+        )
+        warning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
+        jobIdentityAvailable = false
+        // source_job_id and staged_at ship in the same additive migration.
+        revisionStampAvailable = false
+        const legacy = await readRows('id,target_url,status,source_url')
+        data = legacy.data
+        error = legacy.error
+      } else if (/staged_at/i.test(message)) {
+        console.warn(
+          '[interlinkVerification] staging without a revision stamp — staged_at column unavailable (P6 migration not fully applied yet):',
+          message,
+        )
+        warning = `staged_at column unavailable (P6 migration not fully applied yet): ${message}`.slice(0, 300)
+        revisionStampAvailable = false
+        const legacy = await readRows(baseColumns)
+        data = legacy.data
+        error = legacy.error
+      }
     }
     if (error) {
       return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl, error: error.message.slice(0, 300) }
@@ -478,9 +511,37 @@ export async function stageEngineInterlinksForVerification(
     // column itself) is unavailable — the revision identity cannot exist
     // without its exact job, so the stamp must never be invented.
     const stagedAt = writeJobId ? new Date().toISOString() : null
-    let stagedAtAvailable = Boolean(stagedAt)
+    let stagedAtAvailable = Boolean(stagedAt) && revisionStampAvailable
     const withStagedAt = (patch: Record<string, unknown>): Record<string, unknown> =>
       stagedAt && stagedAtAvailable ? { ...patch, staged_at: stagedAt } : patch
+    /**
+     * M2 — compare-and-set fence on the EXACT revision OBSERVED by the read
+     * above. The UPDATE only matches while the row still is that observed
+     * revision (id + planned + observed source_url, observed source_job_id
+     * null/A and observed staged_at when the column is available). A
+     * concurrent newer bind therefore makes the UPDATE affect zero rows: it is
+     * counted as a concurrency skip and can never overwrite the newer
+     * job/staged_at. Pre-migration columns are never fenced (a predicate on a
+     * column the database does not have would fail the write).
+     */
+    const observedFence = (row: InterlinkDbRow): PlannedRowFence => {
+      const observedSource = String(row.source_url || '').trim()
+      const observedJob = jobIdentityAvailable ? String(row.source_job_id || '').trim() : ''
+      const observedStamp = revisionStampAvailable ? String(row.staged_at || '').trim() : ''
+      return {
+        ...(observedSource ? { sourceUrl: observedSource } : { sourceUrlIsNull: true }),
+        ...(jobIdentityAvailable
+          ? observedJob
+            ? { sourceJobId: observedJob }
+            : { sourceJobIdIsNull: true }
+          : {}),
+        ...(revisionStampAvailable
+          ? observedStamp
+            ? { stagedAt: observedStamp }
+            : { stagedAtIsNull: true }
+          : {}),
+      }
+    }
     /**
      * Planned-row write with a narrow partial-migration fallback: if the
      * additive `staged_at` column itself is not deployed (while source_job_id
@@ -490,15 +551,16 @@ export async function stageEngineInterlinksForVerification(
     const writePlanned = async (
       row: InterlinkDbRow,
       patch: Record<string, unknown>,
+      fence?: PlannedRowFence,
     ): Promise<PlannedRowWrite> => {
-      const attempt = await writePlannedRowPatch(supabase, row, patch)
+      const attempt = await writePlannedRowPatch(supabase, row, patch, fence)
       if (!attempt.error || patch.staged_at === undefined || !/staged_at/i.test(attempt.error)) {
         return attempt
       }
       stagedAtAvailable = false
       const fallbackPatch = { ...patch }
       delete fallbackPatch.staged_at
-      const retry = await writePlannedRowPatch(supabase, row, fallbackPatch)
+      const retry = await writePlannedRowPatch(supabase, row, fallbackPatch, fence)
       if (!retry.error) {
         const note = 'staged_at column unavailable (P6 migration not fully applied yet); revision stamp withheld'
         warning = warning ? `${warning} | ${note}` : note
@@ -536,14 +598,22 @@ export async function stageEngineInterlinksForVerification(
           // A rebind to a new exact job IS a new revision: it writes the new
           // job id AND a fresh staged_at in the same update. A same-job call
           // never reaches this branch (idempotent no-op — the stamp is not
-          // reset).
-          const rebind = await writePlanned(row, withStagedAt({ source_job_id: writeJobId }))
+          // reset). The write CASes the OBSERVED revision, so an older
+          // overlapping ship that read job A/null can never overwrite a newer
+          // bind to job B: zero affected rows is a concurrency skip.
+          const rebind = await writePlanned(
+            row,
+            withStagedAt({ source_job_id: writeJobId }),
+            observedFence(row),
+          )
           if (rebind.error) {
             failed += 1
             lastWriteError = rebind.error
             continue
           }
           if (rebind.written === 0) {
+            // The observed revision changed before the UPDATE (a newer
+            // concurrent bind won) — never counted as a successful rebind.
             skipped += 1
             continue
           }
@@ -562,6 +632,10 @@ export async function stageEngineInterlinksForVerification(
           source_url: sourceUrl,
           ...(writeJobId ? { source_job_id: writeJobId } : {}),
         }),
+        // First staging of a jobless row must not overwrite a concurrent
+        // exact-job bind: the fence matches only while source_url is still the
+        // observed NULL (plus the observed job/stamp revision).
+        observedFence(row),
       )
       if (write.error) {
         failed += 1
@@ -608,19 +682,38 @@ export interface FinalizeStagedInterlinksInput {
   canonicalUrl: string
   /**
    * When present, finalization is job-bound: only rows staged by this exact
-   * content_jobs.id are eligible. The scheduled reconciler always passes the
-   * exact staged job id; legacy/admin callers that omit it keep the previous
-   * source-url-only behavior. A nonblank id that is NOT an exact UUID fails
-   * closed with an explicit error — it is never silently downgraded to the
-   * legacy source-url-only path.
+   * content_jobs.id are eligible (exact `source_job_id` in the SELECT and in
+   * every verdict/applied CAS). The scheduled reconciler always passes the
+   * exact staged job id. A nonblank id that is NOT an exact UUID fails closed
+   * with an explicit error — it is never silently downgraded to the legacy
+   * jobless path.
+   *
+   * When OMITTED (legacy/admin/background source-only call) the scope is
+   * `jobless-legacy`: the SELECT is restricted to `source_job_id IS NULL`, so
+   * a job-bound row is never even read/finalized by a source-only call.
    */
   sourceJobId?: string | null
   /** Optional already-fetched live source HTML (one bounded refetch otherwise). */
   sourceHtml?: string
 }
 
+/**
+ * The exact row scope a finalization call may read/write.
+ *  · `job-bound`     — an exact content_jobs.id was supplied; only rows staged
+ *                      by that exact job are eligible.
+ *  · `jobless-legacy`— no job identity was supplied (source-only legacy/admin
+ *                      call); only rows whose `source_job_id IS NULL` are
+ *                      eligible, and a job-bound row is never read.
+ */
+export type FinalizeStagedInterlinksScope = 'job-bound' | 'jobless-legacy'
+
 export interface FinalizeStagedInterlinksResult {
   sourceUrl: string | null
+  /**
+   * The scope actually queried. `jobless-legacy` means job-bound rows were
+   * deliberately out of scope and were not read — never a silent broadening.
+   */
+  scope?: FinalizeStagedInterlinksScope
   checked: number
   applied: number
   absent: number
@@ -632,12 +725,20 @@ export interface FinalizeStagedInterlinksResult {
   /** Verdict/applied DB writes that failed (never silently counted as truth). */
   dbErrors: number
   sourceFetchOk: boolean
+  /** Non-fatal scope/degradation note (e.g. a jobless-only empty scope). */
+  warning?: string
   error?: string
 }
 
-function emptyFinalize(sourceUrl: string | null, error?: string): FinalizeStagedInterlinksResult {
+function emptyFinalize(
+  sourceUrl: string | null,
+  scope: FinalizeStagedInterlinksScope,
+  error?: string,
+  warning?: string,
+): FinalizeStagedInterlinksResult {
   return {
     sourceUrl,
+    scope,
     checked: 0,
     applied: 0,
     absent: 0,
@@ -647,9 +748,18 @@ function emptyFinalize(sourceUrl: string | null, error?: string): FinalizeStaged
     skipped: 0,
     dbErrors: 0,
     sourceFetchOk: false,
+    ...(warning ? { warning } : {}),
     ...(error ? { error } : {}),
   }
 }
+
+/**
+ * The explicit zero-row truth for a source-only (jobless) call: job-bound rows
+ * require their exact job id and were NOT read. Surfaced instead of silently
+ * broadening the scope to rows the caller has no identity for.
+ */
+const JOBLESS_SCOPE_ZERO_WARNING =
+  'source-only (jobless) scope: only rows with source_job_id IS NULL are eligible; job-bound rows require their exact job id and were not read'
 
 interface FetchSourceResult {
   html: string | null
@@ -682,22 +792,24 @@ export async function finalizeStagedInterlinksForLiveSource(
 ): Promise<FinalizeStagedInterlinksResult> {
   const rawSource = String(input.canonicalUrl || '').trim()
   const sourceUrl = normalizeInterlinkProofUrl(rawSource)
+  const requestedJobId = input.sourceJobId == null ? '' : String(input.sourceJobId).trim()
+  const scope: FinalizeStagedInterlinksScope = requestedJobId ? 'job-bound' : 'jobless-legacy'
   if (!/^https?:\/\//i.test(sourceUrl)) {
-    return emptyFinalize(null, 'canonicalUrl must be an absolute http(s) URL')
+    return emptyFinalize(null, scope, 'canonicalUrl must be an absolute http(s) URL')
   }
   // L1: the finalizer is the authority for job identity. A nonblank id that is
   // not an exact content_jobs UUID must fail closed — silently degrading it to
-  // source-url-only legacy finalization would let a malformed admin/body jobId
-  // finalize rows it has no identity for. An OMITTED id keeps the documented
-  // legacy source-url-only behavior (there is no identity to bind to).
-  const rawJobId = input.sourceJobId == null ? '' : String(input.sourceJobId).trim()
+  // the jobless legacy path would let a malformed admin/body jobId finalize
+  // rows it has no identity for. An OMITTED id keeps the documented legacy
+  // jobless-only behavior (there is no identity to bind to).
   let sourceJobId = ''
-  if (rawJobId) {
-    const normalizedJobId = normalizeSourceJobId(rawJobId)
+  if (requestedJobId) {
+    const normalizedJobId = normalizeSourceJobId(requestedJobId)
     if (!normalizedJobId) {
       return emptyFinalize(
         sourceUrl,
-        `sourceJobId must be an exact content_jobs UUID (got "${rawJobId.slice(0, 64)}")`,
+        scope,
+        `sourceJobId must be an exact content_jobs UUID (got "${requestedJobId.slice(0, 64)}")`,
       )
     }
     sourceJobId = normalizedJobId
@@ -714,12 +826,46 @@ export async function finalizeStagedInterlinksForLiveSource(
       .eq('status', 'planned')
     // Job-bound finalization: never finalize a row staged by a different ship
     // job for the same canonical (or a jobless legacy row) when an exact job
-    // identity is available.
-    if (sourceJobId) query = query.eq('source_job_id', sourceJobId)
-    const { data, error } = await query
-    if (error) return emptyFinalize(sourceUrl, error.message.slice(0, 300))
+    // identity is available. H1: a source-only (jobless) call has NO job
+    // identity, so it must never even READ a job-bound row — the SELECT is
+    // restricted to `source_job_id IS NULL` and a job-bound-only match set
+    // degrades to zero checked/applied, never to a silent broadening.
+    if (sourceJobId) {
+      query = query.eq('source_job_id', sourceJobId)
+    } else {
+      query = query.is('source_job_id', null)
+    }
+    let { data, error } = await query
+    let scopeWarning: string | undefined
+    if (error && !sourceJobId && /source_job_id/i.test(String(error.message || ''))) {
+      // Pre-migration (the additive P6 column is not deployed yet): every row
+      // is jobless by construction, so the legacy column set is read with an
+      // explicit warning. It can never read a job-bound row because the column
+      // required to bind one does not exist.
+      const message = String(error.message || 'source_job_id unavailable')
+      console.warn(
+        '[interlinkVerification] legacy jobless finalization without the P6 source_job_id column (P6 migration not applied yet); no job-bound row can exist:',
+        message,
+      )
+      scopeWarning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
+      const legacy = await supabase
+        .from('seo_interlinks')
+        .select('id,target_url,status,source_url')
+        .in('source_url', sourceVariants)
+        .eq('status', 'planned')
+      data = legacy.data
+      error = legacy.error
+    }
+    if (error) return emptyFinalize(sourceUrl, scope, error.message.slice(0, 300))
     const rows = (data as InterlinkDbRow[] | null) || []
-    if (!rows.length) return emptyFinalize(sourceUrl)
+    if (!rows.length) {
+      return emptyFinalize(
+        sourceUrl,
+        scope,
+        undefined,
+        scopeWarning || (scope === 'jobless-legacy' ? JOBLESS_SCOPE_ZERO_WARNING : undefined),
+      )
+    }
 
     const source =
       typeof input.sourceHtml === 'string'
@@ -727,17 +873,18 @@ export async function finalizeStagedInterlinksForLiveSource(
         : await fetchLiveSource(sourceUrl)
 
     const now = new Date().toISOString()
-    // M2: when finalization is job-bound, EVERY verdict/applied write is a
-    // compare-and-set on the EXACT selected subject (source_job_id + the
-    // row's exact source_url) in addition to id + planned. A concurrent
-    // reship rebind to another job must yield zero affected rows (counted
-    // skipped) instead of stamping the old job back / applying over the new
-    // revision. Jobless legacy finalization keeps the documented
-    // source-url-only behavior.
-    const fenceFor = (row: InterlinkDbRow): PlannedRowFence | undefined =>
-      sourceJobId
-        ? { sourceJobId, sourceUrl: String(row.source_url || '').trim() || sourceUrl }
-        : undefined
+    // H1 + M2: every verdict/applied write CASes the EXACT selected subject.
+    //  · job-bound   → id + planned + exact source_job_id + exact source_url;
+    //  · jobless     → id + planned + exact observed source_url + source_job_id
+    //    IS NULL, so a concurrent ship that binds the row to a job between
+    //    SELECT and UPDATE yields zero affected rows (counted skipped) and the
+    //    older subject can never be overwritten.
+    const fenceFor = (row: InterlinkDbRow): PlannedRowFence => {
+      const observedSource = String(row.source_url || '').trim() || sourceUrl
+      return sourceJobId
+        ? { sourceJobId, sourceUrl: observedSource }
+        : { sourceUrl: observedSource, sourceJobIdIsNull: true }
+    }
 
     if (source.html == null) {
       const state: InterlinkVerificationState =
@@ -763,6 +910,7 @@ export async function finalizeStagedInterlinksForLiveSource(
       }
       return {
         sourceUrl,
+        scope,
         checked: rows.length,
         applied: 0,
         absent: 0,
@@ -772,6 +920,7 @@ export async function finalizeStagedInterlinksForLiveSource(
         skipped: outcome.skipped,
         dbErrors: outcome.dbErrors,
         sourceFetchOk: false,
+        ...(scopeWarning ? { warning: scopeWarning } : {}),
         ...(source.error || outcome.lastError
           ? { error: [source.error, outcome.lastError].filter(Boolean).join(' | ').slice(0, 300) }
           : {}),
@@ -796,6 +945,7 @@ export async function finalizeStagedInterlinksForLiveSource(
 
     const result: FinalizeStagedInterlinksResult = {
       sourceUrl,
+      scope,
       checked: rows.length,
       applied: 0,
       absent: 0,
@@ -805,6 +955,7 @@ export async function finalizeStagedInterlinksForLiveSource(
       skipped: 0,
       dbErrors: 0,
       sourceFetchOk: true,
+      ...(scopeWarning ? { warning: scopeWarning } : {}),
       ...(targetVerifierError ? { error: targetVerifierError } : {}),
     }
     const writeErrors: string[] = targetVerifierError ? [targetVerifierError] : []
@@ -915,7 +1066,7 @@ export async function finalizeStagedInterlinksForLiveSource(
     }
     return result
   } catch (error) {
-    return emptyFinalize(sourceUrl, errorMessage(error).slice(0, 300))
+    return emptyFinalize(sourceUrl, scope, errorMessage(error).slice(0, 300))
   }
 }
 
@@ -991,14 +1142,26 @@ interface PlannedRowWrite {
 }
 
 /**
- * Optional compare-and-set subject fence. When present, the planned-only
- * update must additionally match the EXACT subject (job identity + selected
- * source_url) or it affects zero rows — so a concurrent rebind/reship can
- * never be overwritten by a verdict/applied write aimed at the old revision.
+ * Compare-and-set subject/revision fence. When present, the planned-only
+ * update must additionally match the EXACT observed subject or it affects
+ * zero rows — so a concurrent rebind/reship/staging can never be overwritten
+ * by a write aimed at the old revision. Null-valued observed columns are
+ * fenced with `IS NULL` (`*IsNull`), never with an equality predicate that
+ * could accidentally match a newly bound value.
  */
 interface PlannedRowFence {
+  /** Exact observed source_job_id (job-bound subject). */
   sourceJobId?: string
+  /** Observed source_job_id was NULL (jobless subject). */
+  sourceJobIdIsNull?: boolean
+  /** Exact observed source_url. */
   sourceUrl?: string
+  /** Observed source_url was NULL (never-staged row). */
+  sourceUrlIsNull?: boolean
+  /** Exact observed staged_at revision stamp (when the column is available). */
+  stagedAt?: string
+  /** Observed staged_at was NULL. */
+  stagedAtIsNull?: boolean
 }
 
 /**
@@ -1019,7 +1182,11 @@ async function writePlannedRowPatch(
     .eq('id', row.id)
     .eq('status', 'planned')
   if (fence?.sourceJobId) query = query.eq('source_job_id', fence.sourceJobId)
+  else if (fence?.sourceJobIdIsNull) query = query.is('source_job_id', null)
   if (fence?.sourceUrl) query = query.eq('source_url', fence.sourceUrl)
+  else if (fence?.sourceUrlIsNull) query = query.is('source_url', null)
+  if (fence?.stagedAt) query = query.eq('staged_at', fence.stagedAt)
+  else if (fence?.stagedAtIsNull) query = query.is('staged_at', null)
   const { data, error } = (await query.select('id')) as unknown as {
     data: Array<Record<string, unknown>> | null
     error: { message?: string } | null

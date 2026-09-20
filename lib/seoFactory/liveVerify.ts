@@ -5,6 +5,7 @@ import { countBodyWords } from './contentDepth'
 import { reconcilePublicationDeployment } from './publicationMonitor'
 import { extractRevisionMarkerFromHtml, withPublicationManifest } from './publicationProof'
 import { evaluateLiveArtifact } from './publicationStates'
+import { isDeploymentProvenLiveResult } from './deploymentProvenLive'
 import {
   finalizeStagedInterlinksForLiveSource,
   type FinalizeStagedInterlinksResult,
@@ -109,6 +110,14 @@ export interface BackgroundLiveVerifyDeps {
  * awaits staging BEFORE calling this, otherwise verification can finish
  * before rows exist and never finalize them.
  *
+ * M1: whenever the ship knows the exact `content_jobs.id`, `ok === true` is
+ * necessary but NOT sufficient — the verdict must also positively prove the
+ * official deployment lineage for that exact job (`lineageVerified === true`
+ * AND `publicationPhase === 'live_verified'`, the same gate the scheduled
+ * reconciler applies). An ok=true legacy/uncontracted verdict with a supplied
+ * job id is logged and finalizes nothing. Without a job id the documented
+ * legacy path runs, which finalizes only jobless rows (H1).
+ *
  * Never rejects: a failed content verification simply does not finalize
  * (nothing is applied), and an interlink finalization failure is logged in
  * isolation so it can never weaken a successful content verification.
@@ -131,9 +140,22 @@ export async function runBackgroundLiveVerification(
   const canonicalUrl=String(input?.canonicalUrl||'').trim()
   if(!canonicalUrl)return
   // When the ship knows the exact content_jobs.id, finalization is job-bound:
-  // only rows staged by that exact job may apply. Legacy/admin callers without
-  // a job id keep the source-url-only behavior.
+  // only rows staged by that exact job may apply, and the verdict must
+  // positively prove that exact job's official deployment lineage. Callers
+  // without a job id keep the documented legacy jobless-only scope.
   const sourceJobId=String(input?.jobId||'').trim()
+  // M1 fail-closed lineage gate: a job-bound ship never finalizes on an
+  // uncontracted/legacy ok=true health verdict, which proves nothing about the
+  // production deployment of that job.
+  if(sourceJobId&&!isDeploymentProvenLiveResult(result)){
+    console.warn('[liveVerify] interlink finalization withheld — ok=true verdict without positive deployment lineage',{
+      sourceUrl:canonicalUrl,
+      jobId:sourceJobId,
+      publicationPhase:result.publicationPhase??null,
+      lineageVerified:result.lineageVerified??null,
+    })
+    return
+  }
   try{
     const summary=await finalize({canonicalUrl,...(sourceJobId?{sourceJobId}:{})})
     if(summary?.applied>0||summary?.error){

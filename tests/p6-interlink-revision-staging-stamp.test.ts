@@ -35,6 +35,7 @@ const CANONICAL = 'https://market.yousafeconsultancy.com/articles/f1-checklist/'
 const LIVE_TARGET = 'https://legal.yousafeconsultancy.com/us/student-visas/'
 const JOB_A = '11111111-1111-4111-8111-111111111111'
 const JOB_B = '22222222-2222-4222-8222-222222222222'
+const JOB_C = '33333333-3333-4333-8333-333333333333'
 const T0 = Date.parse('2026-09-20T12:00:00.000Z')
 const HOUR = 60 * 60 * 1000
 
@@ -171,6 +172,88 @@ describe('A) the staging write records the revision stamp', () => {
     expect(rebindPatch.staged_at).not.toBe(firstStamp)
     expect(Number.isFinite(Date.parse(String(rebindPatch.staged_at)))).toBe(true)
     expect(db.rows[0].staged_at).toBe(rebindPatch.staged_at)
+  })
+})
+
+describe('D) M2 — staging/rebind is a revision CAS, never last-writer-wins', () => {
+  /** Rebuild the db with an after-select hook that simulates a concurrent bind. */
+  function dbWithConcurrentBind(
+    seed: P6FakeRow,
+    mutate: (rows: P6FakeRow[]) => void,
+  ) {
+    db = createP6FakeDb([seed], { now: () => clock, afterSelect: (rows) => mutate(rows) })
+    createSupabaseAdminClientMock.mockReturnValue(db.client as never)
+    return db
+  }
+
+  it('an older ship that observed a NULL row cannot overwrite a newer job-B bind', async () => {
+    const newerStamp = new Date(T0 + HOUR).toISOString()
+    const race = dbWithConcurrentBind(seedRow(), (rows) => {
+      // Ship B wins the race after ship A's SELECT snapshot.
+      rows[0].source_url = CANONICAL
+      rows[0].source_job_id = JOB_B
+      rows[0].staged_at = newerStamp
+    })
+
+    const result = await stage(JOB_A)
+
+    expect(result.staged).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(result.rebounded).toBeUndefined()
+    expect(race.rows[0].source_job_id).toBe(JOB_B)
+    expect(race.rows[0].staged_at).toBe(newerStamp)
+  })
+
+  it('a rebind that observed job A cannot overwrite a newer job-B bind', async () => {
+    const observedStamp = new Date(T0).toISOString()
+    const newerStamp = new Date(T0 + HOUR).toISOString()
+    const race = dbWithConcurrentBind(
+      seedRow({ source_url: CANONICAL, source_job_id: JOB_A, staged_at: observedStamp }),
+      (rows) => {
+        rows[0].source_job_id = JOB_B
+        rows[0].staged_at = newerStamp
+      },
+    )
+
+    const result = await stage(JOB_C)
+
+    // The older revision's rebind A→C matched ZERO rows: it is a concurrency
+    // skip, never a successful rebind, and B/staged_at survive untouched.
+    expect(result.staged).toBe(0)
+    expect(result.rebounded).toBeUndefined()
+    expect(result.skipped).toBe(1)
+    expect(race.rows[0].source_job_id).toBe(JOB_B)
+    expect(race.rows[0].staged_at).toBe(newerStamp)
+  })
+
+  it('a jobless first stage cannot overwrite a concurrent exact-job bind', async () => {
+    const newerStamp = new Date(T0 + HOUR).toISOString()
+    const race = dbWithConcurrentBind(seedRow(), (rows) => {
+      rows[0].source_url = CANONICAL
+      rows[0].source_job_id = JOB_B
+      rows[0].staged_at = newerStamp
+    })
+
+    const result = await stage(null)
+
+    expect(result.staged).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(race.rows[0].source_url).toBe(CANONICAL)
+    expect(race.rows[0].source_job_id).toBe(JOB_B)
+    expect(race.rows[0].staged_at).toBe(newerStamp)
+  })
+
+  it('the same-job idempotent no-op still writes nothing (no CAS regression)', async () => {
+    await stage(JOB_A)
+    const stamp = db.rows[0].staged_at
+    const writes = db.updates.length
+
+    const again = await stage(JOB_A)
+
+    expect(again.staged).toBe(1)
+    expect(db.updates.length).toBe(writes)
+    expect(db.rows[0].staged_at).toBe(stamp)
   })
 })
 

@@ -100,6 +100,7 @@ describe('A) pruneProviderAuthorLinks — fail closed, never invent, keep metada
     )
 
     expect(result.ok).toBe(false)
+    expect(result.verifierUnavailable).toBe(true)
     expect(result.links).toEqual([])
     expect(result.error).toBe('liveness authority unreachable')
     expect(result.withheld).toBe(2)
@@ -129,7 +130,25 @@ describe('A) pruneProviderAuthorLinks — fail closed, never invent, keep metada
   it('withholds candidates that carry no URL instead of passing them through', async () => {
     const result = await pruneProviderAuthorLinks([{ label: 'no url' }], [], async () => [])
 
-    expect(result).toMatchObject({ links: [], ok: true })
+    expect(result).toMatchObject({ links: [], ok: true, withheld: 0 })
+  })
+
+  it('counts DISTINCT normalized withheld URLs (slash variants never inflate the count)', async () => {
+    const result = await pruneProviderAuthorLinks(
+      [
+        { label: 'profile', url: PROFILE },
+        { label: 'profile slash variant', url: `${PROFILE}/` },
+        { label: 'dead gig', url: DEAD_GIG },
+      ],
+      [],
+      async () => [],
+    )
+
+    // A successful verification that proved nothing live is NOT a verifier
+    // failure, and the two profile spellings are ONE withheld target.
+    expect(result.verifierUnavailable).toBe(false)
+    expect(result.verified).toBe(0)
+    expect(result.withheld).toBe(2)
   })
 })
 

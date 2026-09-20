@@ -43,16 +43,33 @@ describe('A) pruneInterlinksToLiveTargets', () => {
       },
     )
 
-    expect(result).toEqual({ links: [], ok: false, withheld: 2, error: 'verifier unreachable' })
+    expect(result).toEqual({
+      links: [],
+      ok: false,
+      verifierUnavailable: true,
+      withheld: 2,
+      error: 'verifier unreachable',
+    })
   })
 
-  it('withholds every link when nothing is proven live', async () => {
+  it('withholds every link when verification ran and nothing is proven live (NOT a verifier failure)', async () => {
     const result = await pruneInterlinksToLiveTargets([{ url: LIVE }, { url: DEAD }], async () => [])
 
     expect(result.links).toEqual([])
     expect(result.ok).toBe(false)
+    expect(result.verifierUnavailable).toBe(false)
     expect(result.withheld).toBe(2)
     expect(result.error).toMatch(/no live internal target/i)
+  })
+
+  it('counts DISTINCT normalized withheld URLs (slash variants never inflate the count)', async () => {
+    const result = await pruneInterlinksToLiveTargets(
+      [{ url: DEAD }, { url: `${DEAD}/` }, { url: LIVE }],
+      async () => [LIVE],
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.withheld).toBe(1)
   })
 
   it('withholds candidates that carry no URL at all', async () => {
@@ -130,8 +147,11 @@ describe('B) pipelineStream uses the fail-closed helper (source contract)', () =
     expect(body).not.toContain('radarInterlinks.splice')
   })
 
-  it('reports the withheld count instead of silently continuing', () => {
-    expect(source()).toContain('no unverified links injected')
+  it('reports the withheld count instead of silently continuing, and distinguishes verifier-unavailable from nothing-live', () => {
+    const body = source()
+    expect(body).toContain('no unverified links injected')
+    expect(body).toContain('live verification was UNAVAILABLE')
+    expect(body).toContain('live verification completed but NO candidate was proven live')
   })
 
   it('normalizes candidates through resolveEstateUrl and reports partial withhelds', () => {

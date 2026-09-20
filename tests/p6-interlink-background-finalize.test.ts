@@ -50,6 +50,13 @@ const VERIFY_OK = {
   verifiedAt: '2026-09-20T00:00:00.000Z',
 } as unknown as LiveVerifyResult
 
+/** The same ok=true verdict with positive official deployment lineage (M1). */
+const VERIFY_LINEAGE_PROVEN = {
+  ...VERIFY_OK,
+  lineageVerified: true,
+  publicationPhase: 'live_verified',
+} as unknown as LiveVerifyResult
+
 const okVerify = jest.fn(async () => VERIFY_OK)
 const failedVerify = jest.fn(
   async () => ({ ...VERIFY_OK, ok: false }) as unknown as LiveVerifyResult,
@@ -137,25 +144,64 @@ describe('background live verification — interlink finalization', () => {
 
   it('binds the ship-time finalization to the exact ship job when one is known', async () => {
     const shipJob = '66666666-6666-4666-8666-666666666666'
+    const lineageVerify = jest.fn(async () => VERIFY_LINEAGE_PROVEN)
 
     await runBackgroundLiveVerification(
       { canonicalUrl: EXACT_CANONICAL, jobId: shipJob },
-      { verify: okVerify },
+      { verify: lineageVerify },
     )
 
     // The exact job id travels into verification (official deployment
     // lineage) and into the finalizer (only that job's staged rows may apply).
-    expect(okVerify).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL, jobId: shipJob })
+    expect(lineageVerify).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL, jobId: shipJob })
     expect(mockFinalize).toHaveBeenCalledWith({
       canonicalUrl: EXACT_CANONICAL,
       sourceJobId: shipJob,
     })
   })
 
+  it('M1: withholds job-bound finalization on an ok=true verdict WITHOUT positive deployment lineage', async () => {
+    const shipJob = '66666666-6666-4666-8666-666666666666'
+    // VERIFY_OK is ok=true but carries the legacy/uncontracted health verdict
+    // (no lineageVerified / publicationPhase) — proving nothing about the
+    // official production deployment of that job.
+    await runBackgroundLiveVerification(
+      { canonicalUrl: EXACT_CANONICAL, jobId: shipJob },
+      { verify: okVerify },
+    )
+
+    expect(okVerify).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL, jobId: shipJob })
+    expect(mockFinalize).not.toHaveBeenCalled()
+    // The withheld truth is observable, never silent.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/without positive deployment lineage/i),
+      expect.objectContaining({ jobId: shipJob }),
+    )
+  })
+
   it('legacy callers without a job id keep the source-url-only finalization', async () => {
     await runBackgroundLiveVerification({ canonicalUrl: EXACT_CANONICAL }, { verify: okVerify })
 
     expect(mockFinalize).toHaveBeenCalledWith({ canonicalUrl: EXACT_CANONICAL })
+  })
+
+  it('M1: requires the exact live_verified phase, not just a lineage flag', async () => {
+    const shipJob = '66666666-6666-4666-8666-666666666666'
+    const wrongPhaseVerify = jest.fn(
+      async () =>
+        ({
+          ...VERIFY_LINEAGE_PROVEN,
+          publicationPhase: 'deployment_pending',
+        }) as unknown as LiveVerifyResult,
+    )
+
+    await runBackgroundLiveVerification(
+      { canonicalUrl: EXACT_CANONICAL, jobId: shipJob },
+      { verify: wrongPhaseVerify },
+    )
+
+    expect(wrongPhaseVerify).toHaveBeenCalledTimes(1)
+    expect(mockFinalize).not.toHaveBeenCalled()
   })
 
   it('verifyLiveInBackground is the ship entry point into the background runner', () => {

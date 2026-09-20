@@ -22,6 +22,7 @@ import {
   targetWordsForType,
 } from '@/lib/seoFactory/contentDepth'
 import { resolveProviderAuthors, citedProvidersPromptBlock, citedProvidersPublic, isMarketplaceServiceUrl, mergeMarketplaceServiceLinks } from '@/lib/seoFactory/providerAuthors'
+import { authorPackFromPrunedCitations, pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } from '@/lib/seoFactory/interlinkInjection'
 import { BriefInvalidError, sealBriefFromAssembly } from '@/lib/seoFactory/sealedBrief'
 
 /**
@@ -245,9 +246,20 @@ export async function POST(req: NextRequest) {
       primaryKeyword,
       contentType,
     })
-    if (providerAuthors.links.length) {
+    // P6 — this brief route is outside the writer path, but an unverified
+    // provider/profile/gig URL must still never reach the brief prompt or the
+    // UI. The same shared HTTP liveness authority prunes the citation links
+    // and the author pack here: author metadata survives, and an unproven
+    // marketplaceUrl is OMITTED (never '') exactly like the writer surfaces.
+    const providerPruned = await pruneProviderAuthorLinks(
+      providerAuthors.links,
+      providerAuthors.cited,
+      (urls) => verifyMarketplaceServiceUrlsLive(urls),
+    )
+    const liveProviderLinks = providerPruned.links
+    if (liveProviderLinks.length) {
       const existing = new Set(interlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()))
-      for (const link of providerAuthors.links) {
+      for (const link of liveProviderLinks) {
         const key = link.url.replace(/\/+$/, '').toLowerCase()
         if (existing.has(key)) continue
         existing.add(key)
@@ -296,7 +308,7 @@ export async function POST(req: NextRequest) {
       verifiedAllowlist.length
         ? `VERIFIED SOURCE ALLOWLIST (cite these verbatim allowlist URLs — copy URLs VERBATIM into "sources"; government/edu/intergov preferred, on-topic institutional pages allowed; no blogs/Wikipedia/social):\n${verifiedAllowlist.map((s) => `  - ${s}`).join('\n')}`
         : 'VERIFIED SOURCE ALLOWLIST: cite these verbatim allowlist URLs from the regional official bank.',
-      citedProvidersPromptBlock(providerAuthors.cited),
+      citedProvidersPromptBlock(providerPruned.cited),
       sitemapCount > 0
         ? `ESTATE SITEMAP SIZE: ${sitemapCount} pages live — find adjacency opportunities.`
         : '',
@@ -512,11 +524,11 @@ export async function POST(req: NextRequest) {
       sourceRegionFallback: regionalSources.fallbackUsed,
       sourceRegionFallbackNote: regionalSources.fallbackNote,
       interlinkTargets: mergeMarketplaceServiceLinks(
-        preferRegionInterlinks(enrichedInterlinkTargets, region, 2).kept.slice(0, Math.max(2, 8 - providerAuthors.links.length)),
-        providerAuthors.links,
+        preferRegionInterlinks(enrichedInterlinkTargets, region, 2).kept.slice(0, Math.max(2, 8 - liveProviderLinks.length)),
+        liveProviderLinks,
       ),
-      authorPack: providerAuthors.author,
-      citedProviders: citedProvidersPublic(providerAuthors.cited),
+      authorPack: authorPackFromPrunedCitations(providerAuthors.author, providerPruned.cited),
+      citedProviders: citedProvidersPublic(providerPruned.cited),
       targetSlug: String(parsed.targetSlug || ''),
       metaDescription: String(parsed.metaDescription || '').slice(0, 160),
       recommendedTone: String(parsed.recommendedTone || 'professional'),

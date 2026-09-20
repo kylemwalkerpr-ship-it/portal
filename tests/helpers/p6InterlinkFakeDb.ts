@@ -24,7 +24,7 @@
 export type P6FakeRow = Record<string, unknown>
 
 export interface P6CapturedFilter {
-  op: 'eq' | 'in' | 'not_is_null'
+  op: 'eq' | 'in' | 'not_is_null' | 'is_null'
   column: string
   value: unknown
 }
@@ -64,6 +64,9 @@ export const SEO_INTERLINK_DEFAULTS: P6FakeRow = {
 function matches(filter: P6CapturedFilter, row: P6FakeRow): boolean {
   const value = row[filter.column]
   if (filter.op === 'eq') return value === filter.value
+  // `.is(column, null)` — the M2/H1 compare-and-set fence on a NULL revision
+  // column. `undefined` (column absent from the fixture) counts as NULL.
+  if (filter.op === 'is_null') return value === null || value === undefined
   if (filter.op === 'not_is_null') return value !== null && value !== undefined
   return Array.isArray(filter.value) && (filter.value as unknown[]).includes(value)
 }
@@ -101,6 +104,12 @@ export function createP6FakeDb(seed: P6FakeRow[] = [], opts: P6FakeDbOptions = {
         },
         in(column: string, value: unknown) {
           filters.push({ op: 'in', column, value })
+          return builder
+        },
+        is(column: string, value: unknown) {
+          // Only `.is(col, null)` is used by the production finalizers/stagers.
+          if (value !== null) throw new Error(`unsupported .is(${column}, ${String(value)})`)
+          filters.push({ op: 'is_null', column, value })
           return builder
         },
         not(column: string, operator: string) {

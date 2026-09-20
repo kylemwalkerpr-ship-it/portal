@@ -425,8 +425,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     )
     if (!pruned.ok && automaticInput.length) {
       console.warn(
-        '[seoFactory/pipeline] withheld automatic interlinks — live verification failed, no unverified link enters the prompt',
-        { candidates: automaticInput.length, error: pruned.error || null },
+        pruned.verifierUnavailable
+          ? '[seoFactory/pipeline] withheld automatic interlinks — live verification was UNAVAILABLE, no unverified link enters the prompt'
+          : '[seoFactory/pipeline] withheld automatic interlinks — live verification completed and proved NO candidate live, no unverified link enters the prompt',
+        {
+          candidates: automaticInput.length,
+          withheld: pruned.withheld,
+          verifierUnavailable: Boolean(pruned.verifierUnavailable),
+          error: pruned.error || null,
+        },
       )
     } else if (pruned.withheld > 0) {
       console.warn(
@@ -446,6 +453,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     authorPack = authorPackFromPrunedCitations(providerAuthors.author, providerPruned.cited)
     if (!providerPruned.ok || providerPruned.withheld > 0) {
       console.warn('[seoFactory/pipeline] marketplace citation links withheld from the prompt', {
+        verifierUnavailable: !providerPruned.ok,
         verified: providerPruned.verified,
         withheld: providerPruned.withheld,
         error: providerPruned.error || null,

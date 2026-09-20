@@ -73,6 +73,10 @@ describe('A) staging records source_url only', () => {
     expect(filters).toEqual([
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
+      // M2: first staging CASes the OBSERVED (null) revision.
+      { op: 'is_null', column: 'source_url', value: null },
+      { op: 'is_null', column: 'source_job_id', value: null },
+      { op: 'is_null', column: 'staged_at', value: null },
     ])
     const stored = db.rows.find((r) => r.id === 'row-1')!
     expect(stored.status).toBe('planned')
@@ -163,6 +167,10 @@ describe('E) exact job identity is staged with the source URL', () => {
     expect(filters).toEqual([
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
+      // M2: first staging CASes the OBSERVED (null) revision.
+      { op: 'is_null', column: 'source_url', value: null },
+      { op: 'is_null', column: 'source_job_id', value: null },
+      { op: 'is_null', column: 'staged_at', value: null },
     ])
     expect(db.rows[0].status).toBe('planned')
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
@@ -210,6 +218,11 @@ describe('C) source identity and idempotency', () => {
     expect(db.updates[0].filters).toEqual([
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
+      // M2: the rebind CASes the observed jobless revision (source_url +
+      // source_job_id IS NULL + observed staged_at, here NULL).
+      { op: 'is_null', column: 'source_job_id', value: null },
+      { op: 'eq', column: 'source_url', value: CANONICAL },
+      { op: 'is_null', column: 'staged_at', value: null },
     ])
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
     expect(db.rows[0].staged_at).toBe(db.updates[0].patch.staged_at)
@@ -383,6 +396,10 @@ describe('D) staging DB-write observability (never a silent zero-op)', () => {
             eq() {
               return builder
             },
+            is() {
+              // M2 revision-CAS fence on observed NULL columns.
+              return builder
+            },
             update(next: Record<string, unknown>) {
               mode = 'update'
               patch = next
@@ -451,6 +468,10 @@ describe('D) staging DB-write observability (never a silent zero-op)', () => {
             return builder
           },
           eq() {
+            return builder
+          },
+          is() {
+            // M2 revision-CAS fence on observed NULL columns.
             return builder
           },
           not() {

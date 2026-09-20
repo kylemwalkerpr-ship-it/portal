@@ -394,7 +394,9 @@ export async function* runSeoFactoryPipelineStream(
         yield {
           type: 'progress',
           stage: 'gsc',
-          message: `Withheld ${radarInterlinks.length} automatic interlink target(s): live verification failed — no unverified links injected`,
+          message: pruned.verifierUnavailable
+            ? `Withheld ${pruned.withheld} automatic interlink target(s): live verification was UNAVAILABLE — no unverified links injected`
+            : `Withheld ${pruned.withheld} automatic interlink target(s): live verification completed but NO candidate was proven live — no unverified links injected`,
         }
       } else if (pruned.withheld > 0) {
         yield {
@@ -442,7 +444,7 @@ export async function* runSeoFactoryPipelineStream(
         yield {
           type: 'progress',
           stage: 'brief',
-          message: `Withheld ${providerPruned.withheld} marketplace citation link(s): live verification failed — author citation kept, no unverified link injected`,
+          message: `Withheld ${providerPruned.withheld} marketplace citation link(s): live verification was UNAVAILABLE — author citation kept, no unverified link injected`,
         }
       } else if (providerPruned.withheld > 0) {
         yield {

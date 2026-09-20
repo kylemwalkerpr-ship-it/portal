@@ -22,6 +22,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  isSchemaUnavailable,
   reconcileStagedInterlinks,
   type StagedInterlinkRow,
 } from '@/lib/seoFactory/interlinkReconciliation'
@@ -458,6 +459,20 @@ describe('D) bounded, idempotent cadence', () => {
     expect(second.ok).toBe(true)
   })
 
+  it('never counts a zero-row finalizer no-op as finalized progress', async () => {
+    const h = harness([staged()])
+    // A concurrent reship rebound the row away: the finalizer checked ZERO
+    // rows. That is a skip, not a real finalization.
+    h.finalize.mockResolvedValue({ ...FINALIZED_ONE, applied: 0, checked: 0 })
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.finalized).toBe(0)
+    expect(summary.applied).toBe(0)
+    expect(summary.details[0]).toMatchObject({ checked: 0, applied: 0 })
+    expect(summary.ok).toBe(true)
+  })
+
   it('bounds the work per run and reports what is still eligible', async () => {
     const h = harness([
       staged({ id: 'a', sourceUrl: SOURCE_A }),
@@ -610,6 +625,31 @@ describe('E) loader failure and mutation-surface contract', () => {
     expect(summary.ok).toBe(true)
     expect(summary.errors).toEqual([])
     expect(h.verify).not.toHaveBeenCalled()
+  })
+
+  it('narrows schema-unavailable signatures: a generic "does not exist" stays a REAL error', async () => {
+    // The old detector treated ANY "does not exist" as a green pre-migration
+    // state; a real schema failure must never be silently converted.
+    expect(isSchemaUnavailable('relation "public.other_table" does not exist')).toBe(false)
+    expect(isSchemaUnavailable('column other_table.foo does not exist')).toBe(false)
+    expect(isSchemaUnavailable('permission denied for table seo_interlinks')).toBe(false)
+    // Actual P6 signatures stay recognized.
+    expect(isSchemaUnavailable('column seo_interlinks.source_job_id does not exist')).toBe(true)
+    expect(isSchemaUnavailable('column seo_interlinks.staged_at does not exist')).toBe(true)
+    expect(
+      isSchemaUnavailable("Could not find the 'staged_at' column of 'seo_interlinks' in the schema cache"),
+    ).toBe(true)
+
+    const h = harness([staged()])
+    h.deps.loadStagedRows.mockRejectedValue(
+      new Error('staged interlink read failed: relation "public.other_table" does not exist'),
+    )
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.unavailable).toBe(false)
+    expect(summary.ok).toBe(false)
+    expect(summary.errors.join(' ')).toMatch(/staged interlink load failed/)
   })
 
   it('the module owns no write verb, no applied status and no jobless legacy verification', () => {

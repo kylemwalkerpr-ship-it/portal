@@ -58,8 +58,19 @@ export interface PrunedInterlinks<T> {
    * Candidate links that carried a URL the live verifier did NOT prove live
    * (dead, external/non-estate, or unverifiable). Reported even on a partial
    * success so a degraded allowlist is never silent.
+   *
+   * Counted over DISTINCT normalized candidate URLs (trailing-slash/case
+   * variants of one target never inflate the count), and `withheld: 0` never
+   * means "all is well" when `ok: false`.
    */
   withheld: number
+  /**
+   * True only when the verifier itself could not run (throw). `ok: false`
+   * with `verifierUnavailable: false` is a SUCCESSFUL verification that proved
+   * no candidate live — all candidates are dead/withheld, which is not a
+   * verifier failure and must be reported as such.
+   */
+  verifierUnavailable?: boolean
   error?: string
 }
 
@@ -98,6 +109,9 @@ export async function pruneInterlinksToLiveTargets<T extends InterlinkCandidateL
   // Candidates without a URL are not verifiable links; nothing to prove, and
   // they were never links, so they are not counted as withheld links either.
   if (candidates.length === 0) return { links: [], ok: true, withheld: 0 }
+  // Distinct normalized candidate URLs: trailing-slash (or equivalent) forms
+  // of the SAME target are one candidate, so `withheld` cannot be inflated.
+  const candidateKeys = new Set(candidates.map((candidate) => normalizeKey(candidate.url)).filter(Boolean))
 
   let liveUrls: string[]
   try {
@@ -106,7 +120,8 @@ export async function pruneInterlinksToLiveTargets<T extends InterlinkCandidateL
     return {
       links: [],
       ok: false,
-      withheld: candidates.length,
+      verifierUnavailable: true,
+      withheld: candidateKeys.size,
       error: error instanceof Error ? error.message : String(error || 'live verification failed'),
     }
   }
@@ -128,14 +143,17 @@ export async function pruneInterlinksToLiveTargets<T extends InterlinkCandidateL
     return {
       links: [],
       ok: false,
-      withheld: candidates.length,
+      // The verifier RAN and proved nothing live: all candidates are withheld
+      // (dead/unverifiable), which is not a verifier failure.
+      verifierUnavailable: false,
+      withheld: candidateKeys.size,
       error: 'no live internal target was verified',
     }
   }
 
   const seen = new Set<string>()
+  const withheldKeys = new Set<string>()
   const links: T[] = []
-  let withheld = 0
   for (const candidate of candidates) {
     const rawKey = normalizeKey(candidate.url)
     const rawProven = rawKey ? liveByRawKey.get(rawKey) : undefined
@@ -161,12 +179,19 @@ export async function pruneInterlinksToLiveTargets<T extends InterlinkCandidateL
       }
       continue
     }
-    withheld += 1
+    const deadKey = normalizeKey(candidate.url)
+    if (deadKey) withheldKeys.add(deadKey)
   }
   if (links.length === 0) {
-    return { links: [], ok: false, withheld, error: 'no candidate survived live verification' }
+    return {
+      links: [],
+      ok: false,
+      verifierUnavailable: false,
+      withheld: withheldKeys.size,
+      error: 'no candidate survived live verification',
+    }
   }
-  return { links, ok: true, withheld }
+  return { links, ok: true, verifierUnavailable: false, withheld: withheldKeys.size }
 }
 
 /** Minimal citation shape shared by the provider-author prompt records. */
@@ -186,7 +211,13 @@ export interface PrunedProviderAuthorLinks<T, C> {
   cited: C[]
   /** True when verification actually ran (a verifier throw is `false`). */
   ok: boolean
-  /** Distinct candidate URLs withheld (not proven live, or unverifiable). */
+  /** True only when the verifier itself could not run (throw). */
+  verifierUnavailable?: boolean
+  /**
+   * Distinct normalized candidate URLs withheld (not proven live, or
+   * unverifiable). Trailing-slash variants of one URL are one candidate, so
+   * the count is never inflated by formatting.
+   */
   withheld: number
   /** Distinct candidate URLs proven live. */
   verified: number
@@ -222,14 +253,17 @@ export async function pruneProviderAuthorLinks<
 ): Promise<PrunedProviderAuthorLinks<T, C>> {
   const linkList = Array.isArray(links) ? links : []
   const citedList = Array.isArray(cited) ? cited : []
-  const candidateUrls = [
-    ...new Set(
-      [
-        ...linkList.map((link) => String(link?.url || '').trim()),
-        ...citedList.flatMap((person) => citationUrlKeys(person)),
-      ].filter(Boolean),
-    ),
-  ]
+  // Distinct by NORMALIZED key (trailing slash/case form of one URL is one
+  // candidate) while preserving the first raw form for the verifier.
+  const candidateUrlByKey = new Map<string, string>()
+  for (const url of [
+    ...linkList.map((link) => String(link?.url || '').trim()),
+    ...citedList.flatMap((person) => citationUrlKeys(person)),
+  ]) {
+    const key = normalizeKey(url)
+    if (key && !candidateUrlByKey.has(key)) candidateUrlByKey.set(key, url)
+  }
+  const candidateUrls = [...candidateUrlByKey.values()]
   const stripCited = (liveKeys: Set<string>): C[] =>
     citedList.map((person) => {
       const profileUrl = String(person?.profileUrl || '').trim()
@@ -243,7 +277,9 @@ export async function pruneProviderAuthorLinks<
       } as C
     })
   if (!candidateUrls.length) {
-    return { links: [], cited: stripCited(new Set()), ok: true, withheld: linkList.length, verified: 0 }
+    // Candidates without a URL are not verifiable links, so they are not
+    // counted as withheld links (consistent with pruneInterlinksToLiveTargets).
+    return { links: [], cited: stripCited(new Set()), ok: true, withheld: 0, verified: 0 }
   }
 
   let liveUrls: string[]
@@ -254,6 +290,7 @@ export async function pruneProviderAuthorLinks<
       links: [],
       cited: stripCited(new Set()),
       ok: false,
+      verifierUnavailable: true,
       withheld: candidateUrls.length,
       verified: 0,
       error: error instanceof Error ? error.message : String(error || 'live verification failed'),
@@ -269,6 +306,7 @@ export async function pruneProviderAuthorLinks<
     links: keptLinks,
     cited: stripCited(liveKeys),
     ok: true,
+    verifierUnavailable: false,
     withheld: candidateUrls.length - verified,
     verified,
   }

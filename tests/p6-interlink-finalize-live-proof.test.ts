@@ -110,7 +110,12 @@ describe('A) live source + exact anchor href => applied with durable proof', () 
     expect(filters).toEqual([
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
+      // H1/M2: a jobless legacy write CASes the exact observed subject
+      // (source_url present, source_job_id IS NULL).
+      { op: 'is_null', column: 'source_job_id', value: null },
+      { op: 'eq', column: 'source_url', value: SOURCE },
     ])
+    expect(result.scope).toBe('jobless-legacy')
   })
 
   it('tolerates trailing-slash and host-case differences in the live href', async () => {
@@ -147,6 +152,10 @@ describe('H) DB write observability (item 4 — never a silent zero/no-op)', () 
               return builder
             },
             eq() {
+              return builder
+            },
+            is() {
+              // H1 jobless scope fence (source_job_id IS NULL).
               return builder
             },
             update(next: Record<string, unknown>) {
@@ -495,14 +504,98 @@ describe('E2) job-bound finalization (P6 supervisor follow-up)', () => {
     expect(raceDb.rows[0].verification_state).toBeNull()
   })
 
-  it('legacy/admin finalization without a job id keeps the source-url-only behavior', async () => {
+  it('legacy/admin finalization without a job id is jobless-only and CASes the exact subject (H1)', async () => {
     const db = installDb([row({ source_job_id: null })])
 
     const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
 
     expect(result.applied).toBe(1)
-    expect(db.selects[0].filters.some((filter) => filter.column === 'source_job_id')).toBe(false)
+    expect(result.scope).toBe('jobless-legacy')
+    // The SELECT is restricted to jobless rows: a job-bound row is never read.
+    expect(db.selects[0].filters).toContainEqual({
+      op: 'is_null',
+      column: 'source_job_id',
+      value: null,
+    })
+    // The write CASes the observed jobless subject too.
     expect(db.updates[0].patch).not.toHaveProperty('source_job_id')
+    expect(db.updates[0].filters).toContainEqual({
+      op: 'is_null',
+      column: 'source_job_id',
+      value: null,
+    })
+    expect(db.updates[0].filters).toContainEqual({ op: 'eq', column: 'source_url', value: SOURCE })
+  })
+})
+
+describe('H1) source-only (no sourceJobId) finalization is jobless-only and never broadens', () => {
+  const BOUND_JOB = '88888888-8888-4888-8888-888888888888'
+
+  it('returns zero checked/applied and writes nothing when only a job-bound row exists', async () => {
+    const db = installDb([row({ id: 'bound', source_job_id: BOUND_JOB })])
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.scope).toBe('jobless-legacy')
+    expect(result.checked).toBe(0)
+    expect(result.applied).toBe(0)
+    expect(result.warning).toMatch(/jobless|source_job_id IS NULL/i)
+    // The job-bound row was never even SELECTed or written.
+    expect(db.selects[0].filters).toContainEqual({
+      op: 'is_null',
+      column: 'source_job_id',
+      value: null,
+    })
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].status).toBe('planned')
+    expect(db.rows[0].source_job_id).toBe(BOUND_JOB)
+    expect(db.rows[0].verification_state).toBeNull()
+  })
+
+  it('still finalizes a jobless legacy row (legacy mode remains functional)', async () => {
+    const db = installDb([row({ id: 'legacy', source_job_id: null })])
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(1)
+    expect(result.checked).toBe(1)
+    expect(db.rows[0].status).toBe('applied')
+    expect(db.rows[0].source_job_id).toBeNull()
+  })
+
+  it('a concurrent source change after SELECT yields zero/skipped and never the old subject', async () => {
+    const movedSource = 'https://legal.yousafeconsultancy.com/uk/concurrent-source/'
+    let raceDb: ReturnType<typeof installDb>
+    raceDb = installDbWithHook([row({ id: 'row-1', source_job_id: null })], () => {
+      // A concurrent writer re-points the row to another durable source_url
+      // between the finalizer's SELECT and its fenced UPDATE.
+      raceDb.rows[0].source_url = movedSource
+    })
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.dbErrors).toBe(0)
+    // The old subject was NOT overwritten.
+    expect(raceDb.rows[0].source_url).toBe(movedSource)
+    expect(raceDb.rows[0].status).toBe('planned')
+    expect(raceDb.rows[0].verification_state).toBeNull()
+  })
+
+  it('a concurrent job bind after SELECT is a skipped CAS (job-bound row is never stamped by the legacy call)', async () => {
+    let raceDb: ReturnType<typeof installDb>
+    raceDb = installDbWithHook([row({ id: 'row-1', source_job_id: null })], () => {
+      raceDb.rows[0].source_job_id = BOUND_JOB
+    })
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(raceDb.rows[0].source_job_id).toBe(BOUND_JOB)
+    expect(raceDb.rows[0].status).toBe('planned')
+    expect(raceDb.rows[0].verification_state).toBeNull()
   })
 })
 

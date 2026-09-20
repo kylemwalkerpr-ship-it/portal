@@ -3,9 +3,12 @@
  *
  * `POST /api/content-studio/verify-published` already receives the exact
  * `jobId`. Passing it through as `sourceJobId` stops an admin verification from
- * finalizing staged rows staged by ANOTHER ship job that shares the canonical.
- * The legacy source-url-only behavior is preserved ONLY when no jobId exists
- * (there is no exact identity to bind to — and none is ever invented).
+ * finalizing staged rows staged by ANOTHER ship job that shares the canonical,
+ * and (M1) a supplied job id additionally requires the same positive
+ * deployment-lineage proof the scheduled reconciler uses. The documented
+ * legacy path is preserved ONLY when no jobId exists (there is no exact
+ * identity to bind to — and none is ever invented); the finalizer then
+ * restricts itself to jobless rows (H1).
  */
 jest.mock('@/lib/portalAuth', () => ({
   requireAdminUser: jest.fn(async () => ({ profileId: 'admin-1' })),
@@ -91,5 +94,46 @@ describe('A) the exact admin jobId binds interlink finalization', () => {
 
     expect(finalizeMock).not.toHaveBeenCalled()
     expect(json.interlinks).toBeNull()
+  })
+
+  it('M1: withholds job-bound finalization on an ok=true verdict without positive deployment lineage', async () => {
+    verifyLiveUrlMock.mockResolvedValue({
+      ok: true,
+      liveUrl: CANONICAL,
+      httpStatus: 200,
+      verifiedAt: '2026-09-20T12:00:00.000Z',
+      // Legacy/uncontracted health verdict: ok=true proves nothing about the
+      // official deployment of the supplied job.
+      lineageVerified: null,
+      publicationPhase: null,
+    } as never)
+
+    const { json } = await post({ canonicalUrl: CANONICAL, jobId: JOB })
+
+    expect(finalizeMock).not.toHaveBeenCalled()
+    expect(json.interlinks).toBeNull()
+    expect(json.interlinksWithheld).toBe('deployment_lineage_not_proven')
+  })
+
+  it('M1: a job-bound live_verified lineage verdict still finalizes', async () => {
+    const { json } = await post({ canonicalUrl: CANONICAL, jobId: JOB })
+
+    expect(finalizeMock).toHaveBeenCalledWith({ canonicalUrl: CANONICAL, sourceJobId: JOB })
+    expect(json.interlinks).toMatchObject({ applied: 1 })
+    expect(json.interlinksWithheld).toBeUndefined()
+  })
+
+  it('M1: a jobless legacy call is not lineage-gated (jobless-only scope is enforced by the finalizer, H1)', async () => {
+    verifyLiveUrlMock.mockResolvedValue({
+      ok: true,
+      liveUrl: CANONICAL,
+      httpStatus: 200,
+      verifiedAt: '2026-09-20T12:00:00.000Z',
+    } as never)
+
+    const { json } = await post({ canonicalUrl: CANONICAL })
+
+    expect(finalizeMock).toHaveBeenCalledWith({ canonicalUrl: CANONICAL })
+    expect(json.interlinksWithheld).toBeUndefined()
   })
 })

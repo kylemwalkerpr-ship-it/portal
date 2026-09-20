@@ -57,10 +57,17 @@ import type {
   FinalizeStagedInterlinksResult,
   InterlinkVerificationAttemptResult,
 } from './interlinkVerification'
+// Single positive deployment-lineage gate shared with the ship-time background
+// verifier and the admin verify-published route (dependency-free module, so
+// there is no static import cycle with liveVerify's dynamic import of this
+// reconciler's callers).
+import { isDeploymentProvenLiveResult } from './deploymentProvenLive'
 // Exact-job predicate shared with the staging writer (tiny dependency-free
 // module — the reconciler must not pull the whole verification/link-audit
 // import graph in just to normalise a UUID).
 import { normalizeSourceJobId } from './sourceJobIdentity'
+
+export { isDeploymentProvenLiveResult }
 
 /**
  * Finite-number guard for the tuning envs. `Number('abc')` is NaN, and NaN
@@ -153,6 +160,8 @@ export interface InterlinkReconciliationDetail {
   sourceJobId?: string
   verified: boolean
   applied: number
+  /** Rows the finalizer actually checked for this source (0 = no-op). */
+  checked?: number
   /** ok=true but not positively deployment-proven — no applied truth created. */
   notDeploymentProven?: boolean
   error?: string
@@ -226,21 +235,13 @@ function isAbsoluteHttpUrl(value: string): boolean {
   return /^https?:\/\/\S+$/i.test(value)
 }
 
-/**
- * The ONLY verdicts that may drive scheduled auto-finalization: a live verdict
- * that positively proves the official deployment lineage of the exact ship
- * job. `ok` alone is not enough — a content_jobs row with no contract_id takes
- * verifyLiveUrl's legacy health path (`lineageVerified` null,
- * `publicationPhase` null), and a contracted job whose deployment lineage
- * could not be proven must not create applied truth either.
- */
-export function isDeploymentProvenLiveResult(result: LiveVerifyResult | null | undefined): boolean {
-  return (
-    result?.ok === true &&
-    result.lineageVerified === true &&
-    result.publicationPhase === 'live_verified'
-  )
-}
+// `isDeploymentProvenLiveResult` (re-exported above) is the ONLY verdict gate
+// for scheduled auto-finalization: a live verdict must positively prove the
+// official deployment lineage of the exact ship job. `ok` alone is not enough
+// — a content_jobs row with no contract_id takes verifyLiveUrl's legacy health
+// path (`lineageVerified` null, `publicationPhase` null), and a contracted job
+// whose deployment lineage could not be proven must not create applied truth
+// either.
 
 /** Group key for exact (source_url, source_job_id) identity. */
 function sourceJobKey(sourceUrl: string, sourceJobId: string): string {
@@ -248,12 +249,38 @@ function sourceJobKey(sourceUrl: string, sourceJobId: string): string {
 }
 
 /**
+ * P6 columns whose absence is a known, documented pre-migration state.
+ * Coverage must stay narrow: a generic "does not exist" DB failure (a dropped
+ * FK target, a bad join, a typo'd column anywhere else) is a REAL error and
+ * must never be silently converted into a green `unavailable` run.
+ */
+const P6_SCHEMA_COLUMN_NAMES = [
+  'source_url',
+  'source_job_id',
+  'staged_at',
+  'verification_state',
+  'verified_at',
+  'verification_evidence',
+  'applied_at',
+  'verification_attempted_at',
+] as const
+
+/**
  * A missing table/column means the additive P6 migration has not been applied
  * yet. That is a known, documented pre-migration state (the seam is inert and
  * reports it) — never a fake "nothing to do" and never a red daily run.
+ *
+ * Signature-narrowed: the message must both (a) be a PostgREST schema-cache
+ * miss or a Postgres undefined-column/undefined-relation error, and (b) name
+ * one of the actual P6 columns (or the `seo_interlinks` relation). Anything
+ * else — including a bare "does not exist" — stays a real error.
  */
-function isSchemaUnavailable(message: string): boolean {
-  return /(column .* does not exist|relation .* does not exist|schema cache|does not exist)/i.test(message)
+export function isSchemaUnavailable(message: string): boolean {
+  const msg = String(message || '')
+  if (!msg) return false
+  if (!/schema cache|does not exist/i.test(msg)) return false
+  if (/seo_interlinks/i.test(msg)) return true
+  return P6_SCHEMA_COLUMN_NAMES.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(msg))
 }
 
 /**
@@ -616,7 +643,12 @@ export async function reconcileStagedInterlinks(
       })
       continue
     }
-    summary.finalized += 1
+    // `finalized` counts a REAL finalization attempt on rows. A zero-row
+    // finalizer no-op (e.g. the exact job's row was rebound away by a
+    // concurrent reship before the finalizer ran) is surfaced as checked: 0
+    // and must never inflate the finalized count into fake progress.
+    const checked = outcome?.checked || 0
+    if (checked > 0) summary.finalized += 1
     summary.applied += outcome?.applied || 0
     summary.plannedVerdicts +=
       (outcome?.absent || 0) +
@@ -633,6 +665,7 @@ export async function reconcileStagedInterlinks(
       sourceUrl: source.sourceUrl,
       sourceJobId: source.sourceJobId,
       verified: true,
+      checked,
       applied: outcome?.applied || 0,
       ...(outcome?.error ? { error: outcome.error } : {}),
     })
