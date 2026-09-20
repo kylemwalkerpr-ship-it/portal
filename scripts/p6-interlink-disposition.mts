@@ -5,10 +5,12 @@
  * tested). This wrapper only:
  *   1. SELECTs the disposition columns (paginated, no writes),
  *   2. live-checks each distinct target URL once through the repository link
- *      authority (`verifyUrlsLive` → `classifyLiveStatus`), which uses the same
- *      HEAD→GET fallback for HEAD-hostile hosts and authority-host exemptions
- *      as every other link audit (2xx/3xx = live, 404/410 = dead, anything
- *      else — including network errors — stays unknown),
+ *      authority — `verifyUrlsLive` for the HTTP probe (HEAD, retried as GET on
+ *      403/405/501) and `classifyLiveStatus` for the verdict, so official /
+ *      reputable authority hosts that answer crawlers 401/403/405/429 are not
+ *      counted dead (2xx/3xx = live, those authority-host statuses = live,
+ *      404/410 = dead, anything else — including network errors — stays
+ *      unknown),
  *   3. prints the JSON report (raw backlog kept separate from the
  *      approved-useful numerator/denominator, plus explicit `truncated` /
  *      `rowLimit` truth when the row cap was reached).
@@ -21,7 +23,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
-import { verifyUrlsLive } from '../lib/seoFactory/linkAudit'
+import { classifyLiveStatus, verifyUrlsLive } from '../lib/seoFactory/linkAudit'
 import {
   p6ObservationFromLiveCheck,
   p6TargetKey,
@@ -43,9 +45,22 @@ async function observeTargets(urls: string[]): Promise<Record<string, P6TargetOb
   const results = await verifyUrlsLive(urls)
   for (const url of urls) {
     const result = results.get(url)
-    observations[p6TargetKey(url)] = result
-      ? p6ObservationFromLiveCheck(url, result)
-      : { status: 0, ok: false, finalUrl: url }
+    if (!result) {
+      observations[p6TargetKey(url)] = { status: 0, ok: false, finalUrl: url }
+      continue
+    }
+    // classifyLiveStatus is the verdict authority: `verifyUrlsLive` only
+    // returns the raw HEAD→GET HTTP outcome, whose `ok` is 2xx/3xx. The
+    // authority-host exemptions (official/reputable hosts that 401/403/405/429
+    // bot crawlers while staying live) exist ONLY here, so the report must
+    // classify through the same function every other link audit uses rather
+    // than treating a raw 403 as dead.
+    const classified = classifyLiveStatus(url, result.status)
+    observations[p6TargetKey(url)] = p6ObservationFromLiveCheck(url, {
+      status: result.status,
+      ok: classified.ok,
+      finalUrl: result.finalUrl,
+    })
   }
   return observations
 }

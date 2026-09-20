@@ -86,3 +86,35 @@ describe('C) ship.ts binds staging + verification to the exact opts.jobId', () =
     expect(body).toMatch(/verifyLiveInBackground\(\{[\s\S]{0,400}?jobId: opts\.jobId \|\| null/)
   })
 })
+
+describe('D) the cluster snapshot is metadata — never a ship/job identity', () => {
+  it('the non-stream ship and post-persist bind pass no cluster-derived id', () => {
+    const body = read('lib/seoFactory/pipeline.ts')
+    const shipCall = callBlock(body, 'shipResult = await shipContent({', '\n    })')
+    expect(shipCall).not.toMatch(/cluster/)
+    const bindStart = body.indexOf('bindStagedInterlinksToPersistedJob({')
+    expect(bindStart).toBeGreaterThanOrEqual(0)
+    const bindCall = body.slice(bindStart, body.indexOf('\n  })', bindStart))
+    expect(bindCall).not.toMatch(/cluster/)
+    // The only surviving `jobId` identity argument in both calls is the exact
+    // caller-provided / persisted value.
+    expect(shipCall).toMatch(/jobId: input\.existingJobId/)
+    expect(bindCall).toMatch(/persistedJobId: jobId/)
+    expect(bindCall).toMatch(/shippedJobId: input\.existingJobId/)
+  })
+
+  it('the cluster existingJobId is persisted as gsc_json.cluster metadata only', () => {
+    const core = read('lib/seoFactory/persistContentJobCore.ts')
+    // Every reference to the cluster's existingJobId sits inside the
+    // gsc_json.cluster snapshot object — it never becomes the persisted
+    // existingJobId argument or a content_jobs column.
+    const clusterExisting = core.match(/existingJobId: input\.cluster\.existingJobId \|\| null/g) || []
+    expect(clusterExisting.length).toBe(1)
+    // No occurrence at the 4-space persisted-payload indent (a real
+    // `existingJobId` argument would sit there).
+    expect(core).not.toMatch(/\n    existingJobId: input\.cluster/)
+    const gscBlock = core.slice(core.indexOf('gsc_json: {'), core.indexOf('required_short_keywords'))
+    expect(gscBlock).toMatch(/cluster: \{[\s\S]{0,600}?existingJobId: input\.cluster\.existingJobId \|\| null/)
+    expect((gscBlock.match(/existingJobId: input\.cluster\.existingJobId/g) || []).length).toBe(1)
+  })
+})

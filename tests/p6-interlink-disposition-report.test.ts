@@ -201,6 +201,11 @@ describe('D) link-authority observation projection', () => {
     expect(cli).toContain('verifyUrlsLive')
     expect(cli).toContain('p6ObservationFromLiveCheck')
     expect(cli).not.toMatch(/method:\s*'HEAD'/)
+    // The raw probe's `ok` is 2xx/3xx only: the authority-host exemptions live
+    // in classifyLiveStatus, so the CLI must classify through it (a bare
+    // `verifyUrlsLive` verdict would call a live 403 authority host dead).
+    expect(cli).toContain('classifyLiveStatus')
+    expect(cli).toMatch(/classifyLiveStatus\(url,\s*result\.status\)/)
   })
 })
 

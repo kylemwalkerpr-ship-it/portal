@@ -134,11 +134,15 @@ export function hasDurableVerificationProof(row: P6InterlinkRow): boolean {
 }
 
 /**
- * Observation projection for the existing link-validity authority
- * (`verifyUrlsLive` → `classifyLiveStatus`): its `ok` already encodes the
- * repository's HEAD-hostile fallback (HEAD, retried as GET on 403/405/501) and
- * its authority-host exemptions, so the report classifies exactly what the
- * repo link authority proved.
+ * Observation projection for the repository link-validity authority.
+ *
+ * `verifyUrlsLive` alone is the RAW HTTP probe: its `ok` is 2xx/3xx and its
+ * HEAD-hostile handling is limited to retrying HEAD as GET on 403/405/501. The
+ * authority-host exemptions (official/reputable hosts that answer crawlers
+ * with 401/403/405/429 while staying live for readers) live in
+ * `classifyLiveStatus`, so the CALLER must classify through it (the CLI does)
+ * and pass the classified `ok` here. A raw `verifyUrlsLive.ok` is NOT a
+ * verdict and must never be projected as one.
  */
 export function p6ObservationFromLiveCheck(
   url: string,

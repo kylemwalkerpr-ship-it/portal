@@ -139,6 +139,12 @@ export interface StagedInterlinkSource {
 export interface InterlinkReconciliationDeps {
   /** Default: bounded SELECT of planned, source_url-bearing rows. */
   loadStagedRows?: (limit: number) => Promise<StagedInterlinkRow[]>
+  /**
+   * Default: cheap separate SCALAR count of jobless staged rows (planned +
+   * durable source_url + `source_job_id IS NULL`). Telemetry only — a failure
+   * is reported in `missingJobIdentityError`, never as a pass error.
+   */
+  countJoblessStagedRows?: () => Promise<{ count: number; error: string | null }>
   /** Default: the repository live-verification authority (`verifyLiveUrl`). */
   verify?: (input: LiveVerifyInput) => Promise<LiveVerifyResult>
   /** Default: the live-proof interlink finalizer. */
@@ -162,6 +168,12 @@ export interface InterlinkReconciliationDetail {
   applied: number
   /** Rows the finalizer actually checked for this source (0 = no-op). */
   checked?: number
+  /**
+   * Durable verdict/applied rows the finalizer actually WROTE for this source
+   * (applied + absent + targetNotLive + unverifiable + sourceNotLive). 0 means
+   * nothing was finalized even when `checked > 0` (fetch/write failure).
+   */
+  written?: number
   /** ok=true but not positively deployment-proven — no applied truth created. */
   notDeploymentProven?: boolean
   error?: string
@@ -192,6 +204,18 @@ export interface InterlinkReconciliationSummary {
    * unresolved count, not an error.
    */
   skippedMissingJobIdentity: number
+  /**
+   * TRUTHFUL countable of the OTHER unresolved class the bounded exact-job
+   * scan never even reads: planned rows that carry a durable `source_url` but
+   * `source_job_id IS NULL` (jobless staging — e.g. a ship that had no durable
+   * job id at staging time). They can never be auto-finalized (no job identity
+   * ⇒ no official deployment lineage), and they must NOT consume bounded scan
+   * slots — so they are counted by their own cheap scalar query instead of
+   * disappearing from telemetry.
+   */
+  missingJobIdentityRows: number
+  /** The scalar jobless-count probe failed (count is then NOT a truth). */
+  missingJobIdentityError: string | null
   /** Sources whose live verification resolved ok=true. */
   verifiedLive: number
   /**
@@ -272,14 +296,26 @@ const P6_SCHEMA_COLUMN_NAMES = [
  *
  * Signature-narrowed: the message must both (a) be a PostgREST schema-cache
  * miss or a Postgres undefined-column/undefined-relation error, and (b) name
- * one of the actual P6 columns (or the `seo_interlinks` relation). Anything
- * else — including a bare "does not exist" — stays a real error.
+ * the additive `seo_interlinks` relation/table itself (for a relation miss) or
+ * one of the actual P6 additive columns (for a column miss). Anything else —
+ * including a bare "does not exist", a different relation, or a NON-P6 column
+ * of `seo_interlinks` — stays a real error.
  */
 export function isSchemaUnavailable(message: string): boolean {
   const msg = String(message || '')
   if (!msg) return false
-  if (!/schema cache|does not exist/i.test(msg)) return false
-  if (/seo_interlinks/i.test(msg)) return true
+  // The message must actually BE a missing-object report (schema-cache miss /
+  // undefined relation / undefined column). A generic DB failure that merely
+  // contains the word "column" is not a pre-migration signature.
+  if (!/could not find|not find|does not exist|undefined/i.test(msg)) return false
+  // (a) the additive P6 relation itself is missing — the ONLY relation-miss
+  //     signature that is a known pre-migration state;
+  // (b) a P6 additive column is reported missing.
+  // Anything else (a different table, a non-P6 column of `seo_interlinks`, a
+  // permission/RLS error) stays a REAL error.
+  const relationMiss =
+    /\bseo_interlinks\b/i.test(msg) && /schema cache|\brelation\b|\btable\b/i.test(msg)
+  if (relationMiss) return true
   return P6_SCHEMA_COLUMN_NAMES.some((name) => new RegExp(`\\b${name}\\b`, 'i').test(msg))
 }
 
@@ -342,6 +378,36 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
   }))
 }
 
+/**
+ * Cheap SEPARATE scalar probe for the unresolved class the bounded exact-job
+ * scan never reads: planned rows with a durable `source_url` and
+ * `source_job_id IS NULL` (jobless staging). They can never be auto-finalized
+ * — without exact job identity the official deployment lineage cannot be
+ * proved — but they must be COUNTED truthfully, and a scalar
+ * `count: 'exact'` head query keeps them from consuming bounded scan slots.
+ *
+ * Never throws. A probe failure is returned as an explicit error string so the
+ * count is never presented as if it were a truth.
+ */
+async function defaultCountJoblessStagedRows(): Promise<{ count: number; error: string | null }> {
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    const supabase = createSupabaseAdminClient()
+    const { count, error } = await supabase
+      .from('seo_interlinks')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'planned')
+      .not('source_url', 'is', null)
+      .is('source_job_id', null)
+    if (error) {
+      return { count: 0, error: String(error.message || 'jobless interlink count failed').slice(0, 300) }
+    }
+    return { count: typeof count === 'number' ? count : 0, error: null }
+  } catch (error) {
+    return { count: 0, error: errorMessage(error).slice(0, 300) }
+  }
+}
+
 export interface InterlinkReconcileOptions {
   maxSources?: number
   minAgeMs?: number
@@ -382,6 +448,8 @@ export async function reconcileStagedInterlinks(
     skippedAttemptCooldown: 0,
     skippedInvalidSource: 0,
     skippedMissingJobIdentity: 0,
+    missingJobIdentityRows: 0,
+    missingJobIdentityError: null,
     verifiedLive: 0,
     notDeploymentProven: 0,
     verificationFailed: 0,
@@ -395,6 +463,21 @@ export async function reconcileStagedInterlinks(
     ok: true,
     errors: [],
     details: [],
+  }
+
+  // Telemetry probe FIRST: jobless staged rows are never read by the bounded
+  // exact-job scan, so their truthful count comes from its own cheap scalar
+  // query. A probe failure is explicit (`missingJobIdentityError`) and cannot
+  // turn the verification pass red or fake a zero.
+  try {
+    const jobless = await (deps.countJoblessStagedRows || defaultCountJoblessStagedRows)()
+    summary.missingJobIdentityRows = typeof jobless?.count === 'number' ? jobless.count : 0
+    summary.missingJobIdentityError = jobless?.error
+      ? String(jobless.error).slice(0, 300)
+      : null
+  } catch (error) {
+    summary.missingJobIdentityRows = 0
+    summary.missingJobIdentityError = errorMessage(error).slice(0, 300)
   }
 
   let rows: StagedInterlinkRow[]
@@ -643,12 +726,21 @@ export async function reconcileStagedInterlinks(
       })
       continue
     }
-    // `finalized` counts a REAL finalization attempt on rows. A zero-row
-    // finalizer no-op (e.g. the exact job's row was rebound away by a
-    // concurrent reship before the finalizer ran) is surfaced as checked: 0
-    // and must never inflate the finalized count into fake progress.
+    // `finalized` counts a source only when the finalizer actually WROTE a
+    // durable verdict/applied outcome (.applied + .absent + .targetNotLive +
+    // .unverifiable + .sourceNotLive are all written-row buckets). `checked`
+    // alone is NOT proof of a write: a source fetch failure or a DB-write
+    // failure can check rows and write nothing — that is surfaced as
+    // checked > 0 / written 0 and must never inflate the finalized count into
+    // fake progress.
     const checked = outcome?.checked || 0
-    if (checked > 0) summary.finalized += 1
+    const written =
+      (outcome?.applied || 0) +
+      (outcome?.absent || 0) +
+      (outcome?.targetNotLive || 0) +
+      (outcome?.unverifiable || 0) +
+      (outcome?.sourceNotLive || 0)
+    if (written > 0) summary.finalized += 1
     summary.applied += outcome?.applied || 0
     summary.plannedVerdicts +=
       (outcome?.absent || 0) +
@@ -666,6 +758,7 @@ export async function reconcileStagedInterlinks(
       sourceJobId: source.sourceJobId,
       verified: true,
       checked,
+      written,
       applied: outcome?.applied || 0,
       ...(outcome?.error ? { error: outcome.error } : {}),
     })

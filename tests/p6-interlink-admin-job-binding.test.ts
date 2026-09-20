@@ -115,6 +115,30 @@ describe('A) the exact admin jobId binds interlink finalization', () => {
     expect(json.interlinksWithheld).toBe('deployment_lineage_not_proven')
   })
 
+  it('M2: a withheld job-bound verification never shows a bare "Verified" article message', async () => {
+    verifyLiveUrlMock.mockResolvedValue({
+      ok: true,
+      liveUrl: CANONICAL,
+      httpStatus: 200,
+      verifiedAt: '2026-09-20T12:00:00.000Z',
+      // Article verification succeeded (ok=true), but the supplied exact job
+      // has no positive deployment lineage — the staged interlinks stay planned.
+      lineageVerified: null,
+      publicationPhase: null,
+    } as never)
+
+    const { json } = await post({ canonicalUrl: CANONICAL, jobId: JOB })
+    const stamp = json.stamp as { status: string; message: string }
+
+    // The article-level success is kept ...
+    expect(stamp.status).toBe('verified')
+    expect(stamp.message).toContain('Article verified')
+    // ... while the withheld interlink state is stated explicitly.
+    expect(stamp.message).toContain('interlinks pending deployment lineage')
+    expect(json.interlinksWithheld).toBe('deployment_lineage_not_proven')
+    expect(json.interlinks).toBeNull()
+  })
+
   it('M1: a job-bound live_verified lineage verdict still finalizes', async () => {
     const { json } = await post({ canonicalUrl: CANONICAL, jobId: JOB })
 

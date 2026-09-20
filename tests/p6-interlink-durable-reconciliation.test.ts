@@ -27,6 +27,13 @@ import {
   type StagedInterlinkRow,
 } from '@/lib/seoFactory/interlinkReconciliation'
 
+jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+
+import { createSupabaseAdminClient } from '@/lib/supabase'
+import { createP6FakeDb } from './helpers/p6InterlinkFakeDb'
+
+const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
+
 const SOURCE_A = 'https://legal.yousafeconsultancy.com/us/student-visas/'
 const SOURCE_B = 'https://legal.yousafeconsultancy.com/uk/student-visas/'
 const JOB_A = '11111111-1111-4111-8111-111111111111'
@@ -633,9 +640,14 @@ describe('E) loader failure and mutation-surface contract', () => {
     expect(isSchemaUnavailable('relation "public.other_table" does not exist')).toBe(false)
     expect(isSchemaUnavailable('column other_table.foo does not exist')).toBe(false)
     expect(isSchemaUnavailable('permission denied for table seo_interlinks')).toBe(false)
+    // A NON-P6 column of the P6 relation is an unexpected missing object too —
+    // only the known additive columns (or the relation itself) are benign.
+    expect(isSchemaUnavailable('column seo_interlinks.legit_other_column does not exist')).toBe(false)
+    expect(isSchemaUnavailable('column seo_interlinks.target_url does not exist')).toBe(false)
     // Actual P6 signatures stay recognized.
     expect(isSchemaUnavailable('column seo_interlinks.source_job_id does not exist')).toBe(true)
     expect(isSchemaUnavailable('column seo_interlinks.staged_at does not exist')).toBe(true)
+    expect(isSchemaUnavailable('relation "public.seo_interlinks" does not exist')).toBe(true)
     expect(
       isSchemaUnavailable("Could not find the 'staged_at' column of 'seo_interlinks' in the schema cache"),
     ).toBe(true)
@@ -688,5 +700,109 @@ describe('E) loader failure and mutation-surface contract', () => {
     )
     expect(workflow).toMatch(/api\/cron\/seo-engine-daily/)
     expect(workflow).toContain("default: 'all'")
+  })
+})
+
+describe('F) finalized counts a REAL written verdict, never a checked-but-unwritten no-op', () => {
+  it('does not count a fetch/write failure that checked rows and wrote nothing', async () => {
+    const h = harness([staged()])
+    h.finalize.mockResolvedValue({
+      ...FINALIZED_ONE,
+      checked: 3,
+      applied: 0,
+      dbErrors: 1,
+      error: 'interlink write CAS failed',
+    })
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.finalized).toBe(0)
+    expect(summary.details[0]).toMatchObject({ checked: 3, written: 0, applied: 0 })
+    expect(summary.ok).toBe(false)
+  })
+
+  it('counts a written planned verdict (absent) as a real finalization', async () => {
+    const h = harness([staged()])
+    h.finalize.mockResolvedValue({ ...FINALIZED_ONE, checked: 1, applied: 0, absent: 1 })
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.finalized).toBe(1)
+    expect(summary.applied).toBe(0)
+    expect(summary.plannedVerdicts).toBe(1)
+    expect(summary.details[0]).toMatchObject({ checked: 1, written: 1 })
+  })
+
+  it('counts a written source_not_live verdict as a real finalization', async () => {
+    const h = harness([staged()])
+    h.finalize.mockResolvedValue({
+      ...FINALIZED_ONE,
+      checked: 2,
+      applied: 0,
+      sourceFetchOk: false,
+      sourceNotLive: 2,
+    })
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.finalized).toBe(1)
+    expect(summary.plannedVerdicts).toBe(2)
+  })
+})
+
+describe('G) jobless staged rows are truthfully counted WITHOUT consuming scan slots', () => {
+  it('counts source_url-bearing / source_job_id-NULL planned rows with its own scalar probe', async () => {
+    const db = createP6FakeDb([
+      { id: 'jobless-1', status: 'planned', source_url: SOURCE_A, source_job_id: null },
+      { id: 'jobless-2', status: 'planned', source_url: SOURCE_B, source_job_id: null },
+      { id: 'bound-1', status: 'planned', source_url: SOURCE_B, source_job_id: JOB_A },
+      { id: 'unstaged', status: 'planned', source_url: null, source_job_id: null },
+      { id: 'applied-1', status: 'applied', source_url: SOURCE_A, source_job_id: JOB_A },
+    ])
+    createSupabaseAdminClientMock.mockReturnValue(db.client as never)
+    const h = harness([staged()])
+
+    // countJoblessStagedRows is deliberately NOT injected: the real default
+    // scalar probe runs against the fake PostgREST surface.
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(summary.missingJobIdentityRows).toBe(2)
+    expect(summary.missingJobIdentityError).toBeNull()
+    // The bounded exact-job scan still sees exactly its own row: the jobless
+    // rows never consume a scan slot and are never verified/finalized.
+    expect(summary.scannedRows).toBe(1)
+    expect(summary.skippedMissingJobIdentity).toBe(0)
+    expect(h.verify).toHaveBeenCalledTimes(1)
+    expect(h.finalize).toHaveBeenCalledTimes(1)
+    // The probe asked for a SCALAR count read, never a row window, and it
+    // filtered exactly the jobless staged identity.
+    const probe = db.selects.find((select) => select.mode === 'count')
+    expect(probe).toBeTruthy()
+    expect(probe?.filters).toEqual(
+      expect.arrayContaining([
+        { op: 'eq', column: 'status', value: 'planned' },
+        { op: 'not_is_null', column: 'source_url', value: 'is' },
+        { op: 'is_null', column: 'source_job_id', value: null },
+      ]),
+    )
+  })
+
+  it('reports a failing probe explicitly without turning the pass red or faking a zero', async () => {
+    const h = harness([staged()])
+    const deps = {
+      ...h.deps,
+      countJoblessStagedRows: jest.fn(async () => ({
+        count: 0,
+        error: 'permission denied for table seo_interlinks',
+      })),
+    }
+
+    const summary = await reconcileStagedInterlinks(deps)
+
+    expect(summary.missingJobIdentityRows).toBe(0)
+    expect(summary.missingJobIdentityError).toMatch(/permission denied/)
+    // Telemetry only: the verification pass itself still succeeded.
+    expect(summary.ok).toBe(true)
+    expect(summary.finalized).toBe(1)
   })
 })

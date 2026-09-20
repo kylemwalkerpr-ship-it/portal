@@ -392,9 +392,16 @@ export interface StageEngineInterlinksResult {
   failed: number
   sourceUrl: string | null
   /**
-   * Non-fatal degradation (e.g. the pre-migration schema without
-   * `source_job_id`): staging fell back to the legacy column set. Observable
-   * so a missing migration column can never look like a zero-candidate no-op.
+   * Non-fatal degradation of a PARTIAL P6 migration (the `source_job_id`
+   * and/or `staged_at` additive column is missing while the rest is
+   * deployed): staging fell back to the legacy column set. Observable so a
+   * missing migration column can never look like a zero-candidate no-op.
+   *
+   * A TRUE pre-migration schema (the P6 columns, including `source_url`,
+   * absent entirely) has no fallback and is FAIL-CLOSED: there is no legacy
+   * column set that can carry the source identity this staging requires, so
+   * the read error is returned in `error` with zero writes instead of staging
+   * an unidentifiable row.
    */
   warning?: string
   error?: string
@@ -460,18 +467,23 @@ export async function stageEngineInterlinksForVerification(
     // so every staging/rebind UPDATE can compare-and-set on exactly that
     // revision instead of last-writer-wins.
     let revisionStampAvailable = true
-    // Pre-migration compatibility: the additive P6 columns may not exist yet.
-    // Fall back to the legacy column set — staging then stays jobless (it must
-    // NOT attempt to write a column the database does not have) and says so
-    // explicitly instead of looking like a zero-candidate no-op.
+    // PARTIAL-migration compatibility: the additive `source_job_id` (or, on
+    // its own, `staged_at`) may not exist yet while `source_url` does. Fall
+    // back to the column set that CAN be read — staging then stays jobless (it
+    // must NOT attempt to write a column the database does not have) and says
+    // so explicitly instead of looking like a zero-candidate no-op. There is
+    // deliberately NO fallback for a missing `source_url`: a true
+    // pre-migration schema cannot carry the source identity staging exists to
+    // record, so that read error is returned (zero writes, observable) instead
+    // of staging an unidentifiable row.
     if (error) {
       const message = String(error.message || 'staging read failed')
       if (/source_job_id/i.test(message)) {
         console.warn(
-          '[interlinkVerification] staging without job identity — source_job_id column unavailable (P6 migration not applied yet):',
+          '[interlinkVerification] staging without job identity — source_job_id column unavailable (partial P6 migration; source_url itself is present, so legacy staging still works):',
           message,
         )
-        warning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
+        warning = `source_job_id column unavailable (partial P6 migration): ${message}`.slice(0, 300)
         jobIdentityAvailable = false
         // source_job_id and staged_at ship in the same additive migration.
         revisionStampAvailable = false
@@ -838,16 +850,20 @@ export async function finalizeStagedInterlinksForLiveSource(
     let { data, error } = await query
     let scopeWarning: string | undefined
     if (error && !sourceJobId && /source_job_id/i.test(String(error.message || ''))) {
-      // Pre-migration (the additive P6 column is not deployed yet): every row
-      // is jobless by construction, so the legacy column set is read with an
-      // explicit warning. It can never read a job-bound row because the column
-      // required to bind one does not exist.
+      // Partial migration (the additive `source_job_id` column is not deployed
+      // yet while `source_url` is): every row is jobless by construction, so
+      // the legacy column set can be read with an explicit warning. It can
+      // never read a job-bound row because the column required to bind one
+      // does not exist. A TRUE pre-migration schema (no `source_url` either)
+      // is NOT covered here and stays fail-closed: the query error is returned
+      // with zero writes, because without the source identity there is nothing
+      // this finalizer may legitimately select.
       const message = String(error.message || 'source_job_id unavailable')
       console.warn(
-        '[interlinkVerification] legacy jobless finalization without the P6 source_job_id column (P6 migration not applied yet); no job-bound row can exist:',
+        '[interlinkVerification] legacy jobless finalization without the P6 source_job_id column (partial P6 migration; no job-bound row can exist):',
         message,
       )
-      scopeWarning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
+      scopeWarning = `source_job_id column unavailable (partial P6 migration): ${message}`.slice(0, 300)
       const legacy = await supabase
         .from('seo_interlinks')
         .select('id,target_url,status,source_url')

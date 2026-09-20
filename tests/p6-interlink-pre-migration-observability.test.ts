@@ -110,7 +110,15 @@ describe('A) pre-migration verification_state fallback', () => {
 
   it('still filters ineligible lifecycle verdicts after the fallback', async () => {
     const scripted = scriptedClient([
-      { columns: '', result: { data: null, error: { message: 'schema cache: column missing' } } },
+      {
+        columns: '',
+        result: {
+          data: null,
+          error: {
+            message: "Could not find the 'verification_state' column of 'seo_interlinks' in the schema cache",
+          },
+        },
+      },
       { columns: '', result: { data: [ROW], error: null } },
     ])
     createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
@@ -118,6 +126,26 @@ describe('A) pre-migration verification_state fallback', () => {
     const links = await loadEngineInterlinksForCell('schools', 'US', 5)
 
     expect(links).toHaveLength(1)
+  })
+
+  it('does NOT relabel a generic missing object as the verification_state state', async () => {
+    // LOW fidelity: only an error that NAMES `verification_state` is the known
+    // partial-migration state. Any other missing object stays a real,
+    // fail-closed error instead of a mislabelled legacy retry.
+    const scripted = scriptedClient([
+      { columns: '', result: { data: null, error: { message: 'column seo_interlinks.legit_other does not exist' } } },
+      { columns: '', result: { data: [ROW], error: null } },
+    ])
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const links = await loadEngineInterlinksForCell('schools', 'US', 5)
+
+    expect(links).toEqual([])
+    expect(scripted.seen).toHaveLength(1)
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/loadEngineInterlinksForCell failed/i),
+      expect.stringMatching(/legit_other/),
+    )
   })
 })
 

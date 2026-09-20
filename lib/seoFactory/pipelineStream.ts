@@ -45,6 +45,7 @@ import { resolveProviderAuthors } from './providerAuthors'
 import type { AuthorPack } from './authorPack'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
+import { bindStagedInterlinksToPersistedJob } from './postPersistInterlinkBind'
 import { keywordContractForDraft } from './keywordContract'
 import { runFactoryThroughline, shouldRunThroughline } from './throughline'
 import { runFactoryMaskedDenoise, shouldRunMaskedDenoise } from './maskedDenoise'
@@ -1977,6 +1978,26 @@ export async function* runSeoFactoryPipelineStream(
         : null,
     })
 
+    // ── P6 M1: close the post-persist JOBLESS window (stream) ─────────────
+    // The stream normally creates its realtime content_jobs row BEFORE ship,
+    // so the ship already carried an exact `earlyJobId` and this pass is a
+    // truthful skip. When that early row could NOT be created the ship ran
+    // without job identity (exactly like the non-stream path) and the durable
+    // id only exists now — rebind the planned rows to it so the scheduled
+    // reconciler can prove this exact job's deployment lineage. Planned rows
+    // only (never applied truth), and a degraded rebind is observability:
+    // it never fails the content ship. The cluster's `existingJobId` is
+    // metadata only and is never used as job identity.
+    const interlinkPostPersistBind = await bindStagedInterlinksToPersistedJob({
+      canonicalUrl: plan.canonicalUrl,
+      persistedJobId: jobId,
+      shippedJobId: earlyJobId,
+      shipResult,
+      dryRun: Boolean(input.dryRun),
+      primaryKeyword,
+      body: content,
+    })
+
     const result: PipelineResult = {
       ok: !shipError,
       content,
@@ -1996,6 +2017,7 @@ export async function* runSeoFactoryPipelineStream(
         warnings: gscBrief.warnings,
       },
       jobId,
+      interlinkPostPersistBind,
       error: shipError || undefined,
     }
 

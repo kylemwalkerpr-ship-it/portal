@@ -42,6 +42,10 @@ import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
 import { topicPathMismatch } from './topicPathGuard'
 import { collapseDuplicatedTitle } from './formatContract'
 import { persistPipelineJob } from './persistContentJob'
+import {
+  bindStagedInterlinksToPersistedJob,
+  type PostPersistBindOutcome,
+} from './postPersistInterlinkBind'
 import { finalizePipelineContentType } from './jobContentType'
 import { keywordContractForDraft } from './keywordContract'
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
@@ -243,6 +247,13 @@ export interface PipelineResult {
     warnings: string[]
   }
   jobId: string | null
+  /**
+   * P6 M1 — post-persist exact-id rebind of the ship's planned interlinks.
+   * Observability only: a degraded rebind never fails a successful ship.
+   * `attempted: false` carries the truthful skip reason (dry run / withheld
+   * ship / ship that already had an exact job id).
+   */
+  interlinkPostPersistBind?: PostPersistBindOutcome
   error?: string
 }
 
@@ -1417,6 +1428,33 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     competingUrls: input.competingUrls,
   })
 
+  // ── P6 M1: close the post-persist JOBLESS window (non-stream) ───────────
+  // `shipContent` ran BEFORE this durable row existed, so the interlinks it
+  // staged for a successful ship could only be staged WITHOUT job identity
+  // (ship.ts uses `opts.jobId || null`). Now that persistPipelineJob returned
+  // the EXACT durable id, run the SAME planned-only staging pass again with
+  // it: a jobless planned row gets rebound to its real ship job so the
+  // scheduled reconciler can prove this exact job's deployment lineage. The
+  // pass only ever touches `status='planned'` rows — it can never create
+  // applied truth, a verdict or a proof — and a degraded rebind is
+  // observability, NEVER a failed content ship. A dry run, a withheld/failed
+  // ship, or a ship that already carried an exact job id binds nothing.
+  //
+  // `input.cluster?.existingJobId` is deliberately NOT used here (or in the
+  // ship call): the pipeline persists it only as gsc_json.cluster metadata,
+  // i.e. the canonical row this expansion was resolved FROM — the existing
+  // ownership/cluster semantics do not prove it is the content_jobs row this
+  // run rewrites, so binding interlinks to it would fabricate job identity.
+  const interlinkPostPersistBind = await bindStagedInterlinksToPersistedJob({
+    canonicalUrl: plan.canonicalUrl,
+    persistedJobId: jobId,
+    shippedJobId: input.existingJobId,
+    shipResult,
+    dryRun: Boolean(input.dryRun),
+    primaryKeyword,
+    body: content,
+  })
+
   // ok when we either shipped, opened a PR, or dry-ran — not when gates held ship
   const shippedOk = Boolean(
     shipResult &&
@@ -1447,6 +1485,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       warnings: gscBrief.warnings,
     },
     jobId,
+    interlinkPostPersistBind,
     error: shipError || undefined,
   }
 }

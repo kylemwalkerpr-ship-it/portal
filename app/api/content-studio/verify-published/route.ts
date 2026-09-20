@@ -19,6 +19,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { verifyLiveUrl, type LiveVerifyInput, type LiveVerifyResult } from '@/lib/seoFactory/liveVerify'
 import { isDeploymentProvenLiveResult } from '@/lib/seoFactory/deploymentProvenLive'
 import { finalizeStagedInterlinksForLiveSource } from '@/lib/seoFactory/interlinkVerification'
+import { verifyStampMessage } from '@/lib/seoFactory/verifyStampMessage'
 
 interface VerifyRequestBody {
   canonicalUrl?: string
@@ -99,6 +100,10 @@ export async function POST(request: NextRequest) {
     const interlinksWithheld =
       result.ok && jobId && !lineageProven ? 'deployment_lineage_not_proven' : null
     if (interlinksWithheld) {
+      // M2: the ARTICLE verification succeeded, but interlink finalization was
+      // deliberately withheld. Say both things — a bare "Verified" would imply
+      // the staged rows were finalized.
+      stamp.message = verifyStampMessage({ stampMessage: stamp.message, interlinksWithheld })
       console.warn(
         '[verify-published] interlink finalization withheld — ok=true verdict without positive deployment lineage for the supplied job id',
         {

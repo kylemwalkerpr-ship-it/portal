@@ -44,6 +44,8 @@ export interface P6CapturedUpsert {
 export interface P6CapturedSelect {
   table: string
   filters: P6CapturedFilter[]
+  /** `count` when the read was a scalar `.select(cols, { count, head })`. */
+  mode?: 'rows' | 'count'
 }
 
 export const SEO_INTERLINK_DEFAULTS: P6FakeRow = {
@@ -92,10 +94,18 @@ export function createP6FakeDb(seed: P6FakeRow[] = [], opts: P6FakeDbOptions = {
       let mode: 'select' | 'update' | 'upsert' = 'select'
       let patch: Record<string, unknown> = {}
       let returnAffected = false
+      // PostgREST scalar probe: `.select('id', { count: 'exact', head: true })`
+      // resolves `{ data: null, count, error: null }` without returning rows.
+      let countMode: string | null = null
+      let headOnly = false
       const builder: Record<string, unknown> = {
-        select() {
+        select(_columns?: string, options?: Record<string, unknown>) {
           // `.select()` after `.update()` is the PostgREST affected-row read.
           if (mode === 'update') returnAffected = true
+          if (options && (options.count || options.head)) {
+            countMode = String(options.count || 'exact')
+            headOnly = Boolean(options.head)
+          }
           return builder
         },
         eq(column: string, value: unknown) {
@@ -172,12 +182,14 @@ export function createP6FakeDb(seed: P6FakeRow[] = [], opts: P6FakeDbOptions = {
           if (mode === 'upsert') {
             return Promise.resolve({ data: null, error: null }).then(resolve ?? undefined, reject ?? undefined)
           }
-          selects.push({ table, filters: [...filters] })
-          const data = rows
-            .filter((row) => filters.every((filter) => matches(filter, row)))
-            .map((row) => ({ ...row }))
+          selects.push({ table, filters: [...filters], mode: countMode ? 'count' : 'rows' })
+          const matched = rows.filter((row) => filters.every((filter) => matches(filter, row)))
+          const data = headOnly ? null : matched.map((row) => ({ ...row }))
           if (typeof opts.afterSelect === 'function') opts.afterSelect(rows)
-          return Promise.resolve({ data, error: null }).then(resolve ?? undefined, reject ?? undefined)
+          const result: { data: P6FakeRow[] | null; error: null; count?: number } = { data, error: null }
+          // `.select(cols, { count })` returns the scalar count even with head.
+          if (countMode) result.count = matched.length
+          return Promise.resolve(result).then(resolve ?? undefined, reject ?? undefined)
         },
       }
       return builder

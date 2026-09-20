@@ -173,6 +173,8 @@ export async function POST(req: NextRequest) {
         interlinkScannedRows: interlinkReconcile.scannedRows,
         interlinkStagedSources: interlinkReconcile.stagedSources,
         interlinkSkippedMissingJobIdentity: interlinkReconcile.skippedMissingJobIdentity,
+        interlinkMissingJobIdentityRows: interlinkReconcile.missingJobIdentityRows,
+        interlinkMissingJobIdentityError: interlinkReconcile.missingJobIdentityError,
         interlinkEligibleSources: interlinkReconcile.eligibleSources,
         interlinkVerifiedLive: interlinkReconcile.verifiedLive,
         interlinkNotDeploymentProven: interlinkReconcile.notDeploymentProven,
@@ -211,6 +213,8 @@ export async function POST(req: NextRequest) {
       notDeploymentProven: number
       verificationFailed: number
       skippedAttemptCooldown: number
+      missingJobIdentityRows: number
+      missingJobIdentityError: string | null
       applied: number
       finalized: number
       plannedVerdicts: number
@@ -331,6 +335,8 @@ export async function POST(req: NextRequest) {
           scannedRows: reconcile.scannedRows,
           stagedSources: reconcile.stagedSources,
           skippedMissingJobIdentity: reconcile.skippedMissingJobIdentity,
+          missingJobIdentityRows: reconcile.missingJobIdentityRows,
+          missingJobIdentityError: reconcile.missingJobIdentityError,
           eligibleSources: reconcile.eligibleSources,
           unavailable: reconcile.unavailable,
           unavailableReason: reconcile.unavailableReason,

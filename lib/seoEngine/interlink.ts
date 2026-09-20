@@ -274,13 +274,21 @@ export async function loadEngineInterlinksForCell(
     let { data, error } = await readCell(
       'target_url,target_host,anchor_text,reason,status,verification_state',
     )
-    // Pre-migration observability: the P6 `verification_state` column may not
-    // be deployed yet. That is NOT "zero candidates" — retry the legacy select
-    // without it and treat every verdict as unknown, with an explicit warning.
+    // PARTIAL-migration observability: the additive P6 `verification_state`
+    // column may not be deployed yet (the pre-P6 table and its columns do
+    // exist). That is NOT "zero candidates" — retry the legacy select without
+    // it and treat every verdict as unknown, with an explicit warning.
+    //
+    // Signature-narrowed: ONLY a missing-object error that names
+    // `verification_state` is that known state. A generic "does not exist"
+    // naming any other object (a dropped table, a typo'd column, a true
+    // pre-migration schema with no P6 columns at all) must NOT be relabelled
+    // as "verification_state unavailable" and retried — it falls through to
+    // the fail-closed path below with its REAL error.
     const message = String(error?.message || '')
-    if (error && /verification_state|schema cache|does not exist|column .* does not exist/i.test(message)) {
+    if (error && /verification_state/i.test(message)) {
       console.warn(
-        '[seoEngine/interlink] verification_state unavailable (P6 migration not applied yet) — retrying the legacy select; verdicts treated as unknown:',
+        '[seoEngine/interlink] verification_state unavailable (partial P6 migration) — retrying the legacy select; verdicts treated as unknown:',
         message,
       )
       const legacy = await readCell('target_url,target_host,anchor_text,reason,status')
