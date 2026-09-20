@@ -58,14 +58,14 @@ B. **Dispositions** — the eight URLs above, window and cohort rule recorded as
 
 C. **Fail-closed protection** — `computeIndexFix()` consults the registry first: a registered URL is `skipped` with an explicit P5 reason unless its disposition is `KEEP`. The site-health mutation layer (`repairSiteHealth()` **and** `repairSiteHealthChunked()`) protects **every** `p5ProtectedUrlKeys()` URL by default: a registered URL is never an orphan/internal-link target, never the rewritten repair hub, and never a sitemap addition — and a protected URL already listed in a sitemap keeps its existing entry, because protection means "do not alter current state", not "force absent". `resolveIndexCoverage()` passes the union of the whole registry with its batch as defense in depth, and `opts.protectedUrls` may only union more URLs in — never narrow the registry set. The **noindex mutation boundary itself** (`fixNoIndexPagesChunked()` in `lib/seoFactory/siteHealthFixes.ts`, shared by `app/api/content-studio/site-health/route.ts` and `siteHealthComplete.ts`) consults `p5MutationVerdict()` per candidate URL **before any read/write/branch/PR/history write**: a blocked URL is reported in `protectedSkipped` and skipped, never returned as fixed, never rewritten, never branched/PR'd and never logged as "Removed noindex". URLs not in the registry are untouched.
 
-D. **Tests** — `tests/p5-off-mission-dispositions.test.ts`, `tests/p5-site-health-protection.test.ts` (supervisor-repair regressions, including the noindex boundary), `tests/p5-noindex-orchestrator-truthfulness.test.ts` (complete-flow noindex logging truthfulness), `tests/p5-orphan-orchestrator-truthfulness.test.ts` (complete-flow orphan outcome truthfulness), `tests/p5-keyword-planner-demand-boundary.test.ts`, `tests/p5-auto-run-demand-boundary.test.ts`.
+D. **Tests** — `tests/p5-off-mission-dispositions.test.ts`, `tests/p5-site-health-protection.test.ts` (supervisor-repair regressions, including the noindex boundary), `tests/p5-noindex-orchestrator-truthfulness.test.ts` (complete-flow noindex logging truthfulness), `tests/p5-orphan-orchestrator-truthfulness.test.ts` (complete-flow orphan outcome truthfulness), `tests/p5-keyword-planner-demand-boundary.test.ts`, `tests/p5-auto-run-demand-boundary.test.ts`, `tests/p5-planner-demand-boundary.test.ts` (upstream `runPlanner` mission-generation boundary).
 
 E. **Records** — this plan, the parity matrix rows, and the execution ledger entry.
 
 ## Deliberate consequences and residuals
 
 - **Off-mission strike-seed keyword.** The locked 2026-08 strike seed `university of the pacific student housing` is off-mission-classified, so it can no longer enter GSC-driven planning. Strike-seed *routing* is unchanged for terms that do clear the boundary.
-- **`seoEngine` planner persistence.** `lib/seoEngine/planner.ts` can still persist an off-mission-titled `seo_cluster_plans` row for diagnostic surfaces; the auto-run admission boundary now refuses to turn it into a mission. Tightening the planner's own persistence was out of this pass's scope.
+- **`seoEngine` planner persistence — CLOSED (final completeness fix, post-`4e89fa66`).** The earlier residual (the planner could still persist an off-mission-titled `seo_cluster_plans` row for diagnostic surfaces) is fixed: `lib/seoEngine/planner.ts` now refuses off-mission demand in every action-influencing signal loop, so the daily cron `runPlanner({ draftBriefs: true })` cannot create that persisted mission at all. See "Final completeness fix" below.
 - **Some per-URL fields remain UNKNOWN** (above): per-URL off-mission clicks and qualified rows/clicks, per-URL rows for Cornell/Oregon/Howard, Howard's exact impressions, and the exact live-observation time. P5 records the page-level facts the audit did establish and claims no truth it does not have.
 - **No destructive action.** No redirect/noindex/canonical/robots/internal-link change is implemented for any of the eight pages.
 
@@ -98,6 +98,23 @@ ChatGPT's pre-PR review (run `512570ba-1eea-49f6-9e80-bc2c0f691779`) accepted tw
 
 Regression coverage: `tests/p5-orphan-orchestrator-truthfulness.test.ts` (new — protected + unregistered orphan mixed run: `orphansProtectedSkipped: 1`, `orphansFixed: 1`, only the unregistered URL written/PR'd/logged), `tests/p5-site-health-protection.test.ts` (`fixedOrphans` assertions and no-hub pagination progress) and `tests/p5-off-mission-dispositions.test.ts` (robots.txt scope, row 57 acknowledgement, validator rejection of ambiguous `"allowed"`).
 
+## Final completeness fix (post-`4e89fa66`) — upstream planner mission-generation boundary
+
+The final read-only review found the last Gate 2 gap: `lib/seoEngine/planner.ts` (the upstream Master Engine, run by the daily cron as `runPlanner({ draftBriefs: true })`) filtered its three action-influencing signal loops with `isJunkQuery` only. Real-but-off-mission demand such as `university of south carolina student housing` is not junk; it matched the housing cell (whose seeds include `student housing` / `university housing` / `off campus housing`) and was persisted as an `seo_cluster_plans` row (a "mission" on the desk). It also entered `gscCorroboratedCells`, indirectly granting an Ubersuggest-only housing signal the 1.25× `UBER_BOOST` (or rescuing a dead-funnel mission) with no on-mission demand.
+
+Repaired in `lib/seoEngine/planner.ts` using the shared `isActionableDemandQuery()` boundary (`lib/seoFactory/queryNoise.ts`, unaltered):
+
+1. **Market-supply derivation.** `neededCells` no longer includes a cell sourced from an off-mission signal, so off-mission demand issues no marketplace lookup (and cannot lift `hasLiveSupply` for another signal in that cell).
+2. **GSC corroboration.** `gscCorroboratedCells` only records cells proven by an actionable term, so off-mission GSC can never corroborate a cell — no Ubersuggest boost and no dead-funnel rescue from off-mission proof.
+3. **Candidate/plan admission.** Off-mission signals never become cluster plans, so `runPlanner` cannot persist an off-mission-titled mission regardless of source (GSC, Ubersuggest, Ads, GA4).
+4. **Plan cluster terms.** The related-terms loop of an admitted plan applies the same boundary, so an off-mission term can never ride along as a cluster term, spoke or keyword-partition entry.
+
+This is an **admission boundary, not ontology deletion**: the housing lifecycle stage and its settlement/tenancy/legal seeds are unchanged, and qualified housing such as tenant rights, lease and newcomer-housing demand still plans (the stage/housing-filter inclusion semantics are untouched). No CREATE freeze change.
+
+Regression: `tests/p5-planner-demand-boundary.test.ts` drives the REAL planner (only Supabase/interlink boundaries mocked) and proves: off-mission GSC + Ubersuggest never plan, never persist and never leak into an admitted cluster; qualified immigration and tenancy-legal housing demand in the same batch still plans and persists; the Ubersuggest-only housing score is bit-identical with and without the off-mission GSC signal (no corroboration); off-mission-only demand issues no marketplace (`gigs`) lookup, while qualified housing demand does (non-vacuous control); and `tests/planner-filter-inclusion.test.ts` keeps its inclusion/no-relabelling purpose with the on-mission fixture `stockton student housing tenant rights` (asserted actionable and housing-mapped).
+
+Local evidence for this fix: a temporary Node smoke harness over the real planner/ontology/boundary/scoring/marketplace modules (external boundaries stubbed, removed before commit) reproduced all four failures before the fix (**7 PASS / 4 FAIL**) and passed **13/13** afterwards — including the four `tests/planner-filter-inclusion.test.ts` scenarios with the substituted fixture, the cron-default path (`draftBriefs` omitted/true: only the qualified plan is drafted and persisted; the off-mission term appears in no draft prompt), and a direct check that the housing stage still carries its `student housing` / tenant-rights / newcomers seeds.
+
 ## Verification status at this checkpoint
 
 - Environment limitation (re-verified): this worktree's `node_modules` symlink resolves to an **empty** directory and no sibling worktree or main checkout has a populated `node_modules`, so Jest and `tsc` could not run locally (no dependency install was attempted, and no manifest was modified).
@@ -105,12 +122,13 @@ Regression coverage: `tests/p5-orphan-orchestrator-truthfulness.test.ts` (new �
 - Substitute local evidence for this repair (temporary Node smoke harness, removed before commit; only GitHub Contents, audit scan, live-verify, snapshot and sitemap-fetch boundaries stubbed): **41 checks PASS**, 25 driving the real `fixNoIndexPagesChunked()` and 16 driving the real `runFullSiteHealthCheck()`. The harness caught a real first-draft defect (the function's final `return` omitted `protectedSkipped` — a `tsc` error) that was fixed before commit.
 - Substitute local evidence: a Node smoke harness over the real modules (temporary, removed before commit; GitHub/IndexNow boundaries stubbed) — **19 checks PASS**: registry validation; per-URL audit evidence with UNKNOWN only where actually unknown; byte-identical data/public copies; registry protection cannot be narrowed by a caller list; `repairSiteHealth` with no caller list still protects all eight cohort URLs, retains an existing protected sitemap entry and never adds an absent one; `repairSiteHealthChunked` skips both protected orphans, repairs the unregistered one, and writes no protected URL; and the delegated `resolveIndexCoverage` repair runs through the real site-health layer with the same protection.
 - `node --check` parses every changed/added TypeScript file; `git diff --check` is clean.
-- The six P5 Jest suites and `tsc` must run in CI; P5 stays **IN_PROGRESS** until they pass on the exact merge commit and deployment evidence is recorded by the supervisor.
+- The seven P5 Jest suites and `tsc` must run in CI; P5 stays **IN_PROGRESS** until they pass on the exact merge commit and deployment evidence is recorded by the supervisor.
 
 ## Acceptance criteria (not yet met)
 
-- All six P5 suites pass in CI; `tsc` and `git diff --check` pass on the reviewed head.
+- All P5 suites (including `tests/p5-planner-demand-boundary.test.ts`) pass in CI; `tsc` and `git diff --check` pass on the reviewed head.
 - Auto-run cannot produce an off-mission mission from a cluster plan or a keyword-plan fill.
+- `runPlanner()` itself cannot persist an off-mission-titled `seo_cluster_plans` mission, corroborate an off-mission cell, or derive actionable-cell marketplace work from off-mission demand.
 - Registered `KEEP_BUT_SILO` URLs cannot be mutated by automated index-coverage/site-health repair — in the bulk path or the chunked path — even when the triggering batch contains none of them.
 - Registered `KEEP_BUT_SILO` URLs cannot be mutated by the noindex fixer (`fixNoIndexPagesChunked()` and the complete-flow `runFullSiteHealthCheck({ fixNoindex: true })`) and can never be reported/logged as a completed noindex fix.
 - Complete-flow orphan repair reports and logs only actually repaired outcomes: protected orphans are surfaced in `repairs.orphansProtectedSkipped` and can never be reported/logged as "Repaired orphan page" or written.

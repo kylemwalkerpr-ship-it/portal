@@ -49,7 +49,7 @@ import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 import { rejectFragmentKeyword, isApplyTargetPrimary, isUnplaceableCoverageTerm } from '@/lib/seoFactory/keywordContractBrief'
-import { isJunkQuery } from '@/lib/seoFactory/queryNoise'
+import { isActionableDemandQuery, isJunkQuery } from '@/lib/seoFactory/queryNoise'
 import { freshnessScore, type PredictiveSignal } from './intelligence'
 import { buildShippedStems, shippedOverlap } from './shippedCoverage'
 import {
@@ -916,7 +916,12 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   {
     const neededCells = new Set<string>()
     for (const sig of signals) {
-      if (!sig.term || sig.impressions < 10 || isJunkQuery(sig.term)) continue
+      // P5 Gate 2 action boundary: real-but-off-mission campus-lifestyle demand
+      // (e.g. "university of south carolina student housing") must not create
+      // actionable-cell work — a marketplace lookup in that cell is the first
+      // step toward boosting another signal in it. Admission only: the housing
+      // stage and its settlement/tenancy seeds stay in the ontology.
+      if (!sig.term || sig.impressions < 10 || !isActionableDemandQuery(sig.term)) continue
       const m = bestCellForTerm(sig.term)
       if (m.score < MIN_CELL_MATCH_SCORE || !m.stage) continue
       const cell = resolveFilteredCell(m)
@@ -939,6 +944,11 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const gscCorroboratedCells = new Set<string>()
   for (const sig of signals) {
     if (sig.source !== 'gsc' || (Number(sig.impressions) || 0) <= 0) continue
+    // Corroboration is action influence: an off-mission term must never prove
+    // demand for a cell (it would hand an Ubersuggest-only housing signal the
+    // 1.25× UBER_BOOST, or rescue a dead-funnel mission, without on-mission
+    // demand). Junk noise is refused for the same reason.
+    if (!isActionableDemandQuery(sig.term)) continue
     const m = bestCellForTerm(sig.term)
     if (m.score >= MIN_CELL_MATCH_SCORE && m.stage) gscCorroboratedCells.add(cellId(m.stage, m.country))
   }
@@ -954,7 +964,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
   for (const sig of signals) {
     if (!sig.term || sig.impressions < 10) continue
-    if (isJunkQuery(sig.term)) continue
+    // The mission admission boundary itself — off-mission demand (and junk)
+    // never becomes a cluster plan / mission, whatever its source.
+    if (!isActionableDemandQuery(sig.term)) continue
     const match = bestCellForTerm(sig.term)
     if (match.score < MIN_CELL_MATCH_SCORE || !match.stage) continue
     // Filters are inclusion constraints on the matched cell — never relabel.
@@ -1076,7 +1088,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
     // Related terms: other signals in the same cell
     const related = signals
       .filter((s) => {
-        if (!s.term || s.term === primaryTerm || isJunkQuery(s.term)) return false
+        // Cluster terms become spokes + keyword partitions on a real mission —
+        // an off-mission term must not ride along on an admitted plan.
+        if (!s.term || s.term === primaryTerm || !isActionableDemandQuery(s.term)) return false
         const rel = bestCellForTerm(s.term)
         return rel.score >= MIN_CELL_MATCH_SCORE && rel.stage === stage && rel.country === country
       })
