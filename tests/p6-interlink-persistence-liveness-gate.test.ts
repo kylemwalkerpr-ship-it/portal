@@ -200,6 +200,7 @@ describe('D) replanning preserves lifecycle and verification truth', () => {
       'verification_state',
       'verified_at',
       'verification_evidence',
+      'staged_at',
       'gate_state',
       'gate_reason',
       'gate_actor',

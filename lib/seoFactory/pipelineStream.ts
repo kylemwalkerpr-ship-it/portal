@@ -42,6 +42,7 @@ import { pruneInterlinksToLiveTargets } from './interlinkInjection'
 import { stripNoIndex } from './siteHealthFixes'
 import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors } from './providerAuthors'
+import type { AuthorPack } from './authorPack'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
 import { keywordContractForDraft } from './keywordContract'
@@ -383,15 +384,23 @@ export async function* runSeoFactoryPipelineStream(
     // withheld. The draft is never handed unverified links, and no replacement
     // target is invented.
     {
-      const { filterLiveInternalUrls } = await import('./linkAudit')
-      const pruned = await pruneInterlinksToLiveTargets(radarInterlinks, (urls) =>
-        filterLiveInternalUrls(urls),
+      const { filterLiveInternalUrls, resolveEstateUrl } = await import('./linkAudit')
+      const pruned = await pruneInterlinksToLiveTargets(
+        radarInterlinks,
+        (urls) => filterLiveInternalUrls(urls),
+        { resolveCandidate: resolveEstateUrl },
       )
       if (!pruned.ok && radarInterlinks.length) {
         yield {
           type: 'progress',
           stage: 'gsc',
           message: `Withheld ${radarInterlinks.length} automatic interlink target(s): live verification failed — no unverified links injected`,
+        }
+      } else if (pruned.withheld > 0) {
+        yield {
+          type: 'progress',
+          stage: 'gsc',
+          message: `Withheld ${pruned.withheld} automatic interlink target(s) that did not verify live — no unverified links injected`,
         }
       }
       radarInterlinks = pruned.links
@@ -410,15 +419,25 @@ export async function* runSeoFactoryPipelineStream(
     // repository's actual HTTP liveness authority before it can enter the
     // prompt. Dead / unverifiable links are withheld (never replaced), while
     // the author citation metadata (name, credential, role) is preserved.
+    // H1: the writer/ContentSpec author pack is derived from the PRUNED
+    // citation state below, never from the raw provider pack (whose
+    // marketplaceUrl is only an unverified profile URL guess until the liveness
+    // authority proves it).
+    let authorPack: AuthorPack | null = providerAuthors.author
     let citedProviders = providerAuthors.cited
     {
-      const { pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } = await import('./interlinkInjection')
+      const { authorPackFromPrunedCitations, pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } =
+        await import('./interlinkInjection')
       const providerPruned = await pruneProviderAuthorLinks(
         providerAuthors.links,
         providerAuthors.cited,
         (urls) => verifyMarketplaceServiceUrlsLive(urls),
       )
       citedProviders = providerPruned.cited
+      // Derive the ContentSpec/playbook/prompt author pack from the PRUNED
+      // citation state: metadata survives, but an unproven marketplace/profile
+      // URL (and its service pages) can never reach the spec or the prompt.
+      authorPack = authorPackFromPrunedCitations(providerAuthors.author, providerPruned.cited)
       if (!providerPruned.ok) {
         yield {
           type: 'progress',
@@ -443,8 +462,8 @@ export async function* runSeoFactoryPipelineStream(
         yield {
           type: 'progress',
           stage: 'brief',
-          message: providerAuthors.author
-            ? `Citing ${providerAuthors.author.name} (${providerAuthors.author.credential}) from the marketplace`
+          message: authorPack
+            ? `Citing ${authorPack.name} (${authorPack.credential}) from the marketplace`
             : `Attached ${providerPruned.links.length} live marketplace service link(s)`,
         }
       }
@@ -498,7 +517,7 @@ export async function* runSeoFactoryPipelineStream(
         targetWords,
         maxWords,
         plannerRunId: input.sourceJobId || undefined,
-        author: providerAuthors.author || undefined,
+        author: authorPack || undefined,
       })
       contentSpec = specResolution.spec
       if (contentSpec && primaryKeyword) {

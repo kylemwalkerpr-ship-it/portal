@@ -70,6 +70,7 @@ describe('B) verification-truth columns are additive', () => {
     ['verification_state', 'text'],
     ['verified_at', 'timestamptz'],
     ['verification_evidence', 'jsonb'],
+    ['staged_at', 'timestamptz'],
   ])('adds %s %s null with IF NOT EXISTS', (column, type) => {
     expect(sql().toLowerCase()).toContain(
       `add column if not exists ${column} ${type} null`,
@@ -83,6 +84,19 @@ describe('B) verification-truth columns are additive', () => {
     // Exact job identity is content_jobs.id — never a slug or a guessed job.
     expect(lower).toContain('content_jobs.id')
     expect(lower).toContain('never auto-finalized')
+  })
+
+  it('adds the durable staged_at revision stamp additively, commented and out of the applied proof', () => {
+    const lower = sql().toLowerCase()
+    expect(lower).toContain('add column if not exists staged_at timestamptz null')
+    expect(lower).toContain('comment on column public.seo_interlinks.staged_at is')
+    // It is a non-proof revision marker, explicitly not part of the constraint.
+    expect(lower).toContain('not a verification verdict or proof')
+    const start = withoutComments(sql()).toLowerCase().indexOf('seo_interlinks_applied_requires_verification')
+    const appliedBlock = withoutComments(sql())
+      .toLowerCase()
+      .slice(start, withoutComments(sql()).toLowerCase().indexOf('create index', start))
+    expect(appliedBlock).not.toContain('staged_at')
   })
 
   it('never rewrites, deletes or backfills existing rows', () => {

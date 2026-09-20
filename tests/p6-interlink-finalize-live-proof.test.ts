@@ -53,6 +53,12 @@ function installDb(rows: P6FakeRow[]) {
   return db
 }
 
+function installDbWithHook(rows: P6FakeRow[], afterSelect: () => void) {
+  const db = createP6FakeDb(rows, { afterSelect })
+  createSupabaseAdminClientMock.mockReturnValue(db.client as never)
+  return db
+}
+
 function liveMap(entries: Array<[string, number]>) {
   return new Map(entries.map(([url, status]) => [url, { ok: status >= 200 && status < 400, status, finalUrl: url, at: 0 }]))
 }
@@ -386,10 +392,107 @@ describe('E2) job-bound finalization (P6 supervisor follow-up)', () => {
     expect(db.updates).toHaveLength(1)
     expect(db.updates[0].patch.status).toBe('applied')
     expect(db.updates[0].patch.source_job_id).toBe(SHIP_JOB)
+    // M2: the applied write is a compare-and-set on the EXACT selected
+    // subject, not just id + planned.
+    expect(db.updates[0].filters).toEqual([
+      { op: 'eq', column: 'id', value: 'mine' },
+      { op: 'eq', column: 'status', value: 'planned' },
+      { op: 'eq', column: 'source_job_id', value: SHIP_JOB },
+      { op: 'eq', column: 'source_url', value: SOURCE },
+    ])
     const byId = new Map(db.rows.map((r) => [r.id, r]))
     expect(byId.get('mine')!.status).toBe('applied')
     expect(byId.get('other')!.status).toBe('planned')
     expect(byId.get('legacy')!.status).toBe('planned')
+  })
+
+  it('a malformed jobId fails closed instead of silently finalizing source-url-only (L1)', async () => {
+    const db = installDb([row({ source_job_id: SHIP_JOB })])
+
+    for (const bad of ['not-a-uuid', 'plan-1737331200000', `${SHIP_JOB}-extra`]) {
+      const result = await finalizeStagedInterlinksForLiveSource({
+        canonicalUrl: SOURCE,
+        sourceJobId: bad,
+      })
+
+      expect(result.checked).toBe(0)
+      expect(result.applied).toBe(0)
+      expect(result.error).toMatch(/sourceJobId must be an exact content_jobs UUID/i)
+    }
+    // The malformed id never even reached the DB read or an applied write.
+    expect(db.selects).toHaveLength(0)
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].status).toBe('planned')
+  })
+
+  it('a concurrent rebind to another job makes the old job applied write a skipped CAS (M2)', async () => {
+    let raceDb: ReturnType<typeof installDb>
+    // Deterministic race: the SELECT returns the job-A row, then (before the
+    // fenced UPDATE) the row is rebound to job B by a concurrent reship.
+    raceDb = installDbWithHook(
+      [row({ id: 'row-1', source_job_id: SHIP_JOB })],
+      () => {
+        raceDb.rows[0].source_job_id = OTHER_JOB
+      },
+    )
+
+    const result = await finalizeStagedInterlinksForLiveSource({
+      canonicalUrl: SOURCE,
+      sourceJobId: SHIP_JOB,
+    })
+
+    // The old job's write must affect ZERO rows and be counted skipped —
+    // never overwrite the new revision.
+    expect(result.applied).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.dbErrors).toBe(0)
+    expect(raceDb.rows[0].source_job_id).toBe(OTHER_JOB)
+    expect(raceDb.rows[0].status).toBe('planned')
+    expect(raceDb.rows[0].verification_state).toBeNull()
+  })
+
+  it('a concurrent rebind also makes a non-applied verdict write a skipped CAS (M2)', async () => {
+    verifyUrlsLiveMock.mockResolvedValue(liveMap([[TARGET, 404]]))
+    let raceDb: ReturnType<typeof installDb>
+    raceDb = installDbWithHook(
+      [row({ id: 'row-1', source_job_id: SHIP_JOB })],
+      () => {
+        raceDb.rows[0].source_job_id = OTHER_JOB
+      },
+    )
+
+    const result = await finalizeStagedInterlinksForLiveSource({
+      canonicalUrl: SOURCE,
+      sourceJobId: SHIP_JOB,
+    })
+
+    expect(result.targetNotLive).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(raceDb.rows[0].source_job_id).toBe(OTHER_JOB)
+    expect(raceDb.rows[0].verification_state).toBeNull()
+    expect(raceDb.rows[0].verified_at).toBeNull()
+  })
+
+  it('a concurrent rebind makes an absent verdict write a skipped CAS too (M2)', async () => {
+    let raceDb: ReturnType<typeof installDb>
+    raceDb = installDbWithHook(
+      [row({ id: 'row-1', source_job_id: SHIP_JOB })],
+      () => {
+        raceDb.rows[0].source_job_id = OTHER_JOB
+      },
+    )
+    // Live target, but the live source no longer contains the exact anchor.
+    installSourceFetch('<p>anchor removed</p>')
+
+    const result = await finalizeStagedInterlinksForLiveSource({
+      canonicalUrl: SOURCE,
+      sourceJobId: SHIP_JOB,
+    })
+
+    expect(result.absent).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(raceDb.rows[0].source_job_id).toBe(OTHER_JOB)
+    expect(raceDb.rows[0].verification_state).toBeNull()
   })
 
   it('legacy/admin finalization without a job id keeps the source-url-only behavior', async () => {

@@ -12,6 +12,13 @@
  * `Prefer: missing=default`: only keys present in the payload are written, so
  * omitted lifecycle/verification columns survive on conflict and DB defaults
  * apply on insert.
+ *
+ * `updated_at` trigger emulation: production has a BEFORE UPDATE trigger that
+ * always sets `updated_at = now()` — later than every app-written verdict
+ * timestamp. Updates here do the same by default, so tests can prove the
+ * reconciler does NOT depend on updated_at for revision/cooldown membership.
+ * `afterSelect` lets a test deterministically rebind a row between the
+ * finalizer's SELECT and its fenced UPDATE (M2 race).
  */
 
 export type P6FakeRow = Record<string, unknown>
@@ -61,8 +68,16 @@ function matches(filter: P6CapturedFilter, row: P6FakeRow): boolean {
   return Array.isArray(filter.value) && (filter.value as unknown[]).includes(value)
 }
 
-export function createP6FakeDb(seed: P6FakeRow[] = []) {
+export interface P6FakeDbOptions {
+  /** Clock for the emulated updated_at trigger (defaults to Date.now). */
+  now?: () => number
+  /** Run after a select snapshot is computed but before it resolves. */
+  afterSelect?: (rows: P6FakeRow[]) => void
+}
+
+export function createP6FakeDb(seed: P6FakeRow[] = [], opts: P6FakeDbOptions = {}) {
   const rows: P6FakeRow[] = seed.map((row) => ({ ...row }))
+  const now = opts.now || (() => Date.now())
   const updates: P6CapturedUpdate[] = []
   const upserts: P6CapturedUpsert[] = []
   const selects: P6CapturedSelect[] = []
@@ -135,7 +150,12 @@ export function createP6FakeDb(seed: P6FakeRow[] = []) {
             updates.push({ table, patch, filters: [...filters] })
             const affected = rows.filter((row) => filters.every((filter) => matches(filter, row)))
             for (const row of rows) {
-              if (filters.every((filter) => matches(filter, row))) Object.assign(row, patch)
+              if (filters.every((filter) => matches(filter, row))) {
+                Object.assign(row, patch)
+                // BEFORE UPDATE trigger: updated_at is ALWAYS now(), later than
+                // any app timestamp written in the same patch.
+                row.updated_at = new Date(now()).toISOString()
+              }
             }
             const data = returnAffected ? affected.map((row) => ({ id: row.id })) : null
             return Promise.resolve({ data, error: null }).then(resolve ?? undefined, reject ?? undefined)
@@ -147,6 +167,7 @@ export function createP6FakeDb(seed: P6FakeRow[] = []) {
           const data = rows
             .filter((row) => filters.every((filter) => matches(filter, row)))
             .map((row) => ({ ...row }))
+          if (typeof opts.afterSelect === 'function') opts.afterSelect(rows)
           return Promise.resolve({ data, error: null }).then(resolve ?? undefined, reject ?? undefined)
         },
       }

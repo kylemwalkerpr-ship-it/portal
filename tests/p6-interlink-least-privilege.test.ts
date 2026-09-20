@@ -80,9 +80,17 @@ describe('B) the only applied writer carries the full proof contract', () => {
 
   it('guards the applied write to planned rows only', () => {
     const body = read(path.join(ROOT, 'lib/seoFactory/interlinkVerification.ts'))
-    const appliedIndex = body.indexOf("status: 'applied'")
-    const tail = body.slice(appliedIndex, appliedIndex + 1200)
-    expect(tail).toContain(".eq('status', 'planned')")
+    // The applied patch is written through the shared guarded helper, so the
+    // planned-only fence lives there (the string distance from the applied
+    // patch literal to the helper is far larger than a fixed slice).
+    const helperIndex = body.indexOf('async function writePlannedRowPatch')
+    expect(helperIndex).toBeGreaterThan(0)
+    const helper = body.slice(helperIndex, helperIndex + 1600)
+    expect(helper).toContain(".eq('status', 'planned')")
+    // M2: every finalizer/verdict write is additionally a compare-and-set on
+    // the exact subject when finalization is job-bound.
+    expect(helper).toContain('fence?.sourceJobId')
+    expect(helper).toContain('fence?.sourceUrl')
   })
 })
 

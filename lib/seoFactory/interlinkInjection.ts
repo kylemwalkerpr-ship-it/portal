@@ -17,6 +17,10 @@
  *
  * It never invents a replacement link, never keeps an unverified one, and a
  * degraded verification can only remove prompts, never add them.
+ * `pruneInterlinksToLiveTargets` reports `withheld` even on partial success
+ * (dead / external / unverifiable candidates), and matches root-relative
+ * estate candidates through the injected resolver so they compare correctly
+ * against the verifier's proven absolute URL.
  *
  * Provider/profile/gig marketplace citations (`pruneProviderAuthorLinks`) pass
  * the same gate on BOTH pipeline surfaces before prompt injection. The estate
@@ -25,17 +29,46 @@
  * never proof: `verifyMarketplaceServiceUrlsLive` checks each URL through the
  * repository's real HTTP liveness authority (`verifyUrlsLive` +
  * `classifyLiveStatus`) and withholds anything it cannot prove. Author
- * citation metadata (name/credential/role) survives a withheld link.
+ * citation metadata (name/credential/role) survives a withheld link, and
+ * `authorPackFromPrunedCitations` rebuilds the ContentSpec/playbook/prompt
+ * author pack from the PRUNED citations so an unverified profile/gig URL can
+ * never survive through author metadata either.
  */
+
+import type { AuthorPack } from './authorPack'
 
 export interface InterlinkCandidateLike {
   url?: string
 }
 
+export interface PruneInterlinksOptions {
+  /**
+   * Resolve a candidate URL the same way the injected live verifier resolves
+   * its output before matching (e.g. `resolveEstateUrl` for the internal-link
+   * authority). Without it a root-relative estate candidate can never match
+   * the verifier's absolute URL and would be wrongly withheld.
+   */
+  resolveCandidate?: (url: string) => string
+}
+
 export interface PrunedInterlinks<T> {
   links: T[]
   ok: boolean
+  /**
+   * Candidate links that carried a URL the live verifier did NOT prove live
+   * (dead, external/non-estate, or unverifiable). Reported even on a partial
+   * success so a degraded allowlist is never silent.
+   */
+  withheld: number
   error?: string
+}
+
+/** Minimal pruned-citation shape needed to rebuild the writer AuthorPack. */
+export interface PrunedAuthorCitation extends ProviderCitationLike {
+  experienceScope?: string
+  credentialLine?: string
+  role?: string
+  servicePages?: Array<{ title?: string; url?: string; match?: string }>
 }
 
 function normalizeKey(url: string): string {
@@ -54,36 +87,86 @@ function normalizeKey(url: string): string {
 export async function pruneInterlinksToLiveTargets<T extends InterlinkCandidateLike>(
   interlinks: T[],
   verifyLive: (urls: string[]) => Promise<string[]>,
+  opts: PruneInterlinksOptions = {},
 ): Promise<PrunedInterlinks<T>> {
-  if (!Array.isArray(interlinks) || interlinks.length === 0) return { links: [], ok: true }
+  const list = Array.isArray(interlinks) ? interlinks : []
+  const resolve = typeof opts.resolveCandidate === 'function' ? opts.resolveCandidate : (url: string) => url
+  const candidates = list
+    .map((link) => ({ link, url: String(link?.url || '').trim() }))
+    .filter((candidate) => Boolean(candidate.url))
 
-  const urls = interlinks.map((link) => String(link?.url || '').trim()).filter(Boolean)
-  // Candidates without a URL are not verifiable links; withhold them.
-  if (urls.length === 0) return { links: [], ok: true }
+  // Candidates without a URL are not verifiable links; nothing to prove, and
+  // they were never links, so they are not counted as withheld links either.
+  if (candidates.length === 0) return { links: [], ok: true, withheld: 0 }
 
   let liveUrls: string[]
   try {
-    liveUrls = await verifyLive(urls)
+    liveUrls = await verifyLive(candidates.map((candidate) => candidate.url))
   } catch (error) {
     return {
       links: [],
       ok: false,
+      withheld: candidates.length,
       error: error instanceof Error ? error.message : String(error || 'live verification failed'),
     }
   }
 
-  const liveKeys = new Set(
-    (Array.isArray(liveUrls) ? liveUrls : []).map((url) => normalizeKey(url)).filter(Boolean),
-  )
-  if (liveKeys.size === 0) {
-    return { links: [], ok: false, error: 'no live internal target was verified' }
+  // Two key maps: the verifier's own URL bytes (so a candidate that already is
+  // the live URL keeps its exact form) and the resolved form (so a
+  // root-relative candidate matches the proven absolute URL).
+  const liveByRawKey = new Map<string, string>()
+  const liveByResolvedKey = new Map<string, string>()
+  for (const url of Array.isArray(liveUrls) ? liveUrls : []) {
+    const raw = String(url || '').trim()
+    if (!raw) continue
+    const rawKey = normalizeKey(raw)
+    if (rawKey && !liveByRawKey.has(rawKey)) liveByRawKey.set(rawKey, raw)
+    const resolvedKey = normalizeKey(resolve(raw))
+    if (resolvedKey && !liveByResolvedKey.has(resolvedKey)) liveByResolvedKey.set(resolvedKey, raw)
+  }
+  if (!liveByRawKey.size && !liveByResolvedKey.size) {
+    return {
+      links: [],
+      ok: false,
+      withheld: candidates.length,
+      error: 'no live internal target was verified',
+    }
   }
 
-  const links = interlinks.filter((link) => liveKeys.has(normalizeKey(String(link?.url || ''))))
-  if (links.length === 0) {
-    return { links: [], ok: false, error: 'no candidate survived live verification' }
+  const seen = new Set<string>()
+  const links: T[] = []
+  let withheld = 0
+  for (const candidate of candidates) {
+    const rawKey = normalizeKey(candidate.url)
+    const rawProven = rawKey ? liveByRawKey.get(rawKey) : undefined
+    if (rawProven) {
+      if (!seen.has(rawKey)) {
+        seen.add(rawKey)
+        links.push(candidate.link)
+      }
+      continue
+    }
+    const resolvedKey = normalizeKey(resolve(candidate.url))
+    const resolvedProven = resolvedKey ? liveByResolvedKey.get(resolvedKey) : undefined
+    if (resolvedProven) {
+      if (!seen.has(resolvedKey)) {
+        seen.add(resolvedKey)
+        // Preserve the original label/match metadata but emit the PROVEN live
+        // canonical/absolute URL the verifier actually approved.
+        links.push(
+          candidate.url === resolvedProven
+            ? candidate.link
+            : ({ ...candidate.link, url: resolvedProven } as T),
+        )
+      }
+      continue
+    }
+    withheld += 1
   }
-  return { links, ok: true }
+  if (links.length === 0) {
+    return { links: [], ok: false, withheld, error: 'no candidate survived live verification' }
+  }
+  return { links, ok: true, withheld }
 }
 
 /** Minimal citation shape shared by the provider-author prompt records. */
@@ -189,6 +272,61 @@ export async function pruneProviderAuthorLinks<
     withheld: candidateUrls.length - verified,
     verified,
   }
+}
+
+/**
+ * H1 repair — the AuthoPack consumed by ContentSpec/brief/playbook/prompt must
+ * be derived from the PRUNED citation state, never from the raw provider pack.
+ *
+ * The raw `providerAuthors.author` carried `marketplaceUrl = profileUrl` and
+ * `servicePages` before any liveness proof; `pruneProviderAuthorLinks` only
+ * pruned `cited`/`links`, so the raw author pack could still put an unverified
+ * marketplace/profile/gig URL into the spec (and through it the playbook and
+ * writer/system prompt) while the downstream audit exempts protected
+ * marketplace URLs from its dead-link check.
+ *
+ * Metadata (name, credential, experienceScope, reviewedBy, providerType,
+ * experienceBeats) always survives. `marketplaceUrl` is kept ONLY when the
+ * exact profile URL the pack carried is proven live in the pruned citation
+ * state; when it was withheld the key is OMITTED (never `''`, which ContentSpec
+ * validation rejects and which would null the whole spec). Service pages are
+ * intersected with the proven-live set, so an unverified gig URL can never
+ * survive through author metadata.
+ */
+export function authorPackFromPrunedCitations(
+  pack: AuthorPack | null | undefined,
+  cited: PrunedAuthorCitation[] | null | undefined,
+): AuthorPack | null {
+  if (!pack) return null
+  const first = Array.isArray(cited) ? cited[0] : undefined
+  const provenProfileUrl = String(first?.profileUrl || '').trim()
+  const packProfileUrl = String(pack.marketplaceUrl || '').trim()
+  const packPageByKey = new Map(
+    (pack.servicePages || []).map((page) => [normalizeKey(String(page?.url || '')), page]),
+  )
+  const servicePages = (first?.servicePages || [])
+    .map((page) => {
+      const key = normalizeKey(String(page?.url || ''))
+      const original = key ? packPageByKey.get(key) : undefined
+      if (!original?.url) return null
+      return {
+        title: String(original.title || ''),
+        url: String(page?.url || original.url).trim(),
+        ...(original.match ? { match: original.match } : {}),
+      }
+    })
+    .filter((page): page is { title: string; url: string; match?: string } => Boolean(page?.url))
+
+  const pruned: AuthorPack = { ...pack }
+  delete pruned.marketplaceUrl
+  delete pruned.servicePages
+  // Only the pack's own profile URL, and only when the pruned citation state
+  // proves that exact URL live, may survive.
+  if (provenProfileUrl && packProfileUrl && provenProfileUrl === packProfileUrl) {
+    pruned.marketplaceUrl = provenProfileUrl
+  }
+  if (servicePages.length) pruned.servicePages = servicePages
+  return pruned
 }
 
 /**

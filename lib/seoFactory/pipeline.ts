@@ -35,6 +35,7 @@ import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { applyDeterministicRepairs, ensureEditorialScaffold } from './editorialScaffold'
 import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors } from './providerAuthors'
+import type { AuthorPack } from './authorPack'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
 import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
@@ -375,8 +376,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     maxChars: 4200,
   })
 
-  const { assembleDraftSourceAllowlist, filterLiveInternalUrls, sanitizeDraftLinksLive, urlsFromAllowlistLines } =
-    await import('./linkAudit')
+  const {
+    assembleDraftSourceAllowlist,
+    filterLiveInternalUrls,
+    resolveEstateUrl,
+    sanitizeDraftLinksLive,
+    urlsFromAllowlistLines,
+  } = await import('./linkAudit')
   const citationCtx = { region, topic, keywords: mergedKeywords }
   const verifiedSources = await assembleDraftSourceAllowlist(region, input.sources as string[] | undefined, citationCtx)
   const verifiedSourceUrls = urlsFromAllowlistLines(verifiedSources)
@@ -395,19 +401,37 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   // protected-marketplace exemption is never treated as proof. A verifier
   // failure withholds every automatic link; dead links are withheld; no
   // replacement link is invented, and author citation metadata survives.
+  // H1: the writer/ContentSpec author pack is derived from the PRUNED
+  // citation state below, never from the raw provider pack (whose
+  // marketplaceUrl is only an unverified profile URL guess until the liveness
+  // authority proves it).
+  let authorPack: AuthorPack | null = providerAuthors.author
   let citedProviders = providerAuthors.cited
   let automaticInterlinks: Array<{ label?: string; url?: string; matchedOn?: string[] }> = []
   {
-    const { pruneInterlinksToLiveTargets, pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } =
-      await import('./interlinkInjection')
+    const {
+      authorPackFromPrunedCitations,
+      pruneInterlinksToLiveTargets,
+      pruneProviderAuthorLinks,
+      verifyMarketplaceServiceUrlsLive,
+    } = await import('./interlinkInjection')
     const automaticInput = (Array.isArray(input.interlinks) ? input.interlinks : [])
       .filter((l) => l && l.url)
       .map((l) => ({ label: String(l.label || l.url), url: String(l.url), matchedOn: l.matchedOn }))
-    const pruned = await pruneInterlinksToLiveTargets(automaticInput, (urls) => filterLiveInternalUrls(urls))
+    const pruned = await pruneInterlinksToLiveTargets(
+      automaticInput,
+      (urls) => filterLiveInternalUrls(urls),
+      { resolveCandidate: resolveEstateUrl },
+    )
     if (!pruned.ok && automaticInput.length) {
       console.warn(
         '[seoFactory/pipeline] withheld automatic interlinks — live verification failed, no unverified link enters the prompt',
         { candidates: automaticInput.length, error: pruned.error || null },
+      )
+    } else if (pruned.withheld > 0) {
+      console.warn(
+        '[seoFactory/pipeline] withheld automatic interlinks that did not verify live',
+        { candidates: automaticInput.length, withheld: pruned.withheld, verified: pruned.links.length },
       )
     }
     const providerPruned = await pruneProviderAuthorLinks(
@@ -416,6 +440,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       (urls) => verifyMarketplaceServiceUrlsLive(urls),
     )
     citedProviders = providerPruned.cited
+    // Derive the ContentSpec/playbook/prompt author pack from the PRUNED
+    // citation state: metadata survives, but an unproven marketplace/profile
+    // URL (and its service pages) can never reach the spec or the prompt.
+    authorPack = authorPackFromPrunedCitations(providerAuthors.author, providerPruned.cited)
     if (!providerPruned.ok || providerPruned.withheld > 0) {
       console.warn('[seoFactory/pipeline] marketplace citation links withheld from the prompt', {
         verified: providerPruned.verified,
@@ -459,7 +487,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       targetWords,
       maxWords,
       plannerRunId: input.sourceJobId || undefined,
-      author: providerAuthors.author || undefined,
+      author: authorPack || undefined,
     })
     contentSpec = specResolution.spec
     if (contentSpec && primaryKeyword) {

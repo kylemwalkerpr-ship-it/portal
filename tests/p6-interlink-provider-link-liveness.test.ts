@@ -20,10 +20,16 @@ jest.mock('@/lib/seoFactory/linkAudit', () => ({
 
 import { classifyLiveStatus, verifyUrlsLive } from '@/lib/seoFactory/linkAudit'
 import {
+  authorPackFromPrunedCitations,
   pruneProviderAuthorLinks,
   verifyMarketplaceServiceUrlsLive,
 } from '@/lib/seoFactory/interlinkInjection'
-import { citedProvidersPromptBlock, type CitedProvider } from '@/lib/seoFactory/providerAuthors'
+import {
+  authorPackFromProvider,
+  citedProvidersPromptBlock,
+  type CitedProvider,
+} from '@/lib/seoFactory/providerAuthors'
+import { renderBriefRules, renderWriterRules } from '@/lib/seoFactory/contentQualityPlaybook'
 
 const verifyUrlsLiveMock = jest.mocked(verifyUrlsLive)
 const classifyLiveStatusMock = jest.mocked(classifyLiveStatus)
@@ -127,6 +133,116 @@ describe('A) pruneProviderAuthorLinks — fail closed, never invent, keep metada
   })
 })
 
+/** Minimal brief/writer rule input rendered from the (pruned) spec author. */
+function specForAuthor(author: ReturnType<typeof authorPackFromPrunedCitations>) {
+  return {
+    version: '1.0.0',
+    jobId: 'job-1',
+    contentType: 'legal_guide',
+    region: 'us',
+    indexable: true,
+    primaryKeyword: 'h1b petition',
+    requiredKeywords: [{ phrase: 'h1b petition', kind: 'short' as const }],
+    wordBudget: { min: 800, target: 1200, max: 1600 },
+    verifiedEstateLinks: [],
+    approvedSources: [],
+    ymyl: { disclaimerRequired: true },
+    aeoGeo: { answerFirst: true, faqRequired: true },
+    author,
+  }
+}
+
+describe('D) H1 — the ContentSpec/playbook/prompt author pack comes from PRUNED citations', () => {
+  it('a dead profile URL disappears from cited links AND spec/playbook/prompt URL surfaces', async () => {
+    const pruned = await pruneProviderAuthorLinks(
+      [
+        { label: 'profile', url: PROFILE },
+        { label: 'dead gig', url: DEAD_GIG },
+      ],
+      [person()],
+      async () => [],
+    )
+    const pack = authorPackFromPrunedCitations(authorPackFromProvider(person()), pruned.cited)
+
+    // Cited links are gone (verifier proved nothing live)…
+    expect(pruned.links).toEqual([])
+    expect(pruned.cited[0].profileUrl).toBe('')
+    expect(pruned.cited[0].servicePages).toEqual([])
+    // …and the author pack metadata survives WITHOUT the unverified URL keys.
+    expect(pack).not.toBeNull()
+    expect(pack).toMatchObject({
+      name: 'Jordan Hale',
+      credential: 'Attorney · New York',
+      experienceScope: 'immigration',
+      providerType: 'attorney',
+    })
+    expect(pack && 'marketplaceUrl' in pack).toBe(false)
+    expect(pack?.servicePages).toBeUndefined()
+    // ContentSpec validation rejects an empty marketplaceUrl, so the key must
+    // be absent — never `''` — or the whole spec would be nulled.
+
+    // The playbook/brief/writer surfaces show the named author and NOT the URL.
+    for (const surface of [renderBriefRules(specForAuthor(pack)), renderWriterRules(specForAuthor(pack))]) {
+      expect(surface).toContain('Jordan Hale')
+      expect(surface).toContain('Attorney · New York')
+      expect(surface).not.toContain(PROFILE)
+      expect(surface).not.toContain(DEAD_GIG)
+    }
+    // The provider prompt block also drops the mandatory URL line, keeping the citation.
+    const prompt = citedProvidersPromptBlock(pruned.cited)
+    expect(prompt).toContain('Jordan Hale')
+    expect(prompt).not.toContain(PROFILE)
+    expect(prompt).not.toContain('You MUST include each listed marketplace URL')
+  })
+
+  it('mixed-live keeps ONLY the proven profile/gig URLs in the author pack', async () => {
+    const pruned = await pruneProviderAuthorLinks(
+      [
+        { label: 'profile', url: PROFILE },
+        { label: 'dead gig', url: DEAD_GIG },
+      ],
+      [person()],
+      async () => [PROFILE, GIG],
+    )
+    const pack = authorPackFromPrunedCitations(authorPackFromProvider(person()), pruned.cited)
+
+    expect(pack?.marketplaceUrl).toBe(PROFILE)
+    expect(pack?.servicePages?.map((page) => page.url)).toEqual([GIG])
+    expect(JSON.stringify(pack)).not.toContain(DEAD_GIG)
+  })
+
+  it('a verifier throw withholds every URL but never drops author metadata', async () => {
+    const pruned = await pruneProviderAuthorLinks(
+      [{ label: 'profile', url: PROFILE }],
+      [person()],
+      async () => {
+        throw new Error('liveness authority unreachable')
+      },
+    )
+    const pack = authorPackFromPrunedCitations(authorPackFromProvider(person()), pruned.cited)
+
+    expect(pruned.ok).toBe(false)
+    expect(pack?.name).toBe('Jordan Hale')
+    expect(pack && 'marketplaceUrl' in pack).toBe(false)
+    expect(pack?.servicePages).toBeUndefined()
+    expect(JSON.stringify(pack)).not.toContain(PROFILE)
+    expect(JSON.stringify(pack)).not.toContain(GIG)
+  })
+
+  it('both pipeline surfaces derive the spec author from the PRUNED citation state', () => {
+    for (const rel of ['lib/seoFactory/pipeline.ts', 'lib/seoFactory/pipelineStream.ts']) {
+      const body = read(rel)
+      const deriveAt = body.indexOf('authorPackFromPrunedCitations(providerAuthors.author')
+      const specAt = body.indexOf('resolveContentSpecForJob({')
+      expect(deriveAt).toBeGreaterThan(0)
+      expect(specAt).toBeGreaterThan(deriveAt)
+      // The raw unverified pack is never allowed to feed the spec/prompt.
+      expect(body).not.toMatch(/author:\s*providerAuthors\.author\s*\|\|\s*undefined/)
+      expect(body).toMatch(/author:\s*authorPack\s*\|\|\s*undefined/)
+    }
+  })
+})
+
 describe('B) verifyMarketplaceServiceUrlsLive — real HTTP authority, no exemption trust', () => {
   it('verifies marketplace provider/gig URLs with verifyUrlsLive + classifyLiveStatus', async () => {
     verifyUrlsLiveMock.mockResolvedValue(
@@ -173,7 +289,7 @@ describe('B) verifyMarketplaceServiceUrlsLive — real HTTP authority, no exempt
 describe('C) both pipeline surfaces prune BEFORE building the prompt', () => {
   it('pipeline (non-stream) prunes automatic interlinks and provider links', () => {
     const body = read('lib/seoFactory/pipeline.ts')
-    const pruneAt = body.indexOf('pruneInterlinksToLiveTargets(automaticInput')
+    const pruneAt = body.search(/pruneInterlinksToLiveTargets\(\s*automaticInput/)
     const providerPruneAt = body.indexOf('pruneProviderAuthorLinks(')
     const promptAt = body.indexOf('const system = buildFactorySystemPrompt({')
 

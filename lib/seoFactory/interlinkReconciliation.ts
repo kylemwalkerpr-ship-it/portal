@@ -20,8 +20,15 @@
  *     identity is never auto-finalized;
  *   · a source is only attempted after a minimum age (deployment lag) and
  *     outside the re-verification cooldown, and the cooldown only applies to
- *     the CURRENT staged revision (a stale timestamp from an older revision
- *     never suppresses a freshly rebound/re-staged job);
+ *     the CURRENT staged revision. Revision membership is decided by the
+ *     durable nullable `staged_at` stamp written by staging/rebind — NOT by
+ *     `updated_at`, which the BEFORE UPDATE trigger always pushes to now()
+ *     and which therefore made the cooldown structurally dead (a current
+ *     verdict can never satisfy `verified_at >= updated_at`). Min-age uses the
+ *     same revision stamp; `updated_at` is only a documented fallback for
+ *     legacy already-job-bound rows staged before `staged_at` existed. A stale
+ *     timestamp from an older revision never suppresses a freshly
+ *     rebound/re-staged job;
  *   · `verifyLiveUrl` is the ONLY gate — it is called with the EXACT staged
  *     `(source_url, source_job_id)` pair so a contracted job resolves its
  *     official deployment lineage (`reconcilePublicationDeployment`), and
@@ -103,6 +110,8 @@ export interface StagedInterlinkRow {
   verifiedAt?: string | null
   /** Durable non-proof attempt marker (verification_attempted_at). */
   attemptedAt?: string | null
+  /** Durable staging/revision stamp (staged_at) — decides current revision. */
+  stagedAt?: string | null
   updatedAt?: string | null
 }
 
@@ -115,6 +124,8 @@ export interface StagedInterlinkSource {
   lastVerifiedAt: string | null
   /** Durable non-proof attempt marker of the current revision, if any. */
   lastAttemptedAt: string | null
+  /** Durable staging/revision timestamp of the current revision, if any. */
+  lastStagedAt: string | null
   lastWrittenAt: string | null
 }
 
@@ -253,18 +264,44 @@ function isSchemaUnavailable(message: string): boolean {
  * the bounded window either (they stay unresolved/manual and are never
  * verified). Rows whose `source_job_id` is not a valid UUID are still returned
  * by this predicate and skipped/counted server-side, never verified.
+ *
+ * `staged_at` is the revision stamp. If that additive column alone is not
+ * deployed yet (a partial pre-migration state where source_job_id exists), the
+ * read falls back to the legacy column set with an explicit warning; the
+ * reconciler then uses the documented `updated_at` fallback for revision
+ * membership instead of pretending no staged row exists.
  */
 async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[]> {
   const { createSupabaseAdminClient } = await import('@/lib/supabase')
   const supabase = createSupabaseAdminClient()
-  const { data, error } = await supabase
+  const baseColumns = 'id,source_url,source_job_id,status,verified_at,verification_attempted_at,updated_at'
+  let stagedAtAvailable = true
+  let { data, error } = await supabase
     .from('seo_interlinks')
-    .select('id,source_url,source_job_id,status,verified_at,verification_attempted_at,updated_at')
+    .select(`${baseColumns},staged_at`)
     .eq('status', 'planned')
     .not('source_url', 'is', null)
     .not('source_job_id', 'is', null)
     .order('updated_at', { ascending: true })
     .limit(limit)
+  if (error && /staged_at/i.test(String(error.message || ''))) {
+    const message = String(error.message || 'staged_at unavailable')
+    console.warn(
+      '[interlinkReconciliation] staged_at column unavailable (P6 migration not fully applied yet) — revision membership falls back to updated_at for these legacy job-bound rows:',
+      message,
+    )
+    stagedAtAvailable = false
+    const legacy = await supabase
+      .from('seo_interlinks')
+      .select(baseColumns)
+      .eq('status', 'planned')
+      .not('source_url', 'is', null)
+      .not('source_job_id', 'is', null)
+      .order('updated_at', { ascending: true })
+      .limit(limit)
+    data = legacy.data
+    error = legacy.error
+  }
   if (error) throw new Error(`staged interlink read failed: ${error.message}`)
   const rows = (data as Array<Record<string, unknown>> | null) || []
   return rows.map((row) => ({
@@ -273,6 +310,7 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
     sourceJobId: (row.source_job_id as string | null) ?? null,
     verifiedAt: (row.verified_at as string | null) ?? null,
     attemptedAt: (row.verification_attempted_at as string | null) ?? null,
+    stagedAt: stagedAtAvailable ? ((row.staged_at as string | null) ?? null) : null,
     updatedAt: (row.updated_at as string | null) ?? null,
   }))
 }
@@ -356,6 +394,7 @@ export async function reconcileStagedInterlinks(
       rows: number
       lastVerifiedAt: number | null
       lastAttemptedAt: number | null
+      lastStagedAt: number | null
       lastWrittenAt: number | null
     }
   >()
@@ -381,6 +420,7 @@ export async function reconcileStagedInterlinks(
       rows: 0,
       lastVerifiedAt: null,
       lastAttemptedAt: null,
+      lastStagedAt: null,
       lastWrittenAt: null,
     }
     group.rows += 1
@@ -392,6 +432,10 @@ export async function reconcileStagedInterlinks(
     if (attemptedAt != null && (group.lastAttemptedAt == null || attemptedAt > group.lastAttemptedAt)) {
       group.lastAttemptedAt = attemptedAt
     }
+    const stagedAt = parseTime(row.stagedAt)
+    if (stagedAt != null && (group.lastStagedAt == null || stagedAt > group.lastStagedAt)) {
+      group.lastStagedAt = stagedAt
+    }
     const writtenAt = parseTime(row.updatedAt)
     if (writtenAt != null && (group.lastWrittenAt == null || writtenAt > group.lastWrittenAt)) {
       group.lastWrittenAt = writtenAt
@@ -402,24 +446,30 @@ export async function reconcileStagedInterlinks(
 
   const eligible: StagedInterlinkSource[] = []
   for (const group of groups.values()) {
-    if (group.lastWrittenAt != null && now - group.lastWrittenAt < minAgeMs) {
+    // Current-revision membership: the durable staged_at stamp wins. The
+    // updated_at fallback exists ONLY for legacy rows already carrying exact
+    // job identity that were staged before staged_at was deployed (the BEFORE
+    // UPDATE trigger always makes updated_at >= any app verdict, which is
+    // exactly why it cannot be used when a real revision stamp exists).
+    const revisionAt = group.lastStagedAt ?? group.lastWrittenAt
+    if (revisionAt != null && now - revisionAt < minAgeMs) {
       summary.skippedYoung += 1
       continue
     }
     // A cooldown may only reflect the CURRENT staged revision. If the row was
-    // written after the last verdict/attempt (a rebound job id or a newly
-    // staged revision), the old timestamp belongs to a previous revision and
-    // must not suppress this one.
+    // re-staged/rebound after the last verdict/attempt (a new staged_at), the
+    // old timestamp belongs to a previous revision and must not suppress this
+    // one.
     const verificationIsCurrent =
       group.lastVerifiedAt != null &&
-      (group.lastWrittenAt == null || group.lastVerifiedAt >= group.lastWrittenAt)
+      (revisionAt == null || group.lastVerifiedAt >= revisionAt)
     if (verificationIsCurrent && now - (group.lastVerifiedAt as number) < cooldownMs) {
       summary.skippedCooldown += 1
       continue
     }
     const attemptIsCurrent =
       group.lastAttemptedAt != null &&
-      (group.lastWrittenAt == null || group.lastAttemptedAt >= group.lastWrittenAt)
+      (revisionAt == null || group.lastAttemptedAt >= revisionAt)
     if (attemptIsCurrent && now - (group.lastAttemptedAt as number) < cooldownMs) {
       summary.skippedAttemptCooldown += 1
       continue
@@ -430,6 +480,7 @@ export async function reconcileStagedInterlinks(
       rows: group.rows,
       lastVerifiedAt: group.lastVerifiedAt != null ? new Date(group.lastVerifiedAt).toISOString() : null,
       lastAttemptedAt: group.lastAttemptedAt != null ? new Date(group.lastAttemptedAt).toISOString() : null,
+      lastStagedAt: group.lastStagedAt != null ? new Date(group.lastStagedAt).toISOString() : null,
       lastWrittenAt: group.lastWrittenAt != null ? new Date(group.lastWrittenAt).toISOString() : null,
     })
   }

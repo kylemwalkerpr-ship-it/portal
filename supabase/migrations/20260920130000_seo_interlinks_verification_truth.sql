@@ -10,7 +10,8 @@
 -- could not distinguish executed authority from a planner guess.
 --
 -- This migration is ADDITIVE and IDEMPOTENT (re-runnable):
---   · adds the six nullable verification-truth/job-identity/attempt columns,
+--   · adds the seven nullable verification-truth/job-identity/staging/attempt
+--     columns,
 --   · constrains `verification_state` to the closed vocabulary,
 --   · constrains `status = 'applied'` to require the full proof contract,
 --   · adds the two read indexes the verification/report queries need,
@@ -32,6 +33,17 @@
 -- NOT require it: the minimum applied proof remains source_url + present +
 -- verified_at + evidence + applied_at.
 --
+-- `staged_at` (nullable timestamptz) is the durable STAGING/REVISION
+-- timestamp: it is written in the same planned-only update that stages a row
+-- (first source/job staging or a rebind to a new exact job) and is NEVER
+-- rewritten by an idempotent same-source/same-job no-op. It is not proof, is
+-- not part of the applied-proof CHECK, is never backfilled, and exists so the
+-- scheduled reconciler can decide whether a verified_at/attempt marker belongs
+-- to the CURRENT revision. Comparing against `updated_at` was structurally
+-- broken for cooldown purposes: the existing BEFORE UPDATE trigger always sets
+-- updated_at = now(), which is later than any app-written verdict timestamp,
+-- so a current verdict could never satisfy `verified_at >= updated_at`.
+--
 -- `verification_attempted_at` (nullable timestamptz) is the bounded-retry
 -- marker for attempts that did NOT finalize (deployment not observable yet, or
 -- an ok=true verdict without positive deployment-lineage proof). It carries no
@@ -45,6 +57,7 @@ alter table public.seo_interlinks
   add column if not exists verification_state text null,
   add column if not exists verified_at timestamptz null,
   add column if not exists verification_evidence jsonb null,
+  add column if not exists staged_at timestamptz null,
   add column if not exists verification_attempted_at timestamptz null;
 
 comment on column public.seo_interlinks.source_url is
@@ -57,6 +70,8 @@ comment on column public.seo_interlinks.verified_at is
   'When the verification verdict was produced. Required (with source_url, verification_state=present and verification_evidence) before status may be applied.';
 comment on column public.seo_interlinks.verification_evidence is
   'JSON proof for the verdict: source, target, proof kind (live_exact_href), observed href, source context and live HTTP observations.';
+comment on column public.seo_interlinks.staged_at is
+  'Durable staging/revision timestamp written in the same planned-only update that first stages the (source_url, source_job_id) revision or rebinds to a new exact job. Never rewritten by a same-job idempotent no-op, never backfilled, NOT a verification verdict or proof, and NOT part of the applied-proof constraint. The scheduled reconciler compares verified_at/verification_attempted_at against this revision timestamp (NOT updated_at, which the BEFORE UPDATE trigger always pushes to now()) so the cooldown reflects the current revision only.';
 comment on column public.seo_interlinks.verification_attempted_at is
   'When the scheduled reconciler last ATTEMPTED verification for this exact (source_url, source_job_id) planned revision without finalizing. Bounded-retry/cooldown marker only: it is NOT a verification verdict or proof, is never part of the applied-proof constraint, is never backfilled, and a non-ok attempt writes only this column (never verified_at/verification_state/verification_evidence).';
 

@@ -77,6 +77,7 @@ function staged(overrides: Partial<StagedInterlinkRow> = {}): StagedInterlinkRow
     sourceUrl: SOURCE_A,
     sourceJobId: JOB_A,
     verifiedAt: null,
+    stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
     updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
     ...overrides,
   }
@@ -173,13 +174,17 @@ describe('A) exact (source_url, source_job_id) identity is the verification subj
       join(process.cwd(), 'lib', 'seoFactory', 'interlinkReconciliation.ts'),
       'utf8',
     )
-    expect(source).toMatch(/select\('[^']*source_job_id[^']*'\)/)
-    expect(source).toMatch(/select\('[^']*verification_attempted_at[^']*'\)/)
+    expect(source).toMatch(/source_job_id/)
+    expect(source).toMatch(/verification_attempted_at/)
+    expect(source).toMatch(/staged_at/)
     expect(source).toMatch(/\.eq\('status', 'planned'\)/)
     expect(source).toMatch(/\.not\('source_url', 'is', null\)/)
     // Jobless historical rows are fenced in the query itself so they cannot
     // occupy (and starve) the bounded scan window.
     expect(source).toMatch(/\.not\('source_job_id', 'is', null\)/)
+    // M1: revision/cooldown membership is decided by the durable staged_at
+    // stamp, with updated_at only as the documented legacy fallback.
+    expect(source).toMatch(/group\.lastStagedAt \?\? group\.lastWrittenAt/)
   })
 })
 
@@ -356,8 +361,8 @@ describe('C2) ok=true is necessary but NOT sufficient — deployment lineage mus
 })
 
 describe('D) bounded, idempotent cadence', () => {
-  it('skips a source whose row was written inside the deployment-lag window', async () => {
-    const h = harness([staged({ updatedAt: new Date(NOW - 60 * 1000).toISOString() })])
+  it('skips a source whose current revision was staged inside the deployment-lag window', async () => {
+    const h = harness([staged({ stagedAt: new Date(NOW - 60 * 1000).toISOString() })])
 
     const summary = await reconcileStagedInterlinks(h.deps)
 
@@ -366,11 +371,22 @@ describe('D) bounded, idempotent cadence', () => {
     expect(summary.eligibleSources).toBe(0)
   })
 
+  it('falls back to updated_at for a legacy job-bound row with no staged_at stamp', async () => {
+    // Legacy (pre-staged_at) job-bound row: there is no revision stamp, so the
+    // documented fallback uses updated_at for the deployment-lag window.
+    const h = harness([staged({ stagedAt: null, updatedAt: new Date(NOW - 60 * 1000).toISOString() })])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).not.toHaveBeenCalled()
+    expect(summary.skippedYoung).toBe(1)
+  })
+
   it('skips a source verified inside the cooldown window (no daily re-hammering)', async () => {
     const h = harness([
       staged({
         verifiedAt: new Date(NOW - 2 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
       }),
     ])
 
@@ -380,11 +396,46 @@ describe('D) bounded, idempotent cadence', () => {
     expect(summary.skippedCooldown).toBe(1)
   })
 
+  it('a trigger-later updated_at cannot defeat the current-revision verdict cooldown (M1)', async () => {
+    // The row's BEFORE UPDATE trigger stamped updated_at AFTER the verdict
+    // was written (production always does). Comparing the verdict against
+    // updated_at made the cooldown structurally dead; the staged_at revision
+    // stamp is the authority.
+    const h = harness([
+      staged({
+        verifiedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 60 * 1000).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).not.toHaveBeenCalled()
+    expect(summary.skippedCooldown).toBe(1)
+    expect(summary.eligibleSources).toBe(0)
+  })
+
+  it('a trigger-later updated_at cannot defeat the current-revision attempt cooldown (M1)', async () => {
+    const h = harness([
+      staged({
+        attemptedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 60 * 1000).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).not.toHaveBeenCalled()
+    expect(summary.skippedAttemptCooldown).toBe(1)
+  })
+
   it('re-attempts a source whose last verdict is older than the cooldown', async () => {
     const h = harness([
       staged({
         verifiedAt: new Date(NOW - 30 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 30 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 30 * HOUR).toISOString(),
       }),
     ])
 
@@ -410,7 +461,7 @@ describe('D) bounded, idempotent cadence', () => {
   it('bounds the work per run and reports what is still eligible', async () => {
     const h = harness([
       staged({ id: 'a', sourceUrl: SOURCE_A }),
-      staged({ id: 'b', sourceUrl: SOURCE_B, updatedAt: new Date(NOW - 3 * HOUR).toISOString() }),
+      staged({ id: 'b', sourceUrl: SOURCE_B, stagedAt: new Date(NOW - 3 * HOUR).toISOString() }),
     ])
 
     const summary = await reconcileStagedInterlinks(h.deps, { maxSources: 1 })
@@ -421,12 +472,13 @@ describe('D) bounded, idempotent cadence', () => {
   })
 
   it('does not let a stale verification timestamp suppress a newer revision', async () => {
-    // The verdict belongs to an OLDER revision (verified 30h ago, written 2h
-    // ago: a newly rebound/re-staged job). It must not be suppressed.
+    // The verdict belongs to an OLDER revision (verified 30h ago, but the row
+    // was re-staged/rebound 2h ago → a fresh staged_at stamp). It must not be
+    // suppressed.
     const h = harness([
       staged({
         verifiedAt: new Date(NOW - 30 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
       }),
     ])
 
@@ -441,7 +493,7 @@ describe('D) bounded, idempotent cadence', () => {
     const h = harness([
       staged({
         attemptedAt: new Date(NOW - 2 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
       }),
     ])
 
@@ -456,7 +508,7 @@ describe('D) bounded, idempotent cadence', () => {
     const h = harness([
       staged({
         attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 30 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 30 * HOUR).toISOString(),
       }),
     ])
 
@@ -470,7 +522,7 @@ describe('D) bounded, idempotent cadence', () => {
     const h = harness([
       staged({
         attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
-        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 2 * HOUR).toISOString(),
       }),
     ])
 
@@ -485,13 +537,13 @@ describe('D) bounded, idempotent cadence', () => {
       staged({
         id: 'a',
         sourceUrl: SOURCE_A,
-        updatedAt: new Date(NOW - 40 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 40 * HOUR).toISOString(),
         attemptedAt: null,
       }),
       staged({
         id: 'b',
         sourceUrl: SOURCE_B,
-        updatedAt: new Date(NOW - 50 * HOUR).toISOString(),
+        stagedAt: new Date(NOW - 50 * HOUR).toISOString(),
         attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
       }),
     ]

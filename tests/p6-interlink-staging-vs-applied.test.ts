@@ -149,7 +149,14 @@ describe('E) exact job identity is staged with the source URL', () => {
     expect(result.staged).toBe(1)
     expect(db.updates).toHaveLength(1)
     const { patch, filters } = db.updates[0]
-    expect(patch).toEqual({ source_url: CANONICAL, source_job_id: SHIP_JOB })
+    // The durable revision stamp (staged_at) is written in the SAME
+    // planned-only update; it is not proof and never touches a verdict column.
+    expect(patch).toEqual({
+      source_url: CANONICAL,
+      source_job_id: SHIP_JOB,
+      staged_at: expect.any(String),
+    })
+    expect(Number.isFinite(Date.parse(String(patch.staged_at)))).toBe(true)
     expect(patch).not.toHaveProperty('status')
     expect(patch).not.toHaveProperty('applied_at')
     expect(patch).not.toHaveProperty('verification_state')
@@ -159,6 +166,7 @@ describe('E) exact job identity is staged with the source URL', () => {
     ])
     expect(db.rows[0].status).toBe('planned')
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+    expect(db.rows[0].staged_at).toBe(patch.staged_at)
   })
 
   it('legacy staging without a jobId records only source_url — never a guessed job', async () => {
@@ -193,19 +201,27 @@ describe('C) source identity and idempotency', () => {
     expect(result.staged).toBe(1)
     expect(result.rebounded).toBe(1)
     expect(db.updates).toHaveLength(1)
-    // Additive rebind ONLY: no status/applied/verdict column may move.
-    expect(db.updates[0].patch).toEqual({ source_job_id: SHIP_JOB })
+    // Additive rebind ONLY: no status/applied/verdict column may move, but the
+    // rebind IS a new revision and writes a fresh staged_at in the same update.
+    expect(db.updates[0].patch).toEqual({
+      source_job_id: SHIP_JOB,
+      staged_at: expect.any(String),
+    })
     expect(db.updates[0].filters).toEqual([
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
     ])
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+    expect(db.rows[0].staged_at).toBe(db.updates[0].patch.staged_at)
     expect(db.rows[0].status).toBe('planned')
     expect(db.rows[0].verification_state).toBeNull()
   })
 
   it('rebinds an older job identity to the new exact ship job (reship)', async () => {
-    const db = installDb([row({ source_url: CANONICAL, source_job_id: OTHER_JOB })])
+    const PREVIOUS_STAMP = '2026-09-19T00:00:00.000Z'
+    const db = installDb([
+      row({ source_url: CANONICAL, source_job_id: OTHER_JOB, staged_at: PREVIOUS_STAMP }),
+    ])
 
     const result = await stageEngineInterlinksForVerification({
       canonicalUrl: CANONICAL,
@@ -215,12 +231,22 @@ describe('C) source identity and idempotency', () => {
     })
 
     expect(result.rebounded).toBe(1)
-    expect(db.updates[0].patch).toEqual({ source_job_id: SHIP_JOB })
+    expect(db.updates[0].patch).toEqual({
+      source_job_id: SHIP_JOB,
+      staged_at: expect.any(String),
+    })
+    // A new revision must move the stamp forward (old verdicts/attempts become
+    // stale for cooldown purposes).
+    expect(db.updates[0].patch.staged_at).not.toBe(PREVIOUS_STAMP)
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+    expect(db.rows[0].staged_at).toBe(db.updates[0].patch.staged_at)
   })
 
   it('is an idempotent no-op when the exact same job is already staged', async () => {
-    const db = installDb([row({ source_url: CANONICAL, source_job_id: SHIP_JOB })])
+    const STAMP = '2026-09-20T00:00:00.000Z'
+    const db = installDb([
+      row({ source_url: CANONICAL, source_job_id: SHIP_JOB, staged_at: STAMP }),
+    ])
 
     const result = await stageEngineInterlinksForVerification({
       canonicalUrl: CANONICAL,
@@ -233,6 +259,8 @@ describe('C) source identity and idempotency', () => {
     expect(result.rebounded).toBeUndefined()
     expect(db.updates).toHaveLength(0)
     expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+    // The same-source/same-job no-op must NOT reset the revision stamp.
+    expect(db.rows[0].staged_at).toBe(STAMP)
   })
 
   it('a jobless caller NEVER clears or overwrites an existing source_job_id', async () => {
@@ -404,6 +432,82 @@ describe('D) staging DB-write observability (never a silent zero-op)', () => {
     expect(result.staged).toBe(0)
     expect(result.skipped).toBe(1)
     expect(result.failed).toBe(0)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('withholds staged_at (never invents it) when the additive column is unavailable', async () => {
+    // Partial pre-migration state: source_job_id exists (the P6 baseline was
+    // applied) but the newer staged_at column is not deployed yet. The write
+    // must not fail and must not fabricate a revision stamp — it retries
+    // without staged_at and reports the degraded state.
+    const writes: Array<Record<string, unknown>> = []
+    let writeIndex = 0
+    const client = {
+      from() {
+        let mode: 'select' | 'update' = 'select'
+        let patch: Record<string, unknown> = {}
+        const builder: Record<string, unknown> = {
+          select() {
+            return builder
+          },
+          eq() {
+            return builder
+          },
+          not() {
+            return builder
+          },
+          order() {
+            return builder
+          },
+          limit() {
+            return builder
+          },
+          update(next: Record<string, unknown>) {
+            mode = 'update'
+            patch = next
+            return builder
+          },
+          then(resolve: (value: unknown) => unknown) {
+            if (mode === 'update') {
+              writes.push(patch)
+              writeIndex += 1
+              return Promise.resolve(
+                writeIndex === 1
+                  ? {
+                      data: null,
+                      error: { message: "column seo_interlinks.staged_at does not exist" },
+                    }
+                  : { data: [{ id: 'row-1' }], error: null },
+              ).then(resolve)
+            }
+            return Promise.resolve({
+              data: [row({ source_url: null, source_job_id: null })],
+              error: null,
+            }).then(resolve)
+          },
+        }
+        return builder
+      },
+    }
+    createSupabaseAdminClientMock.mockReturnValue(client as never)
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(writes).toHaveLength(2)
+    expect(writes[0]).toEqual({
+      source_url: CANONICAL,
+      source_job_id: SHIP_JOB,
+      staged_at: expect.any(String),
+    })
+    expect(writes[1]).toEqual({ source_url: CANONICAL, source_job_id: SHIP_JOB })
+    expect(writes[1]).not.toHaveProperty('staged_at')
+    expect(result.warning).toMatch(/staged_at column unavailable/i)
     expect(result.error).toBeUndefined()
   })
 })

@@ -19,8 +19,11 @@
  *      candidate rows; the canonicalUrl is the only source identity.
  *      A RE-ship of the same canonical rebinds an already-staged planned row
  *      to the new exact ship job (null/different → rebind; same → idempotent
- *      no-op), while a jobless caller can never clear an existing
- *      source_job_id and a different durable source_url stays untouchable.
+ *      no-op that never resets the revision stamp), while a jobless caller can
+ *      never clear an existing source_job_id and a different durable source_url
+ *      stays untouchable. First staging and every rebind write the durable
+ *      nullable `staged_at` revision timestamp in the same planned-only update
+ *      (never when job identity / the column is unavailable).
  *
  *   2. FINALIZE (`finalizeStagedInterlinksForLiveSource`)
  *      Only after `verifyLiveUrl` has actually established ok=true. Staged
@@ -44,7 +47,11 @@
  *
  * Idempotent by construction: only `status = 'planned'` rows are ever
  * selected or updated, so a verified applied row can never be downgraded by a
- * transient fetch/verifier failure.
+ * transient fetch/verifier failure. Every job-bound verdict/applied write is a
+ * compare-and-set on the exact selected subject (id + planned + source_job_id +
+ * source_url), so a concurrent reship rebind to another job yields zero
+ * affected rows (counted skipped) instead of being overwritten by the old
+ * revision's verdict.
  *
  * Attempts that do NOT finalize (deployment not observable yet, or an ok=true
  * verdict without positive deployment-lineage proof) are bounded by the
@@ -461,6 +468,43 @@ export async function stageEngineInterlinksForVerification(
     // stays jobless (unresolved/manual) rather than failing on a column that
     // does not exist.
     const writeJobId = jobIdentityAvailable ? sourceJobId : null
+    // Durable STAGING/REVISION timestamp (M1). Written in the same planned-only
+    // update that first stages the revision or rebinds it to a new exact job,
+    // so the scheduled reconciler can tell whether a verdict/attempt timestamp
+    // belongs to the CURRENT revision without relying on `updated_at` (the
+    // BEFORE UPDATE trigger always pushes that to now(), which made the
+    // cooldown structurally dead). It is not proof, never part of the applied
+    // constraint, and is withheld entirely when the exact job identity (or the
+    // column itself) is unavailable — the revision identity cannot exist
+    // without its exact job, so the stamp must never be invented.
+    const stagedAt = writeJobId ? new Date().toISOString() : null
+    let stagedAtAvailable = Boolean(stagedAt)
+    const withStagedAt = (patch: Record<string, unknown>): Record<string, unknown> =>
+      stagedAt && stagedAtAvailable ? { ...patch, staged_at: stagedAt } : patch
+    /**
+     * Planned-row write with a narrow partial-migration fallback: if the
+     * additive `staged_at` column itself is not deployed (while source_job_id
+     * is), the write must not fail and must not invent a timestamp — it retries
+     * without the stamp and says so, exactly like the source_job_id fallback.
+     */
+    const writePlanned = async (
+      row: InterlinkDbRow,
+      patch: Record<string, unknown>,
+    ): Promise<PlannedRowWrite> => {
+      const attempt = await writePlannedRowPatch(supabase, row, patch)
+      if (!attempt.error || patch.staged_at === undefined || !/staged_at/i.test(attempt.error)) {
+        return attempt
+      }
+      stagedAtAvailable = false
+      const fallbackPatch = { ...patch }
+      delete fallbackPatch.staged_at
+      const retry = await writePlannedRowPatch(supabase, row, fallbackPatch)
+      if (!retry.error) {
+        const note = 'staged_at column unavailable (P6 migration not fully applied yet); revision stamp withheld'
+        warning = warning ? `${warning} | ${note}` : note
+      }
+      return retry
+    }
     let staged = 0
     let rebounded = 0
     let skipped = 0
@@ -489,7 +533,11 @@ export async function stageEngineInterlinksForVerification(
         //   · invalid job id      → withheld above (normalizeSourceJobId).
         const existingJobId = String(row.source_job_id || '').trim()
         if (writeJobId && existingJobId !== writeJobId) {
-          const rebind = await writePlannedRowPatch(supabase, row, { source_job_id: writeJobId })
+          // A rebind to a new exact job IS a new revision: it writes the new
+          // job id AND a fresh staged_at in the same update. A same-job call
+          // never reaches this branch (idempotent no-op — the stamp is not
+          // reset).
+          const rebind = await writePlanned(row, withStagedAt({ source_job_id: writeJobId }))
           if (rebind.error) {
             failed += 1
             lastWriteError = rebind.error
@@ -508,10 +556,13 @@ export async function stageEngineInterlinksForVerification(
       // never guessed from the slug or canonical; when it is absent the row is
       // still staged for legacy compatibility but carries no job identity, so
       // the scheduled reconciler refuses to auto-finalize it.
-      const write = await writePlannedRowPatch(supabase, row, {
-        source_url: sourceUrl,
-        ...(writeJobId ? { source_job_id: writeJobId } : {}),
-      })
+      const write = await writePlanned(
+        row,
+        withStagedAt({
+          source_url: sourceUrl,
+          ...(writeJobId ? { source_job_id: writeJobId } : {}),
+        }),
+      )
       if (write.error) {
         failed += 1
         lastWriteError = write.error
@@ -558,8 +609,10 @@ export interface FinalizeStagedInterlinksInput {
   /**
    * When present, finalization is job-bound: only rows staged by this exact
    * content_jobs.id are eligible. The scheduled reconciler always passes the
-   * exact staged job id; legacy/admin callers without one keep the previous
-   * source-url-only behavior.
+   * exact staged job id; legacy/admin callers that omit it keep the previous
+   * source-url-only behavior. A nonblank id that is NOT an exact UUID fails
+   * closed with an explicit error — it is never silently downgraded to the
+   * legacy source-url-only path.
    */
   sourceJobId?: string | null
   /** Optional already-fetched live source HTML (one bounded refetch otherwise). */
@@ -629,9 +682,25 @@ export async function finalizeStagedInterlinksForLiveSource(
 ): Promise<FinalizeStagedInterlinksResult> {
   const rawSource = String(input.canonicalUrl || '').trim()
   const sourceUrl = normalizeInterlinkProofUrl(rawSource)
-  const sourceJobId = typeof input.sourceJobId === 'string' ? input.sourceJobId.trim() : ''
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return emptyFinalize(null, 'canonicalUrl must be an absolute http(s) URL')
+  }
+  // L1: the finalizer is the authority for job identity. A nonblank id that is
+  // not an exact content_jobs UUID must fail closed — silently degrading it to
+  // source-url-only legacy finalization would let a malformed admin/body jobId
+  // finalize rows it has no identity for. An OMITTED id keeps the documented
+  // legacy source-url-only behavior (there is no identity to bind to).
+  const rawJobId = input.sourceJobId == null ? '' : String(input.sourceJobId).trim()
+  let sourceJobId = ''
+  if (rawJobId) {
+    const normalizedJobId = normalizeSourceJobId(rawJobId)
+    if (!normalizedJobId) {
+      return emptyFinalize(
+        sourceUrl,
+        `sourceJobId must be an exact content_jobs UUID (got "${rawJobId.slice(0, 64)}")`,
+      )
+    }
+    sourceJobId = normalizedJobId
   }
   try {
     const supabase = createSupabaseAdminClient()
@@ -658,6 +727,17 @@ export async function finalizeStagedInterlinksForLiveSource(
         : await fetchLiveSource(sourceUrl)
 
     const now = new Date().toISOString()
+    // M2: when finalization is job-bound, EVERY verdict/applied write is a
+    // compare-and-set on the EXACT selected subject (source_job_id + the
+    // row's exact source_url) in addition to id + planned. A concurrent
+    // reship rebind to another job must yield zero affected rows (counted
+    // skipped) instead of stamping the old job back / applying over the new
+    // revision. Jobless legacy finalization keeps the documented
+    // source-url-only behavior.
+    const fenceFor = (row: InterlinkDbRow): PlannedRowFence | undefined =>
+      sourceJobId
+        ? { sourceJobId, sourceUrl: String(row.source_url || '').trim() || sourceUrl }
+        : undefined
 
     if (source.html == null) {
       const state: InterlinkVerificationState =
@@ -678,7 +758,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             error: source.error,
             verifiedAt: now,
           },
-        })
+        }, fenceFor(row))
         tallyWrite(outcome, write)
       }
       return {
@@ -743,6 +823,7 @@ export async function finalizeStagedInterlinksForLiveSource(
     for (const row of rows) {
       const target = String(row.target_url || '')
       const observation = targetResults.get(target)
+      const writeFence = fenceFor(row)
 
       if (!observation) {
         tally(await writeVerdict(supabase, row, {
@@ -756,7 +837,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             error: targetVerifierError || 'target liveness was not observed',
             verifiedAt: now,
           },
-        }), 'unverifiable')
+        }, writeFence), 'unverifiable')
         continue
       }
       if (!observation.ok) {
@@ -773,7 +854,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             targetHttpStatus: observation.status,
             verifiedAt: now,
           },
-        }), state === 'target_not_live' ? 'targetNotLive' : 'unverifiable')
+        }, writeFence), state === 'target_not_live' ? 'targetNotLive' : 'unverifiable')
         continue
       }
 
@@ -794,7 +875,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             anchorsExamined: extractAnchorHrefs(html).length,
             verifiedAt: now,
           },
-        }), 'absent')
+        }, writeFence), 'absent')
         continue
       }
 
@@ -817,7 +898,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             targetHttpStatus: observation.status,
             verifiedAt: now,
           },
-        })
+        }, writeFence)
       if (applied.error) {
         result.dbErrors += 1
         if (writeErrors.length < 3) writeErrors.push(applied.error)
@@ -910,6 +991,17 @@ interface PlannedRowWrite {
 }
 
 /**
+ * Optional compare-and-set subject fence. When present, the planned-only
+ * update must additionally match the EXACT subject (job identity + selected
+ * source_url) or it affects zero rows — so a concurrent rebind/reship can
+ * never be overwritten by a verdict/applied write aimed at the old revision.
+ */
+interface PlannedRowFence {
+  sourceJobId?: string
+  sourceUrl?: string
+}
+
+/**
  * Guarded single-row write: only `status = 'planned'` rows can ever be
  * touched, and the REAL affected-row count is returned so a zero-match
  * concurrency race is never counted as a write. A DB error is returned
@@ -919,13 +1011,16 @@ async function writePlannedRowPatch(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   row: InterlinkDbRow,
   patch: Record<string, unknown>,
+  fence?: PlannedRowFence,
 ): Promise<PlannedRowWrite> {
-  const { data, error } = (await supabase
+  let query = supabase
     .from('seo_interlinks')
     .update(patch)
     .eq('id', row.id)
     .eq('status', 'planned')
-    .select('id')) as unknown as {
+  if (fence?.sourceJobId) query = query.eq('source_job_id', fence.sourceJobId)
+  if (fence?.sourceUrl) query = query.eq('source_url', fence.sourceUrl)
+  const { data, error } = (await query.select('id')) as unknown as {
     data: Array<Record<string, unknown>> | null
     error: { message?: string } | null
   }
@@ -958,11 +1053,12 @@ async function writeVerdict(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   row: InterlinkDbRow,
   verdict: VerdictInput,
+  fence?: PlannedRowFence,
 ): Promise<PlannedRowWrite> {
   return writePlannedRowPatch(supabase, row, {
     source_url: String(row.source_url || verdict.sourceUrl),
     verification_state: verdict.state,
     verified_at: verdict.now,
     verification_evidence: verdict.evidence,
-  })
+  }, fence)
 }

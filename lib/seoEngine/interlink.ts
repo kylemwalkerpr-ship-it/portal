@@ -455,7 +455,7 @@ export async function persistInterlinkPlan(
     // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
     // actor/timestamps, and the P6 verification/job truth (source_url,
     // source_job_id, verification_state, verified_at, verification_evidence,
-    // verification_attempted_at)
+    // verification_attempted_at, staged_at)
     // — belongs to the ship loop, the live verifier and the compliance gate,
     // so those columns are deliberately omitted from the payload. With
     // `defaultToNull: false`
