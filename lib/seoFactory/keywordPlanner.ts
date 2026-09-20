@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { CATEGORIES } from '@/lib/categories'
-import { isQualifiedGscDemandQuery } from './queryNoise'
+import { isQualifiedGscDemandQuery, isSelfBrandQuery } from './queryNoise'
 
 /**
  * Marketplace category demand signal — when the marketplace has active
@@ -158,8 +158,26 @@ function inferRegion(term: string): string {
   return 'US'
 }
 
+/**
+ * Brand / navigational self-search detection for the planner board.
+ *
+ * Delegates to the authoritative bounded self-brand predicate in
+ * `queryNoise.ts` so the planner's explicit `includeBrand` opt-in and the
+ * default junk boundary agree by construction: exact brand tokens anywhere
+ * (`yousafe`, `mycaseworks`, `yousafeconsultancy`) AND the bounded spaced
+ * self-brand forms (`you safe consultancy login`, `you safe portal wales`).
+ * The previous local `/yousafe|mycaseworks|yousafeconsultancy/i` test missed
+ * the spaced forms, so `includeBrand: true` silently admitted nothing for real
+ * GSC brand rows like `you safe consultancy login` (junk-class, therefore
+ * excluded by the qualified boundary and not re-admitted by the opt-in).
+ *
+ * Deliberately NOT a loose `/you\s?safe/` match: safety/mission questions that
+ * merely contain the words ("are you safe to travel on a student visa",
+ * "is warwick safe for international students", "you safe phone number for
+ * international students") are real demand, never brand.
+ */
 function brandTerm(term: string): boolean {
-  return /yousafe|mycaseworks|yousafeconsultancy/i.test(term)
+  return isSelfBrandQuery(term)
 }
 
 function demandScore(q: {
@@ -503,9 +521,15 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
     // international students") and on-mission deep-tail noise. Both stay
     // observable in raw GSC measurement; neither may become a mission.
     //
-    // The explicit `includeBrand` opt-in is preserved verbatim: brand terms are
-    // junk-class by design, so a caller that deliberately asks for them still
-    // gets them.
+    // The explicit `includeBrand` opt-in is preserved, but keyed on the SHARED
+    // bounded self-brand predicate: brand terms are junk-class by design, so a
+    // caller that deliberately asks for them still gets them — compact
+    // (`mycaseworks login`) and spaced (`you safe consultancy login`) forms
+    // alike. The opt-in is therefore brand-ONLY by construction: a non-brand
+    // term (including an off-mission campus-safety question such as
+    // "is warwick safe for international students" or an on-mission deep-tail
+    // row) cannot enter the board by asking for brand rows — it must still
+    // clear the qualified boundary above.
     const brandOptIn = includeBrand && brandTerm(q.term)
     const qualified = isQualifiedGscDemandQuery(q.term, {
       impressions: q.impressions,

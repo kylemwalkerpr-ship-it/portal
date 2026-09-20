@@ -16,6 +16,7 @@ import {
   isJunkQuery,
   isOffMissionDemandQuery,
   isQualifiedGscDemandQuery,
+  isSelfBrandQuery,
 } from '@/lib/seoFactory/queryNoise'
 
 jest.mock('@/lib/gscAuth', () => ({ getGscAccess: jest.fn() }))
@@ -92,6 +93,58 @@ const BRAND_TERM = {
   clicks: 0,
   ctr: 0,
   position: 5,
+}
+
+/**
+ * The estate's own navigational self-searches, compact and spaced. Both shapes
+ * are junk-class by default; the `includeBrand` opt-in exists to re-admit them,
+ * so it must read the SAME bounded predicate the junk boundary reads.
+ */
+const COMPACT_BRAND_TERMS = ['yousafe', 'yousafe login', 'mycaseworks', 'mycaseworks login', 'yousafeconsultancy']
+const SPACED_BRAND_TERMS = [
+  'you safe',
+  'You Safe?',
+  'you safe login',
+  'you safe consultancy login',
+  'you safe consultancy london',
+  'you safe portal wales',
+  'you safe reviews 2024',
+]
+
+/**
+ * Real safety / mission demand that merely CONTAINS the words "you safe" or
+ * "safe" — never self-brand. A loose `/you\s?safe/` fix would junk these.
+ */
+const NON_BRAND_SAFETY_TERMS = [
+  'are you safe to travel on a student visa',
+  'you safe to travel on a student visa',
+  'is warwick safe for international students',
+  'you safe phone number for international students',
+]
+
+/** Compact brand row for the board-level opt-in test. */
+const COMPACT_BRAND_ROW = {
+  term: 'mycaseworks login',
+  impressions: 22,
+  clicks: 0,
+  ctr: 0,
+  position: 4,
+}
+/** Qualified on-mission safety question — admitted on merit, never by brand. */
+const SAFETY_QUESTION_ROW = {
+  term: 'are you safe to travel on a student visa',
+  impressions: 64,
+  clicks: 0,
+  ctr: 0,
+  position: 12,
+}
+/** Off-mission campus place-safety question — non-brand, must stay refused. */
+const PLACE_SAFETY_QUESTION_ROW = {
+  term: 'is warwick safe for international students',
+  impressions: 92,
+  clicks: 0,
+  ctr: 0,
+  position: 9,
 }
 
 const ROWS = [
@@ -209,5 +262,84 @@ describe('P5 keyword-planner boundary — board and plan admission', () => {
     expect(withBrand.board.map((b) => b.term)).toContain(BRAND_TERM.term)
     // The opt-in is brand-only: off-mission demand is still refused.
     expect(withBrand.board.map((b) => b.term)).not.toContain(OFF_MISSION_HOUSING.term)
+  })
+})
+
+describe('P5 shared self-brand predicate — bounded brand boundary', () => {
+  it('recognizes compact and spaced estate self-searches as the same brand fact', () => {
+    for (const term of [...COMPACT_BRAND_TERMS, ...SPACED_BRAND_TERMS]) {
+      expect(isSelfBrandQuery(term)).toBe(true)
+      // The default boundary reads the SAME predicate, so `includeBrand:false`
+      // and the opt-in cannot drift apart again.
+      expect(isJunkQuery(term)).toBe(true)
+      expect(
+        isQualifiedGscDemandQuery(term, { impressions: 30, position: 5, clicks: 0 }),
+      ).toBe(false)
+    }
+  })
+
+  it('never brands real safety/mission questions that merely contain the words', () => {
+    for (const term of NON_BRAND_SAFETY_TERMS) {
+      expect(isSelfBrandQuery(term)).toBe(false)
+    }
+    // Non-brand controls keep their existing classification: a qualified
+    // on-mission safety question, and an off-mission place-safety question.
+    expect(
+      isQualifiedGscDemandQuery('are you safe to travel on a student visa', {
+        impressions: 64,
+        position: 12,
+        clicks: 0,
+      }),
+    ).toBe(true)
+    expect(isOffMissionDemandQuery('is warwick safe for international students')).toBe(true)
+    expect(isSelfBrandQuery('is warwick safe for international students')).toBe(false)
+  })
+})
+
+describe('P5 keyword-planner boundary — brand opt-in is brand-only', () => {
+  it('admits compact AND spaced self-brand forms through includeBrand without loosening non-brand rules', async () => {
+    mockSnapshot.mockResolvedValue({
+      topQueries: [
+        BRAND_TERM,
+        COMPACT_BRAND_ROW,
+        SAFETY_QUESTION_ROW,
+        PLACE_SAFETY_QUESTION_ROW,
+        ON_MISSION_DEEP_TAIL,
+      ].map((row) => ({ ...row })),
+      opportunities: {},
+      topPages: [],
+    })
+
+    const withoutBrand = await buildKeywordPlan({ minImpressions: 5, planLimit: 8 })
+    const defaultTerms = withoutBrand.board.map((b) => b.term)
+    expect(defaultTerms).not.toContain(BRAND_TERM.term)
+    expect(defaultTerms).not.toContain(COMPACT_BRAND_ROW.term)
+    // The non-brand safety question is admitted on MERIT (qualified demand),
+    // and the off-mission place-safety question stays refused.
+    expect(defaultTerms).toContain(SAFETY_QUESTION_ROW.term)
+    expect(defaultTerms).not.toContain(PLACE_SAFETY_QUESTION_ROW.term)
+
+    const withBrand = await buildKeywordPlan({ minImpressions: 5, planLimit: 8, includeBrand: true })
+    const brandBoardTerms = withBrand.board.map((b) => b.term)
+    expect(brandBoardTerms).toContain(BRAND_TERM.term)
+    expect(brandBoardTerms).toContain(COMPACT_BRAND_ROW.term)
+
+    // The opt-in is brand-ONLY by construction: every term it newly admits is
+    // self-brand, and no non-brand rule is bypassed for anything else.
+    const added = brandBoardTerms.filter((term) => !defaultTerms.includes(term))
+    expect(added.length).toBeGreaterThan(0)
+    for (const term of added) expect(isSelfBrandQuery(term)).toBe(true)
+    expect(brandBoardTerms).not.toContain(PLACE_SAFETY_QUESTION_ROW.term)
+    expect(brandBoardTerms).not.toContain(ON_MISSION_DEEP_TAIL.term)
+    // The brand opt-in never opens the executable plan to off-mission or
+    // deep-tail demand.
+    for (const item of withBrand.plan) {
+      expect([
+        OFF_MISSION_HOUSING.term,
+        OFF_MISSION_LIFESTYLE.term,
+        ON_MISSION_DEEP_TAIL.term,
+        PLACE_SAFETY_QUESTION_ROW.term,
+      ]).not.toContain(item.term)
+    }
   })
 })

@@ -86,12 +86,38 @@ function isSpacedSelfBrandTerm(term: string): boolean {
 }
 
 /**
- * Shared self-brand junk boundary for the query and topic guards, so the brand
- * rule cannot drift between the GSC read/action surfaces and the content-job
- * backstop.
+ * The estate's own navigational self-search as a standalone FACT, shared by
+ * every brand-aware caller: exact brand tokens anywhere (`yousafe`,
+ * `mycaseworks`, `yousafeconsultancy`) OR the bounded spaced self-brand rule
+ * (`you safe`, `you safe consultancy login`, `you safe portal wales`,
+ * `you safe reviews 2024`).
+ *
+ * This is the brand half of the junk boundary (`isJunkQuery` / `isJunkTopic`
+ * read it through the alias below), and it is also the predicate the keyword
+ * planner's explicit `includeBrand` opt-in uses to re-admit the branded
+ * self-searches that boundary excludes. One implementation, so the opt-in can
+ * never disagree with the default boundary — the drift that let a local
+ * compact-only `/yousafe|…/` regex miss `you safe consultancy login`.
+ *
+ * Bounded by design: ordinary prose that merely contains or starts with the
+ * words ("are you safe to travel on a student visa", "is warwick safe for
+ * international students", "you safe phone number for international
+ * students") is real search demand, never self-brand.
+ */
+export function isSelfBrandQuery(term: string): boolean {
+  const t = sanitizeDemandTerm(term)
+  if (!t) return false
+  return BRAND_RE.test(t) || isSpacedSelfBrandTerm(t)
+}
+
+/**
+ * Internal alias — the brand half of the junk boundary. Both `isJunkQuery` and
+ * `isJunkTopic` read brand-ness through the one exported predicate above, so
+ * the junk boundary, the content-job backstop and any brand opt-in can never
+ * disagree about what "self-brand" means.
  */
 function isBrandJunkTerm(term: string): boolean {
-  return BRAND_RE.test(term) || isSpacedSelfBrandTerm(term)
+  return isSelfBrandQuery(term)
 }
 
 /** Pure numeric pastes (order numbers, user IDs) — not a search phrase. */
