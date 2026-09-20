@@ -502,3 +502,44 @@ This section records the P3 ownership contract, live owner ratification, and loc
 - Local enforcement evidence is complete: only confirmed, allowed-action, non-generic owners can authorize authoring/publication; mapped build/supply/family rows remain fail-closed.
 - The three P3 matrix rows remain **IN_PROGRESS**, not PASS, until this exact Portal enforcement candidate is merged to `main` and the exact-main deployment succeeds.
 - P4+ remain pending and broad net-new expansion remains frozen until the later P13 expansion gate.
+
+
+## 2026-09-20 — P3 production acceptance — FINAL P3 closure
+
+This section supersedes the pre-deploy P3 acceptance entry. It records the exact reviewed Portal head, merge, and exact-main production deployment that close the three current P3 matrix rows.
+
+### Release chain
+
+- Source-of-truth registry ratification merged through `yousafe-seo-strategies` PR #1 as `dad9e2251a36422e159a834c927d739afadb0b58`.
+- Portal implementation PR #248 (`feat(seo): enforce P3 intent ownership authority`) exact reviewed head `9035d97091d0edd28d0c16d1cabc5781eb82f8bd` passed `Content Studio Review` run #153 (id `35496000625`) and PR-context `Deploy YouSafe Portal` run #2944 (id `35496000575`). The PR-context deploy workflow passed TypeScript, full unit tests, Next/OpenNext build, static-cache population, and SEO audit; production-only deploy/secrets/smoke steps were correctly skipped in PR context.
+- PR #248 merged cleanly to `main` as `2aa6a67c5cd7d59c4f2cf7bd354452cf99441874`.
+- Exact-main `Deploy YouSafe Portal` run #2945 (id `35496234655`, event `push`, head SHA `2aa6a67c5cd7d59c4f2cf7bd354452cf99441874`) completed **SUCCESS**.
+- Main run #2945 passed checkout/install, TypeScript, unit tests, Cloudflare credential verification, Next/OpenNext production build, static incremental-cache population, SEO audit, ephemeral Worker-secrets preparation, AI-vault sync, Cloudflare deployment, ephemeral-secret cleanup, Worker-secret health verification, and the post-deploy studio/build-freshness smoke test.
+
+### Final ownership state
+
+- Both checked-in ownership registry copies are byte-identical at **76 rows**; every strategic row is mapped/confirmed.
+- Mapping coverage is **76/76 = 100%**, exceeding the ≥95% P3 threshold.
+- Mapping does not equal CREATE permission. Three mapped rows retain `action=build` and two retain `action=supply_first`; all five remain non-authoritative under the shared predicate.
+- Row 39 is a confirmed university-family namespace but its generic `/universities/` root cannot authorize authoring; a concrete university leaf must resolve first.
+- Row 65 reserves a future UK dependent-child owner whose production URL is currently 404; `action=build` keeps it frozen until the leaf exists and is separately ratified.
+- Marketplace supply proof before ratification returned **4 F-1-specific active gigs** and **23 study-permit gigs**; rows 40–41 are therefore mapped but remain `supply_first` and non-authoritative.
+- University dual-graph ownership was reconciled to indexed regional owners for Auburn, Missouri, Kansas State, Utah, American University, King’s College London, and Creighton; Legal housing/university satellites remain supporting/noindex or redirecting surfaces where applicable.
+- The generic apex `/blog/` mapping for the F-1 requirements intent was replaced by the specific live self-canonical F-1 Requirements 2026 article.
+
+### Enforcement and verification
+
+- `isAuthoritativeOwnershipRow` is the shared authority boundary: `status=confirmed`, action in `keep | expand | merge`, HTTPS known-estate host, and non-generic owner URL.
+- Generic roots fail closed, including `/`, country roots, `/guide/`, `/blog/`, `/articles/`, `/universities/`, `/from/`, and category roots.
+- Broad-create/publication assertions, Content Studio contract binding, planner/auto-run operator truth, and direct publication/merge paths consume the same boundary. P0 exact-live owner proof and P13 broad-create unlock semantics remain intact.
+- Ratified focused acceptance: **23 suites / 259 tests PASS**; `npx --no-install tsc --noEmit` PASS; `git diff --check` PASS.
+- Earlier integrated full local repository gate: **439 suites PASS / 2 skipped; 4,668 tests PASS / 4 skipped**, exit 0.
+- The exact PR head subsequently passed GitHub’s full unit-test and Next/OpenNext build gates, and the exact merged main SHA passed the real production Cloudflare deploy plus Worker-secret health and smoke.
+
+### Result
+
+- `100% strategic intents have one owner` → **PASS**.
+- `≥95% active priority intents mapped` → **PASS** at 100%.
+- `CREATE is blocked without owner resolution` → **PASS** in production.
+- **P3 is closed.**
+- Broad net-new CREATE remains frozen until P13. P4 is the next parity phase; no P4 work is implied by this closure.
