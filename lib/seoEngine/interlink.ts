@@ -263,13 +263,39 @@ export async function loadEngineInterlinksForCell(
 ): Promise<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>> {
   try {
     const supabase = createSupabaseAdminClient()
-    const { data } = await supabase
-      .from('seo_interlinks')
-      .select('target_url,target_host,anchor_text,reason,status,verification_state')
-      .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
-      .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
-      .order('score', { ascending: false })
-      .limit(limit)
+    const readCell = (columns: string) =>
+      supabase
+        .from('seo_interlinks')
+        .select(columns)
+        .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
+        .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
+        .order('score', { ascending: false })
+        .limit(limit)
+    let { data, error } = await readCell(
+      'target_url,target_host,anchor_text,reason,status,verification_state',
+    )
+    // Pre-migration observability: the P6 `verification_state` column may not
+    // be deployed yet. That is NOT "zero candidates" — retry the legacy select
+    // without it and treat every verdict as unknown, with an explicit warning.
+    const message = String(error?.message || '')
+    if (error && /verification_state|schema cache|does not exist|column .* does not exist/i.test(message)) {
+      console.warn(
+        '[seoEngine/interlink] verification_state unavailable (P6 migration not applied yet) — retrying the legacy select; verdicts treated as unknown:',
+        message,
+      )
+      const legacy = await readCell('target_url,target_host,anchor_text,reason,status')
+      data = legacy.data
+      error = legacy.error
+    }
+    // Any other DB failure fails closed AND stays observable: a permission /
+    // RLS / network error must never look like an empty (zero-candidate) cell.
+    if (error) {
+      console.warn(
+        '[seoEngine/interlink] loadEngineInterlinksForCell failed — no interlink suggestion is offered (fail closed):',
+        String(error.message || error),
+      )
+      return []
+    }
     const rows = (data as Array<Record<string, unknown>>) || []
     // Defence-in-depth: even if a caller's query ever stops filtering, an
     // ineligible lifecycle row — or a row whose durable verification verdict
@@ -284,7 +310,11 @@ export async function loadEngineInterlinksForCell(
         site: String(r.target_host || ''),
         matchedOn: [String(r.reason || 'engine_interlink')],
       }))
-  } catch {
+  } catch (error) {
+    console.warn(
+      '[seoEngine/interlink] loadEngineInterlinksForCell threw — no interlink suggestion is offered (fail closed):',
+      error instanceof Error ? error.message : error,
+    )
     return []
   }
 }
@@ -424,7 +454,8 @@ export async function persistInterlinkPlan(
     // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
     // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
     // actor/timestamps, and the P6 verification/job truth (source_url,
-    // source_job_id, verification_state, verified_at, verification_evidence)
+    // source_job_id, verification_state, verified_at, verification_evidence,
+    // verification_attempted_at)
     // — belongs to the ship loop, the live verifier and the compliance gate,
     // so those columns are deliberately omitted from the payload. With
     // `defaultToNull: false`

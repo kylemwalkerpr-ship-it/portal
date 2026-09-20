@@ -17,7 +17,7 @@
 export type P6FakeRow = Record<string, unknown>
 
 export interface P6CapturedFilter {
-  op: 'eq' | 'in'
+  op: 'eq' | 'in' | 'not_is_null'
   column: string
   value: unknown
 }
@@ -47,6 +47,7 @@ export const SEO_INTERLINK_DEFAULTS: P6FakeRow = {
   verification_state: null,
   verified_at: null,
   verification_evidence: null,
+  verification_attempted_at: null,
   gate_state: null,
   gate_reason: null,
   gate_actor: null,
@@ -56,6 +57,7 @@ export const SEO_INTERLINK_DEFAULTS: P6FakeRow = {
 function matches(filter: P6CapturedFilter, row: P6FakeRow): boolean {
   const value = row[filter.column]
   if (filter.op === 'eq') return value === filter.value
+  if (filter.op === 'not_is_null') return value !== null && value !== undefined
   return Array.isArray(filter.value) && (filter.value as unknown[]).includes(value)
 }
 
@@ -84,6 +86,11 @@ export function createP6FakeDb(seed: P6FakeRow[] = []) {
         },
         in(column: string, value: unknown) {
           filters.push({ op: 'in', column, value })
+          return builder
+        },
+        not(column: string, operator: string) {
+          // Only `.not(col, 'is', null)` is used by the production loaders.
+          filters.push({ op: 'not_is_null', column, value: operator })
           return builder
         },
         order() {

@@ -403,20 +403,50 @@ export async function* runSeoFactoryPipelineStream(
       primaryKeyword,
       contentType,
     })
-    if (providerAuthors.links.length) {
-      const seen = new Set(radarInterlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean))
-      for (const link of providerAuthors.links) {
-        const key = link.url.replace(/\/+$/, '').toLowerCase()
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        radarInterlinks.push({ label: link.label, url: link.url, matchedOn: ['ymyl-marketplace'] })
+    // Provider/profile/gig marketplace citations are automatic links too. The
+    // generic estate helper deliberately exempts market.yousafeconsultancy.com
+    // provider URLs from its sitemap-coverage check, so that exemption is NOT
+    // treated as proof: every provider URL is verified through the
+    // repository's actual HTTP liveness authority before it can enter the
+    // prompt. Dead / unverifiable links are withheld (never replaced), while
+    // the author citation metadata (name, credential, role) is preserved.
+    let citedProviders = providerAuthors.cited
+    {
+      const { pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } = await import('./interlinkInjection')
+      const providerPruned = await pruneProviderAuthorLinks(
+        providerAuthors.links,
+        providerAuthors.cited,
+        (urls) => verifyMarketplaceServiceUrlsLive(urls),
+      )
+      citedProviders = providerPruned.cited
+      if (!providerPruned.ok) {
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: `Withheld ${providerPruned.withheld} marketplace citation link(s): live verification failed — author citation kept, no unverified link injected`,
+        }
+      } else if (providerPruned.withheld > 0) {
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: `Withheld ${providerPruned.withheld} marketplace citation link(s) that did not verify live — author citation kept`,
+        }
       }
-      yield {
-        type: 'progress',
-        stage: 'brief',
-        message: providerAuthors.author
-          ? `Citing ${providerAuthors.author.name} (${providerAuthors.author.credential}) from the marketplace`
-          : `Attached ${providerAuthors.links.length} marketplace service link(s)`,
+      if (providerPruned.links.length) {
+        const seen = new Set(radarInterlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean))
+        for (const link of providerPruned.links) {
+          const key = link.url.replace(/\/+$/, '').toLowerCase()
+          if (!key || seen.has(key)) continue
+          seen.add(key)
+          radarInterlinks.push({ label: link.label, url: link.url, matchedOn: ['ymyl-marketplace'] })
+        }
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: providerAuthors.author
+            ? `Citing ${providerAuthors.author.name} (${providerAuthors.author.credential}) from the marketplace`
+            : `Attached ${providerPruned.links.length} live marketplace service link(s)`,
+        }
       }
     }
     const autopilotBlock = [
@@ -506,7 +536,7 @@ export async function* runSeoFactoryPipelineStream(
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
       spec: contentSpec ?? undefined,
-      citedProviders: providerAuthors.cited,
+      citedProviders,
     })
 
     let content = input.resumeContent?.trim() || ''
@@ -1828,6 +1858,12 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           audit,
           dryRun: Boolean(input.dryRun),
+          // EXACT ship job identity: the early realtime content_jobs row this
+          // stream created (or the caller's existing row). Never a synthetic
+          // `plan-*` id — a guessed job id would poison the job-bound staging/
+          // verification contract. No early row = no jobId (jobless staging,
+          // which the scheduled reconciler never auto-finalizes).
+          ...(earlyJobId ? { jobId: earlyJobId } : {}),
           requiredShortKeywords,
           requiredLongTailKeywords,
           shortKeywordTerms,

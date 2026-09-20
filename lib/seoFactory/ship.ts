@@ -45,7 +45,10 @@ import {
 } from '@/lib/githubContents'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
-import { stageEngineInterlinksForVerification } from './interlinkVerification'
+import {
+  stageEngineInterlinksForVerification,
+  type StageEngineInterlinksResult,
+} from './interlinkVerification'
 import { stripNoIndex } from './siteHealthFixes'
 import { publicPathFromRepoFile, sitemapPathForShippedFile, upsertStudioSitemapEntry } from './siteHealth'
 
@@ -143,6 +146,63 @@ export interface ShipResult {
    *  (e.g. keyword_backfill, cannibal_differentiation_note). Lets the studio
    *  ship dialog and E2E see what mechanically changed before gates ran. */
   repairsApplied?: string[]
+  /**
+   * Durable interlink staging summary for this ship (P6). Additive/optional:
+   * a staging failure NEVER fails a successful content ship, but it must be
+   * observable — `failed > 0`, `error` or `warning` distinguishes a degraded
+   * staging write (permission/RLS/network/missing migration column) from a
+   * genuine zero-candidate no-op.
+   */
+  interlinkStaging?: InterlinkStagingSummary
+}
+
+export interface InterlinkStagingSummary {
+  staged: number
+  candidates: number
+  skipped: number
+  failed: number
+  /** Planned rows rebound to the current exact ship job id (reship). */
+  rebounded?: number
+  sourceUrl: string | null
+  warning?: string
+  error?: string
+}
+
+function interlinkStagingSummary(result: StageEngineInterlinksResult): InterlinkStagingSummary {
+  return {
+    staged: result.staged,
+    candidates: result.candidates,
+    skipped: result.skipped,
+    failed: result.failed,
+    sourceUrl: result.sourceUrl,
+    ...(result.rebounded ? { rebounded: result.rebounded } : {}),
+    ...(result.warning ? { warning: result.warning } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  }
+}
+
+/**
+ * Surface a degraded interlink staging result WITHOUT turning a successful
+ * content ship into a failure. A missing migration column / permission / RLS
+ * / network error must never look identical to a zero-candidate no-op.
+ */
+function observeInterlinkStaging(
+  shipPath: 'direct_main' | 'pr_merge',
+  summary: InterlinkStagingSummary,
+): void {
+  if (summary.failed > 0 || summary.error || summary.warning) {
+    console.warn('[ship] interlink staging degraded', {
+      shipPath,
+      sourceUrl: summary.sourceUrl,
+      staged: summary.staged,
+      candidates: summary.candidates,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      rebounded: summary.rebounded ?? 0,
+      warning: summary.warning ?? null,
+      error: summary.error ?? null,
+    })
+  }
 }
 
 /** Poll GitHub check-runs / combined status until green, red, or timeout. */
@@ -859,7 +919,7 @@ export async function shipContent(opts: {
     // valid staged rows planned indefinitely (nothing would finalize them).
     // `applied` is only ever written after verifyLiveUrl + exact live-anchor
     // proof.
-    await stageEngineInterlinksForVerification({
+    const interlinkStaging = await stageEngineInterlinksForVerification({
       canonicalUrl: opts.plan.canonicalUrl,
       // Exact ship job identity: the scheduled reconciler can only prove the
       // official deployment lineage (and therefore auto-finalize) for a staged
@@ -868,6 +928,9 @@ export async function shipContent(opts: {
       primaryKeyword: opts.primaryKeyword,
       body: shipContent_,
     })
+    const stagingSummary = interlinkStagingSummary(interlinkStaging)
+    // Observability only — a degraded staging write never fails the ship.
+    observeInterlinkStaging('direct_main', stagingSummary)
     if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
     return {
       mode: 'autodeploy',
@@ -879,6 +942,7 @@ export async function shipContent(opts: {
       canonicalUrl: opts.plan.canonicalUrl,
       status: 'deployed',
       humanApproved: true,
+      interlinkStaging: stagingSummary,
     }
   }
 
@@ -1021,12 +1085,15 @@ export async function shipContent(opts: {
         // Stage FIRST, then launch background verification (see the
         // direct-main path above): staged rows must exist before a background
         // verifier can finalize them, otherwise valid links stay planned.
-        await stageEngineInterlinksForVerification({
+        const interlinkStaging = await stageEngineInterlinksForVerification({
           canonicalUrl: opts.plan.canonicalUrl,
           jobId: opts.jobId || null,
           primaryKeyword: opts.primaryKeyword,
           body: shipContent_,
         })
+        const stagingSummary = interlinkStagingSummary(interlinkStaging)
+        // Observability only — a degraded staging write never fails the merge.
+        observeInterlinkStaging('pr_merge', stagingSummary)
         if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
         return {
           mode: 'merge',
@@ -1043,6 +1110,7 @@ export async function shipContent(opts: {
           humanApproved: opts.humanApproved,
           ciState: ci.state,
           ciNote: ci.note,
+          interlinkStaging: stagingSummary,
         }
       }
     } catch (mergeErr) {

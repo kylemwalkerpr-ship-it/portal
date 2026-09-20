@@ -33,8 +33,30 @@ const JOB_B = '22222222-2222-4222-8222-222222222222'
 const NOW = Date.parse('2026-09-20T12:00:00.000Z')
 const HOUR = 60 * 60 * 1000
 
-const VERIFY_OK = { ok: true, liveUrl: SOURCE_A, httpStatus: 200, verifiedAt: '2026-09-20T12:00:00.000Z' } as never
+/**
+ * A live verdict with POSITIVE official deployment-lineage proof — the only
+ * thing that may auto-finalize (exact job id is necessary but not sufficient).
+ */
+const VERIFY_OK = {
+  ok: true,
+  liveUrl: SOURCE_A,
+  httpStatus: 200,
+  verifiedAt: '2026-09-20T12:00:00.000Z',
+  lineageVerified: true,
+  publicationPhase: 'live_verified',
+} as never
 const VERIFY_PENDING = { ...(VERIFY_OK as Record<string, unknown>), ok: false } as never
+/** ok=true on verifyLiveUrl's legacy/uncontracted health path: no lineage. */
+const VERIFY_LEGACY_OK = {
+  ...(VERIFY_OK as Record<string, unknown>),
+  lineageVerified: null,
+  publicationPhase: null,
+} as never
+/** ok=true but the deployment lineage could not be positively verified. */
+const VERIFY_UNPROVEN = {
+  ...(VERIFY_OK as Record<string, unknown>),
+  lineageVerified: false,
+} as never
 
 const FINALIZED_ONE = {
   sourceUrl: SOURCE_A,
@@ -63,13 +85,16 @@ function staged(overrides: Partial<StagedInterlinkRow> = {}): StagedInterlinkRow
 function harness(rows: StagedInterlinkRow[]) {
   const verify = jest.fn(async () => VERIFY_OK)
   const finalize = jest.fn(async () => ({ ...FINALIZED_ONE }))
+  const markAttempted = jest.fn(async () => ({ updated: 1 }))
   return {
     verify,
     finalize,
+    markAttempted,
     deps: {
       loadStagedRows: jest.fn(async (limit: number) => rows.slice(0, limit)),
       verify,
       finalize,
+      markAttempted,
       now: () => NOW,
     },
   }
@@ -149,8 +174,12 @@ describe('A) exact (source_url, source_job_id) identity is the verification subj
       'utf8',
     )
     expect(source).toMatch(/select\('[^']*source_job_id[^']*'\)/)
+    expect(source).toMatch(/select\('[^']*verification_attempted_at[^']*'\)/)
     expect(source).toMatch(/\.eq\('status', 'planned'\)/)
     expect(source).toMatch(/\.not\('source_url', 'is', null\)/)
+    // Jobless historical rows are fenced in the query itself so they cannot
+    // occupy (and starve) the bounded scan window.
+    expect(source).toMatch(/\.not\('source_job_id', 'is', null\)/)
   })
 })
 
@@ -255,6 +284,77 @@ describe('C) fail closed on the live verdict', () => {
   })
 })
 
+describe('C2) ok=true is necessary but NOT sufficient — deployment lineage must be proven', () => {
+  it('never finalizes an ok=true legacy/uncontracted verdict (no deployment lineage)', async () => {
+    const h = harness([staged()])
+    h.verify.mockResolvedValue(VERIFY_LEGACY_OK)
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    // RED before the repair: any ok=true resolved apply truth through the
+    // legacy health path, which proves nothing about the deployment.
+    expect(h.finalize).not.toHaveBeenCalled()
+    expect(summary.verifiedLive).toBe(0)
+    expect(summary.notDeploymentProven).toBe(1)
+    expect(summary.applied).toBe(0)
+    expect(summary.finalized).toBe(0)
+    expect(summary.details[0]).toMatchObject({
+      sourceUrl: SOURCE_A,
+      sourceJobId: JOB_A,
+      verified: false,
+      applied: 0,
+      notDeploymentProven: true,
+    })
+    // Truthful unresolved truth — not a failed run.
+    expect(summary.ok).toBe(true)
+    expect(summary.errors).toEqual([])
+  })
+
+  it('never finalizes an ok=true verdict whose lineageVerified is false', async () => {
+    const h = harness([staged()])
+    h.verify.mockResolvedValue(VERIFY_UNPROVEN)
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.finalize).not.toHaveBeenCalled()
+    expect(summary.notDeploymentProven).toBe(1)
+    expect(summary.applied).toBe(0)
+  })
+
+  it('finalizes when (and only when) ok + lineageVerified + live_verified agree', async () => {
+    const h = harness([staged()])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.finalize).toHaveBeenCalledWith({ canonicalUrl: SOURCE_A, sourceJobId: JOB_A })
+    expect(summary.verifiedLive).toBe(1)
+    expect(summary.notDeploymentProven).toBe(0)
+    expect(summary.applied).toBe(1)
+  })
+
+  it('records a bounded durable attempt marker for a non-finalizing ok=true verdict', async () => {
+    const h = harness([staged()])
+    h.verify.mockResolvedValue(VERIFY_LEGACY_OK)
+
+    await reconcileStagedInterlinks(h.deps)
+
+    expect(h.markAttempted).toHaveBeenCalledWith({
+      sourceUrl: SOURCE_A,
+      sourceJobId: JOB_A,
+      now: new Date(NOW).toISOString(),
+    })
+    expect(h.finalize).not.toHaveBeenCalled()
+  })
+
+  it('does not mark an attempt when a fully deployment-proven verdict finalizes', async () => {
+    const h = harness([staged()])
+
+    await reconcileStagedInterlinks(h.deps)
+
+    expect(h.markAttempted).not.toHaveBeenCalled()
+  })
+})
+
 describe('D) bounded, idempotent cadence', () => {
   it('skips a source whose row was written inside the deployment-lag window', async () => {
     const h = harness([staged({ updatedAt: new Date(NOW - 60 * 1000).toISOString() })])
@@ -318,6 +418,116 @@ describe('D) bounded, idempotent cadence', () => {
     expect(h.verify).toHaveBeenCalledTimes(1)
     expect(summary.eligibleSources).toBe(2)
     expect(summary.remaining).toBe(1)
+  })
+
+  it('does not let a stale verification timestamp suppress a newer revision', async () => {
+    // The verdict belongs to an OLDER revision (verified 30h ago, written 2h
+    // ago: a newly rebound/re-staged job). It must not be suppressed.
+    const h = harness([
+      staged({
+        verifiedAt: new Date(NOW - 30 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).toHaveBeenCalledTimes(1)
+    expect(summary.skippedCooldown).toBe(0)
+    expect(summary.finalized).toBe(1)
+  })
+
+  it('bounds a repeated non-finalizing attempt with the durable attempt marker', async () => {
+    const h = harness([
+      staged({
+        attemptedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).not.toHaveBeenCalled()
+    expect(summary.skippedAttemptCooldown).toBe(1)
+    expect(summary.eligibleSources).toBe(0)
+  })
+
+  it('re-attempts a bounded source after the attempt cooldown elapses', async () => {
+    const h = harness([
+      staged({
+        attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 30 * HOUR).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).toHaveBeenCalledTimes(1)
+    expect(summary.skippedAttemptCooldown).toBe(0)
+  })
+
+  it('a stale attempt marker never suppresses a newer revision', async () => {
+    const h = harness([
+      staged({
+        attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
+        updatedAt: new Date(NOW - 2 * HOUR).toISOString(),
+      }),
+    ])
+
+    const summary = await reconcileStagedInterlinks(h.deps)
+
+    expect(h.verify).toHaveBeenCalledTimes(1)
+    expect(summary.skippedAttemptCooldown).toBe(0)
+  })
+
+  it('a permanently non-ok source cannot monopolize the bounded batch (rollover)', async () => {
+    const rows = [
+      staged({
+        id: 'a',
+        sourceUrl: SOURCE_A,
+        updatedAt: new Date(NOW - 40 * HOUR).toISOString(),
+        attemptedAt: null,
+      }),
+      staged({
+        id: 'b',
+        sourceUrl: SOURCE_B,
+        updatedAt: new Date(NOW - 50 * HOUR).toISOString(),
+        attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
+      }),
+    ]
+    const h = harness(rows)
+    h.verify.mockResolvedValue(VERIFY_PENDING)
+
+    const first = await reconcileStagedInterlinks(h.deps, { maxSources: 1 })
+
+    expect(h.verify).toHaveBeenNthCalledWith(1, { canonicalUrl: SOURCE_A, jobId: JOB_A })
+    expect(first.verificationFailed).toBe(1)
+    // Simulate the durable marker write the reconciler performs.
+    rows[0].attemptedAt = new Date(NOW).toISOString()
+
+    const second = await reconcileStagedInterlinks(h.deps, { maxSources: 1 })
+
+    // The just-attempted source is cooldowned; the other staged source makes
+    // progress on the next run.
+    expect(h.verify).toHaveBeenNthCalledWith(2, { canonicalUrl: SOURCE_B, jobId: JOB_B })
+    expect(second.eligibleSources).toBe(1)
+    expect(second.skippedAttemptCooldown).toBe(1)
+    expect(second.ok).toBe(true)
+  })
+
+  it('treats NaN option overrides as the safe defaults instead of disabling the pass', async () => {
+    const h = harness([staged()])
+
+    const summary = await reconcileStagedInterlinks(h.deps, {
+      maxSources: Number.NaN,
+      scanLimit: Number.NaN,
+      minAgeMs: Number.NaN,
+      cooldownMs: Number.NaN,
+    })
+
+    // `slice(0, NaN)` used to yield an empty batch forever: zero work, green run.
+    expect(h.verify).toHaveBeenCalledTimes(1)
+    expect(summary.finalized).toBe(1)
   })
 })
 

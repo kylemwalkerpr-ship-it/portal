@@ -178,6 +178,112 @@ describe('E) exact job identity is staged with the source URL', () => {
 })
 
 describe('C) source identity and idempotency', () => {
+  const OTHER_JOB = '44444444-4444-4444-8444-444444444444'
+
+  it('rebinds a jobless already-staged row to the new exact ship job', async () => {
+    const db = installDb([row({ source_url: CANONICAL, source_job_id: null })])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(result.rebounded).toBe(1)
+    expect(db.updates).toHaveLength(1)
+    // Additive rebind ONLY: no status/applied/verdict column may move.
+    expect(db.updates[0].patch).toEqual({ source_job_id: SHIP_JOB })
+    expect(db.updates[0].filters).toEqual([
+      { op: 'eq', column: 'id', value: 'row-1' },
+      { op: 'eq', column: 'status', value: 'planned' },
+    ])
+    expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+    expect(db.rows[0].status).toBe('planned')
+    expect(db.rows[0].verification_state).toBeNull()
+  })
+
+  it('rebinds an older job identity to the new exact ship job (reship)', async () => {
+    const db = installDb([row({ source_url: CANONICAL, source_job_id: OTHER_JOB })])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.rebounded).toBe(1)
+    expect(db.updates[0].patch).toEqual({ source_job_id: SHIP_JOB })
+    expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+  })
+
+  it('is an idempotent no-op when the exact same job is already staged', async () => {
+    const db = installDb([row({ source_url: CANONICAL, source_job_id: SHIP_JOB })])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(result.rebounded).toBeUndefined()
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].source_job_id).toBe(SHIP_JOB)
+  })
+
+  it('a jobless caller NEVER clears or overwrites an existing source_job_id', async () => {
+    const db = installDb([row({ source_url: CANONICAL, source_job_id: OTHER_JOB })])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: null,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(result.rebounded).toBeUndefined()
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].source_job_id).toBe(OTHER_JOB)
+  })
+
+  it('never writes a malformed (non-UUID) job id over a durable identity', async () => {
+    const db = installDb([row({ source_url: CANONICAL, source_job_id: OTHER_JOB })])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: 'plan-1737331200000',
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(1)
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].source_job_id).toBe(OTHER_JOB)
+  })
+
+  it('still refuses to touch a different durable source_url even with an exact job id', async () => {
+    const db = installDb([
+      row({ source_url: 'https://uk.yousafeconsultancy.com/other-page/', source_job_id: OTHER_JOB }),
+    ])
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      jobId: SHIP_JOB,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(0)
+    expect(db.updates).toHaveLength(0)
+    expect(db.rows[0].source_url).toBe('https://uk.yousafeconsultancy.com/other-page/')
+    expect(db.rows[0].source_job_id).toBe(OTHER_JOB)
+  })
+
   it('refuses to stage without a real canonicalUrl', async () => {
     const db = installDb([row()])
     const result = await stageEngineInterlinksForVerification({

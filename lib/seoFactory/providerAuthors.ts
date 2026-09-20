@@ -726,13 +726,20 @@ export function citedProvidersPromptBlock(cited: CitedProvider[]): string {
     ].join('\n')
   }
   const triangulated = cited.some((person) => person.matchReasons.some((r) => /nearest related|triangulat/i.test(r)))
+  // A withheld link (not proven live) is removed before the prompt is built.
+  // The citation itself survives — only the mandatory URL line disappears when
+  // no marketplace URL remained verifiable, so the model is never told to
+  // embed a link the verifier could not prove.
+  const hasVerifiedUrl = cited.some((person) => person.profileUrl || person.servicePages.length)
   const lines = [
     'YMYL AUTHOR / MARKETPLACE CITATION (mandatory — these people consented at signup to be cited).',
     'Pick the FIRST person as the named author/reviewer. Cite only their recorded credential and field.',
     'YAML `author` MUST be this person\'s name — never invent YouSafe Editorial Team.',
-    'You MUST include each listed marketplace URL verbatim as a markdown link in the body (author byline and/or “Need professional help”).',
     'Do not invent additional people, bar numbers, case results, or service pages.',
   ]
+  if (hasVerifiedUrl) {
+    lines.splice(3, 0, 'You MUST include each listed marketplace URL verbatim as a markdown link in the body (author byline and/or “Need professional help”).')
+  }
   if (triangulated) {
     lines.push('If “Why this article” says nearest related field, introduce them as a practitioner in that related field — do not claim they specialise in the exact form/visa unless their recorded specialties say so.')
   }
@@ -742,7 +749,7 @@ export function citedProvidersPromptBlock(cited: CitedProvider[]): string {
       `${i + 1}. ${person.name} — ${person.credentialLine}`,
       `   Role: ${person.role} · ${person.experienceScope}`,
       `   Why this article: ${person.matchReasons.join('; ') || 'expertise overlap'}`,
-      `   Profile: ${person.profileUrl}`,
+      ...(person.profileUrl ? [`   Profile: ${person.profileUrl}`] : []),
     )
     for (const page of person.servicePages) {
       lines.push(`   Service: [${page.title}](${page.url}) — ${page.match}`)

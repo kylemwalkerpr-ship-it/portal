@@ -83,8 +83,18 @@ export async function POST(request: NextRequest) {
     // against the live source HTML (exact anchor href) and target liveness.
     // Never weakens the content verification above — a finalization failure is
     // reported beside the result, not instead of it.
+    //
+    // Job binding (P6): when the caller supplied the exact content_jobs.id,
+    // finalization is bound to that exact job so admin verification can never
+    // finalize rows staged by ANOTHER ship job that shares the canonical.
+    // The legacy source-url-only behavior is preserved only when no jobId
+    // exists (there is no exact job identity to bind to — never invented).
+    const jobId = String(body?.jobId || '').trim()
     const interlinks = result.ok
-      ? await finalizeStagedInterlinksForLiveSource({ canonicalUrl })
+      ? await finalizeStagedInterlinksForLiveSource({
+          canonicalUrl,
+          ...(jobId ? { sourceJobId: jobId } : {}),
+        })
       : null
 
     return NextResponse.json({ ok: true, stamp, result, interlinks })

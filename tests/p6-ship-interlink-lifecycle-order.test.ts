@@ -68,7 +68,7 @@ jest.mock('@/lib/seoFactory/interlinkVerification', () => ({
     // would land its event before `stage:end`.
     await new Promise((r) => setTimeout(r, 5))
     mockShipEvents.push(`stage:end:${input.canonicalUrl}`)
-    return { staged: 1, candidates: 1, sourceUrl: input.canonicalUrl }
+    return { staged: 1, candidates: 1, skipped: 0, failed: 0, sourceUrl: input.canonicalUrl }
   }),
 }))
 
@@ -210,6 +210,7 @@ describe('shipContent — staging completes BEFORE background live verification'
       const plan = await registryPlan()
 
       const result = await shipContent({
+        jobId: SHIP_JOB,
         mode: 'merge',
         plan,
         content: '## In 60 seconds\nInformation only, not legal advice.',
@@ -223,6 +224,12 @@ describe('shipContent — staging completes BEFORE background live verification'
 
       expect(result.status).toBe('merged')
       expect(mockGitCalls).toContain('mergePullRequest')
+      expect(stageMock()).toHaveBeenCalledWith(
+        expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL, jobId: SHIP_JOB }),
+      )
+      expect(verifyMock()).toHaveBeenCalledWith(
+        expect.objectContaining({ canonicalUrl: REGISTRY_OWNER_URL, jobId: SHIP_JOB }),
+      )
       expect(mockShipEvents).toEqual([
         'stage:start',
         `stage:end:${REGISTRY_OWNER_URL}`,
@@ -231,4 +238,72 @@ describe('shipContent — staging completes BEFORE background live verification'
     },
     30_000,
   )
+})
+
+describe('shipContent — degraded interlink staging is observable, never fatal', () => {
+  it('reports a failed staging write in ShipResult + a structured warning', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    stageMock().mockResolvedValueOnce({
+      staged: 0,
+      candidates: 3,
+      skipped: 0,
+      failed: 2,
+      sourceUrl: REGISTRY_OWNER_URL,
+      error: '2 staging write(s) failed: permission denied for table seo_interlinks',
+    })
+    const plan = await registryPlan()
+
+    const result = await shipContent({
+      jobId: SHIP_JOB,
+      mode: 'autodeploy',
+      humanApproved: true,
+      plan,
+      content: '## In 60 seconds\nInformation only, not legal advice.',
+      title: 'F-1 Document Checklist',
+      region: REGISTRY_REGION,
+      contentType: 'legal_guide',
+      primaryKeyword: REGISTRY_KEYWORD,
+      audit: AUDIT,
+      dryRun: false,
+    })
+
+    // A degraded staging write must never turn a successful ship into failure.
+    expect(result.status).toBe('deployed')
+    expect(result.interlinkStaging).toMatchObject({
+      staged: 0,
+      candidates: 3,
+      failed: 2,
+      sourceUrl: REGISTRY_OWNER_URL,
+      error: expect.stringMatching(/permission denied/),
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[ship] interlink staging degraded',
+      expect.objectContaining({ failed: 2, sourceUrl: REGISTRY_OWNER_URL }),
+    )
+    warnSpy.mockRestore()
+  })
+
+  it('does not warn for a clean staging result', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const plan = await registryPlan()
+
+    const result = await shipContent({
+      jobId: SHIP_JOB,
+      mode: 'autodeploy',
+      humanApproved: true,
+      plan,
+      content: '## In 60 seconds\nInformation only, not legal advice.',
+      title: 'F-1 Document Checklist',
+      region: REGISTRY_REGION,
+      contentType: 'legal_guide',
+      primaryKeyword: REGISTRY_KEYWORD,
+      audit: AUDIT,
+      dryRun: false,
+    })
+
+    expect(result.interlinkStaging).toMatchObject({ staged: 1, failed: 0 })
+    expect(result.interlinkStaging).not.toHaveProperty('error')
+    expect(warnSpy).not.toHaveBeenCalledWith('[ship] interlink staging degraded', expect.anything())
+    warnSpy.mockRestore()
+  })
 })

@@ -10,7 +10,7 @@
 -- could not distinguish executed authority from a planner guess.
 --
 -- This migration is ADDITIVE and IDEMPOTENT (re-runnable):
---   · adds the five nullable verification-truth/job-identity columns,
+--   · adds the six nullable verification-truth/job-identity/attempt columns,
 --   · constrains `verification_state` to the closed vocabulary,
 --   · constrains `status = 'applied'` to require the full proof contract,
 --   · adds the two read indexes the verification/report queries need,
@@ -31,6 +31,12 @@
 -- and stay unresolved/manual. The applied proof constraint deliberately does
 -- NOT require it: the minimum applied proof remains source_url + present +
 -- verified_at + evidence + applied_at.
+--
+-- `verification_attempted_at` (nullable timestamptz) is the bounded-retry
+-- marker for attempts that did NOT finalize (deployment not observable yet, or
+-- an ok=true verdict without positive deployment-lineage proof). It carries no
+-- verdict and is never part of the applied-proof constraint; failed attempts
+-- must never write verified_at/verification_state/verification_evidence.
 -- ============================================================================
 
 alter table public.seo_interlinks
@@ -38,7 +44,8 @@ alter table public.seo_interlinks
   add column if not exists source_job_id uuid null,
   add column if not exists verification_state text null,
   add column if not exists verified_at timestamptz null,
-  add column if not exists verification_evidence jsonb null;
+  add column if not exists verification_evidence jsonb null,
+  add column if not exists verification_attempted_at timestamptz null;
 
 comment on column public.seo_interlinks.source_url is
   'Durable live source identity (the shipped plan canonicalUrl) that staged this edge for verification. Planner slugs are locators, never source URL authority.';
@@ -50,6 +57,8 @@ comment on column public.seo_interlinks.verified_at is
   'When the verification verdict was produced. Required (with source_url, verification_state=present and verification_evidence) before status may be applied.';
 comment on column public.seo_interlinks.verification_evidence is
   'JSON proof for the verdict: source, target, proof kind (live_exact_href), observed href, source context and live HTTP observations.';
+comment on column public.seo_interlinks.verification_attempted_at is
+  'When the scheduled reconciler last ATTEMPTED verification for this exact (source_url, source_job_id) planned revision without finalizing. Bounded-retry/cooldown marker only: it is NOT a verification verdict or proof, is never part of the applied-proof constraint, is never backfilled, and a non-ok attempt writes only this column (never verified_at/verification_state/verification_evidence).';
 
 -- Closed vocabulary. Null means "no verdict yet" — never a silent sixth state.
 do $$

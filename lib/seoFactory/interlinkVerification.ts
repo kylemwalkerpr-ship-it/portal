@@ -17,6 +17,10 @@
  *      `source_url = <plan canonicalUrl>` and stays `planned` — no applied
  *      status, no applied_at, no verification verdict. Planner slugs locate
  *      candidate rows; the canonicalUrl is the only source identity.
+ *      A RE-ship of the same canonical rebinds an already-staged planned row
+ *      to the new exact ship job (null/different → rebind; same → idempotent
+ *      no-op), while a jobless caller can never clear an existing
+ *      source_job_id and a different durable source_url stays untouchable.
  *
  *   2. FINALIZE (`finalizeStagedInterlinksForLiveSource`)
  *      Only after `verifyLiveUrl` has actually established ok=true. Staged
@@ -41,10 +45,19 @@
  * Idempotent by construction: only `status = 'planned'` rows are ever
  * selected or updated, so a verified applied row can never be downgraded by a
  * transient fetch/verifier failure.
+ *
+ * Attempts that do NOT finalize (deployment not observable yet, or an ok=true
+ * verdict without positive deployment-lineage proof) are bounded by the
+ * additive `verification_attempted_at` marker written by
+ * `markInterlinkVerificationAttempt` — a non-proof column that never carries a
+ * verdict and can never be mistaken for verification truth.
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { classifyLiveStatus, verifyUrlsLive } from '@/lib/seoFactory/linkAudit'
+import { normalizeSourceJobId } from './sourceJobIdentity'
+
+export { normalizeSourceJobId }
 
 /** Closed verification vocabulary (mirrors the migration CHECK constraint). */
 export const INTERLINK_VERIFICATION_STATES = [
@@ -345,12 +358,24 @@ export interface StageEngineInterlinksInput {
 export interface StageEngineInterlinksResult {
   /** Rows now durably staged for this source (written or already staged). */
   staged: number
+  /**
+   * Planned rows already staged for this canonical under a different (or
+   * missing) job identity that were REBOUND to the new exact ship job. Only
+   * present when > 0 so the legacy result shape stays intact.
+   */
+  rebounded?: number
   candidates: number
   /** Planned rows deliberately NOT staged (different source identity). */
   skipped: number
   /** Staging writes that failed or matched zero rows on the DB side. */
   failed: number
   sourceUrl: string | null
+  /**
+   * Non-fatal degradation (e.g. the pre-migration schema without
+   * `source_job_id`): staging fell back to the legacy column set. Observable
+   * so a missing migration column can never look like a zero-candidate no-op.
+   */
+  warning?: string
   error?: string
 }
 
@@ -369,7 +394,10 @@ export async function stageEngineInterlinksForVerification(
   input: StageEngineInterlinksInput,
 ): Promise<StageEngineInterlinksResult> {
   const sourceUrl = String(input.canonicalUrl || '').trim()
-  const sourceJobId = typeof input.jobId === 'string' ? input.jobId.trim() : ''
+  // A malformed job id is NOT job identity: it is dropped (never written),
+  // which leaves the row jobless/unresolved instead of poisoning the
+  // scheduled reconciler's exact-subject contract.
+  const sourceJobId = normalizeSourceJobId(input.jobId)
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return {
       staged: 0,
@@ -397,11 +425,31 @@ export async function stageEngineInterlinksForVerification(
     if (!draftHrefs.size) return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl }
 
     const supabase = createSupabaseAdminClient()
-    const { data, error } = await supabase
-      .from('seo_interlinks')
-      .select('id,target_url,status,source_url')
-      .eq('source_slug', slug)
-      .eq('status', 'planned')
+    let warning: string | null = null
+    const readRows = (columns: string) =>
+      supabase
+        .from('seo_interlinks')
+        .select(columns)
+        .eq('source_slug', slug)
+        .eq('status', 'planned')
+    let { data, error } = await readRows('id,target_url,status,source_url,source_job_id')
+    let jobIdentityAvailable = true
+    // Pre-migration compatibility: the additive P6 column may not exist yet.
+    // Fall back to the legacy column set — staging then stays jobless (it must
+    // NOT attempt to write a column the database does not have) and says so
+    // explicitly instead of looking like a zero-candidate no-op.
+    if (error && /source_job_id/i.test(String(error.message || ''))) {
+      const message = String(error.message || 'source_job_id unavailable')
+      console.warn(
+        '[interlinkVerification] staging without job identity — source_job_id column unavailable (P6 migration not applied yet):',
+        message,
+      )
+      warning = `source_job_id column unavailable (P6 migration not applied yet): ${message}`.slice(0, 300)
+      jobIdentityAvailable = false
+      const legacy = await readRows('id,target_url,status,source_url')
+      data = legacy.data
+      error = legacy.error
+    }
     if (error) {
       return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl, error: error.message.slice(0, 300) }
     }
@@ -409,7 +457,12 @@ export async function stageEngineInterlinksForVerification(
     if (!rows.length) return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl }
 
     const sourceKey = normalizeInterlinkProofUrl(sourceUrl)
+    // When the column is unavailable the write must omit it entirely: staging
+    // stays jobless (unresolved/manual) rather than failing on a column that
+    // does not exist.
+    const writeJobId = jobIdentityAvailable ? sourceJobId : null
     let staged = 0
+    let rebounded = 0
     let skipped = 0
     let failed = 0
     let lastWriteError: string | null = null
@@ -426,7 +479,28 @@ export async function stageEngineInterlinksForVerification(
         continue
       }
       if (existingSource && normalizeInterlinkProofUrl(existingSource) === sourceKey) {
-        // Already staged for this source — idempotent no-op.
+        // Already staged for this canonical. The row must now carry the EXACT
+        // ship job that owns the current revision:
+        //   · same job            → idempotent no-op (no write);
+        //   · null / different job→ rebound to the new exact job so the
+        //     scheduled reconciler's per-job subject is the current revision;
+        //   · jobless caller      → NEVER clears an existing source_job_id
+        //     (a legacy ship must not silently un-bind a durable job identity);
+        //   · invalid job id      → withheld above (normalizeSourceJobId).
+        const existingJobId = String(row.source_job_id || '').trim()
+        if (writeJobId && existingJobId !== writeJobId) {
+          const rebind = await writePlannedRowPatch(supabase, row, { source_job_id: writeJobId })
+          if (rebind.error) {
+            failed += 1
+            lastWriteError = rebind.error
+            continue
+          }
+          if (rebind.written === 0) {
+            skipped += 1
+            continue
+          }
+          rebounded += 1
+        }
         staged += 1
         continue
       }
@@ -436,7 +510,7 @@ export async function stageEngineInterlinksForVerification(
       // the scheduled reconciler refuses to auto-finalize it.
       const write = await writePlannedRowPatch(supabase, row, {
         source_url: sourceUrl,
-        ...(sourceJobId ? { source_job_id: sourceJobId } : {}),
+        ...(writeJobId ? { source_job_id: writeJobId } : {}),
       })
       if (write.error) {
         failed += 1
@@ -456,6 +530,8 @@ export async function stageEngineInterlinksForVerification(
       skipped,
       failed,
       sourceUrl,
+      ...(rebounded ? { rebounded } : {}),
+      ...(warning ? { warning } : {}),
       ...(failed
         ? {
             error: `${failed} staging write(s) failed${
@@ -767,6 +843,63 @@ interface VerdictInput {
   state: InterlinkVerificationState
   now: string
   evidence: Record<string, unknown>
+}
+
+export interface InterlinkVerificationAttemptInput {
+  /** Exact durable source identity the verification attempt targeted. */
+  sourceUrl: string
+  /** Exact ship job identity the attempt targeted. */
+  sourceJobId: string
+  /** Attempt timestamp (defaults to now). */
+  now?: string
+}
+
+export interface InterlinkVerificationAttemptResult {
+  /** Planned rows of the exact tuple stamped with the attempt marker. */
+  updated: number
+  error?: string
+}
+
+/**
+ * Durable bounded-retry marker for a NON-finalizing verification attempt.
+ *
+ * A repeated `ok=false` (deployment not observable yet, or the legacy
+ * uncontracted health path) must not hammer the same source every run, but it
+ * must also not fabricate verification truth. This writes ONLY the additive
+ * nullable `verification_attempted_at` marker on the exact planned tuple —
+ * never `status`, `applied_at`, `verified_at`, `verification_state` or
+ * `verification_evidence` — so it can never be mistaken for a proof/verdict.
+ * The attempted-row count is returned truthfully (0 = nothing matched).
+ */
+export async function markInterlinkVerificationAttempt(
+  input: InterlinkVerificationAttemptInput,
+): Promise<InterlinkVerificationAttemptResult> {
+  const rawSource = String(input.sourceUrl || '').trim()
+  const sourceJobId = normalizeSourceJobId(input.sourceJobId)
+  if (!rawSource || !sourceJobId) {
+    return { updated: 0, error: 'an exact sourceUrl and sourceJobId are required to mark an attempt' }
+  }
+  const sourceUrl = normalizeInterlinkProofUrl(rawSource)
+  const sourceVariants = [
+    ...new Set([rawSource, sourceUrl, rawSource.replace(/\/+$/, ''), sourceUrl.replace(/\/+$/, '')].filter(Boolean)),
+  ]
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { data, error } = (await supabase
+      .from('seo_interlinks')
+      .update({ verification_attempted_at: input.now || new Date().toISOString() })
+      .in('source_url', sourceVariants)
+      .eq('source_job_id', sourceJobId)
+      .eq('status', 'planned')
+      .select('id')) as unknown as {
+      data: Array<Record<string, unknown>> | null
+      error: { message?: string } | null
+    }
+    if (error) return { updated: 0, error: String(error.message || 'attempt marker write failed').slice(0, 300) }
+    return { updated: Array.isArray(data) ? data.length : 0 }
+  } catch (error) {
+    return { updated: 0, error: errorMessage(error).slice(0, 300) }
+  }
 }
 
 interface PlannedRowWrite {
