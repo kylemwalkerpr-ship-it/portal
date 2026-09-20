@@ -16,11 +16,23 @@
  * A DB/query failure is deliberately NOT cached: callers receive 0 so the page
  * still renders, but the next request retries instead of serving a false
  * "0 active services" (and a noindex title) for the whole TTL.
+ *
+ * BUILD-ONLY SUPPLY AUTHORITY: the category shelves are statically rendered,
+ * so during `phase-production-build` every COUNT must run with genuine
+ * service-role authority and any query error fails the build instead of
+ * baking a false "0 active services" shelf. A genuinely empty category is
+ * still a valid, non-erroring 0 — there is deliberately no non-empty estate
+ * assertion here. Runtime behavior (0 on failure, never cached) is unchanged.
  */
 
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { buildCategoryOrFilter } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  assertMarketplaceBuildServiceRoleAuthority,
+  isMarketplaceProductionBuild,
+  marketplaceErrorDetail,
+} from '@/lib/marketplaceBuildAuthority'
 
 export const CATEGORY_COUNT_CACHE_TTL_SECONDS = 300
 export const CATEGORY_COUNT_CACHE_PATH = '/cache/category-count'
@@ -49,6 +61,10 @@ export async function setCachedCategoryCount(filterId: string, count: number): P
  * Returns null on failure so the caller can distinguish failure from 0.
  */
 export async function computeActiveGigsForCategory(filterId: string): Promise<number | null> {
+  // Build-only authority gate: this path also serves the Worker, so the guard
+  // is scoped to the production build phase and runtime stays fail-soft.
+  assertMarketplaceBuildServiceRoleAuthority(`category count (${filterId})`)
+
   try {
     const db = createSupabaseAdminClient()
     let query = db
@@ -58,9 +74,21 @@ export async function computeActiveGigsForCategory(filterId: string): Promise<nu
     const categoryOr = buildCategoryOrFilter([filterId])
     if (categoryOr) query = query.or(categoryOr)
     const { count, error } = await query
-    if (error) return null
+    if (error) {
+      if (isMarketplaceProductionBuild()) {
+        throw new Error(
+          `[marketplace/category-count] ${filterId} COUNT failed during production build: ${error.message}`,
+        )
+      }
+      return null
+    }
     return typeof count === 'number' ? count : 0
-  } catch {
+  } catch (error) {
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[marketplace/category-count] ${filterId} COUNT unavailable during production build: ${marketplaceErrorDetail(error)}`,
+      )
+    }
     return null
   }
 }

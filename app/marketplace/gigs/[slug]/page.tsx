@@ -10,6 +10,10 @@ import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
 import { renderBioMarkdown, stripHtmlComments } from '@/lib/bioMarkdown'
+import {
+  assertMarketplaceEstateNonEmpty,
+  assertMarketplaceServiceRoleAuthority,
+} from '@/lib/marketplaceBuildAuthority'
 
 // TRUE SSG — no `revalidate`. Production evidence: per-request rendering of
 // the detail estate exceeded the Workers Free 10ms CPU budget, and the Free
@@ -51,10 +55,18 @@ async function checkSlugRedirect(slug: string): Promise<string | null> {
  * `dynamicParams = false` cannot turn a retired URL into a 404.
  */
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
-  // FAIL CLOSED. `dynamicParams = false` turns every slug missing from this
-  // set into a hard 404, so a failed query can never be allowed to shrink the
-  // indexable estate to the source-controlled legacy map (or to an empty set).
+  // FAIL CLOSED, twice over. `dynamicParams = false` turns every slug missing
+  // from this set into a hard 404, so neither an authority downgrade nor a
+  // failed query can be allowed to shrink the indexable estate to the
+  // source-controlled legacy map (or to an empty set):
+  //   · authority — public.gigs is not anon-readable, so an anon-scoped read
+  //     returns ZERO rows with NO error; refuse to enumerate through
+  //     anything but genuine service-role authority;
+  //   · estate — a service-role read that still yields no active gig rows is
+  //     never a publishable estate either.
   // Any setup/query failure rethrows and fails the build instead.
+  assertMarketplaceServiceRoleAuthority('gigs/[slug] static params')
+
   const db = createSupabaseAdminClient()
   const [gigResult, redirectResult] = await Promise.all([
     db
@@ -74,8 +86,15 @@ export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
     throw new Error(`[gigs/static-params] alias slug query failed: ${redirectResult.error.message}`)
   }
 
+  const activeGigs = (gigResult.data ?? []).filter((gig) => gig?.slug && gig?.provider_id)
+  assertMarketplaceEstateNonEmpty(
+    'gigs/[slug] static params',
+    activeGigs.length,
+    'active provider-backed gig rows',
+  )
+
   const slugs = new Set<string>(Object.keys(LEGACY_GIG_SLUG_REDIRECTS))
-  for (const gig of gigResult.data ?? []) {
+  for (const gig of activeGigs) {
     if (gig?.slug && gig?.provider_id) slugs.add(String(gig.slug))
   }
   for (const row of redirectResult.data ?? []) {
