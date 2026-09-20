@@ -27,6 +27,7 @@ import {
   type RequestedShipMode,
 } from '@/lib/seoFactory/pipeline'
 import { buildKeywordPlan, planTermsForAutoRun } from '@/lib/seoFactory/keywordPlanner'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 import {
   buildSeoWarRoom,
   playToOpportunityAction,
@@ -201,6 +202,12 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
         const have = new Set(candidates.map((c) => c.term.toLowerCase()))
         for (const term of orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)) {
           if (candidates.length >= limit) break
+          // P5 action boundary: this keyword-plan fill is the stream route's
+          // top-up path. A GSC-derived plan term may not become a candidate
+          // unless it clears the shared actionable-demand boundary (the board
+          // itself is already qualified-only — this is fail-closed defense in
+          // depth, so a mocked/legacy plan cannot leak off-mission demand).
+          if (!isActionableDemandQuery(term)) continue
           if (have.has(term.toLowerCase()) || (skipRecent && recent.has(term.toLowerCase()))) continue
           const item = kwPlan.plan.find((p) => p.term === term)
           candidates.push({
@@ -224,6 +231,8 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
       const terms = orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)
       candidates = []
       for (const term of terms) {
+        // P5 action boundary (defense in depth, same rule as the fill path).
+        if (!isActionableDemandQuery(term)) continue
         const item = kwPlan.plan.find((p) => p.term === term)
         candidates.push({
           term, impressions: item?.impressions || 0, clicks: 0, ctr: item?.ctr || 0,

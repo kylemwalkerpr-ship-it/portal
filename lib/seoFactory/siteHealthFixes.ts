@@ -1,5 +1,9 @@
 import { Buffer } from 'node:buffer'
 import { githubFetch, getBranchHeadSha, openPullRequest, putRepoFile } from '@/lib/githubContents'
+import {
+  p5MutationVerdict,
+  type StrategicDisposition,
+} from './p5OffMissionDispositions'
 import { type SiteHealthScope } from './siteHealth'
 
 type RepoId = Exclude<SiteHealthScope, 'all'>
@@ -13,6 +17,18 @@ export type NoIndexCandidate = {
   url: string
   title: string
   words: number
+}
+
+/**
+ * A candidate the P5 disposition contract refused to mutate. Reported, never
+ * rewritten: no file write, no branch, no PR, no fix-history entry.
+ */
+export type ProtectedNoIndexSkip = {
+  repo: RepoId
+  path: string
+  url: string
+  disposition: StrategicDisposition | null
+  reason: string
 }
 
 export type SiteHealthFixRecord = {
@@ -173,6 +189,16 @@ export async function appendFixHistory(entries: SiteHealthFixRecord[]): Promise<
  * The audit phase already collected candidates; here we only fetch the
  * files being fixed (plus a few hub/sitemap writes), keeping well under
  * the Cloudflare Workers 50-subrequest limit.
+ *
+ * P5 boundary guard: every candidate URL is checked against the existing
+ * disposition contract (`p5MutationVerdict()` in
+ * `lib/seoFactory/p5OffMissionDispositions.ts`) BEFORE any read/write, branch
+ * or PR. A registered URL whose disposition does not permit automated
+ * index-coverage/site-health mutation (KEEP_BUT_SILO today, and any other
+ * non-`KEEP` or unrecognized value) is reported in `protectedSkipped` and
+ * skipped — its current index state is preserved exactly. Unregistered URLs
+ * are unaffected, as are registered `KEEP` URLs. All callers of this function
+ * inherit the guard automatically.
  */
 export async function fixNoIndexPagesChunked(
   scope: SiteHealthScope,
@@ -183,21 +209,36 @@ export async function fixNoIndexPagesChunked(
 ): Promise<{
   fixed: Array<{ repo: RepoId; path: string; url: string; title: string }>
   skipped: Array<{ repo: RepoId; path: string; words: number }>
+  protectedSkipped: ProtectedNoIndexSkip[]
   totalCandidates: number
   nextBatch: number | null
   prUrl: string | null
 }> {
   const batch = candidates.slice(batchStart, batchStart + batchSize)
   if (!batch.length) {
-    return { fixed: [], skipped: [], totalCandidates: candidates.length, nextBatch: null, prUrl: null }
+    return { fixed: [], skipped: [], protectedSkipped: [], totalCandidates: candidates.length, nextBatch: null, prUrl: null }
   }
 
   const fixed: Array<{ repo: RepoId; path: string; url: string; title: string }> = []
   const skipped: Array<{ repo: RepoId; path: string; words: number }> = []
+  const protectedSkipped: ProtectedNoIndexSkip[] = []
   const logEntries: SiteHealthFixRecord[] = []
   const filesToWrite: Array<{ repo: RepoId; path: string; content: string; message: string }> = []
 
   for (const c of batch) {
+    // Fail-closed P5 gate: consult the disposition contract first. A blocked
+    // URL is never fetched, stripped, written, branched, PR'd or logged.
+    const p5 = p5MutationVerdict(c.url)
+    if (p5.blocked) {
+      protectedSkipped.push({
+        repo: c.repo,
+        path: c.path,
+        url: c.url,
+        disposition: p5.disposition,
+        reason: p5.reason || 'P5 disposition — automated index-coverage/site-health mutation is blocked',
+      })
+      continue
+    }
     let source: string
     try {
       const file = await githubFetch(
@@ -287,7 +328,7 @@ export async function fixNoIndexPagesChunked(
   }
 
   const nextBatch = batchStart + batchSize < candidates.length ? batchStart + batchSize : null
-  return { fixed, skipped, totalCandidates: candidates.length, nextBatch, prUrl }
+  return { fixed, skipped, protectedSkipped, totalCandidates: candidates.length, nextBatch, prUrl }
 }
 
 // ---------- Batch backfill for already-shipped content ----------

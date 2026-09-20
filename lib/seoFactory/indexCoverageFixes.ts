@@ -38,6 +38,7 @@ import {
 } from './siteHealth'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { type GscFixAction, type GscIndexIssue } from '@/lib/gscIndexCoverage'
+import { normalizeP5Url, p5MutationVerdict, p5ProtectedUrlKeys } from './p5OffMissionDispositions'
 
 export interface IndexFixItem {
   issue: GscIndexIssue
@@ -232,10 +233,23 @@ function outcome(
 /**
  * Decide what a fix looks like for one issue, without touching GitHub.
  * `newContent` is set when the page source should be rewritten in a PR.
+ *
+ * P5 fail-closed gate (first check, before any action): a URL covered by the
+ * versioned P5 off-mission disposition registry may only be mutated
+ * automatically when its disposition is `KEEP`. Registered KEEP_BUT_SILO /
+ * MOVE / MERGE_301 / NOINDEX / RETIRE URLs (and any unrecognized disposition)
+ * return `skipped` with the explicit P5 reason, so no PR, no fix, no
+ * re-indexing request and no delegated site-health repair can be derived from
+ * them. URLs that are not in the registry are untouched by this gate.
  */
 export function computeIndexFix(item: IndexFixItem): FixOutcome {
   const { issue, page } = item
   const content = page.content ?? ''
+
+  const p5 = p5MutationVerdict(issue.url)
+  if (p5.blocked) {
+    return outcome(item, 'skipped', p5.reason || 'P5 disposition — automated mutation blocked')
+  }
 
   switch (issue.fixAction) {
     case 'REMOVE_NOINDEX': {
@@ -355,6 +369,23 @@ export async function resolveIndexCoverage(
   const requestedIndexing: Array<{ url: string; ok: boolean; detail: string }> = []
   const warnings: string[] = []
 
+  // P5 protection set for this run. The site-health mutation layer protects
+  // every registered URL by default (`p5ProtectedUrlKeys()` is its floor), so a
+  // delegated repo-wide repair triggered by an unrelated URL can never touch a
+  // registered KEEP_BUT_SILO page. This list is passed explicitly as defense in
+  // depth and is the UNION of the whole registry with the registered URLs
+  // present in this batch — a missing current-batch URL can therefore never
+  // narrow the protection set.
+  const protectedUrls = [
+    ...new Set([
+      ...p5ProtectedUrlKeys(),
+      ...items
+        .filter((item) => p5MutationVerdict(item.issue.url).registered)
+        .map((item) => normalizeP5Url(item.issue.url))
+        .filter((key): key is string => Boolean(key)),
+    ]),
+  ]
+
   // Partition.
   const perFile: IndexFixItem[] = []
   const delegatedRepos = new Set<SiteHealthScope>()
@@ -404,7 +435,7 @@ export async function resolveIndexCoverage(
   // 2) orphan + sitemap delegated items → Site Health repair (once per repo).
   for (const repo of delegatedRepos) {
     try {
-      const report = await repairSiteHealth(repo, false)
+      const report = await repairSiteHealth(repo, false, { protectedUrls })
       const prs = report.pullRequests?.map((p) => p.prUrl) ?? []
       if (prs.length) prUrls.push(...prs)
       for (const o of outcomes) {

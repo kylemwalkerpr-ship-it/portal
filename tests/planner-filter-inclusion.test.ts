@@ -7,6 +7,7 @@
  * results stay empty (no synthetic demand).
  */
 import { runPlanner, bestCellForTerm, type GscSignalInput } from '@/lib/seoEngine/planner'
+import { isActionableDemandQuery } from '@/lib/seoFactory/queryNoise'
 
 jest.mock('@/lib/seoEngine/interlink', () => ({
   persistPlannerInterlinks: jest.fn(async () => undefined),
@@ -54,11 +55,16 @@ describe('planner filter inclusion constraints', () => {
   })
 
   it('never relabels visa-only demand into a housing mission under a housing filter', async () => {
+    // P5 boundary: the on-mission housing fixture needs a tenancy/legal anchor
+    // ("tenant rights"); a bare campus-housing query is off-mission demand and
+    // correctly never plans, which is not what this inclusion test is about.
+    const housingQuery = 'stockton student housing tenant rights'
     const mix = [
       gsc('uk spouse visa document checklist', 3100, 12, 40),
-      gsc('stockton student housing rates 2026', 1400, 44, 12),
+      gsc(housingQuery, 1400, 44, 12),
     ]
-    expect(bestCellForTerm('stockton student housing rates 2026').stage).toBe('housing')
+    expect(isActionableDemandQuery(housingQuery)).toBe(true)
+    expect(bestCellForTerm(housingQuery).stage).toBe('housing')
     const { plans } = await runPlanner({
       signals: mix,
       knowledge: [],
