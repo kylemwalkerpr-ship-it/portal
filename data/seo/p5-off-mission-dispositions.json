@@ -24,8 +24,8 @@
     "perUrlOffMissionSplit": {
       "state": "published",
       "publishedFields": [
-        "offMissionImpressions",
-        "offMissionRows"
+        "offMissionImpressions — exact values for 7 of 8 cohort URLs; Howard's exact value is UNKNOWN (audit display range 20–29 only)",
+        "offMissionRows — exact values for 5 of 8 cohort URLs (South Carolina 16, FIU 8, Portland State 7, Utah 1, Arizona State 6); Cornell, Oregon and Howard are UNKNOWN"
       ],
       "unknownFields": [
         "offMissionClicks",
@@ -35,7 +35,7 @@
         "howard offMissionImpressions exact value (audit display range 20–29 only)"
       ]
     },
-    "perUrlOffMissionSplitReason": "The 2026-09-20 P5 audit DID publish a concrete per-URL off-mission split for the eight\ncohort URLs (off-mission impressions for all eight, and off-mission row counts for six);\nthose published values are recorded per entry above. Values the audit did not publish stay\nnull (UNKNOWN) and must never be read as a measured 0: per-URL off-mission clicks, per-URL\nqualified rows/clicks, per-URL off-mission rows where the audit gave no count (Cornell,\nOregon), and Howard's exact impressions (display range 20–29 only). Any of these can be\nre-derived read-only from persisted seo_gsc_rows with classifyGscVisibility() over the same\nwindow; until then they stay null.",
+    "perUrlOffMissionSplitReason": "The 2026-09-20 P5 audit DID publish concrete per-URL off-mission evidence for the eight\ncohort URLs, but not with complete coverage: exact off-mission impressions were published for\nseven cohort URLs (all except Howard, whose audit value is only a 20–29 display range, so his\nexact impressions remain UNKNOWN/null), and exact off-mission row counts were published for\nfive cohort URLs (South Carolina 16, FIU 8, Portland State 7, Utah 1, Arizona State 6). Those\npublished values are recorded per entry above. Values the audit did not publish stay null\n(UNKNOWN) and must never be read as a measured 0: per-URL off-mission clicks, per-URL\nqualified rows/clicks, per-URL off-mission rows where the audit gave no count (Cornell,\nOregon, Howard), and Howard's exact impressions (display range 20–29 only). Any of these can\nbe re-derived read-only from persisted seo_gsc_rows with classifyGscVisibility() over the\nsame window; until then they stay null.",
     "knownLimitations": [
       "Persisted-window evidence only: it proves the classification of the persisted 2026-06-22 → 2026-09-19 rows, not live Google index state.",
       "Off-mission rows stay observable in raw GSC reporting/measurement surfaces; this contract only governs action surfaces.",
