@@ -324,9 +324,11 @@ export function selectLiveInterlinkEdges(edges: InterlinkEdge[], liveUrls: strin
  * FAIL-CLOSED TARGET GATE (P6): generated edges only persist when the exact
  * target URL is proven live by the existing link-validity authority
  * (`filterLiveInternalUrls`). Synthetic journey/cross-country/cluster targets
- * that 404 today, and every edge produced while the verifier is failing,
- * persist ZERO rows instead of becoming planner backlog. No replacement URL is
- * ever invented; a verifier failure is returned as a truthful error.
+ * that 404 today are expected P6 hygiene: they are counted in `filtered` and
+ * persist ZERO rows instead of becoming planner backlog — that is NOT an
+ * error. A verifier exception/unavailability (or a DB write failure) IS one:
+ * it persists zero unverified edges AND returns a truthful error. No
+ * replacement URL is ever invented.
  */
 export async function persistPlannerInterlinks(
   plans: Array<{
@@ -336,8 +338,9 @@ export async function persistPlannerInterlinks(
     relatedTerms?: string[]
     plan: { contentType: ContentType }
   }>,
-): Promise<{ stored: number; errors: string[] }> {
+): Promise<{ stored: number; filtered: number; errors: string[] }> {
   let stored = 0
+  let filtered = 0
   const errors: string[] = []
   for (const p of plans) {
     if (!p.clusterId || !p.stage || !p.country) continue
@@ -351,9 +354,10 @@ export async function persistPlannerInterlinks(
     })
     const persisted = await persistInterlinkPlan(edges)
     stored += persisted.stored
+    filtered += persisted.filtered
     if (persisted.error) errors.push(`${p.clusterId}: ${persisted.error}`)
   }
-  return { stored, errors }
+  return { stored, filtered, errors }
 }
 
 /**
@@ -377,8 +381,10 @@ export function findNoncanonicalMarketplaceCta(edges: InterlinkEdge[]): string |
   return null
 }
 
-export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number; error?: string }> {
-  if (!edges.length) return { stored: 0 }
+export async function persistInterlinkPlan(
+  edges: InterlinkEdge[],
+): Promise<{ stored: number; filtered: number; error?: string }> {
+  if (!edges.length) return { stored: 0, filtered: 0 }
   // Validate BEFORE the Supabase client exists: one noncanonical
   // marketplace_cta edge rejects the whole batch atomically (zero writes) —
   // never normalized, never partially stored, never silently reinterpreted
@@ -387,13 +393,14 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
   if (noncanonical) {
     return {
       stored: 0,
+      filtered: 0,
       error: `marketplace_cta target is not a canonical Marketplace category URL: ${noncanonical}`.slice(0, 300),
     }
   }
   // FAIL-CLOSED target liveness gate. Runs before the Supabase client exists
-  // and before any write: zero unverified edges persist, and a verifier
-  // throw/empty result is reported truthfully instead of silently storing a
-  // dead planner target. Never substitutes a replacement URL.
+  // and before any write: zero unverified edges persist, and a verifier throw
+  // (unavailable) is reported truthfully instead of silently storing a dead
+  // planner target. Never substitutes a replacement URL.
   let verifiedEdges: InterlinkEdge[]
   try {
     const { filterLiveInternalUrls } = await import('@/lib/seoFactory/linkAudit')
@@ -403,15 +410,15 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
   } catch (e) {
     return {
       stored: 0,
+      filtered: 0,
       error: `internal target liveness verification failed — persisted zero unverified edges: ${e instanceof Error ? e.message : 'verifier error'}`.slice(0, 300),
     }
   }
-  if (!verifiedEdges.length) {
-    return {
-      stored: 0,
-      error: `no live internal target verified for ${edges.length} generated edge(s) — persisted zero unverified edges`.slice(0, 300),
-    }
-  }
+  // Successfully checked-and-rejected targets (dead/synthetic 404s, legacy
+  // auth walls) are expected P6 hygiene: report the truthful `filtered` count
+  // and persist nothing for them. This is never a fatal engine error.
+  const filtered = edges.length - verifiedEdges.length
+  if (!verifiedEdges.length) return { stored: 0, filtered }
   try {
     const supabase = createSupabaseAdminClient()
     // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
@@ -439,11 +446,11 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
     if (error) {
       // A missing table (migration not applied) is just as real a failure as
       // any other — never mask it as "nothing to store".
-      return { stored: 0, error: error.message.slice(0, 300) }
+      return { stored: 0, filtered, error: error.message.slice(0, 300) }
     }
-    return { stored: rows.length }
+    return { stored: rows.length, filtered }
   } catch (e) {
-    return { stored: 0, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
+    return { stored: 0, filtered, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
   }
 }
 

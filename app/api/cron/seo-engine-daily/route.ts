@@ -19,8 +19,12 @@ import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
  *                                                into the reward ledger
  *   { phase: 'track' }                        — forecast vs actual execution
  *                                                tracker (matured 30/60/90d runs)
+ *   { phase: 'interlinks' }                   — bounded durable re-verification
+ *                                                + finalization of staged planned
+ *                                                interlinks (post-deploy seam)
  *   { phase: 'all' }                          — knowledge → plan → rank → rewards
- *                                                → track (+ optional LLM audits)
+ *                                                → track → interlinks (+ optional
+ *                                                LLM audits)
  *                                                (default)
  *
  * GET — latest engine runs (audit trail).
@@ -155,6 +159,29 @@ export async function POST(req: NextRequest) {
       }, [], 'cron')
       return NextResponse.json({ ok: true, phase, tracker: tracker.summary })
     }
+    if (phase === 'interlinks') {
+      // Durable post-deploy seam: staged planned interlinks are re-verified
+      // (and finalized only on an ok=true live verdict) on the existing
+      // scheduled surface. A pending deployment is benign truth; only a
+      // verifier-unavailable / DB-write failure is an error.
+      const { reconcileStagedInterlinks } = await import('@/lib/seoFactory/interlinkReconciliation')
+      const interlinkReconcile = await reconcileStagedInterlinks()
+      await recordEngineRun('daily', interlinkReconcile.ok ? 'success' : 'partial', {
+        phase,
+        interlinkUnavailable: interlinkReconcile.unavailable,
+        interlinkUnavailableReason: interlinkReconcile.unavailableReason,
+        interlinkScannedRows: interlinkReconcile.scannedRows,
+        interlinkStagedSources: interlinkReconcile.stagedSources,
+        interlinkEligibleSources: interlinkReconcile.eligibleSources,
+        interlinkVerifiedLive: interlinkReconcile.verifiedLive,
+        interlinkVerificationPending: interlinkReconcile.verificationFailed,
+        interlinkApplied: interlinkReconcile.applied,
+        interlinkFinalized: interlinkReconcile.finalized,
+        interlinkPlannedVerdicts: interlinkReconcile.plannedVerdicts,
+        interlinkRemaining: interlinkReconcile.remaining,
+      }, interlinkReconcile.errors, 'cron')
+      return NextResponse.json({ ok: interlinkReconcile.ok, phase, interlinkReconcile })
+    }
 
     // knowledge (or all): ingest first
     const ingest = await ingestKnowledge({ limitPerSource: body.limitPerSource, maxAiItems: 6 })
@@ -170,6 +197,20 @@ export async function POST(req: NextRequest) {
     let onTrackRate = 0
     let llmFailed = 0
     let interlinksStored = 0
+    let interlinksFiltered = 0
+    let interlinkReconcileSummary: {
+      scannedRows: number
+      stagedSources: number
+      eligibleSources: number
+      unavailable: boolean
+      unavailableReason: string | null
+      verifiedLive: number
+      verificationFailed: number
+      applied: number
+      finalized: number
+      plannedVerdicts: number
+      remaining: number
+    } | null = null
     let gscPersistStatus: string | null = null
     let gscRowsProcessed = 0
     let gscWindowEnd: string | null = null
@@ -208,6 +249,10 @@ export async function POST(req: NextRequest) {
         const { persistPlannerInterlinks } = await import('@/lib/seoEngine/interlink')
         const interlinks = await persistPlannerInterlinks(planned.plans)
         interlinksStored = interlinks.stored
+        // Dead/synthetic targets that were successfully checked and filtered
+        // are expected P6 hygiene — a truthful filtered count, NOT a phase
+        // error. Only verifier-unavailable / DB-write failures are errors.
+        interlinksFiltered = interlinks.filtered
         for (const error of interlinks.errors) allPhaseErrors.push(`interlinks: ${error}`)
       } catch (ilErr) {
         allPhaseErrors.push(`interlinks: ${ilErr instanceof Error ? ilErr.message : 'failed'}`)
@@ -269,6 +314,35 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch { /* title calibration is additive — never fail the daily run */ }
+      // Durable post-deploy interlink seam: staged planned interlinks get their
+      // automatic re-verification/finalization opportunity here, on the
+      // existing scheduled surface, AFTER a real production deployment has had
+      // time to become observable. A pending deployment is benign truth; only
+      // verifier-unavailable / DB-write failures are phase errors.
+      try {
+        const { reconcileStagedInterlinks } = await import('@/lib/seoFactory/interlinkReconciliation')
+        const reconcile = await reconcileStagedInterlinks()
+        interlinkReconcileSummary = {
+          scannedRows: reconcile.scannedRows,
+          stagedSources: reconcile.stagedSources,
+          eligibleSources: reconcile.eligibleSources,
+          unavailable: reconcile.unavailable,
+          unavailableReason: reconcile.unavailableReason,
+          verifiedLive: reconcile.verifiedLive,
+          verificationFailed: reconcile.verificationFailed,
+          applied: reconcile.applied,
+          finalized: reconcile.finalized,
+          plannedVerdicts: reconcile.plannedVerdicts,
+          remaining: reconcile.remaining,
+        }
+        if (!reconcile.ok) {
+          for (const error of reconcile.errors) allPhaseErrors.push(`interlink-reconcile: ${error}`)
+        }
+      } catch (reconcileErr) {
+        allPhaseErrors.push(
+          `interlink-reconcile: ${reconcileErr instanceof Error ? reconcileErr.message : 'failed'}`,
+        )
+      }
     }
     const status = allPhaseErrors.length
       ? 'partial'
@@ -316,6 +390,8 @@ export async function POST(req: NextRequest) {
       llmCited: cited,
       llmFailed,
       interlinksStored,
+      interlinksFiltered,
+      ...(interlinkReconcileSummary ? { interlinkReconcile: interlinkReconcileSummary } : {}),
     }, [...ingest.errors, ...ingest.aiErrors, ...allPhaseErrors].slice(0, 20), 'cron')
 
     return NextResponse.json({
@@ -347,6 +423,8 @@ export async function POST(req: NextRequest) {
       llmCited: cited,
       llmFailed,
       interlinksStored,
+      interlinksFiltered,
+      ...(interlinkReconcileSummary ? { interlinkReconcile: interlinkReconcileSummary } : {}),
       phaseErrors: allPhaseErrors.slice(0, 5),
     })
   } catch (e) {

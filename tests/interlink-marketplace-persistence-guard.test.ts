@@ -59,7 +59,7 @@ describe('A) canonical marketplace_cta persists normally', () => {
         marketplaceEdge({ targetUrl: `${MARKET}/categories/${id}` }),
       ])
 
-      expect(result).toEqual({ stored: 1 })
+      expect(result).toEqual({ stored: 1, filtered: 0 })
       expect(createSupabaseAdminClientMock).toHaveBeenCalledTimes(1)
       expect(from).toHaveBeenCalledWith('seo_interlinks')
       expect(upsert).toHaveBeenCalledTimes(1)
@@ -138,7 +138,7 @@ describe('D) non-marketplace_cta reasons are not globally blocked', () => {
 
     const result = await persistInterlinkPlan([portalEdge])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 0 })
     expect(createSupabaseAdminClientMock).toHaveBeenCalledTimes(1)
     expect(upsert).toHaveBeenCalledTimes(1)
   })
@@ -172,7 +172,7 @@ describe('E) generator/helper contract stays canonical', () => {
     })
     const result = await persistInterlinkPlan(plan)
 
-    expect(result).toEqual({ stored: plan.length })
+    expect(result).toEqual({ stored: plan.length, filtered: 0 })
     expect(upsert).toHaveBeenCalledTimes(1)
   })
 

@@ -59,7 +59,7 @@ describe('A) dead targets are filtered before any write', () => {
 
     const result = await persistInterlinkPlan([edge(LIVE), edge(DEAD)])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 1 })
     expect(db.upserts).toHaveLength(1)
     expect(db.upserts[0].rows).toHaveLength(1)
     expect(db.upserts[0].rows[0].target_url).toBe(LIVE)
@@ -74,7 +74,7 @@ describe('A) dead targets are filtered before any write', () => {
 
     const result = await persistInterlinkPlan([edge(market, { reason: 'marketplace_cta' })])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 0 })
     expect(db.upserts[0].rows[0]).toMatchObject({ target_url: market, reason: 'marketplace_cta' })
   })
 })
@@ -93,19 +93,41 @@ describe('B) verifier failure persists zero unverified edges', () => {
     expect(db.upserts).toHaveLength(0)
   })
 
-  it('persists zero when the verifier proves nothing live', async () => {
+  it('treats successfully checked dead/synthetic targets as benign filtered hygiene', async () => {
     const db = installDb()
     filterLiveInternalUrlsMock.mockResolvedValue([])
 
     const result = await persistInterlinkPlan([edge(LIVE), edge(DEAD)])
 
+    // Verified dead => zero persisted for those edges + a truthful filtered
+    // count, NOT a fatal error (the daily engine must not be chronically red
+    // because dead planner targets were rejected).
     expect(result.stored).toBe(0)
-    expect(result.error).toMatch(/no live internal target/i)
+    expect(result.filtered).toBe(2)
+    expect(result.error).toBeUndefined()
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled()
     expect(db.upserts).toHaveLength(0)
   })
 
-  it('propagates per-cluster errors through persistPlannerInterlinks', async () => {
+  it('surfaces a truthful filtered count through persistPlannerInterlinks without errors', async () => {
+    installDb()
+    filterLiveInternalUrlsMock.mockResolvedValue([])
+
+    const result = await persistPlannerInterlinks([
+      {
+        clusterId: 'seo-us-schools-f1-checklist',
+        stage: 'schools',
+        country: 'US',
+        plan: { contentType: 'blog_post' },
+      },
+    ])
+
+    expect(result.stored).toBe(0)
+    expect(result.filtered).toBeGreaterThan(0)
+    expect(result.errors).toEqual([])
+  })
+
+  it('propagates real verifier-unavailable errors through persistPlannerInterlinks', async () => {
     installDb()
     filterLiveInternalUrlsMock.mockRejectedValue(new Error('verifier down'))
 
@@ -119,6 +141,7 @@ describe('B) verifier failure persists zero unverified edges', () => {
     ])
 
     expect(result.stored).toBe(0)
+    expect(result.filtered).toBe(0)
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]).toMatch(/verifier down/)
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled()
@@ -165,7 +188,7 @@ describe('D) replanning preserves lifecycle and verification truth', () => {
 
     const result = await persistInterlinkPlan([edge(LIVE, { anchorText: 'Regenerated anchor', score: 0.7 })])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 0 })
     const [{ rows, options }] = db.upserts
     expect(options).toMatchObject({ onConflict: 'source_slug,target_url', defaultToNull: false })
     for (const column of [

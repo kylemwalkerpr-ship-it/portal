@@ -120,6 +120,112 @@ describe('A) live source + exact anchor href => applied with durable proof', () 
   })
 })
 
+describe('H) DB write observability (item 4 — never a silent zero/no-op)', () => {
+  /** Minimal client that can force an error / zero affected rows on writes. */
+  function scriptedClient(
+    rows: P6FakeRow[],
+    writeResult: { data: unknown[] | null; error: { message: string } | null },
+  ) {
+    const writes: Array<{ patch: Record<string, unknown> }> = []
+    return {
+      writes,
+      client: {
+        from() {
+          let mode: 'select' | 'update' = 'select'
+          let patch: Record<string, unknown> = {}
+          const builder: Record<string, unknown> = {
+            select() {
+              return builder
+            },
+            in() {
+              return builder
+            },
+            eq() {
+              return builder
+            },
+            update(next: Record<string, unknown>) {
+              mode = 'update'
+              patch = next
+              return builder
+            },
+            then(resolve: (value: unknown) => unknown) {
+              if (mode === 'update') {
+                writes.push({ patch })
+                return Promise.resolve(writeResult).then(resolve)
+              }
+              return Promise.resolve({ data: rows.map((row) => ({ ...row })), error: null }).then(resolve)
+            },
+          }
+          return builder
+        },
+      },
+    }
+  }
+
+  it('surfaces a verdict write failure as a real error instead of a silent absent/0', async () => {
+    const scripted = scriptedClient([row()], { data: null, error: { message: 'permission denied' } })
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.absent).toBe(0)
+    expect(result.dbErrors).toBe(1)
+    expect(result.error).toMatch(/permission denied/)
+  })
+
+  it('counts actual affected rows: a zero-match applied write is a skipped race, not applied truth', async () => {
+    const scripted = scriptedClient([row()], { data: [], error: null })
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.dbErrors).toBe(0)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('does not count a zero-match verdict write as a written verdict', async () => {
+    // The target is not live => the verdict path runs; the DB races it away.
+    verifyUrlsLiveMock.mockResolvedValue(liveMap([[TARGET, 404]]))
+    const scripted = scriptedClient([row()], { data: [], error: null })
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.targetNotLive).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.dbErrors).toBe(0)
+  })
+})
+
+describe('I) same-site relative hrefs finalize against the verified source canonical', () => {
+  it('applies when the live source links root-relatively to the exact target', async () => {
+    const relativeTarget = 'https://legal.yousafeconsultancy.com/us/student-permits'
+    const db = installDb([row({ target_url: relativeTarget })])
+    verifyUrlsLiveMock.mockResolvedValue(liveMap([[relativeTarget, 200]]))
+    installSourceFetch(`<p>Next: <a href="/us/student-permits/">student permits</a></p>`)
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(1)
+    expect(db.rows[0].status).toBe('applied')
+  })
+
+  it('never applies for a cross-host href that resolves off the verified source host', async () => {
+    const relativeTarget = 'https://legal.yousafeconsultancy.com/us/student-permits'
+    const db = installDb([row({ target_url: relativeTarget })])
+    verifyUrlsLiveMock.mockResolvedValue(liveMap([[relativeTarget, 200]]))
+    installSourceFetch(`<a href="//evil.example.com/us/student-permits/">off site</a>`)
+
+    const result = await finalizeStagedInterlinksForLiveSource({ canonicalUrl: SOURCE })
+
+    expect(result.applied).toBe(0)
+    expect(result.absent).toBe(1)
+    expect(db.rows[0].status).toBe('planned')
+  })
+})
+
 describe('B) live source without the exact anchor => absent, still planned', () => {
   it.each([
     ['plain text only', `<p>Visit ${TARGET} for help.</p>`],

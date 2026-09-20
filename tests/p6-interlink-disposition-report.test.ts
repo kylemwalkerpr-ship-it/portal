@@ -12,6 +12,9 @@ import {
   buildP6DispositionReport,
   classifyP6Row,
   fetchP6DispositionRows,
+  fetchP6DispositionRowsWithTruncation,
+  hasDurableVerificationProof,
+  p6ObservationFromLiveCheck,
   runP6DispositionReport,
   type P6InterlinkRow,
   type P6TargetObservation,
@@ -33,6 +36,7 @@ function row(overrides: Partial<P6InterlinkRow> = {}): P6InterlinkRow {
     source_url: null,
     verification_state: null,
     verified_at: null,
+    verification_evidence: null,
     applied_at: null,
     ...overrides,
   }
@@ -45,6 +49,7 @@ const appliedRow = () =>
     source_url: SOURCE,
     verification_state: 'present',
     verified_at: '2026-09-20T00:00:00.000Z',
+    verification_evidence: { proof: 'live_exact_href', source: SOURCE, target: LIVE },
     applied_at: '2026-09-20T00:00:00.000Z',
   })
 
@@ -58,6 +63,26 @@ describe('A) classifyP6Row', () => {
       'unknown',
     )
     expect(classifyP6Row(appliedRow(), undefined)).toBe('applied_present')
+  })
+
+  it('requires verification_evidence exactly like the DB applied constraint', () => {
+    const proven = appliedRow()
+    expect(hasDurableVerificationProof(proven)).toBe(true)
+    for (const broken of [
+      { ...proven, verification_evidence: null },
+      { ...proven, verification_evidence: '   ' },
+      { ...proven, verification_evidence: undefined },
+      { ...proven, source_url: null },
+      { ...proven, verification_state: 'absent' },
+      { ...proven, verified_at: null },
+      { ...proven, applied_at: null },
+    ]) {
+      expect(hasDurableVerificationProof(broken as P6InterlinkRow)).toBe(false)
+    }
+    // An applied row without evidence can never be re-labelled as verified.
+    expect(
+      classifyP6Row(row({ status: 'applied', applied_at: '2026-09-20T00:00:00.000Z', source_url: SOURCE, verification_state: 'present', verified_at: '2026-09-20T00:00:00.000Z' }), observation(200)),
+    ).toBe('unknown')
   })
 
   it('classifies an observed 404/410 target as target_404', () => {
@@ -134,6 +159,49 @@ describe('B) report aggregation keeps raw backlog separate', () => {
     expect(report.gate.evaluated).toBe(false)
     expect(report.gate.note).toMatch(/read-only/i)
   })
+
+  it('exposes truncation truth instead of silently treating a capped read as complete', () => {
+    const complete = buildP6DispositionReport(rows, observations)
+    expect(complete.truncated).toBe(false)
+    expect(complete.rowLimit).toBe(5000)
+
+    const capped = buildP6DispositionReport(rows, observations, { truncated: true, rowLimit: 6 })
+    expect(capped.truncated).toBe(true)
+    expect(capped.rowLimit).toBe(6)
+    expect(capped.total).toBe(6)
+  })
+})
+
+describe('D) link-authority observation projection', () => {
+  it('carries the authority ok verdict and observed status through unchanged', () => {
+    expect(p6ObservationFromLiveCheck(LIVE, { ok: true, status: 200, finalUrl: `${LIVE}/` })).toEqual({
+      status: 200,
+      ok: true,
+      finalUrl: `${LIVE}/`,
+    })
+    // HEAD-hostile fallback already happened inside the authority: a target it
+    // proved live after the GET retry is live here too.
+    expect(p6ObservationFromLiveCheck(LIVE, { ok: true, status: 200 })).toEqual({
+      status: 200,
+      ok: true,
+      finalUrl: LIVE,
+    })
+    // A network error / unreachable target stays unknown — never invented live.
+    expect(p6ObservationFromLiveCheck(DEAD, { ok: false, status: 0 })).toMatchObject({ status: 0, ok: false })
+    expect(classifyP6Row(row({ target_url: DEAD }), p6ObservationFromLiveCheck(DEAD, { ok: false, status: 0 }))).toBe(
+      'unknown',
+    )
+  })
+
+  it('the CLI uses the repository link authority (HEAD-hostile fallback), not a raw HEAD fetch', () => {
+    const cli = fs.readFileSync(
+      path.join(process.cwd(), 'scripts/p6-interlink-disposition.mts'),
+      'utf8',
+    )
+    expect(cli).toContain('verifyUrlsLive')
+    expect(cli).toContain('p6ObservationFromLiveCheck')
+    expect(cli).not.toMatch(/method:\s*'HEAD'/)
+  })
 })
 
 describe('C) SELECT-only fetch and read-only run', () => {
@@ -185,6 +253,30 @@ describe('C) SELECT-only fetch and read-only run', () => {
     await expect(fetchP6DispositionRows(harness.client)).rejects.toThrow(/read failed/)
   })
 
+  it('proves truncation with one bounded probe row beyond the cap', async () => {
+    const rows = [row({ id: '1' }), row({ id: '2' }), row({ id: '3' })]
+    const harness = readOnlyClient(rows)
+    const fetch = await fetchP6DispositionRowsWithTruncation(harness.client, { pageSize: 2, limit: 2 })
+
+    expect(fetch.limit).toBe(2)
+    expect(fetch.rows).toHaveLength(2)
+    expect(fetch.truncated).toBe(true)
+    // [0,1] fills the cap, then [2,2] proves a third row exists.
+    expect(harness.calls.map((entry) => [entry.from, entry.to])).toEqual([
+      [0, 1],
+      [2, 2],
+    ])
+  })
+
+  it('reports a capped-but-exactly-complete read as NOT truncated', async () => {
+    const rows = [row({ id: '1' }), row({ id: '2' })]
+    const harness = readOnlyClient(rows)
+    const fetch = await fetchP6DispositionRowsWithTruncation(harness.client, { pageSize: 2, limit: 2 })
+
+    expect(fetch.rows).toHaveLength(2)
+    expect(fetch.truncated).toBe(false)
+  })
+
   it('observes unique targets and classifies the report', async () => {
     const rows = [row({ id: '1', target_url: LIVE }), row({ id: '2', target_url: `${LIVE}/` })]
     const harness = readOnlyClient(rows)
@@ -213,6 +305,6 @@ describe('C) SELECT-only fetch and read-only run', () => {
     expect(source).not.toMatch(/\.upsert\s*\(/)
     expect(source).not.toMatch(/\.insert\s*\(/)
     expect(source).not.toMatch(/\.rpc\s*\(/)
-    expect(source).toContain(".select('id,source_slug,target_url,status,source_url,verification_state,verified_at,applied_at')")
+    expect(source).toContain('verification_evidence')
   })
 })

@@ -59,7 +59,7 @@ describe('A) staging records source_url only', () => {
       body,
     })
 
-    expect(result).toEqual({ staged: 1, candidates: 1, sourceUrl: CANONICAL })
+    expect(result).toEqual({ staged: 1, candidates: 1, skipped: 0, failed: 0, sourceUrl: CANONICAL })
     expect(db.updates).toHaveLength(1)
     const { patch, filters } = db.updates[0]
     expect(patch).toEqual({ source_url: CANONICAL })
@@ -182,5 +182,77 @@ describe('C) source identity and idempotency', () => {
     expect(result.candidates).toBe(0)
     expect(db.updates).toHaveLength(0)
     expect(db.selects[0].filters).toContainEqual({ op: 'eq', column: 'status', value: 'planned' })
+  })
+})
+
+describe('D) staging DB-write observability (never a silent zero-op)', () => {
+  function scriptedClient(
+    rows: P6FakeRow[],
+    writeResult: { data: unknown[] | null; error: { message: string } | null },
+  ) {
+    const writes: Array<Record<string, unknown>> = []
+    return {
+      writes,
+      client: {
+        from() {
+          let mode: 'select' | 'update' = 'select'
+          let patch: Record<string, unknown> = {}
+          const builder: Record<string, unknown> = {
+            select() {
+              return builder
+            },
+            eq() {
+              return builder
+            },
+            update(next: Record<string, unknown>) {
+              mode = 'update'
+              patch = next
+              return builder
+            },
+            then(resolve: (value: unknown) => unknown) {
+              if (mode === 'update') {
+                writes.push(patch)
+                return Promise.resolve(writeResult).then(resolve)
+              }
+              return Promise.resolve({ data: rows.map((r) => ({ ...r })), error: null }).then(resolve)
+            },
+          }
+          return builder
+        },
+      },
+    }
+  }
+
+  it('reports a failed staging write truthfully and does not count it as staged', async () => {
+    const scripted = scriptedClient([row()], { data: null, error: { message: 'write denied' } })
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(0)
+    expect(result.failed).toBe(1)
+    expect(result.error).toMatch(/write denied/)
+    expect(scripted.writes).toHaveLength(1)
+    expect(scripted.writes[0]).toEqual({ source_url: CANONICAL })
+  })
+
+  it('never counts a zero-match staging race as staged', async () => {
+    const scripted = scriptedClient([row()], { data: [], error: null })
+    createSupabaseAdminClientMock.mockReturnValue(scripted.client as never)
+
+    const result = await stageEngineInterlinksForVerification({
+      canonicalUrl: CANONICAL,
+      primaryKeyword: 'f1 checklist',
+      body: `[x](${LIVE_TARGET})`,
+    })
+
+    expect(result.staged).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(result.error).toBeUndefined()
   })
 })

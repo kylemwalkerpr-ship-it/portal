@@ -31,8 +31,12 @@
  *
  *   3. PROOF (`exactAnchorHrefMatch`)
  *      Only real anchor href attributes count. A target URL that appears in
- *      plain text, a `<script>` body or JSON is NOT proof. Trailing slashes
- *      normalize safely; queries and fragments are compared strictly.
+ *      plain text, an HTML comment, a `<script>`/`<style>`/`<template>` body,
+ *      a serialized string or JSON is NOT proof — those payloads are skipped
+ *      structurally before any anchor is read. Root-relative / same-site
+ *      hrefs are resolved against the verified source canonical and refused
+ *      when they would leave that host. Trailing slashes normalize safely;
+ *      queries and fragments are compared strictly.
  *
  * Idempotent by construction: only `status = 'planned'` rows are ever
  * selected or updated, so a verified applied row can never be downgraded by a
@@ -71,34 +75,137 @@ function decodeHtmlEntities(value: string): string {
 }
 
 /**
+ * Raw-text / non-rendered elements whose contents are DATA, not markup.
+ * Anchors (or literal `<a href=…>` text) inside them must never count as
+ * proof, exactly as a browser would not render them.
+ */
+const RAW_TEXT_ELEMENTS: ReadonlySet<string> = new Set([
+  'script',
+  'style',
+  'template',
+  'textarea',
+  'title',
+  'xmp',
+  'noembed',
+  'noframes',
+])
+
+/**
+ * HTML tokenizer: comments, CDATA, tags. A quoted attribute value may contain
+ * `<`/`>` (e.g. a serialized HTML string), so the attribute tail explicitly
+ * consumes quoted values before the closing `>` — a `<a href=…>` living inside
+ * an attribute/JSON string is never seen as a standalone tag.
+ */
+const HTML_TOKEN_RE =
+  /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<(\/?)([a-zA-Z][a-zA-Z0-9:_-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g
+const HTML_ATTR_RE = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
+
+/** Read the (decoded) href attribute of an already-tokenized `<a …>` tag. */
+function anchorHrefFromTag(tag: string): string | null {
+  const attrs = tag.replace(/^<\s*a\b/i, '')
+  HTML_ATTR_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HTML_ATTR_RE.exec(attrs))) {
+    if (String(match[1] || '').toLowerCase() !== 'href') continue
+    const raw = String(match[2] ?? match[3] ?? match[4] ?? '').trim()
+    return raw ? decodeHtmlEntities(raw) : null
+  }
+  return null
+}
+
+/**
+ * Walk open tags only, structurally skipping HTML comments, CDATA and every
+ * raw-text element body. Serialized payloads therefore never reach the
+ * anchor reader.
+ */
+function forEachOpenTag(html: string, visit: (name: string, tag: string) => void): void {
+  const source = String(html || '')
+  if (!source) return
+  const lower = source.toLowerCase()
+  HTML_TOKEN_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HTML_TOKEN_RE.exec(source))) {
+    const name = String(match[2] || '').toLowerCase()
+    if (!name) continue // comment / CDATA
+    const closing = match[1] === '/'
+    if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
+      const close = lower.indexOf(`</${name}`, HTML_TOKEN_RE.lastIndex)
+      if (close < 0) {
+        HTML_TOKEN_RE.lastIndex = source.length
+        continue
+      }
+      HTML_TOKEN_RE.lastIndex = close
+      continue
+    }
+    if (closing) continue
+    visit(name, match[0])
+  }
+}
+
+/**
+ * Remove non-rendered payloads (comments, CDATA, raw-text element bodies) from
+ * a string, leaving everything a reader could actually see. Used only for the
+ * draft-locator markdown scan; proof paths use the tokenizer directly.
+ */
+function stripNonRenderedPayloads(source: string): string {
+  const src = String(source || '')
+  if (!src) return ''
+  const lower = src.toLowerCase()
+  let out = ''
+  let cursor = 0
+  HTML_TOKEN_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HTML_TOKEN_RE.exec(src))) {
+    const name = String(match[2] || '').toLowerCase()
+    if (!name) {
+      // comment / CDATA
+      out += src.slice(cursor, match.index)
+      cursor = match.index + match[0].length
+      continue
+    }
+    if (match[1] === '/' || !RAW_TEXT_ELEMENTS.has(name)) continue
+    const close = lower.indexOf(`</${name}`, HTML_TOKEN_RE.lastIndex)
+    const closeBracket = close < 0 ? -1 : src.indexOf('>', close)
+    const end = closeBracket < 0 ? src.length : closeBracket + 1
+    out += src.slice(cursor, match.index)
+    cursor = end
+    HTML_TOKEN_RE.lastIndex = cursor
+  }
+  out += src.slice(cursor)
+  return out
+}
+
+/**
  * Extract `href` values from real `<a …>` tags only.
  *
  * Deliberately narrow: no bare-URL extraction, no markdown, no scanning of
- * text/script/JSON. A URL printed in prose or serialized in a JSON payload is
- * not an anchor and must never finalize an interlink.
+ * text/comment/script/style/template/JSON payloads. A URL printed in prose,
+ * commented out, or serialized in a script/JSON payload is not an anchor and
+ * must never finalize an interlink.
  */
 export function extractAnchorHrefs(html: string): string[] {
-  if (!html) return []
   const out: string[] = []
-  const re = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'`=<>]+))/gi
-  let match: RegExpExecArray | null
-  while ((match = re.exec(html))) {
-    const href = decodeHtmlEntities(String(match[1] ?? match[2] ?? match[3] ?? '').trim())
+  forEachOpenTag(html, (name, tag) => {
+    if (name !== 'a') return
+    const href = anchorHrefFromTag(tag)
     if (href) out.push(href)
-  }
+  })
   return out
 }
 
 /**
  * Structural anchors in a SHIPPED DRAFT (markdown links + HTML anchors) used
  * only to decide which planned rows are worth staging. This is a locator, not
- * proof: presence here never sets an applied status.
+ * proof: presence here never sets an applied status. Comments and
+ * script/style/template payloads are stripped first so a commented-out or
+ * serialized draft link can never even be staged.
  */
 export function extractDraftAnchorHrefs(content: string): string[] {
   const out = [...extractAnchorHrefs(content)]
+  const rendered = stripNonRenderedPayloads(content)
   const md = /\[[^\]]*\]\(\s*([^\s)]+)(?:\s+["'][^"']*["'])?\s*\)/g
   let match: RegExpExecArray | null
-  while ((match = md.exec(content))) {
+  while ((match = md.exec(rendered))) {
     const raw = String(match[1] || '').trim().replace(/^<|>$/g, '')
     const href = decodeHtmlEntities(raw)
     if (href) out.push(href)
@@ -145,15 +252,64 @@ export interface ExactAnchorHrefProof {
   context: string | null
 }
 
+export interface ExactAnchorHrefOptions {
+  /**
+   * The verified source canonical. Used ONLY to resolve root-relative /
+   * same-site hrefs; relative hrefs are refused unless they resolve back to
+   * exactly this host, so a cross-host or invented target can never match.
+   */
+  sourceCanonicalUrl?: string | null
+}
+
+/**
+ * Resolve an anchor href to its canonical comparison form.
+ *
+ * · absolute http(s) href → normalized as-is (targets legitimately cross hosts);
+ * · non-http scheme (mailto:, javascript:, data:, tel:) → null, never proof;
+ * · root-relative / relative / protocol-relative href → resolved against the
+ *   verified source canonical and refused unless the resolved host is EXACTLY
+ *   that host (a `//evil.example` href can never match a same-site target);
+ * · no source canonical available → null for relative hrefs (fail closed).
+ */
+export function resolveSameSiteAnchorHref(
+  href: string,
+  sourceCanonicalUrl?: string | null,
+): string | null {
+  const raw = decodeHtmlEntities(String(href || '').trim())
+  if (!raw) return null
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+    return /^https?:/i.test(raw) ? normalizeInterlinkProofUrl(raw) : null
+  }
+  const base = String(sourceCanonicalUrl || '').trim()
+  if (!/^https?:\/\//i.test(base)) return null
+  try {
+    const parsedBase = new URL(base)
+    const resolved = new URL(raw, parsedBase)
+    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null
+    if (resolved.host.toLowerCase() !== parsedBase.host.toLowerCase()) return null
+    return normalizeInterlinkProofUrl(resolved.toString())
+  } catch {
+    return null
+  }
+}
+
 /**
  * Exact live-source anchor proof: the normalized target must appear as the
- * href of a real anchor. Plain text / script / JSON substrings are rejected.
+ * href of a real anchor. Plain text, commented-out markup and
+ * script/style/template/JSON payloads are rejected structurally, and
+ * relative hrefs are only admitted after safe same-site resolution.
  */
-export function exactAnchorHrefMatch(html: string, targetUrl: string): ExactAnchorHrefProof {
+export function exactAnchorHrefMatch(
+  html: string,
+  targetUrl: string,
+  opts: ExactAnchorHrefOptions = {},
+): ExactAnchorHrefProof {
   const target = normalizeInterlinkProofUrl(targetUrl)
   if (!target) return { present: false, observedHref: null, context: null }
   for (const href of extractAnchorHrefs(html)) {
-    if (normalizeInterlinkProofUrl(href) === target) {
+    const resolved = resolveSameSiteAnchorHref(href, opts.sourceCanonicalUrl)
+    const candidate = resolved || normalizeInterlinkProofUrl(href)
+    if (candidate && candidate === target) {
       return { present: true, observedHref: href, context: anchorContext(html, href) }
     }
   }
@@ -177,8 +333,13 @@ export interface StageEngineInterlinksInput {
 }
 
 export interface StageEngineInterlinksResult {
+  /** Rows now durably staged for this source (written or already staged). */
   staged: number
   candidates: number
+  /** Planned rows deliberately NOT staged (different source identity). */
+  skipped: number
+  /** Staging writes that failed or matched zero rows on the DB side. */
+  failed: number
   sourceUrl: string | null
   error?: string
 }
@@ -191,27 +352,38 @@ function errorMessage(error: unknown): string {
  * Stage planner rows for later live verification. Called after a successful
  * Git direct-main write or merge. Never throws (a staging failure must not
  * fail a ship), never writes an applied status, never touches applied_at or a
- * verification verdict.
+ * verification verdict. A DB failure is reported truthfully (failed count +
+ * error) instead of looking like a zero-op.
  */
 export async function stageEngineInterlinksForVerification(
   input: StageEngineInterlinksInput,
 ): Promise<StageEngineInterlinksResult> {
   const sourceUrl = String(input.canonicalUrl || '').trim()
   if (!/^https?:\/\//i.test(sourceUrl)) {
-    return { staged: 0, candidates: 0, sourceUrl: null, error: 'a plan canonicalUrl is required to stage interlinks' }
+    return {
+      staged: 0,
+      candidates: 0,
+      skipped: 0,
+      failed: 0,
+      sourceUrl: null,
+      error: 'a plan canonicalUrl is required to stage interlinks',
+    }
   }
   try {
     const { bestCellForTerm, MIN_CELL_MATCH_SCORE, plannerClusterId } = await import('@/lib/seoEngine/planner')
     const cell = bestCellForTerm(input.primaryKeyword || '')
-    if (!cell || cell.score < MIN_CELL_MATCH_SCORE) return { staged: 0, candidates: 0, sourceUrl }
+    if (!cell || cell.score < MIN_CELL_MATCH_SCORE) return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl }
     const slug = plannerClusterId(cell.country, cell.stage, input.primaryKeyword)
 
+    // Draft hrefs are located structurally (markdown link / real anchor only)
+    // and same-site relative hrefs are resolved against this plan's canonical
+    // so a root-relative draft link can still locate its planned target.
     const draftHrefs = new Set(
       extractDraftAnchorHrefs(input.body || '')
-        .map(normalizeInterlinkProofUrl)
+        .map((href) => resolveSameSiteAnchorHref(href, sourceUrl) || normalizeInterlinkProofUrl(href))
         .filter(Boolean),
     )
-    if (!draftHrefs.size) return { staged: 0, candidates: 0, sourceUrl }
+    if (!draftHrefs.size) return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl }
 
     const supabase = createSupabaseAdminClient()
     const { data, error } = await supabase
@@ -219,33 +391,70 @@ export async function stageEngineInterlinksForVerification(
       .select('id,target_url,status,source_url')
       .eq('source_slug', slug)
       .eq('status', 'planned')
-    if (error) return { staged: 0, candidates: 0, sourceUrl, error: error.message.slice(0, 300) }
+    if (error) {
+      return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl, error: error.message.slice(0, 300) }
+    }
     const rows = (data as InterlinkDbRow[] | null) || []
-    if (!rows.length) return { staged: 0, candidates: 0, sourceUrl }
+    if (!rows.length) return { staged: 0, candidates: 0, skipped: 0, failed: 0, sourceUrl }
 
     const sourceKey = normalizeInterlinkProofUrl(sourceUrl)
     let staged = 0
+    let skipped = 0
+    let failed = 0
+    let lastWriteError: string | null = null
     for (const row of rows) {
       const target = normalizeInterlinkProofUrl(String(row.target_url || ''))
-      if (!target || !draftHrefs.has(target)) continue
+      if (!target || !draftHrefs.has(target)) {
+        skipped += 1
+        continue
+      }
       const existingSource = String(row.source_url || '').trim()
       // Never overwrite a different durable source identity.
-      if (existingSource && normalizeInterlinkProofUrl(existingSource) !== sourceKey) continue
+      if (existingSource && normalizeInterlinkProofUrl(existingSource) !== sourceKey) {
+        skipped += 1
+        continue
+      }
       if (existingSource && normalizeInterlinkProofUrl(existingSource) === sourceKey) {
         // Already staged for this source — idempotent no-op.
         staged += 1
         continue
       }
-      const { error: updateError } = await supabase
-        .from('seo_interlinks')
-        .update({ source_url: sourceUrl })
-        .eq('id', row.id)
-        .eq('status', 'planned')
-      if (!updateError) staged += 1
+      const write = await writePlannedRowPatch(supabase, row, { source_url: sourceUrl })
+      if (write.error) {
+        failed += 1
+        lastWriteError = write.error
+        continue
+      }
+      // A zero-match update is a lost concurrency race, never a staged row.
+      if (write.written === 0) {
+        skipped += 1
+        continue
+      }
+      staged += 1
     }
-    return { staged, candidates: rows.length, sourceUrl }
+    return {
+      staged,
+      candidates: rows.length,
+      skipped,
+      failed,
+      sourceUrl,
+      ...(failed
+        ? {
+            error: `${failed} staging write(s) failed${
+              lastWriteError ? `: ${lastWriteError}` : ''
+            }`.slice(0, 300),
+          }
+        : {}),
+    }
   } catch (error) {
-    return { staged: 0, candidates: 0, sourceUrl, error: errorMessage(error).slice(0, 300) }
+    return {
+      staged: 0,
+      candidates: 0,
+      skipped: 0,
+      failed: 1,
+      sourceUrl,
+      error: errorMessage(error).slice(0, 300),
+    }
   }
 }
 
@@ -264,6 +473,10 @@ export interface FinalizeStagedInterlinksResult {
   targetNotLive: number
   unverifiable: number
   sourceNotLive: number
+  /** Planned rows a verdict update raced away from (zero rows affected). */
+  skipped: number
+  /** Verdict/applied DB writes that failed (never silently counted as truth). */
+  dbErrors: number
   sourceFetchOk: boolean
   error?: string
 }
@@ -277,6 +490,8 @@ function emptyFinalize(sourceUrl: string | null, error?: string): FinalizeStaged
     targetNotLive: 0,
     unverifiable: 0,
     sourceNotLive: 0,
+    skipped: 0,
+    dbErrors: 0,
     sourceFetchOk: false,
     ...(error ? { error } : {}),
   }
@@ -342,9 +557,9 @@ export async function finalizeStagedInterlinksForLiveSource(
         source.status != null && source.status >= 400 && source.status < 500
           ? 'source_not_live'
           : 'unverifiable'
-      let written = 0
+      const outcome = { written: 0, skipped: 0, dbErrors: 0, lastError: null as string | null }
       for (const row of rows) {
-        written += await writeVerdict(supabase, row, {
+        const write = await writeVerdict(supabase, row, {
           sourceUrl,
           state,
           now,
@@ -357,6 +572,7 @@ export async function finalizeStagedInterlinksForLiveSource(
             verifiedAt: now,
           },
         })
+        tallyWrite(outcome, write)
       }
       return {
         sourceUrl,
@@ -364,10 +580,14 @@ export async function finalizeStagedInterlinksForLiveSource(
         applied: 0,
         absent: 0,
         targetNotLive: 0,
-        unverifiable: state === 'unverifiable' ? written : 0,
-        sourceNotLive: state === 'source_not_live' ? written : 0,
+        unverifiable: state === 'unverifiable' ? outcome.written : 0,
+        sourceNotLive: state === 'source_not_live' ? outcome.written : 0,
+        skipped: outcome.skipped,
+        dbErrors: outcome.dbErrors,
         sourceFetchOk: false,
-        ...(source.error ? { error: source.error } : {}),
+        ...(source.error || outcome.lastError
+          ? { error: [source.error, outcome.lastError].filter(Boolean).join(' | ').slice(0, 300) }
+          : {}),
       }
     }
 
@@ -395,8 +615,22 @@ export async function finalizeStagedInterlinksForLiveSource(
       targetNotLive: 0,
       unverifiable: 0,
       sourceNotLive: 0,
+      skipped: 0,
+      dbErrors: 0,
       sourceFetchOk: true,
       ...(targetVerifierError ? { error: targetVerifierError } : {}),
+    }
+    const writeErrors: string[] = targetVerifierError ? [targetVerifierError] : []
+    const tally = (
+      write: { written: number; skipped: number; error: string | null },
+      bucket: 'absent' | 'targetNotLive' | 'unverifiable' | 'sourceNotLive' | null,
+    ) => {
+      if (write.skipped) result.skipped += 1
+      if (write.error) {
+        result.dbErrors += 1
+        if (writeErrors.length < 3) writeErrors.push(write.error)
+      }
+      if (bucket && write.written > 0) result[bucket] += write.written
     }
 
     for (const row of rows) {
@@ -404,7 +638,7 @@ export async function finalizeStagedInterlinksForLiveSource(
       const observation = targetResults.get(target)
 
       if (!observation) {
-        result.unverifiable += await writeVerdict(supabase, row, {
+        tally(await writeVerdict(supabase, row, {
           sourceUrl,
           state: 'unverifiable',
           now,
@@ -415,13 +649,13 @@ export async function finalizeStagedInterlinksForLiveSource(
             error: targetVerifierError || 'target liveness was not observed',
             verifiedAt: now,
           },
-        })
+        }), 'unverifiable')
         continue
       }
       if (!observation.ok) {
         const state: InterlinkVerificationState =
           observation.status === 0 || observation.status >= 500 ? 'unverifiable' : 'target_not_live'
-        const written = await writeVerdict(supabase, row, {
+        tally(await writeVerdict(supabase, row, {
           sourceUrl,
           state,
           now,
@@ -432,15 +666,13 @@ export async function finalizeStagedInterlinksForLiveSource(
             targetHttpStatus: observation.status,
             verifiedAt: now,
           },
-        })
-        if (state === 'target_not_live') result.targetNotLive += written
-        else result.unverifiable += written
+        }), state === 'target_not_live' ? 'targetNotLive' : 'unverifiable')
         continue
       }
 
-      const proof = exactAnchorHrefMatch(html, target)
+      const proof = exactAnchorHrefMatch(html, target, { sourceCanonicalUrl: rawSource })
       if (!proof.present) {
-        result.absent += await writeVerdict(supabase, row, {
+        tally(await writeVerdict(supabase, row, {
           sourceUrl,
           state: 'absent',
           now,
@@ -455,13 +687,11 @@ export async function finalizeStagedInterlinksForLiveSource(
             anchorsExamined: extractAnchorHrefs(html).length,
             verifiedAt: now,
           },
-        })
+        }), 'absent')
         continue
       }
 
-      const { error: appliedError } = await supabase
-        .from('seo_interlinks')
-        .update({
+      const applied = await writePlannedRowPatch(supabase, row, {
           status: 'applied',
           applied_at: now,
           source_url: String(row.source_url || sourceUrl),
@@ -478,11 +708,20 @@ export async function finalizeStagedInterlinksForLiveSource(
             verifiedAt: now,
           },
         })
-        .eq('id', row.id)
-        .eq('status', 'planned')
-      if (!appliedError) result.applied += 1
+      if (applied.error) {
+        result.dbErrors += 1
+        if (writeErrors.length < 3) writeErrors.push(applied.error)
+      } else if (applied.written === 0) {
+        result.skipped += 1
+      } else {
+        result.applied += applied.written
+      }
     }
 
+    if (writeErrors.length) {
+      const summary = `${result.dbErrors ? `${result.dbErrors} interlink write(s) failed: ` : ''}${writeErrors.join(' | ')}`
+      result.error = summary.slice(0, 300)
+    }
     return result
   } catch (error) {
     return emptyFinalize(sourceUrl, errorMessage(error).slice(0, 300))
@@ -496,6 +735,54 @@ interface VerdictInput {
   evidence: Record<string, unknown>
 }
 
+interface PlannedRowWrite {
+  /** Actual rows affected by the update (0 = lost concurrency race, no write). */
+  written: number
+  skipped: number
+  error: string | null
+}
+
+/**
+ * Guarded single-row write: only `status = 'planned'` rows can ever be
+ * touched, and the REAL affected-row count is returned so a zero-match
+ * concurrency race is never counted as a write. A DB error is returned
+ * truthfully instead of looking like a benign no-op.
+ */
+async function writePlannedRowPatch(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  row: InterlinkDbRow,
+  patch: Record<string, unknown>,
+): Promise<PlannedRowWrite> {
+  const { data, error } = (await supabase
+    .from('seo_interlinks')
+    .update(patch)
+    .eq('id', row.id)
+    .eq('status', 'planned')
+    .select('id')) as unknown as {
+    data: Array<Record<string, unknown>> | null
+    error: { message?: string } | null
+  }
+  if (error) return { written: 0, skipped: 0, error: String(error.message || 'interlink write failed').slice(0, 300) }
+  const written = Array.isArray(data) ? data.length : 0
+  return { written, skipped: written === 0 ? 1 : 0, error: null }
+}
+
+function tallyWrite(
+  outcome: { written: number; skipped: number; dbErrors: number; lastError: string | null },
+  write: PlannedRowWrite,
+): void {
+  if (write.error) {
+    outcome.dbErrors += 1
+    if (!outcome.lastError) outcome.lastError = write.error
+    return
+  }
+  if (write.written === 0) {
+    outcome.skipped += 1
+    return
+  }
+  outcome.written += write.written
+}
+
 /**
  * Write a non-applied verdict. Only `status = 'planned'` rows are touched —
  * an applied row can never be downgraded by a transient failure.
@@ -504,16 +791,11 @@ async function writeVerdict(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   row: InterlinkDbRow,
   verdict: VerdictInput,
-): Promise<number> {
-  const { error } = await supabase
-    .from('seo_interlinks')
-    .update({
-      source_url: String(row.source_url || verdict.sourceUrl),
-      verification_state: verdict.state,
-      verified_at: verdict.now,
-      verification_evidence: verdict.evidence,
-    })
-    .eq('id', row.id)
-    .eq('status', 'planned')
-  return error ? 0 : 1
+): Promise<PlannedRowWrite> {
+  return writePlannedRowPatch(supabase, row, {
+    source_url: String(row.source_url || verdict.sourceUrl),
+    verification_state: verdict.state,
+    verified_at: verdict.now,
+    verification_evidence: verdict.evidence,
+  })
 }

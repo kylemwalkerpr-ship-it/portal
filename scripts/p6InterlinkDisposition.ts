@@ -36,6 +36,7 @@ export interface P6InterlinkRow {
   source_url?: string | null
   verification_state?: string | null
   verified_at?: string | null
+  verification_evidence?: unknown
   applied_at?: string | null
 }
 
@@ -56,6 +57,10 @@ export interface P6DispositionReport {
   /** Raw persisted backlog - explicitly NOT the approved-useful denominator. */
   rawBacklog: number
   total: number
+  /** True when the read hit the row cap and more rows exist (never silently complete). */
+  truncated: boolean
+  /** The row cap this report was produced under. */
+  rowLimit: number
   rows: P6DispositionRow[]
   classes: Record<P6DispositionClass, number>
   /**
@@ -102,14 +107,48 @@ function nonblank(value: unknown): boolean {
   return typeof value === 'string' ? value.trim().length > 0 : Boolean(value)
 }
 
-/** Durable proof contract required before a row may count as verified. */
+/**
+ * True when the row carries non-null verification evidence — the same shape
+ * the `seo_interlinks_applied_requires_verification` DB constraint enforces.
+ */
+function hasVerificationEvidence(value: unknown): boolean {
+  if (value == null) return false
+  if (typeof value === 'string') return value.trim().length > 0
+  return true
+}
+
+/**
+ * Durable proof contract required before a row may count as verified — mirrors
+ * the migration's fail-closed `status='applied'` CHECK: nonblank `source_url`,
+ * `verification_state='present'`, non-null `verified_at`, non-null
+ * `verification_evidence`, and `applied_at`.
+ */
 export function hasDurableVerificationProof(row: P6InterlinkRow): boolean {
   return (
     nonblank(row.source_url) &&
     row.verification_state === 'present' &&
     nonblank(row.verified_at) &&
+    hasVerificationEvidence(row.verification_evidence) &&
     nonblank(row.applied_at)
   )
+}
+
+/**
+ * Observation projection for the existing link-validity authority
+ * (`verifyUrlsLive` → `classifyLiveStatus`): its `ok` already encodes the
+ * repository's HEAD-hostile fallback (HEAD, retried as GET on 403/405/501) and
+ * its authority-host exemptions, so the report classifies exactly what the
+ * repo link authority proved.
+ */
+export function p6ObservationFromLiveCheck(
+  url: string,
+  result: { ok: boolean; status: number; finalUrl?: string | null },
+): P6TargetObservation {
+  return {
+    status: Number(result?.status ?? 0),
+    ok: Boolean(result?.ok),
+    finalUrl: result?.finalUrl ?? url,
+  }
 }
 
 /** Live-target observation key (trailing-slash tolerant, fragment dropped). */
@@ -157,6 +196,7 @@ export function classifyP6Row(
 export function buildP6DispositionReport(
   rows: P6InterlinkRow[],
   observations: Record<string, P6TargetObservation> = {},
+  opts: { truncated?: boolean; rowLimit?: number } = {},
 ): P6DispositionReport {
   const classified: P6DispositionRow[] = []
   const classes: Record<P6DispositionClass, number> = {
@@ -190,6 +230,8 @@ export function buildP6DispositionReport(
   return {
     rawBacklog: rows.length,
     total: rows.length,
+    truncated: Boolean(opts.truncated),
+    rowLimit: opts.rowLimit ?? P6_DISPOSITION_ROW_LIMIT,
     rows: classified,
     classes,
     approvedUseful: {
@@ -207,6 +249,10 @@ export function buildP6DispositionReport(
   }
 }
 
+/** Hard row cap for a single report run (never silently treated as complete). */
+export const P6_DISPOSITION_ROW_LIMIT = 5000
+export const P6_DISPOSITION_PAGE_SIZE = 1000
+
 /** Structural, SELECT-only Supabase surface used by this report. */
 export interface P6SelectBuilder {
   select(columns: string): P6SelectBuilder
@@ -221,6 +267,50 @@ export interface P6ReadOnlySupabase {
   from(table: string): P6SelectBuilder
 }
 
+const P6_DISPOSITION_COLUMNS =
+  'id,source_slug,target_url,status,source_url,verification_state,verified_at,verification_evidence,applied_at'
+
+async function readDispositionRange(
+  supabase: P6ReadOnlySupabase,
+  from: number,
+  to: number,
+): Promise<P6InterlinkRow[]> {
+  const { data, error } = await supabase
+    .from('seo_interlinks')
+    .select(P6_DISPOSITION_COLUMNS)
+    .order('id', { ascending: true })
+    .range(from, to)
+  if (error) throw new Error(`seo_interlinks read failed: ${error.message}`)
+  return (data as P6InterlinkRow[] | null) || []
+}
+
+/**
+ * Fetch disposition rows with SELECT only, paginated up to the cap. When the
+ * cap is reached one extra row is probed so `truncated` is PROVEN rather than
+ * assumed: a capped result is never silently reported as the complete estate.
+ */
+export async function fetchP6DispositionRowsWithTruncation(
+  supabase: P6ReadOnlySupabase,
+  opts: { limit?: number; pageSize?: number } = {},
+): Promise<{ rows: P6InterlinkRow[]; truncated: boolean; limit: number }> {
+  const limit = Math.max(1, Math.min(opts.limit ?? P6_DISPOSITION_ROW_LIMIT, P6_DISPOSITION_ROW_LIMIT))
+  const pageSize = Math.max(1, Math.min(opts.pageSize ?? P6_DISPOSITION_PAGE_SIZE, P6_DISPOSITION_ROW_LIMIT))
+  const rows: P6InterlinkRow[] = []
+  let truncated = false
+  for (let from = 0; from < limit; from += pageSize) {
+    const to = Math.min(from + pageSize - 1, limit - 1)
+    const batch = await readDispositionRange(supabase, from, to)
+    rows.push(...batch)
+    if (batch.length < to - from + 1) break
+    if (rows.length >= limit) {
+      const probe = await readDispositionRange(supabase, limit, limit)
+      truncated = probe.length > 0
+      break
+    }
+  }
+  return { rows, truncated, limit }
+}
+
 /**
  * Fetch every disposition-relevant row with SELECT only, paginated so a large
  * backlog is never silently truncated. No write verb exists on the interface.
@@ -229,22 +319,7 @@ export async function fetchP6DispositionRows(
   supabase: P6ReadOnlySupabase,
   opts: { limit?: number; pageSize?: number } = {},
 ): Promise<P6InterlinkRow[]> {
-  const limit = Math.max(1, Math.min(opts.limit ?? 5000, 5000))
-  const pageSize = Math.max(1, Math.min(opts.pageSize ?? 1000, 1000))
-  const rows: P6InterlinkRow[] = []
-  for (let from = 0; from < limit; from += pageSize) {
-    const to = Math.min(from + pageSize - 1, limit - 1)
-    const { data, error } = await supabase
-      .from('seo_interlinks')
-      .select('id,source_slug,target_url,status,source_url,verification_state,verified_at,applied_at')
-      .order('id', { ascending: true })
-      .range(from, to)
-    if (error) throw new Error(`seo_interlinks read failed: ${error.message}`)
-    const batch = data || []
-    rows.push(...batch)
-    if (batch.length < to - from + 1) break
-  }
-  return rows
+  return (await fetchP6DispositionRowsWithTruncation(supabase, opts)).rows
 }
 
 /**
@@ -258,7 +333,7 @@ export async function runP6DispositionReport(opts: {
   limit?: number
   pageSize?: number
 }): Promise<P6DispositionReport> {
-  const rows = await fetchP6DispositionRows(opts.supabase, {
+  const { rows, truncated, limit } = await fetchP6DispositionRowsWithTruncation(opts.supabase, {
     limit: opts.limit,
     pageSize: opts.pageSize,
   })
@@ -267,5 +342,5 @@ export async function runP6DispositionReport(opts: {
     ...new Set(rows.map((row) => p6TargetKey(row.target_url)).filter(Boolean)),
   ]
   const observations = targets.length ? await opts.observeTargets(targets) : {}
-  return buildP6DispositionReport(rows, observations)
+  return buildP6DispositionReport(rows, observations, { truncated, rowLimit: limit })
 }

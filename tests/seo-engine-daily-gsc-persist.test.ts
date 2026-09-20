@@ -54,7 +54,7 @@ jest.mock('@/lib/seoEngine/engineAi', () => ({
 }))
 
 jest.mock('@/lib/seoEngine/interlink', () => ({
-  persistPlannerInterlinks: jest.fn(async () => ({ stored: 0, errors: [] })),
+  persistPlannerInterlinks: jest.fn(async () => ({ stored: 0, filtered: 0, errors: [] })),
 }))
 
 jest.mock('@/lib/seoEngine/rankingModel', () => ({

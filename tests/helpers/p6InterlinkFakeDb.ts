@@ -3,7 +3,9 @@
  *
  * Supports exactly the surface the production code uses:
  *   select -> eq/in/order/limit        (read)
- *   update -> eq                       (single-row verdict write)
+ *   update -> eq -> select('id')       (single-row staging/verdict write,
+ *                                       returning the ACTUAL affected rows;
+ *                                       no returned rows = lost race)
  *   upsert(rows, { onConflict, defaultToNull }) (planner persistence)
  *
  * Upsert conflict semantics mirror PostgREST `resolution=merge-duplicates` +
@@ -68,8 +70,11 @@ export function createP6FakeDb(seed: P6FakeRow[] = []) {
       const filters: P6CapturedFilter[] = []
       let mode: 'select' | 'update' | 'upsert' = 'select'
       let patch: Record<string, unknown> = {}
+      let returnAffected = false
       const builder: Record<string, unknown> = {
         select() {
+          // `.select()` after `.update()` is the PostgREST affected-row read.
+          if (mode === 'update') returnAffected = true
           return builder
         },
         eq(column: string, value: unknown) {
@@ -120,10 +125,12 @@ export function createP6FakeDb(seed: P6FakeRow[] = []) {
         ) {
           if (mode === 'update') {
             updates.push({ table, patch, filters: [...filters] })
+            const affected = rows.filter((row) => filters.every((filter) => matches(filter, row)))
             for (const row of rows) {
               if (filters.every((filter) => matches(filter, row))) Object.assign(row, patch)
             }
-            return Promise.resolve({ data: null, error: null }).then(resolve ?? undefined, reject ?? undefined)
+            const data = returnAffected ? affected.map((row) => ({ id: row.id })) : null
+            return Promise.resolve({ data, error: null }).then(resolve ?? undefined, reject ?? undefined)
           }
           if (mode === 'upsert') {
             return Promise.resolve({ data: null, error: null }).then(resolve ?? undefined, reject ?? undefined)

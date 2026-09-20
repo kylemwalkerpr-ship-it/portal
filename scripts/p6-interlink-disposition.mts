@@ -4,10 +4,14 @@
  * Pure classification lives in scripts/p6InterlinkDisposition.ts (unit
  * tested). This wrapper only:
  *   1. SELECTs the disposition columns (paginated, no writes),
- *   2. HEAD-checks each distinct target URL once (2xx/3xx = live, 404/410 =
- *      dead, anything else — including network errors — stays unknown),
+ *   2. live-checks each distinct target URL once through the repository link
+ *      authority (`verifyUrlsLive` → `classifyLiveStatus`), which uses the same
+ *      HEAD→GET fallback for HEAD-hostile hosts and authority-host exemptions
+ *      as every other link audit (2xx/3xx = live, 404/410 = dead, anything
+ *      else — including network errors — stays unknown),
  *   3. prints the JSON report (raw backlog kept separate from the
- *      approved-useful numerator/denominator).
+ *      approved-useful numerator/denominator, plus explicit `truncated` /
+ *      `rowLimit` truth when the row cap was reached).
  *
  * There is no --apply flag, no update/delete/upsert path, and no table is
  * mutated. Unknown stays unknown.
@@ -17,7 +21,9 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
+import { verifyUrlsLive } from '../lib/seoFactory/linkAudit'
 import {
+  p6ObservationFromLiveCheck,
   p6TargetKey,
   runP6DispositionReport,
   type P6TargetObservation,
@@ -32,28 +38,15 @@ if (!supabaseUrl || !supabaseKey) {
 
 async function observeTargets(urls: string[]): Promise<Record<string, P6TargetObservation>> {
   const observations: Record<string, P6TargetObservation> = {}
-  const concurrency = Number(process.env.P6_DISPOSITION_CONCURRENCY || 4)
-  let cursor = 0
-  const worker = async () => {
-    while (cursor < urls.length) {
-      const url = urls[cursor++]
-      try {
-        const res = await fetch(url, {
-          method: 'HEAD',
-          redirect: 'follow',
-          signal: AbortSignal.timeout(Number(process.env.P6_DISPOSITION_TIMEOUT_MS || 8000)),
-        })
-        observations[p6TargetKey(url)] = {
-          status: res.status,
-          ok: res.status >= 200 && res.status < 400,
-          finalUrl: res.url || url,
-        }
-      } catch {
-        observations[p6TargetKey(url)] = { status: 0, ok: false, finalUrl: url }
-      }
-    }
+  // The repository link-validity authority: concurrent, cached, and
+  // HEAD-hostile-safe (HEAD, retried as GET on 403/405/501).
+  const results = await verifyUrlsLive(urls)
+  for (const url of urls) {
+    const result = results.get(url)
+    observations[p6TargetKey(url)] = result
+      ? p6ObservationFromLiveCheck(url, result)
+      : { status: 0, ok: false, finalUrl: url }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, urls.length)) }, worker))
   return observations
 }
 

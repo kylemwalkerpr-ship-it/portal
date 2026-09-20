@@ -224,7 +224,7 @@ describe('A. persistInterlinkPlan never resets lifecycle truth', () => {
       },
     ])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 0 })
     expect(capturedUpserts).toHaveLength(1)
     const [{ rows, options }] = capturedUpserts
     // Plan metadata is written…
