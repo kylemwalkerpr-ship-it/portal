@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T08:06:10.459Z",
+  "generatedAt": "2026-09-20T08:38:38.385Z",
   "status": "healthy",
   "requiredMarkets": [
     "United States",
@@ -52,7 +52,7 @@
       "id": "caseworks",
       "repository": "kylemwalkerpr-ship-it/caseworks",
       "base": "https://legal.yousafeconsultancy.com",
-      "records": 423,
+      "records": 420,
       "required": true,
       "problems": []
     },
@@ -60,7 +60,7 @@
       "id": "market",
       "repository": "kylemwalkerpr-ship-it/portal",
       "base": "https://market.yousafeconsultancy.com",
-      "records": 347,
+      "records": 350,
       "required": true,
       "problems": []
     },
@@ -76,7 +76,7 @@
   "repositories": [
     {
       "repository": "kylemwalkerpr-ship-it/portal",
-      "records": 347,
+      "records": 350,
       "localCore": true
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "repository": "kylemwalkerpr-ship-it/caseworks",
-      "records": 423,
+      "records": 420,
       "localCore": false
     },
     {
