@@ -21,6 +21,7 @@ const mockAssembleMasterEngineFeed = jest.fn()
 const mockBuildKeywordPlan = jest.fn()
 const mockPlanTermsForAutoRun = jest.fn()
 const mockLoadPlansDashboard = jest.fn()
+const mockBuildSeoWarRoom = jest.fn()
 
 jest.mock('@/lib/portalAuth', () => ({
   requireAdminUser: (...args: unknown[]) => mockRequireAdminUser(...args),
@@ -34,7 +35,7 @@ jest.mock('@/lib/seoFactory/keywordPlanner', () => ({
   planTermsForAutoRun: (...args: unknown[]) => mockPlanTermsForAutoRun(...args),
 }))
 jest.mock('@/lib/seoFactory/seoWarRoom', () => ({
-  buildSeoWarRoom: jest.fn(),
+  buildSeoWarRoom: (...args: unknown[]) => mockBuildSeoWarRoom(...args),
   playToOpportunityAction: jest.fn((p: unknown) => String(p || 'expand_or_build')),
   inferContentType: jest.fn(() => 'legal_guide'),
 }))
@@ -144,6 +145,15 @@ beforeEach(() => {
   mockBuildKeywordPlan.mockReset()
   mockPlanTermsForAutoRun.mockReset()
   mockLoadPlansDashboard.mockReset().mockResolvedValue({ plans: [] })
+  // War room is too thin by default: its keyword-plan fill is the path under
+  // test in the war-room scenario below.
+  mockBuildSeoWarRoom.mockReset().mockResolvedValue({
+    source: 'snapshot',
+    summary: 'p5 fixture war room too thin',
+    kpis: {},
+    buckets: {},
+    queue: [],
+  })
 })
 
 describe('P5 fixtures are the real boundary case', () => {
@@ -211,6 +221,29 @@ describe('P5 auto-run kernel-plan admission', () => {
 
     expect(res.status).toBe(200)
     expect(pipelineTerms()).toEqual([QUALIFIED_TERM])
+  })
+
+  it('cannot admit an off-mission term through the war-room keyword-plan fill', async () => {
+    mockBuildKeywordPlan.mockResolvedValue({
+      source: 'snapshot',
+      generatedAt: '2026-09-20T00:00:00.000Z',
+      mix: { refresh: 0, expand: 0, build_new: 0, monitor: 0, defer: 0 },
+      targetMix: { refresh: 0.4, expand: 0.35, build_new: 0.25 },
+      board: [],
+      plan: [planItem(OFF_MISSION_TERM), planItem(QUALIFIED_TERM)],
+      summary: 'p5 fixture',
+      warnings: [],
+    })
+    mockPlanTermsForAutoRun.mockReturnValue([OFF_MISSION_TERM, QUALIFIED_TERM])
+
+    const { POST } = await import('@/app/api/seo-factory/auto-run/route')
+    const res = await POST(request('auto-run', { useWarRoom: true, useKeywordPlan: true }))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(mockBuildSeoWarRoom).toHaveBeenCalledTimes(1)
+    expect(pipelineTerms()).toEqual([QUALIFIED_TERM])
+    expect(JSON.stringify(body)).not.toContain(OFF_MISSION_TERM)
   })
 })
 

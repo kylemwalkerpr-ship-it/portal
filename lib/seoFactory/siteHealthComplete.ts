@@ -293,7 +293,10 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
       const fixedOrphanOutcomes: OrphanFixOutcome[] = []
       let oc: number | null = 0
       while (oc !== null) {
-        const r = await repairSiteHealthChunked(scope, oc, batchSize, false)
+        // persistHistory:false — this orchestrator appends the exact outcome
+        // records below (once), so the chunked path must not also persist the
+        // same repair as an interlink history entry (two records for one fix).
+        const r = await repairSiteHealthChunked(scope, oc, batchSize, false, { persistHistory: false })
         repairResult.orphansFixed += r.orphansFixed
         // Scope-wide count recomputed by every chunked call: assign rather
         // than accumulate so a multi-batch run cannot double-count it.

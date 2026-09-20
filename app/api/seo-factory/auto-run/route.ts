@@ -229,6 +229,10 @@ export async function POST(request: NextRequest) {
         const have = new Set(candidates.map((c) => c.term.toLowerCase()))
         for (const term of orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)) {
           if (candidates.length >= limit) break
+          // P5 action boundary (defense in depth, same rule as the stream fill
+          // and the other plan paths): a mocked/legacy keyword plan must not be
+          // able to leak off-mission demand into war-room auto-run candidates.
+          if (!isActionableDemandQuery(term)) continue
           if (have.has(term.toLowerCase())) continue
           if (skipRecent && recent.has(term.toLowerCase())) continue
           const item = kwPlan.plan.find((p) => p.term === term)

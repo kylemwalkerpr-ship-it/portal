@@ -863,13 +863,21 @@ export interface OrphanFixOutcome {
  * rewrite would not change its content contributes no outcome. The batch
  * cursor still advances past unrepairable candidates so pagination never gets
  * stuck on one of them.
+ *
+ * History: by default this path persists its own interlink/orphan repair
+ * records through `logRepairs()` so ordinary direct route callers keep their
+ * existing history behavior. Orchestrators that persist their own exact
+ * outcome records (e.g. `runFullSiteHealthCheck({ fixOrphans: true })`, which
+ * appends `buildOrphanFixLogEntries()` results once) pass
+ * `persistHistory: false` so one successful repair produces exactly one
+ * truthful history record instead of two records at two layers.
  */
 export async function repairSiteHealthChunked(
   scope: SiteHealthScope,
   batchStart: number,
   batchSize: number,
   dryRun: boolean,
-  opts: { protectedUrls?: string[] } = {},
+  opts: { protectedUrls?: string[]; persistHistory?: boolean } = {},
 ): Promise<{
   repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }>
   /** ACTUAL orphan outcomes: one entry per orphan whose hub rewrite happened. */
@@ -1013,8 +1021,11 @@ export async function repairSiteHealthChunked(
     } catch { /* PR creation optional */ }
   }
 
-  // Persist this batch's interlink fixes to the site health fix history
-  if (!dryRun && repaired.length > 0) {
+  // Persist this batch's interlink fixes to the site health fix history.
+  // Additive opt-out: an orchestrator that writes the exact same repairs to
+  // history itself must pass persistHistory:false so the repair is recorded
+  // once, not twice at two layers.
+  if (opts.persistHistory !== false && !dryRun && repaired.length > 0) {
     try {
       await logRepairs(repaired.map((r) => ({
         repo: r.repo,

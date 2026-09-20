@@ -8,6 +8,13 @@
  * page" history entry; protected skips are surfaced in
  * `repairs.orphansProtectedSkipped`.
  *
+ * Duplicate-history regression: the chunked path's own `logRepairs()` interlink
+ * record and the orchestrator's exact `buildOrphanFixLogEntries()` record were
+ * BOTH written for the same successful repair. The complete flow now opts out
+ * of the chunked path's history (`persistHistory: false`) and persists exactly
+ * one record per actual repair, so one history PUT / one semantic record is
+ * expected — direct chunked callers keep their existing history behavior.
+ *
  * Only the boundaries that would otherwise need the network are stubbed
  * (audit scan, snapshot persistence, live verify, sitemap fetch, GitHub
  * Contents). The real chunked mutation path runs unmodified.
@@ -116,6 +123,13 @@ const githubFetchImpl = async (endpoint: string, init?: { method?: string }) => 
 
 type HistoryEntry = Record<string, unknown>
 
+/** Fix-history PUTs written during the run (one append = one PUT). */
+const historyPutCount = (): number =>
+  (mockGithubFetch.mock.calls as Array<[unknown, { method?: string } | undefined]>)
+    .filter(([endpoint, init]) =>
+      String(endpoint).includes('.content-studio/site-health-fixes.json') && init?.method === 'PUT',
+    ).length
+
 /** Decoded entries of every fix-history PUT written during the run. */
 const historyEntriesWritten = (): HistoryEntry[] => {
   const entries: HistoryEntry[] = []
@@ -179,8 +193,11 @@ describe('P5 complete-flow orphan truthfulness', () => {
     expect(prBody).not.toContain('university-of-utah-student-housing')
 
     // History contains the real fixed URL only — never the protected one.
+    // One successful repair → exactly one history PUT and one semantic record:
+    // no duplicate "interlink" + "orphan" pair for the same fix.
+    expect(historyPutCount()).toBe(1)
     const entries = historyEntriesWritten()
-    expect(entries.length).toBeGreaterThan(0)
+    expect(entries).toHaveLength(1)
     const serialized = JSON.stringify(entries)
     expect(serialized).toContain(PLAIN_URL)
     expect(serialized).not.toContain(UTAH_URL)
@@ -190,5 +207,7 @@ describe('P5 complete-flow orphan truthfulness', () => {
     expect(orphanEntries).toHaveLength(1)
     expect(orphanEntries[0]).toMatchObject({ action: 'orphan', repo: CASE, url: PLAIN_URL })
     expect(String(orphanEntries[0].detail)).toContain('Repaired orphan page')
+    // No duplicate semantic record from the chunked path's own logRepairs().
+    expect(entries.filter((entry) => entry.action === 'interlink')).toHaveLength(0)
   })
 })
