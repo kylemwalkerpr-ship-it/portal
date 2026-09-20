@@ -6,6 +6,7 @@ export * from './suggestBriefContractCore'
 import * as core from './suggestBriefContractCore'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { assertPlanRepoConsistency, resolveOwner, type OwnerPlan } from './ownership'
+import { assertBroadCreateDestinationAllowed } from './broadCreateFreeze'
 
 function norm(value: unknown): string {
   return String(value || '').trim().replace(/\/+$/, '').toLowerCase()
@@ -40,6 +41,8 @@ export async function finalizeSuggestBriefContract(
   if (norm(finalPlan.host) !== norm(input.session.plan.host) || norm(finalPlan.repo) !== norm(input.session.plan.repo)) {
     throw new Error(`writing contract target drift: final slug resolves to ${finalPlan.repo}/${finalPlan.host}, reserved ${input.session.plan.repo}/${input.session.plan.host}`)
   }
+
+  await assertBroadCreateDestinationAllowed(finalPlan, { primaryKeyword: input.primaryKeyword })
 
   const authoritativeSlug = slugFromPlan(finalPlan, requestedSlug)
   const db = createSupabaseAdminClient()

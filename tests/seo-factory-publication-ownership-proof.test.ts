@@ -2,8 +2,8 @@
  * P0 blocker regression — publication ownership proof must be content-format
  * agnostic.
  *
- * Registry rows 45 and 46 are legal/apex owners whose intent is news_summary,
- * so the REAL authoring flow approves them like this:
+ * Registry rows 45 and 46 are confirmed news_summary owners with specific
+ * live canonicals. Their REAL authoring flow works like this:
  *   - `resolveOwner({ contentType: 'legal_guide' })` matches the registry row,
  *     returns `routingSource: 'registry_owner_url'` and the EXISTING owner
  *     canonical, and `isBroadNetNewCreate(...)` is false;
@@ -23,7 +23,7 @@
  * without network writes. The exact-live probe fetch is mocked.
  */
 import { shipContent } from '@/lib/seoFactory/ship'
-import { resolveOwner, type OwnerPlan } from '@/lib/seoFactory/ownership'
+import { resolveOwner, sanitizeOwnerUrl, type OwnerPlan } from '@/lib/seoFactory/ownership'
 import { finalizePipelineContentType } from '@/lib/seoFactory/jobContentType'
 import {
   BROAD_CREATE_UNLOCK_ENV,
@@ -97,14 +97,14 @@ const ROW_45 = {
   ownerUrl: 'https://legal.yousafeconsultancy.com/blog/stem-opt-extension-2026/',
   region: 'US',
 }
-/** Registry row 46 — apex /blog root owner with news_summary intent. */
+/** Registry row 46 — specific apex F-1 requirements article owner. */
 const ROW_46 = {
-  label: 'registry row 46 (apex /blog owner)',
+  label: 'registry row 46 (specific apex F-1 requirements owner)',
   keyword: 'f-1 requirements 2026 overview',
-  ownerUrl: 'https://yousafeconsultancy.com/blog/',
+  ownerUrl: 'https://yousafeconsultancy.com/blog/f1-visa-requirements-2026',
   region: 'US',
 }
-const LEGAL_OWNER_ROWS = [ROW_45, ROW_46]
+const CONFIRMED_BLOG_OWNER_ROWS = [ROW_45, ROW_46]
 const REDIRECT_TARGET_URL =
   'https://legal.yousafeconsultancy.com/ca/family/canada-spousal-sponsorship-document-checklist-2026/'
 
@@ -153,7 +153,7 @@ function ship(opts: {
  * rendering type is blog_post: authoring approves the existing owner, and the
  * finalized content type the pipeline hands to shipContent is blog_post.
  */
-async function authoredBlogOwnerPlan(row: (typeof LEGAL_OWNER_ROWS)[number]) {
+async function authoredBlogOwnerPlan(row: (typeof CONFIRMED_BLOG_OWNER_ROWS)[number]) {
   const plan = await resolveOwner({
     primaryKeyword: row.keyword,
     contentType: 'legal_guide',
@@ -161,7 +161,7 @@ async function authoredBlogOwnerPlan(row: (typeof LEGAL_OWNER_ROWS)[number]) {
   })
   expect(plan.routingSource).toBe('registry_owner_url')
   expect(plan.matched?.owner_url).toBe(row.ownerUrl)
-  expect(plan.canonicalUrl).toBe(row.ownerUrl)
+  expect(plan.canonicalUrl).toBe(sanitizeOwnerUrl(row.ownerUrl))
   expect(isBroadNetNewCreate(plan)).toBe(false)
 
   const finalized = finalizePipelineContentType('legal_guide', plan)
@@ -188,7 +188,7 @@ afterEach(() => {
 })
 
 describe('shipContent — finalized blog_post rendering type still proves the existing owner', () => {
-  it.each(LEGAL_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     '$label: authoring approves the owner, finalization promotes to blog_post, publication reaches the Git door',
     async (row) => {
       const { plan, finalized } = await authoredBlogOwnerPlan(row)
@@ -207,7 +207,7 @@ describe('shipContent — finalized blog_post rendering type still proves the ex
     },
   )
 
-  it.each(LEGAL_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     '$label: a live redirect still freezes before any Git helper',
     async (row) => {
       const { plan, finalized } = await authoredBlogOwnerPlan(row)
@@ -221,7 +221,7 @@ describe('shipContent — finalized blog_post rendering type still proves the ex
     },
   )
 
-  it.each(LEGAL_OWNER_ROWS)(
+  it.each(CONFIRMED_BLOG_OWNER_ROWS)(
     '$label: a live 404 still freezes before any Git helper',
     async (row) => {
       const { plan, finalized } = await authoredBlogOwnerPlan(row)
@@ -234,6 +234,7 @@ describe('shipContent — finalized blog_post rendering type still proves the ex
       expect(liveFetchMock).toHaveBeenCalled()
     },
   )
+
 
   it('lets the explicit P13 unlock bypass the publication proof for the finalized blog_post row with no fetch', async () => {
     process.env[BROAD_CREATE_UNLOCK_ENV] = '1'

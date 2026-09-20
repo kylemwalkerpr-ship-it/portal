@@ -78,3 +78,59 @@ describe('buildKeywordPlan — Phase C routing', () => {
     expect(item!.filePath).toBe('app/guide/uk-university-of-bristol-international-student-guide/page.tsx')
   })
 })
+
+
+describe('buildKeywordPlan — P3 operator truth', () => {
+  const term = 'synthetic p3 authority guide'
+  const ownerUrl = 'https://legal.yousafeconsultancy.com/guide/completely-different-destination/'
+
+  function registry(status: 'confirmed' | 'proposed') {
+    return {
+      rows: [{
+        id: status === 'confirmed' ? 9101 : 9102,
+        primary_keyword: term,
+        intent_class: 'procedural',
+        owner_host: 'legal',
+        owner_url: ownerUrl,
+        supporting_urls: [],
+        action: 'expand',
+        market_destination: null,
+        status,
+        notes: 'hermetic P3 planner fixture',
+      }],
+    }
+  }
+
+  function snapshot() {
+    return {
+      topQueries: [{ term, impressions: 120, clicks: 1, ctr: 0.008, position: 28 }],
+      opportunities: {},
+      topPages: [{ url: ownerUrl, impressions: 500, clicks: 10, ctr: 0.02, position: 12 }],
+    }
+  }
+
+  it('keeps a proposed registry owner out of authoring lanes and related-page authority', async () => {
+    mockRegistry.mockResolvedValue(registry('proposed'))
+    mockSnapshot.mockResolvedValue(snapshot())
+
+    const result = await buildKeywordPlan({ minImpressions: 5, planLimit: 4 })
+    const board = result.board.find((b) => b.term === term)
+    expect(board).toBeDefined()
+    expect(board!.lane).toBe('monitor')
+    expect(board!.laneReason).toMatch(/status=proposed/i)
+    expect(board!.relatedPage).toBeNull()
+    expect(result.plan.some((p) => p.term === term)).toBe(false)
+  })
+
+  it('keeps the same confirmed specific owner actionable and restores related-page authority', async () => {
+    mockRegistry.mockResolvedValue(registry('confirmed'))
+    mockSnapshot.mockResolvedValue(snapshot())
+
+    const result = await buildKeywordPlan({ minImpressions: 5, planLimit: 4 })
+    const board = result.board.find((b) => b.term === term)
+    expect(board).toBeDefined()
+    expect(board!.lane).toBe('expand')
+    expect(board!.relatedPage?.url).toBe(ownerUrl)
+    expect(result.plan.some((p) => p.term === term && p.lane === 'expand')).toBe(true)
+  })
+})

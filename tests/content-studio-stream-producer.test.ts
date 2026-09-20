@@ -4,7 +4,14 @@ jest.mock('@/lib/seoFactory/pipelineContract', () => ({
 }))
 jest.mock('@/lib/seoFactory/pipeline', () => ({ runSeoFactoryPipeline: jest.fn() }))
 jest.mock('@/lib/seoFactory/pipelineStream', () => ({ runSeoFactoryPipelineStream: jest.fn() }))
-jest.mock('@/lib/seoFactory/ownership', () => ({ resolveOwner: jest.fn() }))
+jest.mock('@/lib/seoFactory/ownership', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/ownership')
+  return { ...actual, resolveOwner: jest.fn() }
+})
+jest.mock('@/lib/seoFactory/broadCreateFreeze', () => ({
+  assertBroadCreateDestinationAllowed: jest.fn(async () => undefined),
+}))
+
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { resolvePipelineWritingContract } from '@/lib/seoFactory/pipelineContract'
@@ -151,7 +158,7 @@ describe('strict Content Studio SSE producer', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     jest.mocked(resolvePipelineWritingContract).mockResolvedValue({ input: request, contract } as any)
-    jest.mocked(resolveOwner).mockResolvedValue({ ...ownership, blockers: [], warnings: [], indexable: true, contentType: contract.contentType } as any)
+    jest.mocked(resolveOwner).mockResolvedValue({ ...ownership, blockers: [], warnings: [], indexable: true, contentType: contract.contentType, action: 'expand', routingSource: 'registry_owner_url', matched: { id: 1, owner_url: ownership.canonicalUrl, status: 'confirmed', action: 'expand', notes: '' } } as any)
   })
 
   afterEach(() => {
