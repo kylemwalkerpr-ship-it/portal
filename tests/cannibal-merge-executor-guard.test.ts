@@ -177,6 +177,23 @@ describe('P4 cannibal executor guard', () => {
     expect(github.putRepoFile).not.toHaveBeenCalled()
   })
 
+  it('fails closed on a cross-subtype identity mismatch before any Git mutation', async () => {
+    const shared = { query: '485 english requirements australia', impressions: 20, clicks: 1, position: 8 }
+    const crossSubtype = decision({
+      competitors: [
+        { url: OWNER, impressions: 45, clicks: 2, position: 7, primaryIntent: 'Australia subclass 485 English requirements', sharedQueries: [shared] },
+        { url: LOSER, impressions: 20, clicks: 1, position: 9, primaryIntent: 'US I-485 adjustment of status filing', sharedQueries: [shared] },
+      ],
+    })
+    await expect(executeCannibalMerge(request({ decision: crossSubtype })))
+      .rejects.toThrow(/winner_loser_identity_mismatch/)
+    expect(order).toEqual([])
+    expect(github.githubFetch).not.toHaveBeenCalled()
+    expect(github.createBranchFrom).not.toHaveBeenCalled()
+    expect(github.putRepoFile).not.toHaveBeenCalled()
+    expect(github.openPullRequest).not.toHaveBeenCalled()
+  })
+
   it('rejects a junk term and a request that disagrees with the decision', async () => {
     await expect(executeCannibalMerge(request({ term: 'rates final.pdf' }))).rejects.toThrow(/term_not_actionable/)
     await expect(executeCannibalMerge(request({ term: 'a different cluster term' }))).rejects.toThrow(/request_term_must_match_decision/)

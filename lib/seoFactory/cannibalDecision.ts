@@ -11,6 +11,9 @@
  *    null, undefined, NaN, and 0 all fail the real-evidence checks.
  *  - Impressions alone never select a winner; the winner must equal the P3
  *    authoritative owner row (status=confirmed, action in keep|expand|merge).
+ *  - Identity matching fails closed: an unrecognised intent never matches
+ *    anything, a blob that names two sub-intents of one family is ambiguous,
+ *    and only the exact same explicit identity may consolidate.
  *  - Unrelated loser sets (the historical Canada-spouse over-expansion) fail on
  *    identity separation and on the exact-qualified-query-overlap requirement.
  */
@@ -195,36 +198,213 @@ function isMetric(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function identity(text: string): string {
-  const t = String(text || '').toLowerCase()
-  if (/\bi[- ]?485\b|adjustment of status/.test(t)) return 'us_i485'
-  if (/\b(subclass\s*)?485\b|temporary graduate|post[- ]study work/.test(t)) return 'au_485'
-  if (/\bstem\s+opt\b|i-983/.test(t)) return 'us_stem_opt'
-  if (/\boptional practical training\b|\bopt\b/.test(t)) return 'us_opt'
-  if (/\bf[- ]?1\b|sevis|\bcpt\b/.test(t)) return 'us_f1'
-  if (/express entry/.test(t) && /document checklist|documents? checklist|checklist/.test(t)) return 'ca_express_entry_checklist'
-  if (/\bcrs\b|comprehensive ranking system|stem category|category draw|draw cut[- ]?off|draw results?|express entry draw/.test(t)) return 'ca_express_entry_draws'
-  if (/federal skilled worker/.test(t)) return 'ca_express_entry_fsw'
-  if (/express entry/.test(t)) return 'ca_express_entry_general'
-  if (/skilled worker/.test(t)) return 'uk_skilled_worker'
-  if (/graduate (visa|route)/.test(t)) return 'uk_graduate'
-  if (/student visa/.test(t) && /\buk\b|united kingdom/.test(t)) return 'uk_student'
-  return 'other'
+/**
+ * Destructive identity classes.
+ *
+ * Two pages may only consolidate when they resolve to the *same* identity — a
+ * shared family is not enough. `other` (unrecognised) never matches anything,
+ * and the `*_mixed` classes mark a blob that names two sub-intents of one
+ * family at once, so it can never stand in for either of them.
+ */
+export type CannibalIdentity =
+  | 'ca_express_entry_core'
+  | 'ca_express_entry_draws'
+  | 'ca_express_entry_fsw'
+  | 'ca_express_entry_mixed'
+  | 'ca_spouse'
+  | 'us_f1'
+  | 'us_opt'
+  | 'us_stem_opt'
+  | 'us_student_work_mixed'
+  | 'us_i485'
+  | 'au_485'
+  | 'uk_student'
+  | 'uk_graduate'
+  | 'uk_skilled_worker'
+  | 'uk_dependant'
+  | 'uk_spouse'
+  | 'uk_mixed'
+  | 'other'
+
+/** Non-destructive relatedness, for reporting and audit copy only. */
+export type CannibalIdentityFamily =
+  | 'us_student_work'
+  | 'us_adjustment_of_status'
+  | 'au_temporary_graduate'
+  | 'ca_express_entry'
+  | 'ca_spousal_sponsorship'
+  | 'uk_immigration'
+  | 'mixed'
+  | 'unknown'
+
+const IDENTITY_FAMILY: Record<CannibalIdentity, CannibalIdentityFamily> = {
+  us_f1: 'us_student_work',
+  us_opt: 'us_student_work',
+  us_stem_opt: 'us_student_work',
+  us_student_work_mixed: 'mixed',
+  us_i485: 'us_adjustment_of_status',
+  au_485: 'au_temporary_graduate',
+  ca_express_entry_core: 'ca_express_entry',
+  ca_express_entry_draws: 'ca_express_entry',
+  ca_express_entry_fsw: 'ca_express_entry',
+  ca_express_entry_mixed: 'mixed',
+  ca_spouse: 'ca_spousal_sponsorship',
+  uk_student: 'uk_immigration',
+  uk_graduate: 'uk_immigration',
+  uk_skilled_worker: 'uk_immigration',
+  uk_dependant: 'uk_immigration',
+  uk_spouse: 'uk_immigration',
+  uk_mixed: 'mixed',
+  other: 'unknown',
+}
+
+/** A `*_mixed` identity never matches anything — not even itself. */
+const MIXED_IDENTITIES: ReadonlySet<CannibalIdentity> = new Set<CannibalIdentity>([
+  'us_student_work_mixed',
+  'ca_express_entry_mixed',
+  'uk_mixed',
+])
+
+const REGION_MARKERS = {
+  us: /\b(?:usa?|u\.s\.)\b|\bunited states\b|\/(?:us|usa)\/|(?:^|\/\/)usa?\./,
+  uk: /\b(?:uk|u\.k\.)\b|\bunited kingdom\b|\b(?:britain|british)\b|\/uk\/|(?:^|\/\/)uk\./,
+  ca: /\b(?:ca|canada|canadian)\b|\/ca\/|(?:^|\/\/)ca\./,
+  au: /\b(?:au|australia|australian)\b|\/au\/|(?:^|\/\/)au\./,
+} as const
+
+function mentionsRegion(text: string, region: keyof typeof REGION_MARKERS): boolean {
+  return REGION_MARKERS[region].test(text)
 }
 
 /**
- * Identity compatibility. `other` is permissive (an unrecognised intent is not
- * proof of a conflict) but two *different* known identities never merge — the
- * AU subclass 485 / US I-485 pair is the canonical trap this protects. The
- * F-1/CPT/OPT/STEM family stays one intent family on purpose.
+ * Resolve the destructive identity of an intent blob (declared intent plus its
+ * URL). Ordering is deliberate: a blob that names two sub-intents of one family
+ * resolves to a `*_mixed` class instead of silently picking a side.
+ */
+export function cannibalIdentity(value: string): CannibalIdentity {
+  const text = String(value || '').toLowerCase()
+
+  // US student work authorisation. F-1/CPT, OPT and STEM OPT are one handoff
+  // family but three destructive identities; "STEM OPT" is nested inside OPT,
+  // so it is stripped before the OPT markers are read.
+  const stemOpt = /\bstem\s*[- ]?\s*opt\b|\bi-983\b|stem extension/.test(text)
+  const nonStemText = text.replace(/stem\s*[- ]?\s*opt/g, ' ').replace(/i-983/g, ' ')
+  const opt = /\boptional practical training\b|\bopt\b|pre[- ]?completion|post[- ]?completion/.test(nonStemText)
+  const f1 = /\bf[- ]?1\b|\bf1\b|\bsevis\b|\bcpt\b|\bi-20\b|student and exchange visitor/.test(text)
+  if (stemOpt && !opt) return 'us_stem_opt'
+  if (opt && !stemOpt && !f1) return 'us_opt'
+  if (f1 && !stemOpt && !opt) return 'us_f1'
+  if (stemOpt || opt || f1) return 'us_student_work_mixed'
+
+  // US Form I-485 is checked before Australian subclass 485: the numeric
+  // collision is between two different programmes in two different countries.
+  if (/\bi[- ]?485\b|adjustment of status/.test(text)) return 'us_i485'
+  if (/\b(?:subclass\s*)?485\b/.test(text)) return 'au_485'
+  if (mentionsRegion(text, 'au') && /temporary graduate|post[- ]?study work/.test(text)) return 'au_485'
+
+  // Canada Express Entry: checklist/general, CRS/draw/category and FSW are
+  // separate destructive identities that never inherit one another.
+  const expressEntry = /express entry/.test(text)
+  const entryDraws =
+    /\bcrs\b|comprehensive ranking system|stem category|category[- ]based|category draw|draw cut[- ]?off|draw results?/.test(text) ||
+    (expressEntry && /\bdraws?\b/.test(text))
+  const entryFsw = /federal skilled worker|\bfsw\b/.test(text)
+  if (entryDraws && entryFsw) return 'ca_express_entry_mixed'
+  if (entryDraws) return 'ca_express_entry_draws'
+  if (entryFsw) return 'ca_express_entry_fsw'
+  if (expressEntry) return 'ca_express_entry_core'
+
+  // Canada spousal sponsorship is its own programme: it never inherits the UK
+  // spouse route, a study permit, or the Express Entry hub.
+  if (mentionsRegion(text, 'ca') && /spous|sponsorship/.test(text)) return 'ca_spouse'
+
+  // UK routes. Dependants are a distinct destructive identity and never
+  // inherit the Student / Graduate / Skilled Worker / spouse route they
+  // depend on.
+  if (mentionsRegion(text, 'uk')) {
+    if (/\bdependants?\b|\bdependents?\b/.test(text)) return 'uk_dependant'
+    const routes: Array<[RegExp, CannibalIdentity]> = [
+      [/\bstudent (?:visa|route)\b|\btier 4\b/, 'uk_student'],
+      [/\bgraduate (?:visa|route)\b|post[- ]?study work/, 'uk_graduate'],
+      [/skilled worker|\bhealth and care worker\b/, 'uk_skilled_worker'],
+      [/\bspous(?:e|al)\b|\bfianc/, 'uk_spouse'],
+    ]
+    const matched = routes.filter(([pattern]) => pattern.test(text)).map(([, id]) => id)
+    if (matched.length === 1) return matched[0]
+    if (matched.length > 1) return 'uk_mixed'
+  }
+
+  return 'other'
+}
+
+/** Intent + URL blob that every destructive identity comparison reads. */
+export function cannibalIdentityBlob(intent: string, url: string): string {
+  return `${String(intent || '')} ${String(url || '')}`
+}
+
+/**
+ * Family lookup, for reporting and audit copy only. Accepts either a resolved
+ * identity (`us_opt`) or an intent blob (`opt application guide`), which is
+ * classified first. A shared family never authorizes a consolidation.
+ */
+export function cannibalIdentityFamily(identityOrBlob: CannibalIdentity | string): CannibalIdentityFamily {
+  const key = String(identityOrBlob)
+  const known = (IDENTITY_FAMILY as Record<string, CannibalIdentityFamily>)[key]
+  return known || IDENTITY_FAMILY[cannibalIdentity(key)]
+}
+
+export type CannibalIdentityRelation =
+  | 'same'
+  | 'related_distinct'
+  | 'unrelated'
+  | 'unrecognized'
+  | 'ambiguous'
+
+/**
+ * Symmetric destructive-identity comparison. `same` is the only relation that
+ * may authorize a consolidation; every other relation fails closed. The
+ * comparison is symmetric by construction — `relation(a, b)` and
+ * `relation(b, a)` always agree.
+ */
+export function cannibalIdentityRelation(a: string, b: string): CannibalIdentityRelation {
+  const x = cannibalIdentity(a)
+  const y = cannibalIdentity(b)
+  if (MIXED_IDENTITIES.has(x) || MIXED_IDENTITIES.has(y)) return 'ambiguous'
+  if (x === 'other' || y === 'other') return 'unrecognized'
+  if (x === y) return 'same'
+  return cannibalIdentityFamily(x) === cannibalIdentityFamily(y) ? 'related_distinct' : 'unrelated'
+}
+
+/**
+ * True only when both blobs resolve to the exact same recognised destructive
+ * identity. An unrecognised (`other`) intent is never a wildcard.
  */
 export function sameCannibalIdentity(a: string, b: string): boolean {
-  const x = identity(a)
-  const y = identity(b)
-  if (x === 'other' || y === 'other') return true
-  if (x === y) return true
-  const f1Family = new Set(['us_f1', 'us_opt', 'us_stem_opt'])
-  return f1Family.has(x) && f1Family.has(y)
+  return cannibalIdentityRelation(a, b) === 'same'
+}
+
+/**
+ * Identity blockers for a failed relation. `identity_mismatch` (or
+ * `winner_loser_identity_mismatch`) is kept for every failure so existing
+ * audits stay readable; the specific variant says why it failed.
+ */
+function identityBlockers(
+  base: 'identity' | 'winner_loser_identity',
+  url: string,
+  relation: CannibalIdentityRelation,
+): string[] {
+  if (relation === 'same') return []
+  const blockers = [`${base}_mismatch:${url}`]
+  const suffix =
+    relation === 'unrecognized'
+      ? 'unrecognized'
+      : relation === 'ambiguous'
+        ? 'ambiguous'
+        : relation === 'related_distinct'
+          ? 'related_but_distinct'
+          : null
+  if (suffix) blockers.push(`${base}_${suffix}:${url}`)
+  return blockers
 }
 
 /** Canonical, order-insensitive evidence payload that the hash covers. */
@@ -345,9 +525,13 @@ export function validateCannibalDecision(
     if (!isMetric(competitor.position)) blockers.push(`metrics_unavailable:${url}`)
     else if (competitor.position <= 0) blockers.push(`real_position_required:${url}`)
     if (!String(competitor.primaryIntent || '').trim()) blockers.push(`primary_intent_required:${url}`)
-    if (!sameCannibalIdentity(term, `${competitor.primaryIntent || ''} ${url}`)) {
-      blockers.push(`identity_mismatch:${url}`)
-    }
+    blockers.push(
+      ...identityBlockers(
+        'identity',
+        url,
+        cannibalIdentityRelation(term, cannibalIdentityBlob(competitor.primaryIntent, url)),
+      ),
+    )
     const shared = Array.isArray(competitor.sharedQueries) ? competitor.sharedQueries : []
     if (shared.length === 0) blockers.push(`shared_query_required:${url}`)
     if (!shared.some((q) => isQualifiedGscDemandQuery(String(q?.query || ''), q))) {
@@ -360,12 +544,18 @@ export function validateCannibalDecision(
   const byUrl = new Map(competitors.map((c) => [normalizeCannibalUrl(c.url), c]))
   const winnerEvidence = byUrl.get(winner)
   if (winnerEvidence) {
-    const winnerIdentity = `${winnerEvidence.primaryIntent || ''} ${winner}`
+    const winnerBlob = cannibalIdentityBlob(winnerEvidence.primaryIntent, winner)
     for (const competitor of competitors) {
       const url = normalizeCannibalUrl(competitor.url)
       if (!url || url === winner) continue
-      if (!sameCannibalIdentity(winnerIdentity, `${competitor.primaryIntent || ''} ${url}`)) {
-        blockers.push(`winner_loser_identity_mismatch:${url}`)
+      const loserBlob = cannibalIdentityBlob(competitor.primaryIntent, url)
+      // Checked in both directions on purpose: a one-way matcher must never be
+      // able to authorize a destructive merge.
+      for (const relation of [
+        cannibalIdentityRelation(winnerBlob, loserBlob),
+        cannibalIdentityRelation(loserBlob, winnerBlob),
+      ]) {
+        blockers.push(...identityBlockers('winner_loser_identity', url, relation))
       }
     }
   }

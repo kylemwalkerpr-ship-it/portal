@@ -9,6 +9,9 @@
 import {
   ABSENT_FILE_SHA,
   MAX_P4_LOSERS,
+  cannibalIdentity,
+  cannibalIdentityFamily,
+  cannibalIdentityRelation,
   computeCannibalEvidenceHash,
   sameCannibalIdentity,
   validateCannibalDecision,
@@ -371,10 +374,13 @@ describe('P4 historical regression — Canada spouse over-expansion', () => {
   })
 })
 
-describe('P4 identity separation — AU 485 vs US I-485 and the F-1/OPT/STEM family', () => {
+describe('P4 identity separation — AU 485 vs US I-485, UK routes, and the F-1/OPT/STEM family', () => {
   it('keeps AU subclass 485 separate from US I-485 adjustment of status', () => {
     expect(sameCannibalIdentity('Australia subclass 485 temporary graduate', 'US I-485 adjustment of status')).toBe(false)
     expect(sameCannibalIdentity('485 visa english requirements australia', 'us i-485 adjustment of status')).toBe(false)
+    expect(cannibalIdentity('Australia subclass 485 temporary graduate')).toBe('au_485')
+    expect(cannibalIdentity('US I-485 adjustment of status')).toBe('us_i485')
+    expect(cannibalIdentityRelation('australia subclass 485 english', 'us i-485 adjustment of status')).toBe('unrelated')
   })
 
   it('keeps Express Entry/CRS separate from UK and AU intents', () => {
@@ -382,9 +388,51 @@ describe('P4 identity separation — AU 485 vs US I-485 and the F-1/OPT/STEM fam
     expect(sameCannibalIdentity('express entry crs draw', 'australia subclass 485 english')).toBe(false)
   })
 
-  it('treats F-1 / CPT / OPT / STEM OPT as one compatible intent family', () => {
-    expect(sameCannibalIdentity('f-1 opt extension', 'stem opt i-983')).toBe(true)
-    expect(sameCannibalIdentity('opt application', 'f-1 cpt sevis')).toBe(true)
+  it('recognises F-1/CPT, OPT and STEM OPT as related but destructive-distinct', () => {
+    expect(cannibalIdentity('f-1 cpt sevis rules')).toBe('us_f1')
+    expect(cannibalIdentity('optional practical training application')).toBe('us_opt')
+    expect(cannibalIdentity('stem opt i-983 training plan')).toBe('us_stem_opt')
+    // Related (one handoff family) …
+    expect(cannibalIdentityFamily('us_f1')).toBe('us_student_work')
+    expect(cannibalIdentityFamily('us_opt')).toBe('us_student_work')
+    expect(cannibalIdentityFamily('us_stem_opt')).toBe('us_student_work')
+    expect(cannibalIdentityRelation('f-1 visa rights', 'opt application guide')).toBe('related_distinct')
+    // … but never interchangeable in a destructive consolidation.
+    expect(sameCannibalIdentity('f-1 opt extension', 'stem opt i-983')).toBe(false)
+    expect(sameCannibalIdentity('opt application', 'f-1 cpt sevis')).toBe(false)
+    expect(sameCannibalIdentity('opt application', 'stem opt i-983')).toBe(false)
+    expect(sameCannibalIdentity('f-1 cpt sevis', 'f-1 visa rights')).toBe(true)
+  })
+
+  it('treats a blob that names two US student-work sub-intents at once as ambiguous', () => {
+    expect(cannibalIdentity('f-1 visa rights and opt eligibility')).toBe('us_student_work_mixed')
+    expect(sameCannibalIdentity('f-1 visa rights and opt eligibility', 'optional practical training application')).toBe(false)
+    expect(cannibalIdentityRelation('f-1 visa rights and opt eligibility', 'optional practical training')).toBe('ambiguous')
+  })
+
+  it('treats UK Student / Graduate / Skilled Worker / dependant as destructive-distinct', () => {
+    expect(cannibalIdentity('uk student visa requirements')).toBe('uk_student')
+    expect(cannibalIdentity('uk graduate visa route')).toBe('uk_graduate')
+    expect(cannibalIdentity('uk skilled worker visa')).toBe('uk_skilled_worker')
+    expect(cannibalIdentity('uk skilled worker dependant visa')).toBe('uk_dependant')
+    expect(cannibalIdentityRelation('uk skilled worker visa', 'uk skilled worker dependant visa')).toBe('related_distinct')
+    expect(sameCannibalIdentity('uk skilled worker dependant visa', 'uk skilled worker visa')).toBe(false)
+    expect(sameCannibalIdentity('uk student visa requirements', 'uk graduate visa route')).toBe(false)
+  })
+
+  it('never lets an unrecognised identity act as a wildcard', () => {
+    const unknown = 'international student storage in austin'
+    expect(cannibalIdentity(unknown)).toBe('other')
+    expect(cannibalIdentityRelation(unknown, unknown)).toBe('unrecognized')
+    expect(sameCannibalIdentity(unknown, unknown)).toBe(false)
+
+    const d = decision({ term: unknown })
+    d.competitors[0] = { ...d.competitors[0], primaryIntent: unknown }
+    d.competitors[1] = competitor({ primaryIntent: unknown })
+    d.evidenceHash = computeCannibalEvidenceHash(d)
+    const result = validateCannibalDecision(d, [ownerRow])
+    expect(result.ok).toBe(false)
+    expect(result.blockers.join(' ')).toContain('identity_unrecognized')
   })
 
   it('blocks a decision whose competitor intent contradicts the term identity', () => {

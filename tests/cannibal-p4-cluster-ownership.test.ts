@@ -17,6 +17,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  cannibalIdentity,
+  cannibalIdentityFamily,
+  cannibalIdentityRelation,
   computeCannibalEvidenceHash,
   p3AuthorityRowsForCompetingUrls,
   sameCannibalIdentity,
@@ -118,6 +121,11 @@ function blockersOf(d: CannibalDecisionRecord, rows: OwnershipRow[]): string {
   return validateCannibalDecision(d, rows).blockers.join(' ')
 }
 
+/** Blocker URLs are the normalised form (no trailing slash). */
+function bare(url: string): string {
+  return url.replace(/\/$/, '')
+}
+
 describe('P4 family 1 — Canada spousal sponsorship', () => {
   const canada = registryRow(66)
   const loser = {
@@ -160,20 +168,36 @@ describe('P4 family 1 — Canada spousal sponsorship', () => {
       canada.id,
     ])
   })
+
+  it('recognises spousal sponsorship as its own identity, not a UK/US spouse wildcard', () => {
+    expect(cannibalIdentity(canada.owner_url)).toBe('ca_spouse')
+    expect(sameCannibalIdentity('Canada spousal sponsorship document checklist', 'Canada spousal sponsorship application guide')).toBe(true)
+    expect(sameCannibalIdentity('Canada spousal sponsorship document checklist', 'UK spouse visa document checklist')).toBe(false)
+    expect(cannibalIdentityRelation('Canada spousal sponsorship document checklist', 'uk spouse visa document checklist')).toBe(
+      'unrelated',
+    )
+  })
 })
 
-describe('P4 family 2 — US F-1 / OPT / STEM OPT with distinct-intent protection', () => {
+describe('P4 family 2 — US F-1 / CPT, OPT and STEM OPT as distinct destructive identities', () => {
   const f1 = registryRow(1)
+  const opt = registryRow(11)
+  const stemOpt = registryRow(9)
+  const f1Intent = 'F-1 visa rights and SEVIS rules'
+  const f1Loser = {
+    url: 'https://legal.yousafeconsultancy.com/us/student-visas/f1-status-maintenance-guide-2026/',
+    intent: 'F-1 status maintenance rules',
+  }
   const optLoser = {
     url: 'https://usa.yousafeconsultancy.com/opt-application-guide-2026/',
-    intent: 'OPT application guide for F-1 students',
+    intent: 'OPT application guide and timeline',
   }
 
   it('fails closed against the checked-in registry when regional rows co-claim the F-1 owner', () => {
     const d = decisionFor({
       clusterId: 'cluster_us_f1_opt',
-      term: 'f-1 visa opt stem opt requirements',
-      winner: { url: f1.owner_url, intent: 'F-1 visa rights and OPT eligibility' },
+      term: 'f-1 visa rights international students',
+      winner: { url: f1.owner_url, intent: f1Intent },
       loser: optLoser,
       query: 'f-1 visa opt application requirements',
       authority: authorityRef(f1),
@@ -186,26 +210,52 @@ describe('P4 family 2 — US F-1 / OPT / STEM OPT with distinct-intent protectio
     expect(p3AuthorityRowsForCompetingUrls([f1.owner_url], REGISTRY).length).toBeGreaterThan(1)
   })
 
-  it('consolidates inside the F-1/CPT/OPT/STEM family when exactly one authority row applies', () => {
+  it('consolidates only inside one subtype — a clean F-1 pair with exactly one authority row', () => {
     const d = decisionFor({
-      clusterId: 'cluster_us_f1_opt',
-      term: 'f-1 visa opt stem opt requirements',
-      winner: { url: f1.owner_url, intent: 'F-1 visa rights and OPT eligibility' },
-      loser: optLoser,
-      query: 'f-1 visa opt application requirements',
+      clusterId: 'cluster_us_f1',
+      term: 'f-1 visa rights international students',
+      winner: { url: f1.owner_url, intent: f1Intent },
+      loser: f1Loser,
+      query: 'f-1 visa rights international students',
       authority: authorityRef(f1),
     })
     expect(validateCannibalDecision(d, [f1])).toMatchObject({ ok: true, blockers: [] })
   })
 
+  it('fails closed across F-1, OPT and STEM OPT in both directions', () => {
+    const cases = [
+      { winner: { url: f1.owner_url, intent: f1Intent }, loser: optLoser, rows: [f1], term: 'f-1 visa rights international students' },
+      { winner: { url: opt.owner_url, intent: 'OPT 90 day unemployment cap' }, loser: f1Loser, rows: [opt], term: 'opt 90 day unemployment cap' },
+      { winner: { url: stemOpt.owner_url, intent: 'STEM OPT extension requirements' }, loser: optLoser, rows: [stemOpt], term: 'stem opt extension requirements' },
+      { winner: { url: opt.owner_url, intent: 'OPT 90 day unemployment cap' }, loser: { url: stemOpt.owner_url, intent: 'STEM OPT extension requirements' }, rows: [opt], term: 'opt 90 day unemployment cap' },
+    ]
+    for (const [index, item] of cases.entries()) {
+      const d = decisionFor({
+        clusterId: `cluster_us_subtype_${index}`,
+        term: item.term,
+        winner: item.winner,
+        loser: item.loser,
+        query: item.term,
+        authority: authorityRef(item.rows[0]),
+      })
+      const result = validateCannibalDecision(d, item.rows)
+      const joined = result.blockers.join(' ')
+      expect(result.ok).toBe(false)
+      expect(joined).toContain('winner_loser_identity_mismatch')
+      expect(joined).toContain('winner_loser_identity_related_but_distinct')
+    }
+  })
+
   it('protects distinct US intents from the F-1 family', () => {
-    expect(sameCannibalIdentity('f-1 opt extension', 'stem opt i-983')).toBe(true)
+    expect(cannibalIdentityFamily('f-1 visa requirements')).toBe('us_student_work')
+    expect(cannibalIdentityFamily('stem opt i-983')).toBe('us_student_work')
+    expect(sameCannibalIdentity('f-1 opt extension', 'stem opt i-983')).toBe(false)
     expect(sameCannibalIdentity('f-1 visa requirements', 'i-485 adjustment of status')).toBe(false)
 
     const d = decisionFor({
       clusterId: 'cluster_us_f1_opt',
-      term: 'f-1 visa opt stem opt requirements',
-      winner: { url: f1.owner_url, intent: 'F-1 visa rights and OPT eligibility' },
+      term: 'f-1 visa rights international students',
+      winner: { url: f1.owner_url, intent: f1Intent },
       loser: {
         url: 'https://legal.yousafeconsultancy.com/us/green-cards/i-485-adjustment-of-status-2026/',
         intent: 'US I-485 adjustment of status filing',
@@ -249,6 +299,47 @@ describe('P4 family 3 — Australia subclass 485 with US I-485 separation', () =
       authority: authorityRef(au485),
     })
     expect(blockersOf(d, [au485])).toContain('identity_mismatch')
+  })
+
+  it('keeps both directions closed between AU subclass 485 and US Form I-485', () => {
+    const i485Url = 'https://legal.yousafeconsultancy.com/us/green-cards/i-485-adjustment-of-status-2026/'
+    const i485Row: OwnershipRow = {
+      id: 9101,
+      primary_keyword: 'us i-485 adjustment of status',
+      intent_class: 'procedural',
+      owner_host: 'legal',
+      owner_url: i485Url,
+      supporting_urls: [],
+      action: 'keep',
+      market_destination: null,
+      status: 'confirmed',
+      notes: 'ratified P4 fixture for the US I-485 owner',
+    }
+    const auWinner = decisionFor({
+      clusterId: 'cluster_au_485',
+      term: 'australia 485 english requirements',
+      winner: { url: au485.owner_url, intent: 'Australia subclass 485 English requirements' },
+      loser: { url: i485Url, intent: 'US I-485 adjustment of status filing' },
+      query: '485 visa english requirements australia',
+      authority: authorityRef(au485),
+    })
+    const usWinner = decisionFor({
+      clusterId: 'cluster_us_i485',
+      term: 'us i-485 adjustment of status',
+      winner: { url: i485Url, intent: 'US I-485 adjustment of status filing' },
+      loser: { url: au485.owner_url, intent: 'Australia subclass 485 English requirements' },
+      query: 'us i-485 adjustment of status',
+      authority: authorityRef(i485Row),
+    })
+    const auBlockers = blockersOf(auWinner, [au485])
+    expect(auBlockers).toContain(`winner_loser_identity_mismatch:${bare(i485Url)}`)
+    expect(auBlockers).toContain('identity_mismatch')
+    expect(validateCannibalDecision(auWinner, [au485]).ok).toBe(false)
+
+    const usBlockers = blockersOf(usWinner, [i485Row])
+    expect(usBlockers).toContain(`winner_loser_identity_mismatch:${bare(au485.owner_url)}`)
+    expect(usBlockers).toContain('identity_mismatch')
+    expect(validateCannibalDecision(usWinner, [i485Row]).ok).toBe(false)
   })
 
   it('allows an AU 485 consolidation when exactly one authority row applies', () => {
@@ -300,23 +391,73 @@ describe('P4 family 4 — UK Student / Graduate / Skilled Worker / dependants', 
     expect(sameCannibalIdentity('uk student visa requirements', 'uk skilled worker visa')).toBe(false)
     expect(sameCannibalIdentity('uk graduate visa route', 'uk skilled worker visa')).toBe(false)
     expect(sameCannibalIdentity('uk student visa requirements', 'uk graduate visa route')).toBe(false)
-    expect(sameCannibalIdentity('uk skilled worker dependant visa', 'uk skilled worker visa')).toBe(true)
+    // A dependant never inherits the route it depends on — even though both
+    // belong to the same UK immigration family.
+    expect(sameCannibalIdentity('uk skilled worker dependant visa', 'uk skilled worker visa')).toBe(false)
+    expect(cannibalIdentity('uk skilled worker dependant visa')).toBe('uk_dependant')
+    expect(cannibalIdentity('uk skilled worker visa')).toBe('uk_skilled_worker')
+    expect(cannibalIdentityFamily('uk_dependant')).toBe('uk_immigration')
+    expect(cannibalIdentityRelation('uk skilled worker visa', 'uk skilled worker dependant visa')).toBe('related_distinct')
+    expect(sameCannibalIdentity('uk dependant visa requirements', 'uk dependent visa requirements')).toBe(true)
+    expect(sameCannibalIdentity('uk graduate visa route', 'uk post-study work visa')).toBe(true)
   })
 
-  it('authorizes the Skilled Worker family only through its own confirmed row', () => {
-    const dependantsLoser = {
-      url: 'https://legal.yousafeconsultancy.com/uk/skilled-worker-dependants-guide-2026/',
-      intent: 'UK Skilled Worker dependant visa guide',
-    }
-    const d = decisionFor({
+  it('blocks Skilled Worker against dependants in both directions', () => {
+    const dependantsUrl = 'https://legal.yousafeconsultancy.com/uk/skilled-worker-dependants-guide-2026/'
+    const dependantIntent = 'UK Skilled Worker dependant visa guide'
+    const skilledIntent = 'UK Skilled Worker visa healthcare pathway'
+
+    const skilledWinner = decisionFor({
       clusterId: 'cluster_uk_skilled_worker',
-      term: 'uk skilled worker visa dependants requirements',
-      winner: { url: skilledWorker.owner_url, intent: 'UK Skilled Worker visa healthcare pathway' },
-      loser: dependantsLoser,
-      query: 'uk skilled worker visa dependants requirements',
+      term: 'uk skilled worker visa requirements',
+      winner: { url: skilledWorker.owner_url, intent: skilledIntent },
+      loser: { url: dependantsUrl, intent: dependantIntent },
+      query: 'uk skilled worker visa requirements',
       authority: authorityRef(skilledWorker),
     })
-    expect(validateCannibalDecision(d, REGISTRY)).toMatchObject({ ok: true, blockers: [] })
+    const forward = blockersOf(skilledWinner, [skilledWorker])
+    expect(forward).toContain(`winner_loser_identity_mismatch:${bare(dependantsUrl)}`)
+    expect(forward).toContain('winner_loser_identity_related_but_distinct')
+    expect(validateCannibalDecision(skilledWinner, [skilledWorker]).ok).toBe(false)
+
+    const dependantWinner = decisionFor({
+      clusterId: 'cluster_uk_dependant',
+      term: 'uk dependant visa requirements',
+      winner: { url: dependantsUrl, intent: dependantIntent },
+      loser: { url: skilledWorker.owner_url, intent: skilledIntent },
+      query: 'uk dependant visa requirements',
+      authority: authorityRef(skilledWorker),
+    })
+    const reverse = blockersOf(dependantWinner, [skilledWorker])
+    expect(reverse).toContain(`winner_loser_identity_mismatch:${bare(skilledWorker.owner_url)}`)
+    expect(reverse).toContain('winner_loser_identity_related_but_distinct')
+    expect(validateCannibalDecision(dependantWinner, [skilledWorker]).ok).toBe(false)
+  })
+
+  it('consolidates a dependant sub-intent only through its own ratified row', () => {
+    const dependantsUrl = 'https://legal.yousafeconsultancy.com/uk/skilled-worker-dependants-guide-2026/'
+    const childUrl = 'https://uk.yousafeconsultancy.com/dependent-child-visa-guide-2026/'
+    const ratified: OwnershipRow = {
+      id: 9002,
+      primary_keyword: 'uk skilled worker dependant visa',
+      intent_class: 'procedural',
+      owner_host: 'legal',
+      owner_url: dependantsUrl,
+      supporting_urls: [],
+      action: 'keep',
+      market_destination: null,
+      status: 'confirmed',
+      notes: 'ratified P4 fixture for the UK dependant owner',
+    }
+    const d = decisionFor({
+      clusterId: 'cluster_uk_dependant',
+      term: 'uk dependant visa requirements',
+      winner: { url: dependantsUrl, intent: 'UK Skilled Worker dependant visa guide' },
+      loser: { url: childUrl, intent: 'UK dependent child visa requirements' },
+      query: 'uk dependant visa requirements',
+      authority: authorityRef(ratified),
+    })
+    expect(validateCannibalDecision(d, [ratified])).toMatchObject({ ok: true, blockers: [] })
   })
 })
 
@@ -355,6 +496,9 @@ describe('P4 family 5 — Express Entry checklist vs CRS / STEM-category / draw 
     const blockers = blockersOf(d, REGISTRY)
     expect(blockers).toContain('winner_must_equal_unique_p3_authority')
     expect(blockers).toContain('winner_must_equal_authoritative_owner')
+    // CRS/draw can never be absorbed into the ratified checklist owner.
+    expect(blockers).toContain(`winner_loser_identity_mismatch:${bare(checklist.owner_url)}`)
+    expect(blockers).toContain('winner_loser_identity_related_but_distinct')
     expect(validateCannibalDecision(d, REGISTRY).ok).toBe(false)
   })
 
@@ -368,8 +512,27 @@ describe('P4 family 5 — Express Entry checklist vs CRS / STEM-category / draw 
       authority: authorityRef(checklist),
     })
     const blockers = blockersOf(d, REGISTRY)
-    expect(blockers).toContain(`winner_loser_identity_mismatch:${crsPage.replace(/\/$/, '')}`)
+    expect(blockers).toContain(`winner_loser_identity_mismatch:${bare(crsPage)}`)
+    expect(blockers).toContain('winner_loser_identity_related_but_distinct')
+    expect(blockers).toContain('identity_mismatch')
     expect(validateCannibalDecision(d, REGISTRY).ok).toBe(false)
+  })
+
+  it('keeps Express Entry checklist/general, CRS/draw and FSW as separate identities', () => {
+    expect(cannibalIdentity('express entry document checklist')).toBe('ca_express_entry_core')
+    expect(cannibalIdentity('express entry eligibility requirements')).toBe('ca_express_entry_core')
+    expect(cannibalIdentity('express entry crs draw cut-off scores')).toBe('ca_express_entry_draws')
+    expect(cannibalIdentity('express entry stem category draw results')).toBe('ca_express_entry_draws')
+    expect(cannibalIdentity('express entry federal skilled worker requirements')).toBe('ca_express_entry_fsw')
+    // Checklist/general is one ratified group …
+    expect(sameCannibalIdentity('express entry document checklist', 'express entry eligibility requirements')).toBe(true)
+    // … but none of the three groups inherits another's authority.
+    expect(sameCannibalIdentity('express entry document checklist', 'express entry crs draw cut-off scores')).toBe(false)
+    expect(sameCannibalIdentity('express entry document checklist', 'express entry federal skilled worker requirements')).toBe(false)
+    expect(sameCannibalIdentity('express entry crs draw cut-off scores', 'express entry federal skilled worker requirements')).toBe(false)
+    expect(cannibalIdentityRelation('express entry document checklist', 'express entry federal skilled worker requirements')).toBe(
+      'related_distinct',
+    )
   })
 
   it('allows a sub-intent decision only after the registry ratifies that owner', () => {
