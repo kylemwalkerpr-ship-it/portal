@@ -6,6 +6,12 @@ import { CATEGORIES } from '@/lib/categories'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  assertMarketplaceBuildEstateNonEmpty,
+  assertMarketplaceBuildServiceRoleAuthority,
+  isMarketplaceProductionBuild,
+  marketplaceErrorDetail,
+} from '@/lib/marketplaceBuildAuthority'
 
 // TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: rendering
 // this hub per request exceeded the Workers Free 10ms CPU budget, and the Free
@@ -77,6 +83,13 @@ function isHubGigDirectory(value: unknown): value is HubGig[] {
  * persisting it, so a transient blip cannot blank the hub for the whole TTL.
  */
 async function computeActiveGigs(): Promise<HubGig[] | null> {
+  // BUILD-ONLY AUTHORITY GATE. This module also renders inside the Worker, so
+  // the guard is scoped to `phase-production-build` and the runtime fail-soft
+  // path below is unchanged. During the build, an anon-scoped client returns
+  // zero rows from public.gigs with NO error — baking that as the "complete
+  // service directory" is the false-empty hub this prevents.
+  assertMarketplaceBuildServiceRoleAuthority('gigs hub directory')
+
   try {
     const db = createSupabaseAdminClient()
     const { data, error } = await db
@@ -91,12 +104,28 @@ async function computeActiveGigs(): Promise<HubGig[] | null> {
       .limit(5000)
 
     if (error) {
+      if (isMarketplaceProductionBuild()) {
+        throw new Error(
+          `[marketplace/gigs] active-gig directory query failed during production build: ${error.message}`,
+        )
+      }
       console.warn('[marketplace/gigs] active-gig directory query failed', error.message)
       return null
     }
 
-    return (data ?? []).filter((gig: any) => Boolean(gig?.slug && gig?.provider_id)) as HubGig[]
+    const gigs = (data ?? []).filter((gig: any) => Boolean(gig?.slug && gig?.provider_id)) as HubGig[]
+    assertMarketplaceBuildEstateNonEmpty(
+      'gigs hub directory',
+      gigs.length,
+      'active provider-backed gigs',
+    )
+    return gigs
   } catch (error) {
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[marketplace/gigs] active-gig directory unavailable during production build: ${marketplaceErrorDetail(error)}`,
+      )
+    }
     console.warn('[marketplace/gigs] active-gig directory unavailable', error)
     return null
   }

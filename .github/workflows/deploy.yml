@@ -51,11 +51,21 @@ jobs:
       # Build needs the NEXT_PUBLIC_ values that Next.js inlines into the
       # client bundle. wrangler.toml has them as plaintext [vars]; we mirror
       # the same values here so the CI build matches the deployed runtime.
+      #
+      # Build ALSO needs the server-only service-role credentials: the public
+      # Marketplace estate is enumerated at build time (SSG +
+      # `dynamicParams = false`), and public.gigs is not anon-readable. With
+      # only the anon key the build silently saw ZERO active gigs and baked a
+      # false-empty landing + a 404-ing /gigs/<slug> estate (see
+      # lib/marketplaceBuildAuthority.ts, which now fails that build closed).
+      # These stay server-only: never NEXT_PUBLIC_, never echoed.
       - name: Build (Next + OpenNext)
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run build
 
       # Official OpenNext static-assets incremental cache. `opennextjs-cloudflare
@@ -84,7 +94,22 @@ jobs:
               exit 1
             }
           done
-          echo "Verified critical Marketplace prerender cache assets for build ${BUILD_ID}."
+          # Gig-detail estate gate: /gigs/[slug] is `dynamicParams = false`, so
+          # a build that emitted no concrete gig slugs publishes a 404 for
+          # every live gig URL. Require at least one real `<slug>.cache` entry
+          # beneath the marketplace/gigs/ prerender directory — the check is
+          # generic (never a hardcoded slug), recursive, and fails closed.
+          GIG_DETAIL_CACHE_DIR=".open-next/assets/cdn-cgi/_next_cache/${BUILD_ID}/marketplace/gigs"
+          test -d "$GIG_DETAIL_CACHE_DIR" || {
+            echo "::error::Missing gig-detail prerender cache directory: $GIG_DETAIL_CACHE_DIR"
+            exit 1
+          }
+          GIG_DETAIL_CACHE_COUNT="$(find "$GIG_DETAIL_CACHE_DIR" -type f -name '*.cache' | wc -l | tr -d ' ')"
+          test "$GIG_DETAIL_CACHE_COUNT" -gt 0 || {
+            echo "::error::No gig-detail prerender cache files beneath $GIG_DETAIL_CACHE_DIR — live /gigs/<slug> URLs would 404 (dynamicParams=false)."
+            exit 1
+          }
+          echo "Verified critical Marketplace prerender cache assets for build ${BUILD_ID} (${GIG_DETAIL_CACHE_COUNT} gig-detail entries)."
 
       - name: SEO audit guard (report-only)
         continue-on-error: true

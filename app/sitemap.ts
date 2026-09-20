@@ -3,6 +3,12 @@ import { CATEGORIES } from '@/lib/categories'
 import { IMMIGRATION_SHOP_PRODUCTS } from '@/lib/immigration-shop-products'
 import { PAYHIP_BATCHES_2_4_PRODUCTS } from '@/lib/payhipBatches24'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  assertMarketplaceBuildEstateNonEmpty,
+  assertMarketplaceBuildServiceRoleAuthority,
+  isMarketplaceProductionBuild,
+  marketplaceErrorDetail,
+} from '@/lib/marketplaceBuildAuthority'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
 
@@ -23,6 +29,13 @@ export const revalidate = false
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = `https://${MARKET_HOST}`
+
+  // BUILD-ONLY SUPPLY AUTHORITY. This route is generated once at build time
+  // and never re-rendered on the edge. During `phase-production-build` an
+  // anon-scoped read sees zero rows from public.gigs with NO error, which
+  // would silently drop every category/gig/provider URL from the map. The
+  // runtime fallback behavior below is unchanged.
+  assertMarketplaceBuildServiceRoleAuthority('sitemap estate')
 
   // Public Marketplace paths are already clean root-level slugs. The internal
   // app/marketplace route tree is an implementation detail and must never be
@@ -80,15 +93,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .eq('status', 'active')
       .not('provider_id', 'is', null)
       .limit(5000)
-    if (!error) {
-      const supply = new Set<string>()
-      for (const row of gigRows ?? []) {
-        if (row.category) supply.add(String(row.category))
-        if (row.subcategory) supply.add(String(row.subcategory))
-      }
-      categoriesWithSupply = supply
+    if (error) {
+      throw new Error(`[sitemap] category supply query failed: ${error.message}`)
     }
-  } catch {
+    const supply = new Set<string>()
+    for (const row of gigRows ?? []) {
+      if (row.category) supply.add(String(row.category))
+      if (row.subcategory) supply.add(String(row.subcategory))
+    }
+    categoriesWithSupply = supply
+  } catch (error) {
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[sitemap] ${marketplaceErrorDetail(error)} — refusing to publish a sitemap that silently drops subcategory URLs.`,
+      )
+    }
+    // Runtime DB unavailable — verified static hubs above remain valid. The
+    // next successful crawl rebuilds the dynamic sitemap and restores shelves.
     categoriesWithSupply = new Set<string>()
   }
 
@@ -116,13 +137,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Every active gig with a real provider and stored slug is eligible for
     // discovery. Do not gate this list on request-host headers: middleware has
     // already established that only the Marketplace host can expose the map.
-    const { data: gigs } = await db
+    const { data: gigs, error: gigError } = await db
       .from('gigs')
       .select('slug, updated_at, provider_id')
       .eq('status', 'active')
       .not('provider_id', 'is', null)
       .limit(5000)
+    if (gigError) {
+      throw new Error(`[sitemap] gig URL query failed: ${gigError.message}`)
+    }
 
+    let gigUrlCount = 0
     for (const gig of gigs ?? []) {
       // Never re-slug sitemap values at read time. Existing live URLs remain
       // byte-for-byte stable; only newly created/draft-edited slugs are cleaned.
@@ -133,12 +158,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: 'weekly',
         priority: 0.7,
       })
+      gigUrlCount += 1
     }
+    assertMarketplaceBuildEstateNonEmpty(
+      'sitemap gig URLs',
+      gigUrlCount,
+      'active provider-backed gig URLs',
+    )
 
-    const { data: attorneys } = await db
+    const { data: attorneys, error: attorneyError } = await db
       .from('attorneys')
       .select('id, profiles!attorneys_profile_id_fkey(username)')
       .limit(5000)
+    if (attorneyError) {
+      throw new Error(`[sitemap] provider URL query failed: ${attorneyError.message}`)
+    }
 
     for (const a of attorneys ?? []) {
       const profile = Array.isArray((a as any).profiles) ? (a as any).profiles[0] : (a as any).profiles
@@ -150,10 +184,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       })
     }
 
-    const { data: consultants } = await db
+    const { data: consultants, error: consultantError } = await db
       .from('consultants')
       .select('id, profiles!consultants_profile_id_fkey(username)')
       .limit(5000)
+    if (consultantError) {
+      throw new Error(`[sitemap] provider URL query failed: ${consultantError.message}`)
+    }
 
     for (const c of consultants ?? []) {
       const profile = Array.isArray((c as any).profiles) ? (c as any).profiles[0] : (c as any).profiles
@@ -164,7 +201,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.5,
       })
     }
-  } catch {
+  } catch (error) {
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[sitemap] ${marketplaceErrorDetail(error)} — refusing to publish a sitemap that silently drops gig/provider URLs.`,
+      )
+    }
     // Runtime DB unavailable — verified static hubs above remain valid. The
     // next successful crawl rebuilds the dynamic sitemap and restores gig URLs.
   }

@@ -4,6 +4,10 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { SellerProfilePage } from '@/components/marketplace/SellerProfilePage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import {
+  assertMarketplaceEstateNonEmpty,
+  assertMarketplaceServiceRoleAuthority,
+} from '@/lib/marketplaceBuildAuthority'
 
 // TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: per-request
 // rendering of the provider estate exceeded the Workers Free 10ms CPU budget,
@@ -59,9 +63,16 @@ function joinedProfileUsername(row: any): string | null {
  */
 export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   // FAIL CLOSED. `dynamicParams = false` turns every token missing from this
-  // set into a hard 404, so a failed query can never be allowed to publish a
-  // partial (or empty) provider estate. Any setup/query failure rethrows and
-  // fails the build instead.
+  // set into a hard 404, so neither an authority downgrade nor a failed query
+  // can be allowed to publish a partial (or empty) provider estate:
+  //   · authority — attorneys/consultants/profiles embeds are not
+  //     anon-readable, so an anon-scoped enumeration returns nothing (often
+  //     without an error); only genuine service-role authority may enumerate;
+  //   · estate — a service-role read that yields zero tokens is never a
+  //     publishable provider estate.
+  // Any setup/query failure rethrows and fails the build instead.
+  assertMarketplaceServiceRoleAuthority('providers/[id] static params')
+
   const tokens = new Set<string>()
 
   const addRow = (row: any) => {
@@ -110,6 +121,8 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   for (const row of attorneyResult.data ?? []) addRow(row)
   for (const row of consultantResult.data ?? []) addRow(row)
   for (const row of gigProviderResult.data ?? []) addRow(row)
+
+  assertMarketplaceEstateNonEmpty('providers/[id] static params', tokens.size, 'provider tokens')
 
   return [...tokens].map((id) => ({ id }))
 }

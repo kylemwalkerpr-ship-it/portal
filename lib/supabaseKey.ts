@@ -60,6 +60,22 @@ export function isSecretKey(key: string | null | undefined): boolean {
  */
 export type SupabaseAuthMode = 'service-role' | 'degraded-anon' | 'missing'
 
+/**
+ * Read the first non-blank env var. GitHub Actions defines an *empty string*
+ * for every secret that is not configured in the repository, and plain `??`
+ * would then let an empty `SUPABASE_SERVICE_ROLE_JWT` shadow a perfectly
+ * usable legacy `SUPABASE_SERVICE_ROLE_KEY` (silently falling back to the
+ * anon key). Blank therefore counts as absent, and precedence is decided by
+ * usable values only.
+ */
+function envNonEmpty(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]
+    if (typeof value === 'string' && value.trim() !== '') return value
+  }
+  return ''
+}
+
 export function resolveSupabaseKey(opts?: {
   serviceRoleKey?: string | null
   anonKey?: string | null
@@ -67,10 +83,8 @@ export function resolveSupabaseKey(opts?: {
 }): string | null {
   const sr =
     opts?.serviceRoleKey ??
-    process.env.SUPABASE_SERVICE_ROLE_JWT ??
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    ''
-  const anon = opts?.anonKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+    envNonEmpty('SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY')
+  const anon = opts?.anonKey ?? envNonEmpty('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 
   if (isLegacyJwtKey(sr)) return sr
 
@@ -101,10 +115,8 @@ export function supabaseAuthMode(opts?: {
 }): SupabaseAuthMode {
   const sr =
     opts?.serviceRoleKey ??
-    process.env.SUPABASE_SERVICE_ROLE_JWT ??
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    ''
-  const anon = opts?.anonKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+    envNonEmpty('SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY')
+  const anon = opts?.anonKey ?? envNonEmpty('NEXT_PUBLIC_SUPABASE_ANON_KEY')
   if (isLegacyJwtKey(sr)) return 'service-role'
   if (isLegacyJwtKey(anon)) return 'degraded-anon'
   return sr || anon ? 'degraded-anon' : 'missing'

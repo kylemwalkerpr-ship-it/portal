@@ -39,6 +39,12 @@ import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
 import { ImmigrationPackRail } from '@/components/marketplace/ImmigrationPackRail'
 import { HeroBackgroundMedia } from '@/components/marketplace/HeroBackgroundMedia'
+import {
+  assertMarketplaceBuildEstateNonEmpty,
+  assertMarketplaceBuildServiceRoleAuthority,
+  isMarketplaceProductionBuild,
+  marketplaceErrorDetail,
+} from '@/lib/marketplaceBuildAuthority'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -199,10 +205,22 @@ function fallbackLandingData(): LandingData {
  * created — callers serve the empty shell WITHOUT persisting it.
  */
 async function computeLandingData(): Promise<LandingData | null> {
+  // BUILD-ONLY AUTHORITY GATE. This loader also serves the Worker, so the
+  // guard is scoped to `phase-production-build` and runtime fail-soft
+  // behavior below is unchanged. During the build, an anon-scoped client can
+  // read zero rows from public.gigs without an error — baking that snapshot
+  // is the false-empty landing this guard prevents.
+  assertMarketplaceBuildServiceRoleAuthority('marketplace landing inventory')
+
   let db
   try {
     db = createSupabaseAdminClient()
-  } catch {
+  } catch (error) {
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[marketplace/landing] admin client unavailable during production build: ${marketplaceErrorDetail(error)}`,
+      )
+    }
     return null
   }
 
@@ -259,13 +277,33 @@ async function computeLandingData(): Promise<LandingData | null> {
 
   const [inventoryRes, reviewsRes, facetCounts] = await Promise.all([inventoryP, reviewsP, facetsP])
 
+  // BUILD-ONLY SUPPLY GATE. A query error must fail the build instead of
+  // baking the empty landing; at runtime the existing fail-soft shard keeps
+  // rendering whatever the other probes returned.
+  if (inventoryRes.error) {
+    const detail = `inventory query failed: ${inventoryRes.error.message}`
+    if (isMarketplaceProductionBuild()) {
+      throw new Error(
+        `[marketplace/landing] ${detail} — refusing to bake a false-empty landing page.`,
+      )
+    }
+    console.warn(`[marketplace/landing] ${detail}`)
+  }
+
+  const inventoryRows = (inventoryRes.data ?? []) as any[]
+  assertMarketplaceBuildEstateNonEmpty(
+    'marketplace landing inventory',
+    inventoryRows.length,
+    'active gigs',
+  )
+
   // Batch-fetch headshots from the seller-specific tables. Each profile_id
   // is unique per attorney/consultant row (we added unique(profile_id) in
   // an earlier migration), so the two queries return at most one row per
   // provider. We index by profile_id so the gig-map below resolves in O(1)
   // regardless of how many gigs a single seller owns.
   const providerIds = Array.from(
-    new Set(((inventoryRes.data ?? []) as any[]).map((r) => r.provider_id).filter(Boolean)),
+    new Set(inventoryRows.map((r) => r.provider_id).filter(Boolean)),
   )
   const headshotByProfileId = new Map<string, string>()
   if (providerIds.length > 0) {
@@ -281,7 +319,7 @@ async function computeLandingData(): Promise<LandingData | null> {
     }
   }
 
-  const allGigs: LandingGig[] = ((inventoryRes.data ?? []) as any[]).map((row) => {
+  const allGigs: LandingGig[] = inventoryRows.map((row) => {
     const activeTiers = (row.tiers ?? [])
       .filter((t: any) => t.is_active && Number(t.price) > 0)
       .map((t: any) => ({ price: Number(t.price), delivery_days: t.delivery_days != null ? Number(t.delivery_days) : null }))
