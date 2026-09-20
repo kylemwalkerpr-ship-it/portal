@@ -581,3 +581,60 @@ P4 is now **IN_PROGRESS**. This entry records the implementation safety layer on
 - No live redirect, noindex, canonical change, PR merge, migration application, deployment, or production consolidation was performed by this implementation pass.
 - The five priority families remain subject to current per-collision GSC query×page, HTTP/canonical/indexability, internal-link, backlink/UNKNOWN, authoritative P3 owner, exact repo/path/SHA, and rollback evidence before any actual consolidation.
 - P4 remains **IN_PROGRESS** until PR checks/review, merge, exact-main deployment, migration proof where applicable, and live collision evidence close the phase gate. Broad CREATE remains frozen until P13.
+
+
+## 2026-09-20 — P4 production acceptance — FINAL P4 closure
+
+This section records the approved documentation-only closure. The PR #251 pre-merge entry above is retained as history and is not rewritten. P4 is closed as **PASS**. No Portal code, test, migration, database, redirect, canonical, noindex, ownership-registry, or production-behavior change was made in this closure pass.
+
+### Release chain
+
+- P4 implementation PR #251 (`feat(seo): enforce P4 cannibalization safety`, reviewed P4 code head `3f658f81`) merged cleanly to `main` as `a26501f73a69212e6233dd4f38f8a0106522f353`.
+- Post-P4 advisor remediation PR #252 (`security(seo): pin P4 ledger trigger search path`, commit `ce62c688`) merged cleanly to `main` as `77105d511552dd64439aa6dcfcf70a6d8f395324`.
+- Exact-main `Deploy YouSafe Portal` run `35510937704` completed **SUCCESS** at `77105d51`.
+- Exact-main `Apply SEO Factory Migrations` run `35510937689` completed **SUCCESS** at `77105d51`.
+- This closure worktree is based on the exact merge `77105d511552dd64439aa6dcfcf70a6d8f395324` on `seo/p4-live-consolidation-20260920`.
+
+### Evidence method and window
+
+- Family evidence is **persisted qualified GSC** for property `sc-domain:yousafeconsultancy.com`, window `2026-06-22 → 2026-09-19`, **2,660 rows**, last sync `2026-09-20 05:39 UTC`.
+- **No live GSC API pull was made for this closure**, so live-query coverage remains **UNKNOWN**. Acceptance rests on the persisted window above plus independent HTTP redirect verification, not on a fresh Google query.
+- Decision authority stayed fail-closed throughout: the validator requires exactly one authoritative P3 owner per competitor set; ambiguous or missing ownership blocks action, alongside strict five-family identity boundaries and append-only decision persistence before any mutation.
+
+### Per-family dispositions
+
+1. **Canada spouse/spousal sponsorship — redirect-resolved residual overlap.** Two qualified historical overlaps (`canada spouse visa`, `2024 canada spouse visa`) occur only on legacy loser URLs. Independent verification: both legacy URLs return HTTP 301 to the row-66 owner on `legal.yousafeconsultancy.com` (`/ca/family/canada-spousal-sponsorship-document-checklist-2026/`) and terminate in HTTP 200. No actionable competing pair remains.
+2. **US F-1/CPT/OPT/STEM OPT — no actionable overlap.** No actionable qualified overlap; F-1/CPT vs OPT vs STEM-OPT subtype boundaries remain fail-closed.
+3. **Australia 485 — no actionable overlap; P3 hygiene residual.** No actionable qualified overlap and no current P4 collision. P3 rows 59/76 remain an ownership-hygiene ambiguity that keeps future destructive actions fail-closed.
+4. **UK Student/Graduate/Skilled Worker/dependants — redirect-resolved residual overlap.** One qualified historical overlap only, between a Legal guide and the UK university hub (Warwick). Independent verification: the Legal guide returns HTTP 301 to `https://uk.yousafeconsultancy.com/universities/university-of-warwick/` and terminates in HTTP 200. Route-family pages have no actionable overlap; missing/ambiguous owners remain fail-closed P3 hygiene.
+5. **Express Entry — no actionable overlap; P3 hygiene residual.** No actionable qualified overlap; CRS/draw/STEM-category owner gaps remain fail-closed map hygiene, not collision evidence.
+
+Truthful summary: **three exact qualified historical overlaps exist, but all are on already-redirected loser URLs; ZERO actionable currently competing pairs remain.**
+
+### Production ledger and trigger verification
+
+- `public.seo_cannibal_decisions` exists in production.
+- The append-only guard trigger `seo_cannibal_decisions_append_only` exists, and its function has a pinned empty `search_path` (advisor remediation `20260920120000_seo_cannibal_decisions_append_only_search_path.sql`).
+- The ledger holds **0 rows**; no new destructive consolidation was executed, which is consistent with P4 closing through already-existing redirects rather than new mutations.
+- Legacy `cannibal_merges` is **not** P4 authority. The new append-only `seo_cannibal_decisions` ledger is the authoritative P4 decision record.
+
+### Related acceptance context (not a Portal change)
+
+- The caseworks wrong-topic redirect incident was independently repaired and deployed via caseworks PR #155, merge `16c13cc6156f2e4e01b8f1c06bca133a97b00870`; production representative endangered URLs return 200/self with zero redirects. This is recorded only as redirect-health context and is not a Portal code change.
+
+### Caveats
+
+- Live-query coverage is **UNKNOWN** because no live GSC API pull was made. "No actionable collision" means no actionable qualified overlap in the persisted window plus verified live HTTP redirect state for the residual loser URLs; it is not a real-time claim about Google's live index.
+- The three historical overlap observations remain in the persisted GSC window for legacy loser URLs; their estate-side resolution depends on existing 301 redirects, which remain independently verified live.
+- P3 ownership-hygiene gaps (Australia 485 rows 59/76; Express Entry CRS/draw/STEM-category; any missing/ambiguous owner) remain fail-closed. They do **not** reopen P4 absent a current qualified competing pair, and they continue to block future destructive actions.
+
+### Closure mechanics
+
+- This pass modified exactly `docs/superpowers/seo-parity-matrix.md` and `docs/superpowers/seo-execution-ledger.md`; `git diff --check` PASS.
+- The matrix P4 row moved `IN_PROGRESS` → `PASS`; P5+ rows are unchanged.
+
+### Final result
+
+- `Major priority-cluster cannibalization resolved` → **PASS**.
+- **P4 is closed. P5 is next.**
+- Broad net-new CREATE remains frozen until P13.
