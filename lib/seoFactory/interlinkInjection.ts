@@ -39,6 +39,15 @@ import type { AuthorPack } from './authorPack'
 
 export interface InterlinkCandidateLike {
   url?: string
+  /**
+   * Candidate display/anchor metadata already passed by the real pipeline and
+   * provider callers (`pipeline.ts` maps radar links to `{label, url}` and
+   * `MarketplaceServiceLink` carries a required `label`). It is declared so
+   * those callers — and candidates that intentionally carry no URL — type
+   * against the actual shape; it is never read for a liveness decision, so
+   * declaring it grants a candidate no verification authority.
+   */
+  label?: string
 }
 
 export interface PruneInterlinksOptions {

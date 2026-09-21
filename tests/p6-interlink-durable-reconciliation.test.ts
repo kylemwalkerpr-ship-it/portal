@@ -26,6 +26,7 @@ import {
   reconcileStagedInterlinks,
   type StagedInterlinkRow,
 } from '@/lib/seoFactory/interlinkReconciliation'
+import type { FinalizeStagedInterlinksResult } from '@/lib/seoFactory/interlinkVerification'
 
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
 
@@ -93,7 +94,18 @@ function staged(overrides: Partial<StagedInterlinkRow> = {}): StagedInterlinkRow
 
 function harness(rows: StagedInterlinkRow[]) {
   const verify = jest.fn(async () => VERIFY_OK)
-  const finalize = jest.fn(async () => ({ ...FINALIZED_ONE }))
+  // Typed against the REAL finalizer result (whose `error` is optional) with
+  // the exact deps input shape, so mock.calls carries the job-bound input and
+  // error-path mocks cannot be typed away.
+  const finalize = jest.fn(
+    async (input: {
+      canonicalUrl: string
+      sourceJobId?: string | null
+    }): Promise<FinalizeStagedInterlinksResult> => ({
+      ...FINALIZED_ONE,
+      sourceUrl: input.canonicalUrl,
+    }),
+  )
   const markAttempted = jest.fn(async () => ({ updated: 1 }))
   return {
     verify,
@@ -145,7 +157,7 @@ describe('A) exact (source_url, source_job_id) identity is the verification subj
     expect(h.verify).toHaveBeenCalledTimes(2)
     expect(h.verify).toHaveBeenNthCalledWith(1, { canonicalUrl: SOURCE_A, jobId: JOB_A })
     expect(h.verify).toHaveBeenNthCalledWith(2, { canonicalUrl: SOURCE_A, jobId: JOB_B })
-    expect(h.finalize.mock.calls.map(([input]) => (input as { sourceJobId: string }).sourceJobId).sort()).toEqual([
+    expect(h.finalize.mock.calls.map(([input]) => input.sourceJobId).sort()).toEqual([
       JOB_A,
       JOB_B,
     ])

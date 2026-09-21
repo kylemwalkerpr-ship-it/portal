@@ -339,7 +339,17 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
   const supabase = createSupabaseAdminClient()
   const baseColumns = 'id,source_url,source_job_id,status,verified_at,verification_attempted_at,updated_at'
   let stagedAtAvailable = true
-  let { data, error } = await supabase
+  // Normalise both the current and the legacy column-set reads to the same
+  // untyped record shape: the untyped client's failed-query data union is not
+  // directly castable to a record array, and the legacy SELECT does not even
+  // select `staged_at`. The revision stamp is still read ONLY when it is
+  // available; the fallback leaves `stagedAt: null` so the documented
+  // `updated_at` revision fallback applies instead of a fabricated stamp.
+  const toRecords = (data: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(data)
+      ? data.map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>) : {}))
+      : []
+  const primary = await supabase
     .from('seo_interlinks')
     .select(`${baseColumns},staged_at`)
     .eq('status', 'planned')
@@ -347,6 +357,8 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
     .not('source_job_id', 'is', null)
     .order('updated_at', { ascending: true })
     .limit(limit)
+  let rows = toRecords(primary.data)
+  let error = primary.error
   if (error && /staged_at/i.test(String(error.message || ''))) {
     const message = String(error.message || 'staged_at unavailable')
     console.warn(
@@ -362,11 +374,10 @@ async function defaultLoadStagedRows(limit: number): Promise<StagedInterlinkRow[
       .not('source_job_id', 'is', null)
       .order('updated_at', { ascending: true })
       .limit(limit)
-    data = legacy.data
+    rows = toRecords(legacy.data)
     error = legacy.error
   }
   if (error) throw new Error(`staged interlink read failed: ${error.message}`)
-  const rows = (data as Array<Record<string, unknown>> | null) || []
   return rows.map((row) => ({
     id: row.id as string | number | undefined,
     sourceUrl: (row.source_url as string | null) ?? null,

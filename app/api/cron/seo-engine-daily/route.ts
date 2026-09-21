@@ -4,6 +4,12 @@ import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
 import { classifyEngineRunStatus, formatTopScores } from '@/lib/seoEngine/engineRunSummary'
 import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
+// Type-only: erased at compile time (the reconciliation module itself is still
+// imported dynamically below so this route never pulls the verification graph
+// until the interlink phase actually runs). Deriving the recorded summary from
+// the real reconciliation type keeps the engine-run telemetry honest when the
+// seam grows another truthful counter.
+import type { InterlinkReconciliationSummary } from '@/lib/seoFactory/interlinkReconciliation'
 
 /**
  * POST /api/cron/seo-engine-daily
@@ -203,23 +209,25 @@ export async function POST(req: NextRequest) {
     let llmFailed = 0
     let interlinksStored = 0
     let interlinksFiltered = 0
-    let interlinkReconcileSummary: {
-      scannedRows: number
-      stagedSources: number
-      eligibleSources: number
-      unavailable: boolean
-      unavailableReason: string | null
-      verifiedLive: number
-      notDeploymentProven: number
-      verificationFailed: number
-      skippedAttemptCooldown: number
-      missingJobIdentityRows: number
-      missingJobIdentityError: string | null
-      applied: number
-      finalized: number
-      plannedVerdicts: number
-      remaining: number
-    } | null = null
+    let interlinkReconcileSummary: Pick<
+      InterlinkReconciliationSummary,
+      | 'scannedRows'
+      | 'stagedSources'
+      | 'skippedMissingJobIdentity'
+      | 'missingJobIdentityRows'
+      | 'missingJobIdentityError'
+      | 'eligibleSources'
+      | 'unavailable'
+      | 'unavailableReason'
+      | 'verifiedLive'
+      | 'notDeploymentProven'
+      | 'verificationFailed'
+      | 'skippedAttemptCooldown'
+      | 'applied'
+      | 'finalized'
+      | 'plannedVerdicts'
+      | 'remaining'
+    > | null = null
     let gscPersistStatus: string | null = null
     let gscRowsProcessed = 0
     let gscWindowEnd: string | null = null

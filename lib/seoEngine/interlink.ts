@@ -247,6 +247,23 @@ const PLAN_INELIGIBLE_VERIFICATION_STATES: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Shape of the bounded `seo_interlinks` read below. The untyped Supabase
+ * client surfaces a failed query as a `GenericStringError[]` data union, so a
+ * direct cast to a record array is not a safe conversion; naming the selected
+ * columns and casting through `unknown` keeps the read typed without changing
+ * the fail-closed behaviour (any DB error above still returns zero
+ * suggestions).
+ */
+interface EngineInterlinkCellRow {
+  target_url?: string | null
+  target_host?: string | null
+  anchor_text?: string | null
+  reason?: string | null
+  status?: string | null
+  verification_state?: string | null
+}
+
+/**
  * Load the engine's PERSISTED interlink edges for a lifecycle cell —
  * `seo-<country>-<stage>-%` source slugs (planner missions). Shaped like the
  * Opportunity Radar's interlink options so the pipeline's interlinkAllowlist
@@ -304,7 +321,7 @@ export async function loadEngineInterlinksForCell(
       )
       return []
     }
-    const rows = (data as Array<Record<string, unknown>>) || []
+    const rows = (data as unknown as EngineInterlinkCellRow[] | null) ?? []
     // Defence-in-depth: even if a caller's query ever stops filtering, an
     // ineligible lifecycle row — or a row whose durable verification verdict
     // already proved the target/source dead — can never reach automatic
