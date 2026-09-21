@@ -29,10 +29,22 @@
  *     `__clerk_synced`, `__clerk_db_jwt`, `__clerk_ticket`, ...) always stays
  *     on the Clerk path: that is Clerk's handshake / internal callback
  *     protocol, never a document we may answer ourselves;
+ *   - the same is true of Clerk's handoff *cookies* and its internal auth
+ *     paths (lib/clerkHandoffState.ts). The cross-host handoff returns from
+ *     the FAPI as `__clerk_handshake` on `Domain=yousafeconsultancy.com` with
+ *     no `__clerk*` parameter left to match, so a cookie-blind fast path
+ *     answered the handoff with the anonymous root document, the JWT was never
+ *     consumed, and the SDK re-drove the handshake on every page load of the
+ *     switch (the MARKET-PORTAL-AUTH-HANDOFF-1102 CPU amplification);
  *   - APIs, webhooks, cron, `/sellers`, `/shop`, `/dashboard` and the retired
  *     `/marketplace` redirect are never eligible (the caller only consults
  *     this helper for anonymous portal documents).
  */
+import {
+  clientUatMeansSignedIn,
+  requestNeedsClerkHandoffState,
+  type ClerkRequestCookie,
+} from './clerkHandoffState'
 
 /**
  * Anonymous public portal documents allowed to skip Clerk, by exact path.
@@ -79,10 +91,11 @@ export const PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS: ReadonlySet<string> = new Set
 /**
  * Clerk writes `__client_uat` for every client; it is absent or '0' whenever
  * there is no active session (the same predicate the middleware's homepage
- * fast path already uses before skipping `auth()`).
+ * fast path already uses before skipping `auth()`). One definition lives in
+ * lib/clerkHandoffState.ts so the market and portal fast paths can never drift.
  */
 export function portalRequestHasSessionHint(clientUat?: string | null): boolean {
-  return typeof clientUat === 'string' && clientUat !== '' && clientUat !== '0'
+  return clientUatMeansSignedIn(clientUat)
 }
 
 /**
@@ -105,14 +118,22 @@ export function shouldBypassClerkForPortalRequest(
   pathname: string,
   searchParams: URLSearchParams,
   clientUat?: string | null,
+  /**
+   * Cookies on the request. Omitted/empty keeps the historical three-argument
+   * contract for callers that only model the session hint; the middleware
+   * always passes the real jar so Clerk's handoff cookies fail closed.
+   */
+  cookies: readonly ClerkRequestCookie[] = [],
 ): boolean {
   if (portalRequestHasSessionHint(clientUat)) return false
 
-  if (!isPortalAnonymousDocumentPath(pathname)) return false
+  // Clerk's handoff jar (`__clerk_handshake`), session token, `__clerk*`
+  // protocol parameters and internal auth paths all stay with clerkMiddleware:
+  // the anonymous document must never be substituted for a request that is
+  // mid-handoff, or the handoff never terminates.
+  if (requestNeedsClerkHandoffState(pathname, searchParams, cookies)) return false
 
-  for (const key of searchParams.keys()) {
-    if (key.toLowerCase().startsWith('__clerk')) return false
-  }
+  if (!isPortalAnonymousDocumentPath(pathname)) return false
 
   return true
 }
