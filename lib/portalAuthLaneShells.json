@@ -1,0 +1,4 @@
+{
+  "sign-in": ["student", "client", "consultant", "attorney", "admin"],
+  "sign-up": ["student", "client", "consultant", "attorney"]
+}
