@@ -805,6 +805,53 @@ export async function verifyUrlsLive(urls: string[]): Promise<Map<string, { ok: 
   return out
 }
 
+/**
+ * Explicit GET-only live check used for dead-verdict RE-CONFIRMATION (P6
+ * Batch A). Unlike `verifyUrlsLive` this never consults or populates the
+ * shared cache, and it never synthesizes a target: a relative/non-http(s)
+ * input is refused with status 0 instead of being resolved against
+ * `ESTATE_BASE`, so a re-confirmation can only ever fetch the exact absolute
+ * URL it was handed. 0 status = network/timeout.
+ */
+export async function verifyUrlsLiveGet(
+  urls: string[],
+): Promise<Map<string, { ok: boolean; status: number; finalUrl: string }>> {
+  const out = new Map<string, { ok: boolean; status: number; finalUrl: string }>()
+  const checkOneGet = async (raw: string): Promise<{ ok: boolean; status: number; finalUrl: string }> => {
+    const exact = String(raw || '').trim()
+    let absolute = false
+    try {
+      const parsed = new URL(exact)
+      absolute =
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        Boolean(parsed.hostname)
+    } catch {
+      absolute = false
+    }
+    if (!absolute) return { ok: false, status: 0, finalUrl: exact }
+    try {
+      const res = await fetch(exact, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(Number(process.env.LINK_AUDIT_FETCH_TIMEOUT_MS || 8000)),
+      })
+      return { ok: res.status >= 200 && res.status < 400, status: res.status, finalUrl: res.url || exact }
+    } catch {
+      return { ok: false, status: 0, finalUrl: exact }
+    }
+  }
+  const concurrency = Number(process.env.LINK_AUDIT_CONCURRENCY || 4)
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < urls.length) {
+      const u = urls[cursor++]
+      out.set(u, await checkOneGet(u))
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, urls.length)) }, worker))
+  return out
+}
+
 export function classifyLiveStatus(
   url: string,
   status: number,

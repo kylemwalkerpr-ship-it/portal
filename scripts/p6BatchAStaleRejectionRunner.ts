@@ -14,6 +14,13 @@
  *   · candidate read errors or proven truncation → no writes;
  *   · global target-verification failure (thrown, or every requested target
  *     missing from the observation set) → no writes;
+ *   · a primary observation of raw 404/410 is NEVER sufficient: the runner
+ *     requests an explicit GET re-confirmation of each such EXACT target and
+ *     fails closed (no plan, no writes) when the re-confirmation dependency is
+ *     missing, throws, or returns no observation for every head-dead target;
+ *   · proofs are looked up by the EXACT trimmed stored `target_url` — no
+ *     normalized/synthesized key — and only absolute http(s) targets are
+ *     probed at all; noncanonical targets are counted untouched;
  *   · a per-target missing/unknown observation leaves only that target's rows
  *     untouched; 401/403/405/429/0/5xx are never dead;
  *   · the first write error aborts the remaining writes (already-applied rows
@@ -21,13 +28,17 @@
  *     success or as zero.
  */
 
-import type { P6TargetObservation } from './p6InterlinkDisposition'
+import {
+  isLegacyAuthWallTarget,
+  type P6TargetObservation,
+} from './p6InterlinkDisposition'
 import {
   P6_BATCH_A_APPLY_CONFIRM_TOKEN,
   P6_BATCH_A_DEFAULT_LIMIT,
   P6_BATCH_A_HARD_MAX_ROWS,
   P6_BATCH_A_TOOL,
   P6_BATCH_A_VERSION,
+  batchAExactTarget,
   buildBatchACasFence,
   buildBatchAUpdatePatch,
   isHistoricalJoblessNoProofCandidate,
@@ -38,7 +49,6 @@ import {
   type P6BatchAFenceEntry,
   type P6BatchASelectedRow,
 } from './p6BatchAStaleRejection'
-import { p6TargetKey } from './p6InterlinkDisposition'
 
 export interface P6BatchACandidateRead {
   rows: P6BatchACandidateRow[]
@@ -69,8 +79,17 @@ export interface P6BatchAStatusCounts {
 
 export interface P6BatchARunnerDeps {
   readCandidates: () => Promise<P6BatchACandidateRead>
+  /** Fresh primary probe, keyed by the EXACT trimmed stored target_url. */
   observeTargets: (
-    targetKeys: string[],
+    exactTargets: string[],
+  ) => Promise<Record<string, P6TargetObservation | undefined>>
+  /**
+   * Explicit GET-only re-confirmation of the EXACT URLs the primary probe
+   * classified raw 404/410, keyed by those exact URLs. MANDATORY whenever such
+   * a target exists: the runner refuses to plan or write without it.
+   */
+  confirmDeadTargets?: (
+    exactTargets: string[],
   ) => Promise<Record<string, P6TargetObservation | undefined>>
   applyRejection?: (write: P6BatchAWrite) => Promise<P6BatchAWriteResult>
   countStatuses?: () => Promise<P6BatchAStatusCounts | null>
@@ -97,7 +116,9 @@ export interface P6BatchASummary {
   hardMaxRows: number
   scannedRows: number
   distinctTargetsProbed: number
+  headDeadTargetsReconfirmed: number
   deadCandidateRows: number
+  headDeadUnconfirmedRows: number
   deadRowsBeyondLimit: number
   selectedForWrite: number
   attemptedWrites: number
@@ -106,8 +127,10 @@ export interface P6BatchASummary {
   notAttemptedWrites: number
   unknownUntouchedRows: number
   liveUntouchedRows: number
+  noncanonicalTargetRows: number
   legacyAuthWallRows: number
   observedStatusCounts: Record<string, number>
+  confirmationStatusCounts: Record<string, number>
   aborted: boolean
   truncated: boolean
   failedClosed: boolean
@@ -134,7 +157,9 @@ function emptySummary(
     hardMaxRows: P6_BATCH_A_HARD_MAX_ROWS,
     scannedRows: 0,
     distinctTargetsProbed: 0,
+    headDeadTargetsReconfirmed: 0,
     deadCandidateRows: 0,
+    headDeadUnconfirmedRows: 0,
     deadRowsBeyondLimit: 0,
     selectedForWrite: 0,
     attemptedWrites: 0,
@@ -143,8 +168,10 @@ function emptySummary(
     notAttemptedWrites: 0,
     unknownUntouchedRows: 0,
     liveUntouchedRows: 0,
+    noncanonicalTargetRows: 0,
     legacyAuthWallRows: 0,
     observedStatusCounts: {},
+    confirmationStatusCounts: {},
     aborted: false,
     truncated: false,
     failedClosed: false,
@@ -235,48 +262,101 @@ export async function runP6BatchARejection(
   const candidates = uniqueBatchACandidatesById(
     rawRows.filter((row) => Boolean(row) && isHistoricalJoblessNoProofCandidate(row)),
   )
-  const targetKeys = [
+  // Proof binding: look up/probe the EXACT trimmed stored target_url. A
+  // non-http(s)/non-absolute target is never probed and never written.
+  const exactTargets = [
     ...new Set(
       candidates
-        .map((row) => p6TargetKey(row.target_url))
-        .filter((key) => Boolean(key)),
+        .map((row) => batchAExactTarget(row.target_url))
+        .filter((target): target is string => Boolean(target)),
     ),
   ]
   summary.scannedRows = candidates.length
-  summary.distinctTargetsProbed = targetKeys.length
+  summary.distinctTargetsProbed = exactTargets.length
 
   let observations: Record<string, P6TargetObservation | undefined> = {}
-  if (targetKeys.length > 0) {
+  if (exactTargets.length > 0) {
     try {
-      observations = (await deps.observeTargets(targetKeys)) || {}
+      observations = (await deps.observeTargets(exactTargets)) || {}
     } catch (error) {
       summary.fatalErrors.push(
         `target verification authority failed: ${error instanceof Error ? error.message : String(error)}`,
       )
       return finalizeErrors(summary)
     }
-    const observedAny = targetKeys.some((key) => observations[key] != null)
+    const observedAny = exactTargets.some((target) => observations[target] != null)
     if (!observedAny) {
       summary.fatalErrors.push(
-        `target verification authority returned no observation for any of ${targetKeys.length} distinct target(s)`,
+        `target verification authority returned no observation for any of ${exactTargets.length} distinct target(s)`,
       )
       return finalizeErrors(summary)
     }
   }
 
-  const plan = planBatchA(candidates, observations, { limit: config.limit })
+  // A raw primary 404/410 can never reject on its own: every such EXACT target
+  // must be re-confirmed with an explicit GET in this run. Legacy auth-wall
+  // targets are never rejectable, so they are never re-confirmed (report-only).
+  const headDeadTargetSet = new Set<string>()
+  for (const row of candidates) {
+    const exact = batchAExactTarget(row.target_url)
+    if (!exact || isLegacyAuthWallTarget(row.target_url)) continue
+    const observed = observations[exact]
+    if (observed && (observed.status === 404 || observed.status === 410)) {
+      headDeadTargetSet.add(exact)
+    }
+  }
+  const headDeadTargets = [...headDeadTargetSet]
+
+  let confirmations: Record<string, P6TargetObservation | undefined> = {}
+  if (headDeadTargets.length > 0) {
+    if (!deps.confirmDeadTargets) {
+      summary.headDeadUnconfirmedRows = headDeadTargets.length
+      summary.fatalErrors.push(
+        `${headDeadTargets.length} target(s) were classified raw 404/410 by the primary probe but no GET re-confirmation dependency was provided — refusing to plan or write from unconfirmed HEAD verdicts`,
+      )
+      return finalizeErrors(summary)
+    }
+    try {
+      confirmations = (await deps.confirmDeadTargets(headDeadTargets)) || {}
+    } catch (error) {
+      summary.headDeadUnconfirmedRows = headDeadTargets.length
+      summary.fatalErrors.push(
+        `GET re-confirmation authority failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return finalizeErrors(summary)
+    }
+    const reconfirmedAny = headDeadTargets.some((target) => confirmations[target] != null)
+    if (!reconfirmedAny) {
+      summary.headDeadUnconfirmedRows = headDeadTargets.length
+      summary.fatalErrors.push(
+        `GET re-confirmation returned no observation for any of ${headDeadTargets.length} head-dead target(s) — refusing to plan or write from unconfirmed 404/410 verdicts`,
+      )
+      return finalizeErrors(summary)
+    }
+  }
+
+  const plan = planBatchA(candidates, observations, confirmations, {
+    limit: config.limit,
+  })
+  summary.headDeadTargetsReconfirmed = headDeadTargets.filter(
+    (target) => confirmations[target] != null,
+  ).length
   summary.deadCandidateRows = plan.deadCandidateRows
+  summary.headDeadUnconfirmedRows = plan.headDeadUnconfirmedRows
   summary.deadRowsBeyondLimit = plan.deadRowsBeyondLimit
   summary.unknownUntouchedRows = plan.unknownUntouchedRows
   summary.liveUntouchedRows = plan.liveUntouchedRows
+  summary.noncanonicalTargetRows = plan.noncanonicalTargetRows
   summary.legacyAuthWallRows = plan.legacyAuthWallRows
   summary.observedStatusCounts = plan.observedStatusCounts
+  summary.confirmationStatusCounts = plan.confirmationStatusCounts
   summary.selected = plan.selected
   summary.selectedForWrite = plan.selected.length
   summary.notAttemptedWrites = plan.selected.length
 
   log(
     `${summary.mode.toUpperCase()}: scanned ${summary.scannedRows} candidate rows, probed ${summary.distinctTargetsProbed} distinct targets, ` +
+      `re-confirmed ${summary.headDeadTargetsReconfirmed}/${headDeadTargets.length} head-dead target(s) by GET, ` +
       `${summary.deadCandidateRows} dead (404/410) candidate rows, selecting ${summary.selectedForWrite} (limit ${config.limit}).`,
   )
 
