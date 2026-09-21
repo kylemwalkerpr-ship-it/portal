@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  PORTAL_ANONYMOUS_AUTH_EXACT_PATHS,
   PORTAL_ANONYMOUS_DOCUMENT_PATHS,
+  PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS,
+  isPortalAnonymousDocumentPath,
   portalRequestHasSessionHint,
   shouldBypassClerkForPortalRequest,
 } from '@/lib/portalMiddlewareBypass'
@@ -13,26 +16,72 @@ const middleware = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
 const params = (value = '') => new URLSearchParams(value)
 
 /**
- * Portal mirror of the market Clerk bypass (PR 243). The portal root document
- * is the Cloudflare 1102 route: anonymous HTML must stay off the Clerk CPU path
- * while a signed-in visitor still resolves a session and bounces `/` ->
- * /dashboard (req.cookies `__client_uat`).
+ * Portal mirror of the market Clerk bypass (PR 243) extended to the anonymous
+ * auth lanes (PORTAL-SIGNIN-1102). The portal root document and the anonymous
+ * /sign-in(.*) + /sign-up(.*) documents are Cloudflare 1102 routes: anonymous
+ * HTML must stay off the Clerk CPU path while a signed-in visitor still
+ * resolves a session and bounces `/` -> /dashboard (req.cookies
+ * `__client_uat`).
  */
 describe('Portal Clerk bypass boundary', () => {
+  const ANONYMOUS_HINTS = [undefined, null, '', '0']
+
   test('the anonymous portal root document skips Clerk', () => {
-    for (const clientUat of [undefined, null, '', '0']) {
+    for (const clientUat of ANONYMOUS_HINTS) {
       expect(shouldBypassClerkForPortalRequest('/', params(), clientUat)).toBe(true)
     }
   })
 
-  test('the allow-list is exactly the portal root document', () => {
+  test('anonymous sign-in and sign-up documents skip Clerk on every lane', () => {
+    for (const pathname of [
+      '/sign-in',
+      '/sign-in/student',
+      '/sign-in/client',
+      '/sign-in/consultant',
+      '/sign-in/attorney',
+      '/sign-in/provider',
+      '/sign-in/employer',
+      '/sign-in/admin',
+      '/sign-in/sso-callback',
+      '/sign-up',
+      '/sign-up/student',
+      '/sign-up/client',
+      '/sign-up/consultant',
+      '/sign-up/provider',
+      '/sign-up/employer',
+      '/sign-up/sso-callback',
+    ]) {
+      for (const clientUat of ANONYMOUS_HINTS) {
+        expect(shouldBypassClerkForPortalRequest(pathname, params(), clientUat)).toBe(true)
+      }
+      expect(isPortalAnonymousDocumentPath(pathname)).toBe(true)
+    }
+  })
+
+  test('the retired /login and /register aliases skip Clerk when anonymous', () => {
+    expect([...PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS]).toEqual(['/login', '/register'])
+    for (const pathname of ['/login', '/register']) {
+      for (const clientUat of ANONYMOUS_HINTS) {
+        expect(shouldBypassClerkForPortalRequest(pathname, params(), clientUat)).toBe(true)
+      }
+      expect(PORTAL_ANONYMOUS_AUTH_EXACT_PATHS.has(pathname)).toBe(true)
+    }
+  })
+
+  test('the root allow-list is still exactly the portal root document', () => {
     expect([...PORTAL_ANONYMOUS_DOCUMENT_PATHS]).toEqual(['/'])
+    expect([...PORTAL_ANONYMOUS_AUTH_EXACT_PATHS].sort()).toEqual([
+      '/login',
+      '/register',
+      '/sign-in',
+      '/sign-up',
+    ])
+  })
+
+  test('protected and unrelated portal surfaces stay behind Clerk', () => {
     for (const pathname of [
       '/dashboard',
       '/dashboard/analytics',
-      '/sign-in',
-      '/sign-in/student',
-      '/sign-up',
       '/user',
       '/sellers',
       '/sellers/example',
@@ -50,9 +99,24 @@ describe('Portal Clerk bypass boundary', () => {
       '/gigs/example-service',
       '/categories/immigration',
       '/providers/example',
+      // Near-misses must never be mistaken for an auth lane.
+      '/sign-inx',
+      '/sign-upx',
+      '/login/',
+      '/register/',
+      '/login/extra',
+      '/register/extra',
     ]) {
       expect(shouldBypassClerkForPortalRequest(pathname, params(), undefined)).toBe(false)
+      expect(isPortalAnonymousDocumentPath(pathname)).toBe(false)
     }
+
+    // The caller always hands over `req.nextUrl.pathname`, which the URL
+    // parser has already dot-segment-normalised: a traversal attempt collapses
+    // into the protected path it targets, never into an auth lane prefix.
+    expect(new URL('https://portal.yousafeconsultancy.com/sign-in/../dashboard').pathname).toBe(
+      '/dashboard',
+    )
   })
 
   test('market-host public documents are never widened onto the portal fast path', () => {
@@ -79,7 +143,18 @@ describe('Portal Clerk bypass boundary', () => {
   test('a signed-in session hint always keeps the Clerk path', () => {
     for (const clientUat of ['1712345678', '0.0', ' 0']) {
       expect(portalRequestHasSessionHint(clientUat)).toBe(true)
-      expect(shouldBypassClerkForPortalRequest('/', params(), clientUat)).toBe(false)
+      for (const pathname of [
+        '/',
+        '/sign-in',
+        '/sign-in/student',
+        '/sign-in/provider',
+        '/sign-up',
+        '/sign-up/student',
+        '/login',
+        '/register',
+      ]) {
+        expect(shouldBypassClerkForPortalRequest(pathname, params(), clientUat)).toBe(false)
+      }
     }
     expect(portalRequestHasSessionHint(undefined)).toBe(false)
     expect(portalRequestHasSessionHint(null)).toBe(false)
@@ -87,26 +162,47 @@ describe('Portal Clerk bypass boundary', () => {
     expect(portalRequestHasSessionHint('0')).toBe(false)
   })
 
-  test('Clerk handshake query parameters force the Clerk path', () => {
-    expect(shouldBypassClerkForPortalRequest('/', params('__clerk_handshake=1'), undefined)).toBe(
-      false,
-    )
-    expect(shouldBypassClerkForPortalRequest('/', params('__clerk_synced=true'), undefined)).toBe(
-      false,
-    )
-    expect(shouldBypassClerkForPortalRequest('/', params('__clerk_db_jwt=token'), undefined)).toBe(
-      false,
-    )
-    expect(shouldBypassClerkForPortalRequest('/', params('__CLERK_handshake=1'), undefined)).toBe(
-      false,
-    )
+  test('Clerk handshake, ticket and callback parameters force the Clerk path', () => {
+    for (const pathname of [
+      '/',
+      '/sign-in',
+      '/sign-in/student',
+      '/sign-in/sso-callback',
+      '/sign-up',
+      '/sign-up/client',
+      '/login',
+      '/register',
+    ]) {
+      for (const query of [
+        '__clerk_handshake=1',
+        '__clerk_synced=true',
+        '__clerk_db_jwt=token',
+        '__clerk_ticket=token',
+        '__clerk_status=complete',
+        '__clerk_hs_reason=handshake',
+        '__CLERK_handshake=1',
+      ]) {
+        expect(shouldBypassClerkForPortalRequest(pathname, params(query), undefined)).toBe(false)
+      }
+    }
   })
 
-  test('normal navigation and language params stay on the fast path', () => {
+  test('normal navigation, lane and return_to params stay on the fast path', () => {
     expect(shouldBypassClerkForPortalRequest('/', params('lang=es'), undefined)).toBe(true)
     expect(shouldBypassClerkForPortalRequest('/', params('utm_source=newsletter'), undefined)).toBe(
       true,
     )
+    expect(
+      shouldBypassClerkForPortalRequest(
+        '/sign-in/student',
+        params('return_to=%2Fdashboard'),
+        undefined,
+      ),
+    ).toBe(true)
+    expect(shouldBypassClerkForPortalRequest('/login', params('lane=attorney'), undefined)).toBe(
+      true,
+    )
+    expect(shouldBypassClerkForPortalRequest('/sign-up', params('lang=es'), undefined)).toBe(true)
   })
 })
 
@@ -155,7 +251,19 @@ describe('portal middleware wiring', () => {
     expect(portalHandler).not.toContain('handleMarketHostRequest')
     expect(portalHandler).not.toContain('await auth()')
     expect(portalHandler).not.toContain('/dashboard')
-    expect(portalHandler).not.toContain('/sign-in')
+  })
+
+  test('the anonymous /login + /register answer is the Clerk path answer, shared', () => {
+    // The fast path only ever redirects the two alias paths, and it does so
+    // through the same helper the Clerk handler uses, so the lane mapping and
+    // the return_to contract cannot drift.
+    expect(portalHandler).toContain('PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS.has(pathname)')
+    expect(portalHandler).toContain('anonymousSignInRedirectUrl(req, pathname, search)')
+    expect(clerkBody).toContain('anonymousSignInRedirectUrl(req, pathname, search)')
+    // One lane mapping for the whole file: the Clerk handler no longer builds
+    // the sign-in URL itself.
+    expect(middleware.split("lane === 'consultant' ? 'consultant'").length - 1).toBe(1)
+    expect(clerkBody).not.toContain('signInUrl.searchParams.set')
   })
 
   test('the fast path keeps the portal CORS preflight and tracking consolidation', () => {
