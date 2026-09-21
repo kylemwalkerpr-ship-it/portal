@@ -16,7 +16,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   COUNTRY_META,
   FEATURED_PAGE_SIZE,
-  deepLinkVisibleCount,
+  clampPage,
   resolveJurisdiction,
   toLandingCards,
   withCountry,
@@ -734,18 +734,21 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   }
   // Featured grid fallback: same idea — fill with the global ranked list
   // if the slice has nothing.
-  // Fiverr/Upwork-style browsing over the full ranked slice — no extra
-  // fetches, the inventory is already in memory. The server clamps what it
-  // renders to ?page=N (SSR matches the URL for crawlers); the client
-  // FeaturedBriefsGrid then appends pages in place (Load more) or jumps
-  // between page windows without a reload.
-  // First page (serialized) + ranked total (a number, not the gigs). The client
-  // grid appends later windows from the listing API on demand.
+  // TRUE PAGINATION: the static document carries exactly the first ranked page
+  // (48 cards) plus the ranked total, and FeaturedBriefsGrid replaces that
+  // window with page N by fetching one page-locally from the listing API. The
+  // URL is resolved on the client (`window.location` + History API) because
+  // this route has no server searchParams and must stay a build-static cache
+  // HIT; the `page` prop is the SSR window marker and is always page 1 in the
+  // static estate.
   const firstPageCards = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
   const featuredIsFallback = slice.featured.length === 0 && data.slices.all.featured.length > 0
   const totalRanked = featuredIsFallback ? data.slices.all.totalFeatured : slice.totalFeatured
   const categoryCounts = featuredIsFallback ? data.slices.all.categoryCounts : slice.categoryCounts
-  const serverVisible = Math.min(deepLinkVisibleCount(page, totalRanked), firstPageCards.length)
+  // The only window this document ships is page 1; a caller-supplied page is
+  // clamped into the paging contract so the marker can never claim a window the
+  // document does not carry.
+  const ssrPage = clampPage(page, totalRanked)
 
   const trustItems: Array<{ label: string }> = []
   if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active briefs` })
@@ -857,7 +860,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
 
       {/* Featured gigs */}
       {firstPageCards.length > 0 ? (
-        <section className="featured" id="featured">
+        <section className="featured" id="featured" data-ssr-page={ssrPage}>
           <div className="wrap">
             <div className="section-head">
               <h2>{featuredIsFallback ? (
@@ -885,7 +888,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
               cards={firstPageCards}
               total={totalRanked}
               categoryCounts={categoryCounts}
-              initialVisible={serverVisible}
               country={active}
               currency={currency}
             />

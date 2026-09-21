@@ -135,12 +135,15 @@ describe('landing source contract', () => {
 
   it('fetches later windows from the listing API instead of bundling them', () => {
     expect(gridSource).toContain("from '@/lib/marketplaceLandingPaging'")
-    expect(gridSource).toContain('landingCardsPath(country, page)')
+    expect(gridSource).toContain('landingCardsPath(country, pageToLoad)')
     expect(gridSource).toContain('parseLandingCardsPage(')
     expect(gridSource).toContain('mergeNewLandingCards(')
     // No local "slice the already-serialized inventory" paging left behind.
     expect(gridSource).not.toContain('gigs.slice(0, visibleCount)')
-    expect(gridSource).toContain('MAX_PAGE_REQUESTS_PER_ACTION')
+    // One narrow page request per navigation, and no request fan-out: the old
+    // bounded "fetch until the target card count exists" loop is gone.
+    expect(gridSource).toContain('applyLandingWindow(')
+    expect(gridSource).not.toContain('MAX_PAGE_REQUESTS_PER_ACTION')
     expect(gridSource).toContain('aria-busy={pending}')
   })
 })

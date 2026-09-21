@@ -49,7 +49,7 @@ export function marketplaceGigSortOrder(sort: string): MarketplaceSortStep[] {
  * In-memory twin of `marketplaceGigSortOrder('trending')`.
  *
  * The build-time landing snapshot and the listing API must window the SAME
- * ranked sequence, otherwise "Load more" re-shows or skips briefs at the page
+ * ranked sequence, otherwise page N re-shows or skips briefs at the page
  * boundary: rank_score ties are the norm (201 of ~217 live active gigs carry
  * rank_score 0), so the tie-break IS the order. Both sides therefore use
  * rank_score desc → order_count desc → id asc.

@@ -1,18 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import {
   avatarBgFor,
   clampPage,
   COUNTRY_META,
-  deepLinkVisibleCount,
   deliveryLabel,
   FEATURED_PAGE_SIZE,
   formatPrice,
   glyphFor,
   initialsOf,
-  pageStartIndex,
+  landingPageStatus,
+  pageWindowFor,
   pagerChipStyle,
   totalPagesFor,
   withCountry,
@@ -22,9 +22,16 @@ import {
 } from '@/lib/marketplaceDisplay'
 import { LEGACY_CATEGORY_MAP, normalizeCategory } from '@/lib/categories'
 import {
+  isLandingBrowsingQuery,
+  landingPageHref,
+  parseLandingPage,
+} from '@/lib/marketplaceLandingUrl'
+import {
+  applyLandingWindow,
   landingCardsPath,
   mergeNewLandingCards,
   parseLandingCardsPage,
+  type LandingWindowState,
 } from '@/lib/marketplaceLandingPaging'
 import { T } from '@/components/marketplace/tokens'
 import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscoveryControls'
@@ -32,21 +39,23 @@ import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscov
 const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
 
 /**
- * Hard bound on listing requests triggered by ONE user action (Load more / a
- * pager jump). Every request returns FEATURED_PAGE_SIZE cards and only counts
- * toward the target when it yields cards the grid has not shown yet, so a small
- * snapshot↔live drift cannot turn one click into an unbounded fetch fan.
+ * How a page change lands in the browser history:
+ *  · push    — an explicit pager click (new entry, Back returns to the old page);
+ *  · replace — a normalization (deep-link clamp, page 1 canonical, base drift);
+ *  · none    — the URL is already correct (Back/Forward, first paint).
  */
-const MAX_PAGE_REQUESTS_PER_ACTION = 4
+type NavMode = 'push' | 'replace' | 'none'
 
 interface Props {
-  /** First ranked page of the slice, server-rendered into the document. */
+  /**
+   * First ranked page of the slice — the only window the build-static document
+   * carries. Later pages are fetched one window at a time on the client.
+   */
   cards: LandingCardGig[]
   /** Ranked size of the whole slice as of the build snapshot (a real count). */
   total: number
   /** Server facet counts for the discovery chips (whole slice, not page 1). */
   categoryCounts: Record<string, number>
-  initialVisible: number
   country: Country
   currency: string
 }
@@ -55,166 +64,207 @@ export function FeaturedBriefsGrid({
   cards: initialCards,
   total: initialTotal,
   categoryCounts,
-  initialVisible,
   country,
   currency,
 }: Props) {
-  // Cards fetched after the server-rendered first page, in ranked order.
-  const [extraCards, setExtraCards] = useState<LandingCardGig[]>([])
-  const [total, setTotal] = useState(initialTotal)
-  const [nextPage, setNextPage] = useState(2)
-  const [exhausted, setExhausted] = useState(false)
-  const [pending, setPending] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [scrollToIdx, setScrollToIdx] = useState<number | null>(null)
+  // The window currently on screen — exactly ONE page, replaced on navigation.
+  // There is deliberately no cumulative list state left: page 2 renders cards
+  // 49-96 and never the first 96.
+  const [windowState, setWindowState] = useState<LandingWindowState>(() => ({
+    page: 1,
+    cards: initialCards,
+    total: initialTotal,
+  }))
+  const [pendingPage, setPendingPage] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState<{ page: number; mode: NavMode } | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
-  // One inventory fetch at a time: two overlapping windows would both dedupe
-  // against the same snapshot and could append the same brief twice.
+  // Client-side page-window cache. Page 1 is the window the document already
+  // carries; every other window is fetched once and then served from here for
+  // repeat clicks and Back/Forward without another request.
+  const pagesRef = useRef<Map<number, LandingCardGig[]> | null>(null)
+  if (pagesRef.current == null) pagesRef.current = new Map([[1, initialCards]])
+  const pages = pagesRef.current
+  // One inventory fetch at a time: a page change replaces the window, so two
+  // overlapping requests could otherwise apply their results out of order.
   const inFlightRef = useRef(false)
-
-  const allCards = useMemo(() => [...initialCards, ...extraCards], [initialCards, extraCards])
-
-  // Mirror of the paging state for async handlers: the fetches must read the
-  // newest values without re-creating callbacks on every render.
-  const pagingRef = useRef({ initialCards, allCards, total, nextPage, exhausted })
-  pagingRef.current = { initialCards, allCards, total, nextPage, exhausted }
+  const didMountRef = useRef(false)
+  // Mirror of the paging state for the async navigation handler, so a fetch
+  // that started before a render still resolves against the newest window.
+  const stateRef = useRef<LandingWindowState>(windowState)
+  stateRef.current = windowState
+  const { page, cards, total } = windowState
 
   const totalPages = totalPagesFor(total)
-  // The server passes the cumulative visible count for ?page=N. Resolve that
-  // back to the shared paging contract rather than duplicating pagination math
-  // here, so deep links and the redesigned client grid stay in lockstep.
-  const initialPage = initialTotal > 0
-    ? clampPage(Math.max(1, Math.ceil(initialVisible / FEATURED_PAGE_SIZE)), total)
-    : 1
-  const [visibleCount, setVisibleCount] = useState(() =>
-    initialTotal > 0
-      ? Math.min(deepLinkVisibleCount(initialPage, initialTotal), initialCards.length)
-      : 0,
-  )
+  const pending = pendingPage != null
+  const pageWindow = pageWindowFor(page, total)
 
-  const didMountRef = useRef(false)
-  useEffect(() => {
-    if (didMountRef.current) return
-    didMountRef.current = true
-    const targetIdx = pageStartIndex(initialPage, total)
-    if (targetIdx > 0 && initialVisible > 0) setScrollToIdx(targetIdx)
-  }, [initialPage, initialVisible, total])
+  const scrollToGridStart = useCallback((focus: boolean) => {
+    const el = gridRef.current
+    if (!el) return
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // Restrained: a page change owns exactly one scroll target (the grid start).
+    el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+    if (focus) el.focus({ preventScroll: true })
+  }, [])
 
-  const deepestPage = clampPage(Math.floor((visibleCount - 1) / FEATURED_PAGE_SIZE) + 1, total)
-
-  useEffect(() => {
-    if (scrollToIdx == null) return
-    const el = gridRef.current?.querySelector<HTMLElement>(`[data-idx="${scrollToIdx}"]`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    setScrollToIdx(null)
-  }, [scrollToIdx])
-
-  /**
-   * Fetch until at least `targetNew` cards the grid has not shown exist (or the
-   * listing is exhausted / the request bound is hit). Returns how many were
-   * added; on failure it keeps the already-rendered cards and surfaces an error.
-   */
-  const loadCards = useCallback(
-    async (targetNew: number): Promise<number> => {
-      const snapshot = pagingRef.current
-      if (targetNew <= 0 || snapshot.exhausted || inFlightRef.current) return 0
-
-      inFlightRef.current = true
-      setPending(true)
-      setLoadError(null)
-      let page = snapshot.nextPage
-      let seen = snapshot.allCards
-      let added: LandingCardGig[] = []
-      let sawEnd = snapshot.exhausted
-      let apiTotal = snapshot.total
-
-      try {
-        for (
-          let requests = 0;
-          requests < MAX_PAGE_REQUESTS_PER_ACTION && added.length < targetNew;
-          requests++
-        ) {
-          const response = await fetch(landingCardsPath(country, page), { credentials: 'same-origin' })
-          if (!response.ok) throw new Error(`listing request failed (HTTP ${response.status})`)
-          const parsed = parseLandingCardsPage(await response.json().catch(() => null))
-          const fresh = mergeNewLandingCards(seen, parsed.cards)
-          added = added.concat(fresh)
-          seen = seen.concat(fresh)
-          page += 1
-          apiTotal = Math.max(apiTotal, parsed.total)
-          // The API's own hasMore owns "end of inventory"; an empty page ends it
-          // too, so a stale page pointer can never loop.
-          if (!parsed.hasMore || parsed.cards.length === 0) {
-            sawEnd = true
-            break
-          }
-        }
-      } catch (err) {
-        setLoadError(err instanceof Error ? err.message : 'Unable to load more briefs')
-        inFlightRef.current = false
-        setPending(false)
-        return 0
-      }
-
-      const loadedCount = snapshot.allCards.length + added.length
-      // Dedupe inside the updater as well: the appended window must never repeat
-      // a card the grid already holds, whatever the state timing.
-      setExtraCards((prev) => mergeNewLandingCards([...snapshot.initialCards, ...prev], added))
-      setNextPage(page)
-      setExhausted(sawEnd)
-      // Honest counts only: once the listing is exhausted the reachable count is
-      // the size that actually exists, so pager chips cannot point at an empty
-      // window, and a drifted smaller live total can never sit below what is
-      // already rendered.
-      setTotal(sawEnd ? loadedCount : Math.max(apiTotal, loadedCount))
-      inFlightRef.current = false
-      setPending(false)
-      return added.length
+  const writePageUrl = useCallback(
+    (target: number, mode: NavMode) => {
+      if (mode === 'none' || typeof window === 'undefined') return
+      const href = landingPageHref(target, country)
+      if (mode === 'push') window.history.pushState(null, '', href)
+      else window.history.replaceState(null, '', href)
     },
     [country],
   )
 
-  const loadMore = useCallback(async () => {
-    if (pending) return
-    const snapshot = pagingRef.current
-    const wanted = Math.min(FEATURED_PAGE_SIZE, Math.max(0, snapshot.total - snapshot.allCards.length))
-    if (wanted <= 0) return
-    const added = await loadCards(wanted)
-    if (added <= 0) return
-    setVisibleCount(Math.min(snapshot.allCards.length + added, pagingRef.current.total))
-  }, [loadCards, pending])
+  const applyWindow = useCallback(
+    (next: { page: number; cards: LandingCardGig[]; total?: number }, mode: NavMode) => {
+      // The window REPLACES the rendered cards (see applyLandingWindow) — a page
+      // change can never append to, or keep, the page it came from.
+      const applied = applyLandingWindow(stateRef.current, next)
+      stateRef.current = applied
+      setWindowState(applied)
+      writePageUrl(applied.page, mode)
+      // Every page change scrolls to the grid start; focus only follows an
+      // explicit click, so deep links and Back/Forward never steal focus.
+      scrollToGridStart(mode === 'push')
+    },
+    [scrollToGridStart, writePageUrl],
+  )
 
-  const jumpToPage = (p: number) => (e: MouseEvent) => {
-    e.preventDefault()
-    void (async () => {
-      const target = clampPage(p, pagingRef.current.total)
-      const snapshot = pagingRef.current
-      const loadedAfterFirstPage = Math.max(0, snapshot.allCards.length - snapshot.initialCards.length)
-      const needed = Math.max(0, (target - 1) * FEATURED_PAGE_SIZE - loadedAfterFirstPage)
-      if (needed > 0) {
-        const added = await loadCards(needed)
-        if (added < needed) {
-          // Inventory ended before the requested window: land on the deepest
-          // page that has cards instead of scrolling to an empty grid.
-          const reachable = Math.max(1, Math.ceil(pagingRef.current.allCards.length / FEATURED_PAGE_SIZE))
-          setVisibleCount(pagingRef.current.allCards.length)
-          setScrollToIdx(reachable === 1 ? 0 : pageStartIndex(reachable, pagingRef.current.total))
+  /**
+   * Fetch exactly one page window through the narrow `view=card` contract the
+   * build snapshot uses (limit 48, same total order). One navigation therefore
+   * means one request, and the full inventory is never requested.
+   */
+  const fetchWindow = useCallback(
+    async (pageToLoad: number): Promise<{ cards: LandingCardGig[]; total: number }> => {
+      const response = await fetch(landingCardsPath(country, pageToLoad), { credentials: 'same-origin' })
+      if (!response.ok) throw new Error(`listing request failed (HTTP ${response.status})`)
+      const parsed = parseLandingCardsPage(await response.json().catch(() => null))
+      // De-dup inside the window only (a repeated row can never render twice on
+      // one page). Windows are never concatenated with each other any more, so
+      // there is no cross-page merge to reconcile.
+      return { cards: mergeNewLandingCards([], parsed.cards), total: parsed.total }
+    },
+    [country],
+  )
+
+  /**
+   * Move to `requested` and render ONLY that window. A page change replaces the
+   * grid contents; while a window is in flight the current page stays on
+   * screen (busy + announced) instead of being appended to. Failures keep the
+   * current page, leave the URL untouched and stay retryable.
+   */
+  const goToPage = useCallback(
+    async (requested: number, mode: NavMode) => {
+      const snapshot = stateRef.current
+      const target = clampPage(requested, snapshot.total)
+      if (target === snapshot.page) {
+        if (mode !== 'none') scrollToGridStart(false)
+        return
+      }
+      if (inFlightRef.current) return
+
+      const cached = pages.get(target)
+      if (cached) {
+        applyWindow({ page: target, cards: cached, total: snapshot.total }, mode)
+        return
+      }
+
+      inFlightRef.current = true
+      setPendingPage(target)
+      setError(null)
+      setFailed(null)
+      try {
+        const fetched = await fetchWindow(target)
+        let nextTotal = fetched.total > 0 ? fetched.total : snapshot.total
+        // Inventory can shrink between the build snapshot and the click, so the
+        // requested window may no longer exist: follow the API's own page count
+        // in at most one extra request instead of rendering an empty grid.
+        let finalPage = clampPage(target, nextTotal)
+        let finalCards = fetched.cards
+        if (finalCards.length === 0 && finalPage !== target) {
+          const fallbackCached = pages.get(finalPage)
+          if (fallbackCached) finalCards = fallbackCached
+          else {
+            const fallback = await fetchWindow(finalPage)
+            finalCards = fallback.cards
+            if (fallback.total > 0) nextTotal = fallback.total
+          }
+        }
+        if (finalCards.length === 0) {
+          setError(`Page ${target} has no briefs to show`)
+          setFailed({ page: target, mode })
           return
         }
+        pages.set(finalPage, finalCards)
+        // Back/Forward only repairs the URL when the requested pointer had to be
+        // clamped; an explicit click keeps its own history entry.
+        const appliedMode: NavMode =
+          mode === 'none' ? (finalPage === requested ? 'none' : 'replace') : mode
+        applyWindow({ page: finalPage, cards: finalCards, total: nextTotal }, appliedMode)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to load that page of briefs')
+        setFailed({ page: target, mode })
+      } finally {
+        inFlightRef.current = false
+        setPendingPage(null)
       }
-      const deepest = clampPage(target, pagingRef.current.total)
-      setVisibleCount(
-        Math.min(
-          deepLinkVisibleCount(deepest, pagingRef.current.total),
-          pagingRef.current.allCards.length,
-        ),
-      )
-      setScrollToIdx(deepest === 1 ? 0 : pageStartIndex(deepest, pagingRef.current.total))
-    })()
-  }
+    },
+    [applyWindow, fetchWindow, pages, scrollToGridStart],
+  )
 
-  const shown = allCards.slice(0, visibleCount)
-  const hasMore = !exhausted && allCards.length < total
+  /**
+   * Deep links: the document is static and always ships page 1, so `?page=N` is
+   * resolved here after hydration — the window is fetched page-locally and the
+   * URL is normalized with replaceState (invalid/out-of-range pointers clamp,
+   * page 1 canonicalizes to `/`) without adding a history entry.
+   */
+  useEffect(() => {
+    if (didMountRef.current) return
+    didMountRef.current = true
+    const search = window.location.search
+    const requested = parseLandingPage(search)
+    const snapshot = stateRef.current
+    const target = clampPage(requested, snapshot.total)
+    // Only URLs the landing itself owns are rewritten: a query string carrying
+    // another consumer's key (`lang`, a filter, tracking) is left alone.
+    if (isLandingBrowsingQuery(search)) {
+      const canonical = landingPageHref(target, country)
+      if (`${window.location.pathname}${search}` !== canonical) {
+        window.history.replaceState(null, '', canonical)
+      }
+    }
+    if (target > 1) void goToPage(target, 'none')
+  }, [country, goToPage])
+
+  // Back/Forward: render the page the URL points at from the window cache (or
+  // one fetch when that window is not cached yet) without creating an entry.
+  useEffect(() => {
+    const onPopState = () => {
+      void goToPage(parseLandingPage(window.location.search), 'none')
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [goToPage])
+
+  const retryFailedPage = useCallback(() => {
+    if (!failed || inFlightRef.current) return
+    void goToPage(failed.page, failed.mode)
+  }, [failed, goToPage])
+
+  const onPageClick = (target: number) => (event: MouseEvent<HTMLAnchorElement>) => {
+    // Modified clicks (new tab/window/download) keep their native behaviour.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+    event.preventDefault()
+    if (inFlightRef.current) return
+    void goToPage(target, 'push')
+  }
   return (
     <>
       <style jsx global>{`
@@ -440,8 +490,15 @@ export function FeaturedBriefsGrid({
 
       <LandingDiscoveryControls categoryCounts={categoryCounts} country={country} />
 
-      <div className="gig-grid" id="featured-grid" ref={gridRef} aria-busy={pending}>
-        {shown.map((g, idx) => {
+      <div
+        className="gig-grid"
+        id="featured-grid"
+        ref={gridRef}
+        aria-busy={pending}
+        tabIndex={-1}
+        style={{ opacity: pending ? 0.55 : 1, transition: 'opacity .15s ease' }}
+      >
+        {cards.map((g, idx) => {
           const tag = `${(g.jx ?? (country === 'all' ? (g.jx ?? 'us') : country)).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
           const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
           const cardCountry = g.jx ?? (country !== 'all' ? country : 'us')
@@ -507,44 +564,60 @@ export function FeaturedBriefsGrid({
 
       {total > FEATURED_PAGE_SIZE && (
         <>
-          {/* Appended windows are fetched from /api/marketplace/gigs?view=card
-              (the server-rendered first page is the only inventory the document
-              carries). The status line is announced, and a failed fetch keeps the
-              cards already on screen instead of dropping the grid. */}
-          <p
-            role="status"
-            aria-live="polite"
-            style={{ margin: '10px 0 0', textAlign: 'center', fontFamily: DISCOVERY_FONT, fontSize: 12, color: loadError ? T.brick : T.inkSoft }}
-          >
-            {loadError
-              ? `${loadError} — the briefs already shown are still available; retry with Load more.`
-              : pending
-                ? 'Loading more briefs…'
-                : ''}
+          {/* True page-by-page browsing: the numbered pager replaces the window
+              (page 2 is cards 49-96, never the first 96) with ONE narrow
+              /api/marketplace/gigs?view=card request per navigation. While a
+              window is loading the current page stays on screen, and a failed
+              fetch keeps it — with the URL and the counts left honest. */}
+          <p role="status" aria-live="polite" style={pendingNoteStyle}>
+            {pending ? `Loading page ${pendingPage} of ${totalPages}…` : ''}
           </p>
-          {hasMore && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '30px 0 4px' }}>
-              <button type="button" disabled={pending} onClick={() => void loadMore()} style={pending ? { ...loadMoreStyle, opacity: 0.6, cursor: 'progress' } : loadMoreStyle}>
-                Load more briefs
-                <span style={{ opacity: 0.65, fontWeight: 500 }}>
-                  &nbsp;· {Math.min(FEATURED_PAGE_SIZE, total - shown.length)} more of {total.toLocaleString('en-US')}
-                </span>
-              </button>
-            </div>
+          {error && (
+            <p role="alert" style={errorNoteStyle}>
+              {error} — still showing page {page} of {totalPages}.{' '}
+              {failed && (
+                <button type="button" onClick={retryFailedPage} disabled={pending} style={retryStyle}>
+                  Retry
+                </button>
+              )}
+            </p>
           )}
 
-          <nav className="pager" aria-label="Featured briefs pagination" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap', padding: '18px 0 8px' }}>
-            <span className="pg-range" style={{ fontFamily: DISCOVERY_FONT, fontSize: 12, color: T.inkSoft, marginRight: 12 }}>
-              Showing {shown.length.toLocaleString('en-US')} of {total.toLocaleString('en-US')} · page {deepestPage}/{totalPages}
+          <nav className="pager" aria-label="Featured briefs pagination" style={pagerStyle}>
+            <span className="pg-range" style={rangeStyle}>
+              {landingPageStatus(page, cards.length, total)}
             </span>
-            {deepestPage > 1 && (
-              <a href={withCountry(`/?page=${deepestPage - 1}`, country)} aria-label="Previous page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage - 1)}>← Prev</a>
+            {pageWindow.hasPrev && (
+              <a
+                href={landingPageHref(pageWindow.page - 1, country)}
+                aria-label="Previous page"
+                style={pagerChipStyle(false)}
+                onClick={onPageClick(pageWindow.page - 1)}
+              >
+                ← Prev
+              </a>
             )}
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <a key={p} href={withCountry(`/?page=${p}`, country)} aria-current={p === deepestPage ? 'page' : undefined} style={pagerChipStyle(p === deepestPage)} onClick={jumpToPage(p)}>{p}</a>
+              <a
+                key={p}
+                href={landingPageHref(p, country)}
+                aria-current={p === page ? 'page' : undefined}
+                aria-label={`Page ${p}`}
+                style={pagerChipStyle(p === page)}
+                onClick={onPageClick(p)}
+              >
+                {p}
+              </a>
             ))}
-            {deepestPage < totalPages && (
-              <a href={withCountry(`/?page=${deepestPage + 1}`, country)} aria-label="Next page" style={pagerChipStyle(true)} onClick={jumpToPage(deepestPage + 1)}>Next →</a>
+            {pageWindow.hasNext && (
+              <a
+                href={landingPageHref(pageWindow.page + 1, country)}
+                aria-label="Next page"
+                style={pagerChipStyle(false)}
+                onClick={onPageClick(pageWindow.page + 1)}
+              >
+                Next →
+              </a>
             )}
           </nav>
         </>
@@ -553,17 +626,51 @@ export function FeaturedBriefsGrid({
   )
 }
 
-const loadMoreStyle: CSSProperties = {
+const pendingNoteStyle: CSSProperties = {
+  margin: '10px 0 0',
+  minHeight: 16,
+  textAlign: 'center',
+  fontFamily: DISCOVERY_FONT,
+  fontSize: 12,
+  color: T.inkSoft,
+}
+
+const errorNoteStyle: CSSProperties = {
+  margin: '6px 0 0',
+  textAlign: 'center',
+  fontFamily: DISCOVERY_FONT,
+  fontSize: 12,
+  color: T.brick,
+}
+
+const retryStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-  padding: '12px 24px',
-  borderRadius: 10,
+  marginLeft: 4,
+  padding: '3px 10px',
+  borderRadius: 999,
   fontFamily: DISCOVERY_FONT,
-  fontSize: 14,
-  fontWeight: 650,
+  fontSize: 12,
+  fontWeight: 600,
   cursor: 'pointer',
-  border: `1px solid ${T.ink}`,
-  background: T.vellum,
+  border: `1px solid ${T.brick}`,
+  background: 'transparent',
   color: T.ink,
+}
+
+const rangeStyle: CSSProperties = {
+  fontFamily: DISCOVERY_FONT,
+  fontSize: 12,
+  color: T.inkSoft,
+  marginRight: 12,
+}
+
+const pagerStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  flexWrap: 'wrap',
+  padding: '18px 0 8px',
 }
