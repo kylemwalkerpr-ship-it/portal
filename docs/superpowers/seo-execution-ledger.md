@@ -1119,3 +1119,35 @@ This run holds no service-role credential: the requested Cloudflare and Supabase
 
 - **PASS not claimed; status BLOCKED.** The gate moved from “unevaluable” to *evaluable* and is **0/73 = 0.0%**. Closing it requires P6-external authority: a genuine service-role operator credential so the already-designed, already-authorized Batch A rejection can run (1,477 eligible rows, ≤200 per run, 8 runs), plus real verified-applied volume for live targets, which can only come from real ship jobs with exact job identity.
 - Zero production mutation: 1,899 planned / 0 rejected / 0 applied before and after this attempt. No P7, P8–P13, migration, workflow or application-code change; the only repository change is this documentation record.
+
+
+## 2026-09-21 — P6 final production reconciliation after authorized stale cleanup
+
+**Status: IN_PROGRESS / BLOCKED — PASS not claimed.** This addendum supersedes the earlier same-day closeout-attempt snapshot only for current production counts and credential availability; the earlier entry remains append-only history.
+
+The existing repository Batch A tool was executed against production with genuine legacy service-role authority while preserving its shipped safeguards: exact `--apply --confirm REJECT-BATCH-A-STALE-404-410`, hard maximum 200 rows, fresh exact-target liveness probe, fresh GET re-confirmation for 404/410, the historical no-proof NULL fence, and exact-row CAS update. No ad-hoc SQL lifecycle mutation, retarget, delete, upsert, proof-field backfill, or source/job fabrication was used.
+
+A previously dispatched executor left one child apply process alive after handoff. During the first supervisor apply, that child briefly overlapped the supervisor process. The overlap was detected and stopped. The supervisor invocation reported **200 CAS skips / 0 successful writes**, demonstrating the exact-row fences prevented duplicate disposition. Production was reconciled before continuing, and all remaining batches were run serially with independent count checks.
+
+Final cleanup evidence:
+- serialized batch from 947 planned / 952 rejected: selected 200, rejected 200, CAS skips 0 -> 747 planned / 1,152 rejected;
+- a terminated retry wrote 2 additional fenced rows before its process vanished -> 745 planned / 1,154 rejected;
+- canonical runner batch: selected 200, rejected 200, CAS skips 0 -> 545 planned / 1,354 rejected;
+- final canonical runner batch: selected 140, rejected 140, CAS skips 0 -> **405 planned / 1,494 rejected / 0 applied**;
+- final read-only Batch A dry run: scanned 405, dead candidates 0, selected 0, live untouched 73, legacy Portal-wall 332, unknown 0, truncated false, failedClosed false.
+
+Independent Supabase audit after cleanup:
+- **1,899 total = 1,494 rejected + 405 planned + 0 applied**;
+- all 1,494 rejected rows carry `gate_reason=stale_target_http_404` and `gate_actor=p6-batch-a-stale-rejection`;
+- none of the rejected rows carries `source_url`, `source_job_id`, `verification_state='present'`, or `applied_at`;
+- remaining planned rows by actual URL host: **73** on `market.yousafeconsultancy.com` across 3 targets / 73 sources, and **332** on `portal.yousafeconsultancy.com` across 51 legacy targets / 159 sources.
+
+The canonical read-only disposition was rerun after cleanup: `rawBacklog=1899`, `truncated=false`; classes `applied_present 0 · target_404 1643 · legacy_auth_wall 183 · live_target_source_verified 0 · live_target_source_unverified 73 · unknown 0`; `approvedUseful { denominator: 73, numerator: 0, unverified: 73 }`; `stale { target404: 1643, legacyAuthWall: 183, rejected: 1494 }`.
+
+The acceptance arithmetic therefore remains **0 / 73 = 0.0% verified-applied / approved-useful**, below the required >=80%. Explicit stale rejection cleaned the historical estate but does not convert stale rows into approved-useful verified links.
+
+A read-only source-authority audit attempted durable resolution for all 73 live-target rows. Matching `source_slug` (and the deterministic SEO-prefix-stripped form) against `content_jobs.slug` plus canonical/live-canonical URL basename resolves only **1 of 73 rows**. Joining the same 73 sources through `anchor_ledger.source_job_id` resolves **0 rows / 0 jobs**. No remaining planned row carries a durable `source_url`, `source_job_id`, verification proof, or `applied_at`.
+
+The current P6 contract treats planner `source_slug` as a locator, not source URL authority. Reaching >=80% therefore requires at least **59 of the 73** approved-live rows to gain real source/job identity and live exact-href proof through genuine ship/deployment lineage. Guessing identities, bulk-stamping applied state, redefining the denominator, or rejecting live rows merely to manufacture a passing ratio would violate the fail-closed contract.
+
+**Program state:** P6 remains **IN_PROGRESS / BLOCKED** with the stale-rejection lane fully exhausted and implementation/deploy gates healthy. P7 remains PASS. P8-P13 remain PENDING. Broad net-new CREATE remains frozen until P13.
