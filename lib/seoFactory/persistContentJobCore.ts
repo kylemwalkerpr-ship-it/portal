@@ -20,6 +20,7 @@ import type { ShipResult } from './ship'
 import type { RequestedShipMode } from './resolveShipMode'
 import type { ContentSpec } from './contentSpec'
 import { countBodyWords } from './contentDepth'
+import { gateVerdictBodyFingerprint } from './currentGate'
 
 export interface CompetingUrlInput {
   url?: string
@@ -423,6 +424,10 @@ export function mapPipelineJobRow(input: PipelineJobPersistInput): Record<string
     audit_json: {
       ...input.audit,
       shipReady,
+      // P8: the pipeline verdict is for exactly this persisted body. Recording
+      // its fingerprint means a later body write (editor save/re-audit) can no
+      // longer inherit this gate for different bytes.
+      contentFingerprint: gateVerdictBodyFingerprint(input.content),
       blockers: input.audit.blockers,
       blockersCount: input.audit.blockers.length,
       attempts: input.attempts,
