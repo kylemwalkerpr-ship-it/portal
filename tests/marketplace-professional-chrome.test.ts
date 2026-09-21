@@ -75,7 +75,11 @@ describe('marketplace professional chrome (source scan)', () => {
     expect(picker).not.toMatch(/opacity:\s*number\s*\}\s*as const/)
     expect(picker).toMatch(/id: 'linen'[\s\S]{0,80}opacity:\s*0\.1[0-9]/)
     const shell = read('components/marketplace/MarketplaceShell.tsx')
-    const landing = read('app/marketplace/PublicMarketplaceLanding.tsx')
+    // The landing stylesheet moved out of the component into a route stylesheet
+    // (MARKET-ROOT-TRANSFER-LATENCY); the pattern contract itself is unchanged.
+    const landing =
+      read('app/marketplace/PublicMarketplaceLanding.tsx') +
+      read('app/marketplace/marketplace-landing.css')
     expect(shell).toMatch(/\.cw-market::before[^}]*opacity:\s*0\.22/)
     expect(landing).toMatch(/\.cw-market::before[^}]*opacity:\s*0\.22/)
   })

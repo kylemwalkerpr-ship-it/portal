@@ -78,12 +78,15 @@ describe('client grid wiring (FeaturedBriefsGrid.tsx)', () => {
   })
 
   it('appends via Load more and jumps via the pager without reload', () => {
-    // Load more extends visibility by one page, clamped to total.
-    expect(GRID_SRC).toContain('setVisibleCount((c) => Math.min(c + FEATURED_PAGE_SIZE, total))')
+    // Load more fetches the next page window (the server-rendered first page is
+    // the only inventory the document carries) and extends visibility to what
+    // the listing actually returned, clamped to the real total.
+    expect(GRID_SRC).toContain('landingCardsPath(country, page)')
+    expect(GRID_SRC).toContain('setVisibleCount(Math.min(snapshot.allCards.length + added, pagingRef.current.total))')
     // Pager jumps are intercepted (no full-page navigation)…
     expect(GRID_SRC).toContain('e.preventDefault()')
     // …and scroll to the first card of the target page.
-    expect(GRID_SRC).toContain('setScrollToIdx(target === 1 ? 0 : pageStartIndex(target, total))')
+    expect(GRID_SRC).toContain('setScrollToIdx(deepest === 1 ? 0 : pageStartIndex(deepest, pagingRef.current.total))')
   })
 
   it('deep-links auto-scroll to the first card of page N on mount', () => {
@@ -96,12 +99,14 @@ describe('client grid wiring (FeaturedBriefsGrid.tsx)', () => {
   it('hides Load more / pager for single-page slices', () => {
     expect(GRID_SRC).toContain('total > FEATURED_PAGE_SIZE')
     expect(GRID_SRC).toContain('hasMore &&')
+    // The button can never claim more briefs than the listing reports.
+    expect(GRID_SRC).toContain('Math.min(FEATURED_PAGE_SIZE, total - shown.length)')
   })
 })
 
 describe('landing wiring (PublicMarketplaceLanding.tsx)', () => {
   it('passes the URL page through as the SSR initial-visible count', () => {
-    expect(LANDING_SRC).toContain('deepLinkVisibleCount(page, fullList.length)')
+    expect(LANDING_SRC).toContain('deepLinkVisibleCount(page, totalRanked)')
     expect(LANDING_SRC).toContain('initialVisible={serverVisible}')
     expect(LANDING_SRC).toContain('<FeaturedBriefsGrid')
   })

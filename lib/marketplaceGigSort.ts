@@ -44,3 +44,25 @@ export function marketplaceGigSortOrder(sort: string): MarketplaceSortStep[] {
       return [{ column: 'rank_score', ascending: false }, { column: 'published_at', ascending: false }, ...stable]
   }
 }
+
+/**
+ * In-memory twin of `marketplaceGigSortOrder('trending')`.
+ *
+ * The build-time landing snapshot and the listing API must window the SAME
+ * ranked sequence, otherwise "Load more" re-shows or skips briefs at the page
+ * boundary: rank_score ties are the norm (201 of ~217 live active gigs carry
+ * rank_score 0), so the tie-break IS the order. Both sides therefore use
+ * rank_score desc → order_count desc → id asc.
+ */
+export function rankedGigComparator(
+  a: { rank_score?: number | null; order_count?: number | null; id?: string | null },
+  b: { rank_score?: number | null; order_count?: number | null; id?: string | null },
+): number {
+  const rank = Number(b.rank_score ?? 0) - Number(a.rank_score ?? 0)
+  if (rank !== 0) return rank
+  const orders = Number(b.order_count ?? 0) - Number(a.order_count ?? 0)
+  if (orders !== 0) return orders
+  const idA = String(a.id ?? '')
+  const idB = String(b.id ?? '')
+  return idA < idB ? -1 : idA > idB ? 1 : 0
+}
