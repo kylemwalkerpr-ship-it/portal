@@ -123,9 +123,15 @@ describe('middleware wiring', () => {
     expect(fastPath).toContain('isAllowedCorsPreflight(req)')
   })
 
-  test('the outer bypass is market-host-only', () => {
+  test('the outer bypass is host-scoped: market documents and the anonymous portal root', () => {
     const wrapper = middleware.slice(middleware.indexOf('export default function middleware('))
     expect(wrapper).toContain('requestHostname(req) === MARKET_HOST')
-    expect(wrapper).not.toContain('requestHostname(req) === PORTAL_HOST')
+    expect(wrapper).toContain('requestHostname(req) === PORTAL_HOST')
+    // Each host delegates its own eligibility contract; the wrapper never
+    // inlines a path decision. The portal branch (PORTAL-1102 mirror) is the
+    // narrower of the two and reads the Clerk session hint from the cookies.
+    expect(wrapper).toContain('shouldBypassClerkForMarketRequest(')
+    expect(wrapper).toContain('shouldBypassClerkForPortalRequest(')
+    expect(wrapper).toContain("req.cookies.get('__client_uat')?.value")
   })
 })

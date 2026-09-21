@@ -77,9 +77,19 @@ jobs:
       # no Cloudflare API, no credentials, and no paid-plan infrastructure.
       # Fails closed if the build emitted no prerender cache, so a stale or
       # empty static incremental cache can never ship silently.
+      #
+      # Portal root gate: portal.yousafeconsultancy.com/ is the Cloudflare 1102
+      # route. It is served the same way as the market host — anonymous
+      # documents skip Clerk (lib/portalMiddlewareBypass.ts) and cache
+      # interception answers from this published cache — so the deploy must not
+      # ship without a portal root document entry. The key is discovered from
+      # the build output and the published payloads (never guessed here); the
+      # verifier prints the exact key so a green run can pin it in the list
+      # above. Any failure fails the step (no continue-on-error).
       - name: Populate static incremental cache (local copy, no network)
         run: |
           npm run populate:static-incremental-cache
+          node scripts/verify-portal-root-static-cache.mjs
           BUILD_ID="$(cat .next/BUILD_ID)"
           for cache_key in \
             marketplace \

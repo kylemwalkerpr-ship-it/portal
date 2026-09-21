@@ -2,6 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
+import { shouldBypassClerkForPortalRequest } from './lib/portalMiddlewareBypass'
 
 export const runtime = 'experimental-edge'
 
@@ -344,6 +345,39 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
   return withCorsHeaders(response, req)
 }
 
+/**
+ * Portal mirror of the market fast path's pass-through half.
+ *
+ * An anonymous portal document (today only `/`) is served without entering
+ * clerkMiddleware at all, so the Worker does not pay Clerk's per-request CPU
+ * and OpenNext's static-assets incremental cache can answer the portal root as
+ * a HIT. It adds no rewrite — unlike the market host, the portal app already
+ * owns `/` — and it keeps the two behaviours the Clerk path performs for the
+ * portal host before any auth work: tracking-parameter consolidation (301) and
+ * the allowed cross-origin preflight (204 with CORS headers).
+ *
+ * The signed-in bounce (`/` -> /dashboard) is NOT implemented here: a request
+ * with a `__client_uat` session hint never reaches this function.
+ */
+function handlePortalAnonymousDocumentRequest(req: NextRequest): NextResponse {
+  const { pathname, search } = req.nextUrl
+  const lang = resolveLanguage(req)
+
+  if (req.nextUrl.searchParams.size > 0) {
+    const cleaned = stripTrackingParams(new URL(req.url))
+    if (cleaned !== null) {
+      const dest = new URL(cleaned, req.url)
+      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+    }
+  }
+
+  if (isAllowedCorsPreflight(req)) {
+    return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
+  }
+
+  return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+}
+
 const clerkHandler = clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
@@ -534,6 +568,22 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
       )
     ) {
       return handleMarketHostRequest(req)
+    }
+  }
+
+  // Portal-host anonymous documents (see lib/portalMiddlewareBypass.ts). The
+  // helper owns the whole eligibility contract — path allow-list, the
+  // `__client_uat` session hint and Clerk's `__clerk*` handshake parameters —
+  // so this branch can never widen itself into an auth path by accident.
+  if (requestHostname(req) === PORTAL_HOST) {
+    if (
+      shouldBypassClerkForPortalRequest(
+        req.nextUrl.pathname,
+        req.nextUrl.searchParams,
+        req.cookies.get('__client_uat')?.value,
+      )
+    ) {
+      return handlePortalAnonymousDocumentRequest(req)
     }
   }
 

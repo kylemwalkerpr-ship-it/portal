@@ -17,6 +17,13 @@
  * NOT a hidden block. The text is visible on the page — that's both
  * required by Google's quality guidelines (hidden content is a manual-
  * action risk) and good for non-English users who land on the page.
+ *
+ * Build-static callers MUST pass `translate={false}`. Resolving `x-lang`
+ * calls `headers()`, and any request-header read opts the whole route into
+ * dynamic rendering — Next then emits no prerender document for the route
+ * and OpenNext's read-only static-assets incremental cache has nothing to
+ * serve. That is exactly the portal-root regression the deploy gate
+ * `scripts/verify-portal-root-static-cache.mjs` fails closed on.
  */
 import { headers } from 'next/headers'
 import { translateBatch } from '@/lib/serverTranslate'
@@ -31,6 +38,13 @@ interface SeoIntroBlockProps {
   eyebrow?: string
   /** Visual variant. */
   tone?: 'navy' | 'plain'
+  /**
+   * Translation opt-out. `translate={false}` renders the English copy
+   * verbatim and never reads the request, so the calling route can stay
+   * build-static (see the file header). Defaults to true so existing
+   * translated callers keep their behaviour.
+   */
+  translate?: boolean
 }
 
 export async function SeoIntroBlock({
@@ -38,16 +52,21 @@ export async function SeoIntroBlock({
   description,
   eyebrow,
   tone = 'navy',
+  translate = true,
 }: SeoIntroBlockProps) {
   let lang = 'en'
-  try {
-    const h = await headers()
-    const fromHeader = h.get('x-lang')
-    if (fromHeader && /^[a-z]{2}$/.test(fromHeader)) lang = fromHeader
-  } catch { /* fallthrough — defaults to English */ }
+  if (translate) {
+    try {
+      const h = await headers()
+      const fromHeader = h.get('x-lang')
+      if (fromHeader && /^[a-z]{2}$/.test(fromHeader)) lang = fromHeader
+    } catch { /* fallthrough — defaults to English */ }
+  }
 
   const sources = [title, description, eyebrow || '']
-  const [tTitle, tDesc, tEyebrow] = await translateBatch(sources, lang)
+  const [tTitle, tDesc, tEyebrow] = translate
+    ? await translateBatch(sources, lang)
+    : sources
 
   if (tone === 'plain') {
     return (
