@@ -8,6 +8,13 @@ import { getFeaturedGigs } from '@/components/design/landing/data/featured-servi
 // Build-static on purpose. The Cloudflare Free deployment publishes the
 // OpenNext prerender cache as read-only static assets, so this route must not
 // schedule background ISR work against the intentionally absent queue/tag cache.
+// The intro block below renders English verbatim (`translate={false}`): its
+// translated mode reads request headers, which would opt this route into
+// dynamic rendering and leave the published cache without a root document
+// (scripts/verify-portal-root-static-cache.mjs fails closed on that).
+// Pinned below so a future request-API read anywhere in this route cannot
+// silently turn the portal root dynamic again.
+export const dynamic = 'force-static'
 
 // Portal is noindex sitewide (see layout.tsx robots config), so translated
 // metadata has zero SEO value. We keep static English metadata here to avoid
@@ -81,6 +88,7 @@ export default async function Page() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(HOMEPAGE_JSONLD) }}
       />
       <SeoIntroBlock
+        translate={false}
         eyebrow="YouSafe Consultancy"
         title="Study abroad consulting and legal document review in one secure portal."
         description="Trusted by clients, attorneys, and consultants across the US, UK, Canada, and Australia. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."

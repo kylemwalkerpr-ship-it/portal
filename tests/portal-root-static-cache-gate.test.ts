@@ -254,6 +254,30 @@ describe(`scripts/verify-portal-root-static-cache.mjs (${GATE_SCRIPT})`, () => {
   })
 })
 
+describe('portal root stays prerenderable (source contract)', () => {
+  const introBlock = readRepo('components/SeoIntroBlock.tsx')
+
+  test('the root page renders the intro block without server translation', () => {
+    // Translation resolves `x-lang` by calling headers(), and a request-header
+    // read opts the whole route into dynamic rendering: Next then emits no
+    // root prerender document, so the read-only static-assets cache (and this
+    // gate) has nothing to serve. That is the regression this test pins.
+    expect(portalRoot).toMatch(/<SeoIntroBlock[\s\S]*?translate=\{false\}/)
+    expect(portalRoot).toContain("export const dynamic = 'force-static'")
+  })
+
+  test('the intro block reads request headers only behind the translate opt-in', () => {
+    const headerRead = introBlock.indexOf('await headers()')
+    const guard = introBlock.indexOf('if (translate) {')
+
+    expect(headerRead).toBeGreaterThan(-1)
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(headerRead)
+    // Existing (translated) callers keep their behaviour by default.
+    expect(introBlock).toContain('translate = true')
+  })
+})
+
 describe('deploy workflow portal root gate', () => {
   const step = deployStep(POPULATE_STEP_NAME)
 
