@@ -2,7 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
-import { shouldBypassClerkForPortalRequest } from './lib/portalMiddlewareBypass'
+import {
+  PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS,
+  shouldBypassClerkForPortalRequest,
+} from './lib/portalMiddlewareBypass'
 
 export const runtime = 'experimental-edge'
 
@@ -346,15 +349,35 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
 }
 
 /**
+ * Anonymous answer for the retired `/login` and `/register` aliases: the
+ * student sign-in lane with a `return_to`, exactly what the Clerk handler's
+ * `!userId` branch returns for any non-public portal document. Extracted so the
+ * anonymous fast path and the Clerk path can never drift apart.
+ */
+function anonymousSignInRedirectUrl(req: NextRequest, pathname: string, search: string): URL {
+  const lane = req.nextUrl.searchParams.get('lane')
+  const laneSegment =
+    lane === 'consultant' ? 'consultant'
+    : lane === 'admin' ? 'admin'
+    : lane === 'attorney' ? 'attorney'
+    : 'student'
+  const signInUrl = new URL(`/sign-in/${laneSegment}`, req.nextUrl.origin)
+  signInUrl.searchParams.set('return_to', `${pathname}${search}`)
+  return signInUrl
+}
+
+/**
  * Portal mirror of the market fast path's pass-through half.
  *
- * An anonymous portal document (today only `/`) is served without entering
- * clerkMiddleware at all, so the Worker does not pay Clerk's per-request CPU
- * and OpenNext's static-assets incremental cache can answer the portal root as
- * a HIT. It adds no rewrite — unlike the market host, the portal app already
- * owns `/` — and it keeps the two behaviours the Clerk path performs for the
- * portal host before any auth work: tracking-parameter consolidation (301) and
- * the allowed cross-origin preflight (204 with CORS headers).
+ * An anonymous portal document (the root `/`, the `/sign-in(.*)` and
+ * `/sign-up(.*)` auth lanes, and their `/login` + `/register` aliases) is
+ * served without entering clerkMiddleware at all, so the Worker does not pay
+ * Clerk's per-request CPU and OpenNext's static-assets incremental cache can
+ * answer the portal root as a HIT. It adds no rewrite — unlike the market host,
+ * the portal app already owns these paths — and it keeps the behaviours the
+ * Clerk path performs for the portal host before any auth work: tracking
+ * parameter consolidation (301), the allowed cross-origin preflight (204 with
+ * CORS headers) and, for the two alias paths, the anonymous sign-in redirect.
  *
  * The signed-in bounce (`/` -> /dashboard) is NOT implemented here: a request
  * with a `__client_uat` session hint never reaches this function.
@@ -369,6 +392,13 @@ function handlePortalAnonymousDocumentRequest(req: NextRequest): NextResponse {
       const dest = new URL(cleaned, req.url)
       return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
     }
+  }
+
+  // `/login` and `/register` are retired aliases with no portal route. The
+  // anonymous answer is the student sign-in lane with `return_to` — the same
+  // 307 the Clerk handler used to emit for them, minus Clerk's session work.
+  if (PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS.has(pathname)) {
+    return NextResponse.redirect(anonymousSignInRedirectUrl(req, pathname, search))
   }
 
   if (isAllowedCorsPreflight(req)) {
@@ -539,15 +569,7 @@ const clerkHandler = clerkMiddleware(
           headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) },
         })
       }
-      const lane = req.nextUrl.searchParams.get('lane')
-      const laneSegment =
-        lane === 'consultant' ? 'consultant'
-        : lane === 'admin' ? 'admin'
-        : lane === 'attorney' ? 'attorney'
-        : 'student'
-      const signInUrl = new URL(`/sign-in/${laneSegment}`, req.nextUrl.origin)
-      signInUrl.searchParams.set('return_to', `${pathname}${search}`)
-      return NextResponse.redirect(signInUrl)
+      return NextResponse.redirect(anonymousSignInRedirectUrl(req, pathname, search))
     }
 
     return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
@@ -571,10 +593,11 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
     }
   }
 
-  // Portal-host anonymous documents (see lib/portalMiddlewareBypass.ts). The
-  // helper owns the whole eligibility contract — path allow-list, the
-  // `__client_uat` session hint and Clerk's `__clerk*` handshake parameters —
-  // so this branch can never widen itself into an auth path by accident.
+  // Portal-host anonymous documents (see lib/portalMiddlewareBypass.ts): the
+  // root document and the anonymous auth lanes/aliases. The helper owns the
+  // whole eligibility contract — path allow-list, the `__client_uat` session
+  // hint and Clerk's `__clerk*` handshake parameters — so this branch can never
+  // widen itself into an auth path by accident.
   if (requestHostname(req) === PORTAL_HOST) {
     if (
       shouldBypassClerkForPortalRequest(
