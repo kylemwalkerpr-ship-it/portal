@@ -90,6 +90,15 @@ jobs:
         run: |
           npm run populate:static-incremental-cache
           node scripts/verify-portal-root-static-cache.mjs
+          # Auth-lane gate (MARKET-PORTAL-AUTH-HANDOFF-1102 R2): the
+          # /sign-in/** + /sign-up/** documents were the last portal documents
+          # rendered per request (503 `error code: 1102` on a Workers Free
+          # isolate — live ray a3e83a202c58724a). They now ship as prebuilt
+          # shells, so the deploy fails closed unless every lane document is
+          # published with its own document text in the cache and the pages
+          # still carry `force-static` + generateStaticParams and no
+          # request-time server work.
+          node scripts/verify-portal-auth-lane-static-cache.mjs
           BUILD_ID="$(cat .next/BUILD_ID)"
           for cache_key in \
             marketplace \

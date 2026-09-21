@@ -1,37 +1,35 @@
 import type { Metadata } from 'next'
 import { EstateFooter } from '@/components/EstateFooter'
-import { headers } from 'next/headers'
-import { translateBatch } from '@/lib/serverTranslate'
+import { portalAuthLaneRoots } from '@/lib/portalAuthLaneShell'
 import SignUpClient from './SignUpClient'
 
-const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
-const VALID_LANES = new Set(['student', 'consultant', 'attorney', 'admin'])
+// Build-static on purpose — see app/sign-in/[[...rest]]/page.tsx for the live
+// 1102 capture and the full rationale (MARKET-PORTAL-AUTH-HANDOFF-1102 R2):
+// these documents were the last portal documents rendering per request (a
+// request-header read, a server translation lookup and a dynamic optional
+// catch-all), they carry no Clerk state when anonymous, and they now ship as
+// prebuilt shells served from the static-assets incremental cache. Clerk
+// sub-screens under a lane root are rewritten onto the lane's shell by the
+// `beforeFiles` rules in next.config.ts (host-scoped to the portal host);
+// middleware runs before those rewrites and makes no shell decision itself.
+export const dynamic = 'force-static'
 
-async function activeLang(): Promise<string> {
-  try {
-    const h = await headers()
-    const v = h.get('x-lang')
-    if (v && SUPPORTED_LANGS.has(v)) return v
-  } catch { /* default */ }
-  return 'en'
+// Fail closed — see app/sign-in/[[...rest]]/page.tsx: an unenumerated param
+// (a path that escaped the next.config.ts lane-shell mapping) must never fall
+// back to an on-demand render.
+export const dynamicParams = false
+
+export function generateStaticParams() {
+  return [
+    { rest: [] as string[] },
+    ...portalAuthLaneRoots('sign-up').map((lane) => ({ rest: [lane] })),
+  ]
 }
 
-async function activeLane(): Promise<string> {
-  try {
-    const h = await headers()
-    const pathname = h.get('x-pathname') || ''
-    const segs = pathname.split('?')[0].split('/').filter(Boolean)
-    if (segs[0] === 'sign-up' && segs[1] && VALID_LANES.has(segs[1])) return segs[1]
-  } catch { /* fall through */ }
-  return 'student'
-}
-
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await activeLang()
-  const lane = await activeLane()
-  const titleEn = 'Create your YouSafe account'
-  const descEn  = 'Sign up for YouSafe Consultancy — clients, attorneys, and consultants. Free to start, secure by design.'
-  const [title, description] = await translateBatch([titleEn, descEn], lang)
+export function generateMetadata(): Metadata {
+  const title = 'Create your YouSafe account'
+  const description =
+    'Sign up for YouSafe Consultancy — clients, attorneys, and consultants. Free to start, secure by design.'
   return {
     title,
     description,
