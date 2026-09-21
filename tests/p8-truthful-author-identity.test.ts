@@ -251,7 +251,10 @@ describe('renderTargetCore — truthful byline and optional distinct reviewer', 
 
     const distinct = renderCaseworks(pack({ reviewedBy: 'Dana Whitfield' })).fileContent
     expect(distinct).toContain('reviewer: { name: "Dana Whitfield"')
-    expect(distinct).toMatch(/<UpdatedStamp date=\{"\d{4}-\d{2}-\d{2}"\} reviewer="Dana Whitfield" \/>/)
+    // P8-PORTAL-FRESHNESS: the draft supplied no trustworthy editorial date, so
+    // the stamp names the reviewer and claims no date at all.
+    expect(distinct).toMatch(/<UpdatedStamp reviewer="Dana Whitfield" \/>/)
+    expect(distinct).not.toContain(new Date().toISOString().slice(0, 10))
     // Never the author as their own reviewer.
     const reviewerName = distinct.match(/reviewer: \{ name: "([^"]+)"/)![1]
     expect(reviewerName).not.toBe('Jordan Hale')
@@ -262,7 +265,10 @@ describe('renderTargetCore — truthful byline and optional distinct reviewer', 
   it('apex blog uses the truthful named author and neutral CTA wording', () => {
     const { fileContent } = renderBlog(pack())
     expect(fileContent).toContain('authors: ["Jordan Hale"]')
-    expect(fileContent).toContain('{date} · Jordan Hale')
+    // P8-PORTAL-FRESHNESS: with no trustworthy draft date the byline is the
+    // author alone — never the render clock, and never a `{date}` placeholder.
+    expect(fileContent).toContain('<p className="text-sm text-muted-foreground">Jordan Hale</p>')
+    expect(fileContent).not.toContain('{date}')
     expect(fileContent).not.toContain('MyCaseworks Editorial')
     expect(fileContent).not.toMatch(/attorney-reviewed/i)
     expect(fileContent).toContain('read the full MyCaseworks guide:')
@@ -271,7 +277,8 @@ describe('renderTargetCore — truthful byline and optional distinct reviewer', 
   it('apex blog keeps the editorial fallback byline when no named author exists', () => {
     const { fileContent } = renderBlog()
     expect(fileContent).toContain('authors: ["MyCaseworks Editorial"]')
-    expect(fileContent).toContain('{date} · MyCaseworks Editorial')
+    expect(fileContent).toContain('<p className="text-sm text-muted-foreground">MyCaseworks Editorial</p>')
+    expect(fileContent).not.toContain('{date}')
     expect(fileContent).not.toMatch(/attorney-reviewed/i)
   })
 })

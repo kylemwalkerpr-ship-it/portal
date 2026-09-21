@@ -78,6 +78,93 @@ export function resolveRenderedReviewer(
   return { name, url: EDITORIAL_FALLBACK_AUTHOR.url }
 }
 
+/**
+ * P8-PORTAL-FRESHNESS — editorial dates are DATA, never the clock.
+ *
+ * Build / render / repair / re-audit / ship time is never an editorial
+ * publication, update, or review time. A rendered page carries a date ONLY
+ * when the draft already supplied an explicit, trustworthy one (frontmatter /
+ * persisted artifact). With no trusted date the field or visible stamp is
+ * OMITTED — it is never replaced with git time, file mtime, build time, or
+ * `now`.
+ */
+const EDITORIAL_PUBLISHED_KEYS = [
+  'publishedDate',
+  'datePublished',
+  'publishDate',
+  'published',
+  'date',
+] as const
+const EDITORIAL_UPDATED_KEYS = [
+  'updatedDate',
+  'dateModified',
+  'lastReviewed',
+  'reviewedAt',
+  'updated',
+] as const
+
+function isRealCalendarDay(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false
+  const probe = new Date(Date.UTC(year, month - 1, day))
+  return (
+    probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day
+  )
+}
+
+/**
+ * Accept an explicit ISO day (`YYYY-MM-DD`) or an ISO timestamp and return the
+ * calendar day. Anything absent, relative ("today"), or not a real date is
+ * rejected — an unverifiable string is not a trustworthy editorial date.
+ */
+export function trustedIsoDay(raw: string | null | undefined): string | null {
+  const value = typeof raw === 'string' ? raw.trim().replace(/^["']|["']$/g, '').trim() : ''
+  if (!value) return null
+  // Accept `YYYY-M-D` as well as zero-padded ISO (`2026-3-4` is a real day and
+  // must be normalized, not dropped). A trailing clock component after `T` or a
+  // space is allowed and discarded — only the calendar day is editorial data.
+  const match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!isRealCalendarDay(year, month, day)) return null
+  return `${match[1]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function lookupTrustedFmDate(
+  fm: Record<string, string>,
+  keys: readonly string[],
+): string | null {
+  const lowered = new Map<string, string>()
+  for (const [key, value] of Object.entries(fm)) lowered.set(key.trim().toLowerCase(), value)
+  for (const key of keys) {
+    const hit = trustedIsoDay(lowered.get(key.toLowerCase()))
+    if (hit) return hit
+  }
+  return null
+}
+
+export interface TrustedEditorialDates {
+  /** Trustworthy publication day, or null when the draft supplied none. */
+  published: string | null
+  /** Trustworthy update/review day, or null when the draft supplied none. */
+  updated: string | null
+}
+
+/**
+ * Resolve editorial publication/update dates from supplied draft data. A null
+ * result is the signal to OMIT the field/stamp — never to synthesize one.
+ */
+export function resolveTrustedEditorialDates(
+  fm?: Record<string, string> | null,
+): TrustedEditorialDates {
+  const source = fm && typeof fm === 'object' ? fm : {}
+  return {
+    published: lookupTrustedFmDate(source, EDITORIAL_PUBLISHED_KEYS),
+    updated: lookupTrustedFmDate(source, EDITORIAL_UPDATED_KEYS),
+  }
+}
+
 function escapeTs(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
 }
@@ -616,7 +703,10 @@ function renderCaseworksPage(opts: {
             : /loan|borrower/i.test(opts.primaryKeyword + title)
               ? 'loans'
               : 'immigration'
-  const today = new Date().toISOString().slice(0, 10)
+  // P8-PORTAL-FRESHNESS — no generation clock. The page renders an editorial
+  // publication/update date only when the draft itself supplied a trustworthy
+  // day; otherwise the field / visible stamp is omitted entirely.
+  const editorialDates = resolveTrustedEditorialDates(fm)
   const robots = opts.indexable ? '{ index: true, follow: true }' : '{ index: false, follow: true }'
   // Extract the "In 60 seconds" section BEFORE converting to JSX, so the
   // Tldr component renders the AI-written bullets instead of hardcoded boilerplate.
@@ -671,12 +761,32 @@ function renderCaseworksPage(opts: {
     ? `  reviewer: { name: ${JSON.stringify(reviewerIdentity.name)}, url: ${JSON.stringify(reviewerIdentity.url)} },\n`
     : ''
   const reviewerStampProp = reviewerIdentity ? ` reviewer=${JSON.stringify(reviewerIdentity.name)}` : ''
+  const publishedMetaLine = editorialDates.published
+    ? `  publishedDate: ${JSON.stringify(editorialDates.published)},\n`
+    : ''
+  const updatedMetaLine = editorialDates.updated
+    ? `  updatedDate: ${JSON.stringify(editorialDates.updated)},\n`
+    : ''
+  const publishedTimeLine = editorialDates.published
+    ? `    publishedTime: ${JSON.stringify(editorialDates.published)},\n`
+    : ''
+  const modifiedTimeLine = editorialDates.updated
+    ? `    modifiedTime: ${JSON.stringify(editorialDates.updated)},\n`
+    : ''
+  // A visible stamp needs a trustworthy date or a persisted reviewer — never a
+  // generation date, and never an empty <UpdatedStamp />.
+  const stampLine =
+    editorialDates.updated || reviewerIdentity
+      ? `      <UpdatedStamp${editorialDates.updated ? ` date={${JSON.stringify(editorialDates.updated)}}` : ''}${reviewerStampProp} />\n`
+      : ''
+  const stampImportLine = stampLine
+    ? 'import { UpdatedStamp } from "@/components/article/UpdatedStamp";\n'
+    : ''
 
   const out = `// Generated by SEO Factory — do not hand-edit without review
 import type { Metadata } from "next";
 import { ArticleLayout } from "@/components/article/ArticleLayout";
-import { UpdatedStamp } from "@/components/article/UpdatedStamp";
-import { Tldr } from "@/components/article/Tldr";
+${stampImportLine}import { Tldr } from "@/components/article/Tldr";
 import { CTAPanel } from "@/components/article/CTAPanel";
 import { Disclaimer } from "@/components/article/Disclaimer";
 import type { ArticleMeta, RelatedRef, SourceRef } from "@/lib/article-types";
@@ -687,9 +797,7 @@ const meta: ArticleMeta = {
   topic: ${JSON.stringify(topic)},
   title: ${JSON.stringify(title)},
   primaryKeyword: ${JSON.stringify(keyword)},
-  publishedDate: ${JSON.stringify(today)},
-  updatedDate: ${JSON.stringify(today)},
-  author: { ${authorMetaFields} },
+${publishedMetaLine}${updatedMetaLine}  author: { ${authorMetaFields} },
 ${reviewerMetaLine}  reviewStatus: "editorial-only",
   hero: { eyebrow: ${JSON.stringify(safeCountry.toUpperCase() + ' · Guide')}, kicker: ${JSON.stringify(kicker)} },
   ctaTarget: ${JSON.stringify(`/intake?country=${safeCountry}&topic=${topic}`)},
@@ -712,9 +820,7 @@ export const metadata: Metadata = {
     siteName: "MyCaseworks",
     url: ${JSON.stringify(canonical)},
     type: "article",
-    publishedTime: ${JSON.stringify(today)},
-    modifiedTime: ${JSON.stringify(today)},
-    images: [
+${publishedTimeLine}${modifiedTimeLine}    images: [
       { url: ${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}, width: 1200, height: 630, alt: ${JSON.stringify(title)} },
     ],
   },
@@ -727,8 +833,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <ArticleLayout meta={meta} related={related} sources={sources}>
-      <UpdatedStamp date={${JSON.stringify(today)}}${reviewerStampProp} />
-      <Tldr title="In 60 seconds">
+${stampLine}      <Tldr title="In 60 seconds">
 ${tldrJsx || '        <p>This guide covers the key steps, costs, and requirements for ' + escapeJsxText(title) + '.</p>'}
       </Tldr>
 ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with procedures, documents, timelines, and FAQs. Not legal advice.</p>`}
@@ -778,6 +883,22 @@ ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with 
     }
   }
   // Caseworks article-quality gate mirrors (check-article-quality.mjs)
+  // Conditional imports (P8-PORTAL-FRESHNESS omits UpdatedStamp when there is
+  // no trustworthy date/reviewer) must never duplicate a module specifier — a
+  // repeated import is a hard build error in the target repo — and must never
+  // be emitted unused.
+  const importModulePaths = (out.match(/^import\s[^\n]*?from\s+"[^"]+";?$/gm) || [])
+    .map((line) => (line.match(/from\s+"([^"]+)"/) || [])[1])
+    .filter((p): p is string => Boolean(p))
+  const duplicateImport = importModulePaths.find((p, i) => importModulePaths.indexOf(p) !== i)
+  if (duplicateImport) {
+    throw new Error(`renderCaseworksPage internal error: duplicate import from "${duplicateImport}"`)
+  }
+  const usesUpdatedStamp = /<UpdatedStamp\b/.test(out)
+  const importsUpdatedStamp = out.includes('from "@/components/article/UpdatedStamp"')
+  if (usesUpdatedStamp !== importsUpdatedStamp) {
+    throw new Error('renderCaseworksPage internal error: UpdatedStamp import/usage mismatch')
+  }
   if (/kicker:\s*"SEO Factory"/.test(out)) {
     throw new Error('renderCaseworksPage internal error: hero kicker must not be "SEO Factory"')
   }
@@ -816,7 +937,10 @@ function renderConsultancyBlogPage(opts: {
     fm.description ||
     fm.metaDescription ||
     `${title} — a practical guide for international students and immigrants.`
-  const today = new Date().toISOString().slice(0, 10)
+  // P8-PORTAL-FRESHNESS — no generation clock. The visible byline carries a
+  // date only when the draft supplied a trustworthy publication day; the
+  // structured `publishedTime` is omitted otherwise (never `now`).
+  const editorialDates = resolveTrustedEditorialDates(fm)
   const pathParts = opts.plan.filePath
     .split('/')
     .filter((p) => p && p !== 'page.tsx')
@@ -838,6 +962,14 @@ function renderConsultancyBlogPage(opts: {
   // Truthful byline for the apex blog: the pruned AuthorPack's named author
   // when one exists, otherwise the existing Organization/editorial fallback.
   const authorIdentity = resolveRenderedAuthor(opts.author)
+  // Visible and structured metadata must agree: the same trusted day drives
+  // both, and with no trusted day neither surface claims one.
+  const bylineText = editorialDates.published
+    ? `${editorialDates.published} · ${authorIdentity.name}`
+    : authorIdentity.name
+  const publishedTimeLine = editorialDates.published
+    ? `    publishedTime: ${JSON.stringify(editorialDates.published)},\n`
+    : ''
 
   const out = `// Generated by SEO Factory — yousafe-consultancy blog page (static route)
 import type { Metadata } from "next";
@@ -853,8 +985,7 @@ export const metadata: Metadata = {
     description: ${JSON.stringify(description.slice(0, 160))},
     url: ${JSON.stringify(canonical)},
     type: "article",
-    publishedTime: ${JSON.stringify(today)},
-    authors: [${JSON.stringify(authorIdentity.name)}],
+${publishedTimeLine}    authors: [${JSON.stringify(authorIdentity.name)}],
     images: [
       { url: ${JSON.stringify(ogImagePublicPath(opts.plan.filePath) || '/og-image.png')}, width: 1200, height: 630, alt: ${JSON.stringify(title)} },
     ],
@@ -868,13 +999,11 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  const date = ${JSON.stringify(today)}
-
   return (
     <main className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
       <article>
         <header>
-          <p className="text-sm text-muted-foreground">{date} · ${escapeJsxText(authorIdentity.name)}</p>
+          <p className="text-sm text-muted-foreground">${escapeJsxText(bylineText)}</p>
           <h1 className="mt-4 font-sans text-3xl tracking-[-0.02em] text-foreground sm:text-4xl">
             ${escapeTs(title)}
           </h1>
@@ -939,7 +1068,12 @@ export interface BlogPostEntry {
   title: string
   metaDescription: string
   category: 'usa' | 'canada' | 'both' | 'uk'
-  date: string
+  /**
+   * Trustworthy editorial publication day from the draft, or omitted when the
+   * draft supplied none. P8-PORTAL-FRESHNESS: a blog-index date is a visible
+   * publication date, so it is never synthesized from the generation clock.
+   */
+  date?: string
   readTime: string
   content: string
 }
@@ -961,12 +1095,15 @@ export function buildBlogPostEntry(opts: {
   const category =
     regionKey === 'UK' ? 'uk' : regionKey === 'CA' ? 'canada' : regionKey === 'US' ? 'usa' : 'both'
   const words = countBodyWords(body)
+  // P8-PORTAL-FRESHNESS — the index card date is a visible publication date:
+  // only a trustworthy draft-supplied day is carried, never the render clock.
+  const published = resolveTrustedEditorialDates(fm).published
   return {
     slug,
     title,
     metaDescription: (fm.description || fm.metaDescription || `${title} — YouSafe Consultancy`).slice(0, 160),
     category,
-    date: new Date().toISOString().slice(0, 10),
+    ...(published ? { date: published } : {}),
     readTime: `${Math.max(3, Math.round(words / 200))} min read`,
     content: body.trim(),
   }
@@ -988,7 +1125,7 @@ export function insertBlogPostIntoData(current: string, entry: BlogPostEntry): s
     `    title: ${JSON.stringify(entry.title)},`,
     `    metaDescription: ${JSON.stringify(entry.metaDescription)},`,
     `    category: ${JSON.stringify(entry.category)},`,
-    `    date: ${JSON.stringify(entry.date)},`,
+    ...(entry.date ? [`    date: ${JSON.stringify(entry.date)},`] : []),
     `    readTime: ${JSON.stringify(entry.readTime)},`,
     `    content: \`${escapeTs(entry.content)}\`,`,
     '  },',
@@ -1043,6 +1180,10 @@ export function renderTargetFile(opts: {
   const title = (fmTitle && !looksLikeKeyword) ? fmTitle : (opts.title || fmTitle || opts.primaryKeyword)
   const description = fm.description || `${title} — YouSafe Consultancy`
   const robots = opts.indexable ? 'index,follow' : 'noindex,follow'
+  // P8-PORTAL-FRESHNESS — frontmatter `date` is an editorial publication date:
+  // carry the draft's own trustworthy day, otherwise omit the key entirely
+  // rather than stamping render time.
+  const published = resolveTrustedEditorialDates(fm).published
   const front = [
     '---',
     `title: ${JSON.stringify(title)}`,
@@ -1052,7 +1193,7 @@ export function renderTargetFile(opts: {
     `robots: ${robots}`,
     `ownerHost: ${opts.plan.host}`,
     `generatedBy: seo-factory`,
-    `date: ${new Date().toISOString().slice(0, 10)}`,
+    ...(published ? [`date: ${published}`] : []),
     '---',
     '',
   ].join('\n')

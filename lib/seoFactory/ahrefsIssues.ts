@@ -226,7 +226,9 @@ export function articleJsonLdErrors(content: string): string[] {
   for (const a of articles) {
     if (!a.headline) errors.push('Article missing headline')
     if (!a.image) errors.push('Article missing image (schema.org / Google required)')
-    if (!a.datePublished) errors.push('Article missing datePublished')
+    // P8-PORTAL-FRESHNESS — datePublished is deliberately NOT required: a
+    // truthful page omits it when no trustworthy editorial date exists, and
+    // the audit must not demand a fabrication to clear.
     if (!a.author) errors.push('Article missing author')
     const author = a.author as Record<string, unknown> | undefined
     if (author && typeof author.affiliation === 'string') {
@@ -408,7 +410,7 @@ export function evaluateAhrefsDraft(
     findings.push({
       code: 'ahrefs_schema_invalid', issueId: 'structured_data_has_schema_org_validation_error', severity: 'warning',
       message: `JSON-LD would fail schema.org validation: ${schemaErrors.slice(0, 3).join('; ')}.`,
-      fix: 'Article needs headline, image, datePublished, author; FAQPage needs mainEntity Question/Answer.',
+      fix: 'Article needs headline, image, author; FAQPage needs mainEntity Question/Answer.',
     })
   }
 
@@ -628,15 +630,15 @@ function ensureValidArticleJsonLd(
   body: string,
   meta: { title: string; description: string; url: string },
 ): { body: string; changed: boolean } {
-  const today = new Date().toISOString().slice(0, 10)
   const valid: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Article',
     headline: meta.title.slice(0, 110),
     description: meta.description.slice(0, 160),
     image: [AHREFS_OG_IMAGE_ABS],
-    datePublished: today,
-    dateModified: today,
+    // P8-PORTAL-FRESHNESS — repair never invents datePublished/dateModified.
+    // The repair pass has no trustworthy editorial date, and repair time is not
+    // publication time, so the fields are omitted rather than faked.
     mainEntityOfPage: meta.url || AHREFS_OG_IMAGE_ABS.replace(/\/og-image\.png$/, '/'),
     author: {
       '@type': 'Organization',
