@@ -10,6 +10,10 @@ import path from 'node:path'
 
 import { p6TargetKey, type P6TargetObservation } from '../scripts/p6InterlinkDisposition'
 import {
+  decideP6BatchAApplyAuthority,
+  resolveP6BatchAApplyAuthority,
+} from '../scripts/p6BatchAApplyAuthority'
+import {
   P6_BATCH_A_APPLY_CONFIRM_TOKEN,
   P6_BATCH_A_DEFAULT_LIMIT,
   P6_BATCH_A_GATE_ACTOR,
@@ -160,7 +164,11 @@ describe('A) argv gating: dry-run default, explicit apply + confirm token only',
       path.join(process.cwd(), 'scripts/p6-batch-a-stale-rejection.mts'),
       'utf8',
     )
-    for (const source of [pure, runner, cli]) {
+    const authority = fs.readFileSync(
+      path.join(process.cwd(), 'scripts/p6BatchAApplyAuthority.ts'),
+      'utf8',
+    )
+    for (const source of [pure, runner, cli, authority]) {
       expect(source).not.toMatch(/process\.env\.P6_BATCH_A/i)
       expect(source).not.toMatch(/APPLY\s*[:=]\s*process\.env/i)
     }
@@ -593,13 +601,16 @@ describe('G) fail-closed reads and verification', () => {
 
   it('re-validates the hard limit even when argv parsing is bypassed', async () => {
     let calls = 0
-    const summary = await runP6BatchARejection(config({ apply: true, limit: 201 }), {
-      ...baseDeps(),
-      applyRejection: async () => {
-        calls += 1
-        return { affected: 1 }
+    const summary = await runP6BatchARejection(
+      config({ apply: true, confirm: P6_BATCH_A_APPLY_CONFIRM_TOKEN, limit: 201 }),
+      {
+        ...baseDeps(),
+        applyRejection: async () => {
+          calls += 1
+          return { affected: 1 }
+        },
       },
-    })
+    )
     expect(calls).toBe(0)
     expect(summary.failedClosed).toBe(true)
     expect(summary.fatalErrors.join(' ')).toMatch(/outside the allowed/)
@@ -697,5 +708,162 @@ describe('I) static contracts', () => {
     expect(source).not.toMatch(/\.delete\s*\(/)
     expect(source).not.toMatch(/\.rpc\s*\(/)
     expect(source).not.toMatch(/method:\s*'HEAD'/)
+  })
+
+  it('the runner re-checks the exact confirmation token before any IO', () => {
+    const source = read('scripts/p6BatchAStaleRejectionRunner.ts')
+    const gateIdx = source.indexOf('config.confirm !== P6_BATCH_A_APPLY_CONFIRM_TOKEN')
+    expect(gateIdx).toBeGreaterThan(-1)
+    for (const io of [
+      'deps.countStatuses()',
+      'deps.readCandidates()',
+      'deps.observeTargets(',
+      'await applyRejection(write)',
+    ]) {
+      const ioIdx = source.indexOf(io)
+      expect(ioIdx).toBeGreaterThan(-1)
+      expect(ioIdx).toBeGreaterThan(gateIdx)
+    }
+  })
+
+  it('the CLI parses argv, then resolves apply authority, then creates the client', () => {
+    const source = read('scripts/p6-batch-a-stale-rejection.mts')
+    const parseIdx = source.indexOf('parseBatchAArgs(process.argv.slice(2))')
+    const authorityIdx = source.indexOf('resolveP6BatchAApplyAuthority()')
+    const clientIdx = source.indexOf('createClient(')
+    expect(parseIdx).toBeGreaterThan(-1)
+    expect(authorityIdx).toBeGreaterThan(parseIdx)
+    expect(clientIdx).toBeGreaterThan(authorityIdx)
+    // Apply is gated on the service-role authority decision; dry run keeps the
+    // repository read-capable fallback.
+    expect(source).toMatch(/if \(parsed\.config\.apply\)/)
+    expect(source).toContain('resolveP6BatchAApplyAuthority()')
+    expect(source).toContain('resolveSupabaseKey()')
+    const authority = read('scripts/p6BatchAApplyAuthority.ts')
+    expect(authority).toContain('resolveSupabaseKey({ ...opts, allowAnonFallback: false })')
+    expect(authority).toContain('supabaseAuthMode(opts)')
+  })
+})
+
+describe('J) programmatic apply authorization gate (defense in depth)', () => {
+  const spyDeps = () => {
+    const calls = { read: 0, observe: 0, write: 0, counts: 0 }
+    return {
+      calls,
+      deps: {
+        readCandidates: async () => {
+          calls.read += 1
+          return { rows: [row()], truncated: false }
+        },
+        observeTargets: async () => {
+          calls.observe += 1
+          return { [KEY_404]: observation(404) }
+        },
+        applyRejection: async () => {
+          calls.write += 1
+          return { affected: 1 }
+        },
+        countStatuses: async () => {
+          calls.counts += 1
+          return { planned: 1, rejected: 0, applied: 0 }
+        },
+      },
+    }
+  }
+
+  it('refuses a direct programmatic apply with a missing token and makes ZERO IO calls', async () => {
+    const { calls, deps } = spyDeps()
+    const summary = await runP6BatchARejection(config({ apply: true, confirm: null }), deps)
+    expect(calls).toEqual({ read: 0, observe: 0, write: 0, counts: 0 })
+    expect(summary.mode).toBe('apply')
+    expect(summary.failedClosed).toBe(true)
+    expect(summary.fatalErrors.join(' ')).toMatch(/confirmation token/)
+    expect(summary.fatalErrors.join(' ')).toContain(P6_BATCH_A_APPLY_CONFIRM_TOKEN)
+    expect(summary.attemptedWrites).toBe(0)
+    expect(summary.selectedForWrite).toBe(0)
+    expect(summary.writeResults).toEqual([])
+  })
+
+  it('refuses a direct programmatic apply with a wrong or near-miss token', async () => {
+    const wrongTokens = [
+      'WRONG',
+      '',
+      `${P6_BATCH_A_APPLY_CONFIRM_TOKEN} `,
+      ` ${P6_BATCH_A_APPLY_CONFIRM_TOKEN}`,
+      P6_BATCH_A_APPLY_CONFIRM_TOKEN.toLowerCase(),
+      `${P6_BATCH_A_APPLY_CONFIRM_TOKEN}!`,
+    ]
+    for (const confirm of wrongTokens) {
+      const { calls, deps } = spyDeps()
+      const summary = await runP6BatchARejection(config({ apply: true, confirm }), deps)
+      expect(calls).toEqual({ read: 0, observe: 0, write: 0, counts: 0 })
+      expect(summary.failedClosed).toBe(true)
+      expect(summary.attemptedWrites).toBe(0)
+    }
+  })
+
+  it('still runs the authorized apply with the exact token (control)', async () => {
+    const { calls, deps } = spyDeps()
+    const summary = await runP6BatchARejection(
+      config({ apply: true, confirm: P6_BATCH_A_APPLY_CONFIRM_TOKEN, limit: 1 }),
+      deps,
+    )
+    expect(calls.read).toBe(1)
+    expect(calls.observe).toBe(1)
+    expect(calls.write).toBe(1)
+    expect(summary.rejectedWrites).toBe(1)
+    expect(summary.failedClosed).toBe(false)
+  })
+
+  it('leaves dry run untouched (no token needed, still zero writes)', async () => {
+    const { calls, deps } = spyDeps()
+    const summary = await runP6BatchARejection(config(), deps)
+    expect(calls.write).toBe(0)
+    expect(summary.mode).toBe('dry-run')
+    expect(summary.failedClosed).toBe(false)
+  })
+})
+
+describe('K) apply requires genuine service-role authority', () => {
+  const LEGACY_SR = 'eyJhbGciOiJIUzI1NiJ9.service_role'
+  const LEGACY_ANON = 'eyJhbGciOiJIUzI1NiJ9.anon'
+  const SECRET_SR = 'sb_secret_current_dashboard_format'
+
+  it('accepts service-role mode with a usable legacy JWT only', () => {
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: LEGACY_SR }),
+    ).toEqual({ ok: true, key: LEGACY_SR })
+  })
+
+  it('refuses the anon/degraded fallback the read path is allowed to use', () => {
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'degraded-anon', key: LEGACY_ANON }).ok,
+    ).toBe(false)
+    expect(decideP6BatchAApplyAuthority({ authMode: 'missing', key: null }).ok).toBe(false)
+  })
+
+  it('refuses a secret-format or blank key even in service-role mode', () => {
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: SECRET_SR }).ok,
+    ).toBe(false)
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: '   ' }).ok,
+    ).toBe(false)
+  })
+
+  it('resolves through the shared key module with allowAnonFallback:false', () => {
+    expect(
+      resolveP6BatchAApplyAuthority({ serviceRoleKey: LEGACY_SR, anonKey: LEGACY_ANON }),
+    ).toEqual({ ok: true, key: LEGACY_SR })
+    // The exact production trap: new-format service key + usable legacy anon.
+    expect(
+      resolveP6BatchAApplyAuthority({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON }).ok,
+    ).toBe(false)
+    expect(
+      resolveP6BatchAApplyAuthority({ serviceRoleKey: null, anonKey: LEGACY_ANON }).ok,
+    ).toBe(false)
+    expect(
+      resolveP6BatchAApplyAuthority({ serviceRoleKey: null, anonKey: null }).ok,
+    ).toBe(false)
   })
 })

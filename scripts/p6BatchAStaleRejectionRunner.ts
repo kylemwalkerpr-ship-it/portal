@@ -7,6 +7,10 @@
  * calls because it returns before `deps.applyRejection` is ever reached.
  *
  * Fail-closed contract:
+ *   · an `apply: true` config whose `confirm` does not EXACTLY equal
+ *     P6_BATCH_A_APPLY_CONFIRM_TOKEN is refused before any status count,
+ *     candidate read, live probe or write (argv parsing is never trusted
+ *     alone) → zero IO calls, zero writes, fatal fail-closed summary;
  *   · candidate read errors or proven truncation → no writes;
  *   · global target-verification failure (thrown, or every requested target
  *     missing from the observation set) → no writes;
@@ -19,6 +23,7 @@
 
 import type { P6TargetObservation } from './p6InterlinkDisposition'
 import {
+  P6_BATCH_A_APPLY_CONFIRM_TOKEN,
   P6_BATCH_A_DEFAULT_LIMIT,
   P6_BATCH_A_HARD_MAX_ROWS,
   P6_BATCH_A_TOOL,
@@ -171,6 +176,18 @@ export async function runP6BatchARejection(
   const log = deps.log || (() => {})
   const generatedAt = now()
   const summary = emptySummary(config, generatedAt)
+
+  // AUTHORIZATION GATE (defense in depth). Apply must never be reachable
+  // through a programmatic call or a partially-trusted parsed config: re-check
+  // the exact confirmation token HERE, before any status count, candidate
+  // read, live probe or write, so an unauthorized `apply: true` performs ZERO
+  // IO calls and returns a fatal fail-closed summary.
+  if (config.apply && config.confirm !== P6_BATCH_A_APPLY_CONFIRM_TOKEN) {
+    summary.fatalErrors.push(
+      `apply mode requested without the exact ${P6_BATCH_A_APPLY_CONFIRM_TOKEN} confirmation token — refusing before any read, probe or write`,
+    )
+    return finalizeErrors(summary)
+  }
 
   if (
     !Number.isInteger(config.limit) ||

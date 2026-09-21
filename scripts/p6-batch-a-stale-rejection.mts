@@ -24,6 +24,16 @@
  * there is no environment variable that enables writes, no upsert, no delete,
  * no rpc, and no schema change.
  *
+ * APPLY AUTHORITY (hard prerequisite, enforced AFTER argv parsing and BEFORE
+ * any client is created): the write path requires genuine service-role
+ * authority — `supabaseAuthMode() === 'service-role'` AND
+ * `resolveSupabaseKey({ allowAnonFallback: false })` returning a usable legacy
+ * `eyJ…` JWT. The read-capable anon fallback is allowed for dry run only.
+ * A degraded/anon client never reaches the DB: the CLI exits nonzero without
+ * constructing a write-capable client.
+ * The runner independently re-checks the exact confirmation token, so a
+ * programmatic `apply: true` without the token makes zero IO calls.
+ *
  * Usage:
  *   npx tsx --env-file=.env.local scripts/p6-batch-a-stale-rejection.mts
  *   npx tsx --env-file=.env.local scripts/p6-batch-a-stale-rejection.mts --limit 25
@@ -35,6 +45,7 @@ import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 import { classifyLiveStatus, verifyUrlsLive } from '../lib/seoFactory/linkAudit'
 import type { P6TargetObservation } from './p6InterlinkDisposition'
+import { resolveP6BatchAApplyAuthority } from './p6BatchAApplyAuthority'
 import {
   P6_BATCH_A_CANDIDATE_COLUMNS,
   P6_BATCH_A_PAGE_SIZE,
@@ -63,9 +74,6 @@ const NULL_FENCE_COLUMNS = [
   'staged_at',
   'applied_at',
 ] as const
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-const supabaseKey = resolveSupabaseKey()
 
 /**
  * SELECT-only candidate read. Fail-closed contract: any error, or a proven
@@ -211,6 +219,26 @@ async function main(): Promise<void> {
   if (parsed.config.help) {
     console.log(P6_BATCH_A_USAGE)
     return
+  }
+
+  // Key resolution happens only AFTER argv parsing (never at module load).
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  let supabaseKey: string | null
+
+  if (parsed.config.apply) {
+    // APPLY: hard service-role prerequisite. A degraded/anon fallback is
+    // refused here — before any client exists and before any DB/network call.
+    const authority = resolveP6BatchAApplyAuthority()
+    if (!authority.ok) {
+      console.error(`Refusing to run: apply mode requires genuine service-role authority — ${authority.error}`)
+      console.error('No Supabase client was created; no DB or network call was made.')
+      process.exitCode = 1
+      return
+    }
+    supabaseKey = authority.key
+  } else {
+    // DRY RUN: the existing read-capable fallback (anon allowed) is unchanged.
+    supabaseKey = resolveSupabaseKey()
   }
 
   if (!supabaseUrl || !supabaseKey) {
