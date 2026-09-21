@@ -2,7 +2,6 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
-import { portalAuthLaneShellPath } from './lib/portalAuthLaneShell'
 import {
   PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS,
   shouldBypassClerkForPortalRequest,
@@ -368,52 +367,6 @@ function anonymousSignInRedirectUrl(req: NextRequest, pathname: string, search: 
 }
 
 /**
- * Clerk sub-screens underneath a portal auth lane
- * (`/sign-in/student/factor-one`, `/sign-in/student/sso-callback`,
- * `/sign-up/student/verify-email-address`, the legacy `/sign-in/sso-callback`,
- * and unknown lane segments such as `/sign-in/provider`) have no portal route
- * of their own, so they used to fall through to per-request Next.js rendering —
- * the Cloudflare 1102 class this incident is about (see
- * lib/portalAuthLaneShell.ts for the live capture: `/sign-in/student` rendered
- * per request while `/` was cache-served, and the render intermittently blew
- * the Workers Free CPU budget with `503 error code: 1102`).
- *
- * The lane documents are prebuilt shells published in the read-only
- * static-assets incremental cache, so this handler rewrites the sub-screen onto
- * its lane's shell and lets OpenNext cache interception answer it. The browser
- * URL is untouched: Clerk's client-side path router still resolves its step
- * from the real URL, and the rewrite target is always a prerendered lane root.
- *
- * No auth decision is made here. Callers must already have established that the
- * request carries no Clerk state (the anonymous portal fast path) or must be
- * the Clerk handler itself, after clerkMiddleware has consumed any handshake
- * and resolved the session.
- */
-function handlePortalAuthLaneShellRequest(req: NextRequest, shellPath: string): NextResponse {
-  const { pathname, search } = req.nextUrl
-  const lang = resolveLanguage(req)
-
-  // Same pre-Clerk contract the anonymous document answer keeps: tracking
-  // parameter consolidation and the allowed cross-origin preflight.
-  if (req.nextUrl.searchParams.size > 0) {
-    const cleaned = stripTrackingParams(new URL(req.url))
-    if (cleaned !== null) {
-      const dest = new URL(cleaned, req.url)
-      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
-    }
-  }
-
-  if (isAllowedCorsPreflight(req)) {
-    return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
-  }
-
-  return withCorsHeaders(
-    withPathHeaders(NextResponse.rewrite(new URL(shellPath, req.url)), pathname, search, lang),
-    req,
-  )
-}
-
-/**
  * Portal mirror of the market fast path's pass-through half.
  *
  * An anonymous portal document (the root `/`, the `/sign-in(.*)` and
@@ -572,24 +525,6 @@ const clerkHandler = clerkMiddleware(
     }
 
     if (pathname !== '/' && isPublicRoute(req)) {
-      // Portal auth-lane Clerk sub-screens have no portal route of their own
-      // (see lib/portalAuthLaneShell.ts). clerkMiddleware has already consumed
-      // any handshake and resolved the session for this request, so the
-      // document is served from the lane's prebuilt shell instead of a
-      // per-request render — the Workers resource limit this incident is about.
-      const authLaneShellPath =
-        hostname === PORTAL_HOST ? portalAuthLaneShellPath(pathname) : null
-      if (authLaneShellPath) {
-        return withCorsHeaders(
-          withPathHeaders(
-            NextResponse.rewrite(new URL(authLaneShellPath, req.url)),
-            pathname,
-            search,
-            lang,
-          ),
-          req,
-        )
-      }
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
 
@@ -670,13 +605,6 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
   // whole eligibility contract — path allow-list, the `__client_uat` session
   // hint and Clerk's `__clerk*` handshake parameters — so this branch can never
   // widen itself into an auth path by accident.
-  //
-  // One decision, two answers: a Clerk sub-screen under an auth lane
-  // (…/sign-in/student/factor-one) is served the lane's prebuilt shell
-  // (lib/portalAuthLaneShell.ts) instead of falling back to a per-request
-  // render, and every other eligible document keeps the existing
-  // pass-through. Anything carrying Clerk state fails this check and reaches
-  // clerkMiddleware unchanged.
   if (requestHostname(req) === PORTAL_HOST) {
     if (
       shouldBypassClerkForPortalRequest(
@@ -686,8 +614,6 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
         req.cookies.getAll(),
       )
     ) {
-      const authLaneShellPath = portalAuthLaneShellPath(req.nextUrl.pathname)
-      if (authLaneShellPath) return handlePortalAuthLaneShellRequest(req, authLaneShellPath)
       return handlePortalAnonymousDocumentRequest(req)
     }
   }

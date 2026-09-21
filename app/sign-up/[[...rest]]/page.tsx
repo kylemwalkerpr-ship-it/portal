@@ -9,13 +9,14 @@ import SignUpClient from './SignUpClient'
 // request-header read, a server translation lookup and a dynamic optional
 // catch-all), they carry no Clerk state when anonymous, and they now ship as
 // prebuilt shells served from the static-assets incremental cache. Clerk
-// sub-screens under a lane root are routed back to the lane shell by
-// middleware.ts (lib/portalAuthLaneShell.ts).
+// sub-screens under a lane root are rewritten onto the lane's shell by the
+// `beforeFiles` rules in next.config.ts (host-scoped to the portal host);
+// middleware runs before those rewrites and makes no shell decision itself.
 export const dynamic = 'force-static'
 
 // Fail closed — see app/sign-in/[[...rest]]/page.tsx: an unenumerated param
-// (a path that escaped the middleware lane-shell mapping) must never fall back
-// to an on-demand render.
+// (a path that escaped the next.config.ts lane-shell mapping) must never fall
+// back to an on-demand render.
 export const dynamicParams = false
 
 export function generateStaticParams() {

@@ -23,8 +23,11 @@
  * (`dynamic = 'force-static'` + `generateStaticParams` in
  * app/sign-in/[[...rest]]/page.tsx and app/sign-up/[[...rest]]/page.tsx)
  * published in the read-only static-assets incremental cache. This module owns
- * the single list of shell paths plus the mapping every Clerk sub-screen
- * shares:
+ * the single lane list those documents are enumerated from, and the canonical
+ * form of the mapping every Clerk sub-screen shares. The mapping is *applied*
+ * at build time by the portal-host-scoped `beforeFiles` rules in next.config.ts
+ * (see portalAuthLaneShellRewrites there) — never by middleware, which keeps
+ * seeing the original request path:
  *
  *   /sign-in/student                      → prerendered lane root (no rewrite)
  *   /sign-in/student/factor-one           → /sign-in/student
@@ -43,8 +46,8 @@
  * `__client_uat`, `__clerk*` parameter) stays with clerkMiddleware.
  *
  * The lane list lives in lib/portalAuthLaneShells.json so the prerender
- * enumeration, the middleware mapping and the deploy gate
- * (scripts/verify-portal-auth-lane-static-cache.mjs) can never drift.
+ * enumeration, the build-time rewrite mapping in next.config.ts and the deploy
+ * gate (scripts/verify-portal-auth-lane-static-cache.mjs) can never drift.
  */
 import laneManifest from './portalAuthLaneShells.json'
 
@@ -93,6 +96,11 @@ export function portalAuthLaneShellPaths(): string[] {
  * The prerendered lane shell a Clerk sub-screen must be served from, or null
  * when the request already targets a prerendered document (or is not an auth
  * lane at all).
+ *
+ * Canonical reference only: the executable mapping is the `beforeFiles` rules
+ * next.config.ts builds from this same module, and
+ * tests/portal-auth-lane-shell.test.ts fails closed if the two ever disagree.
+ * Nothing here runs on a request — middleware makes no shell decision.
  *
  * Only paths that have NO prerendered document of their own map to a shell:
  * the `/sign-in` + `/sign-up` bases and the lane roots return null and are

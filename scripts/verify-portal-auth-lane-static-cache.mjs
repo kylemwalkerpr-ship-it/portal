@@ -19,11 +19,14 @@
  * The fix keeps `app/sign-in/[[...rest]]/page.tsx` and
  * `app/sign-up/[[...rest]]/page.tsx` build-static (`force-static` +
  * `generateStaticParams`, no request-time API) and publishes one document per
- * lane root, which `middleware.ts` (lib/portalAuthLaneShell.ts) serves both for
- * the lane roots and for every Clerk sub-screen underneath them. A deploy that
- * lost any of those documents — or that let a page regrow `headers()`,
- * `translateBatch()` or `auth()` — would silently put the lanes back on the
- * per-request render path and reintroduce the 1102s.
+ * lane root. The portal-host-scoped `beforeFiles` rewrites in next.config.ts —
+ * generated from the lane list in lib/portalAuthLaneShell.ts — serve those
+ * documents for the lane roots and for every Clerk sub-screen underneath them;
+ * middleware.ts and clerkMiddleware still see the ORIGINAL request path (Next
+ * runs Proxy/middleware before `beforeFiles`), so no auth decision moves. A
+ * deploy that lost any of those documents — or that let a page regrow
+ * `headers()`, `translateBatch()` or `auth()` — would silently put the lanes
+ * back on the per-request render path and reintroduce the 1102s.
  *
  * This gate therefore fails closed when:
  *   1. the lane manifest (lib/portalAuthLaneShells.json) is unreadable, or a
@@ -229,8 +232,8 @@ function readLaneManifest(laneManifestFile, laneFamiliesList) {
   if (!existsSync(laneManifestFile)) {
     fail(
       `lane manifest not found: ${relative(process.cwd(), laneManifestFile)}. The portal auth-lane ` +
-        'shell paths (prerender enumeration, middleware mapping and this gate) all read it, so a ' +
-        'missing manifest means the lanes are unverified.',
+        'shell paths (prerender enumeration, the next.config.ts beforeFiles mapping and this gate) ' +
+        'all read it, so a missing manifest means the lanes are unverified.',
     )
   }
   let parsed
@@ -289,7 +292,7 @@ function assertStaticPageSources(laneFamiliesList) {
     if (!/export\s+const\s+dynamicParams\s*=\s*false/.test(source)) {
       fail(
         `${relative(process.cwd(), pageFile)} no longer pins \`export const dynamicParams = false\`. ` +
-          'Without it any lane path that escapes the middleware shell mapping (see ' +
+          'Without it any lane path that escapes the next.config.ts beforeFiles mapping (built from ' +
           'lib/portalAuthLaneShell.ts) falls back to an on-demand render instead of a cheap 404.',
       )
     }
@@ -303,7 +306,8 @@ function assertStaticPageSources(laneFamiliesList) {
     if (!/portalAuthLaneRoots\s*\(/.test(source)) {
       fail(
         `${relative(process.cwd(), pageFile)} no longer enumerates lanes from ` +
-          'lib/portalAuthLaneShell.ts — the prerender list and the middleware shell mapping would drift.',
+          'lib/portalAuthLaneShell.ts — the prerender list and the next.config.ts beforeFiles ' +
+          'mapping would drift.',
       )
     }
   }

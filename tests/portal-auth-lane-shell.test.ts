@@ -22,6 +22,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import nextConfig from '../next.config'
 import {
   PORTAL_AUTH_DEFAULT_LANE,
   PORTAL_AUTH_LANE_ROOTS,
@@ -34,7 +35,11 @@ import {
 const root = process.cwd()
 const readRepo = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8')
 
-const middleware = readRepo('middleware.ts')
+const nextConfigSource = readRepo('next.config.ts')
+const middlewareSource = readRepo('middleware.ts')
+/** The portal host exactly as the runtime entrypoint declares it. */
+const RUNTIME_PORTAL_HOST = middlewareSource.match(/const PORTAL_HOST = '([^']+)'/)?.[1]
+const MARKET_HOST = 'market.yousafeconsultancy.com'
 const signInPage = readRepo('app/sign-in/[[...rest]]/page.tsx')
 const signUpPage = readRepo('app/sign-up/[[...rest]]/page.tsx')
 const signInClient = readRepo('app/sign-in/[[...rest]]/SignInClient.tsx')
@@ -224,60 +229,206 @@ describe('the lane documents stay build-static', () => {
   })
 })
 
-describe('middleware wiring', () => {
-  const wrapper = middleware.slice(middleware.indexOf('export default function middleware('))
-  const portalGuard = wrapper.indexOf('requestHostname(req) === PORTAL_HOST')
-  const bypassCall = wrapper.indexOf('shouldBypassClerkForPortalRequest(', portalGuard)
-  const shellBranch = wrapper.indexOf('portalAuthLaneShellPath(req.nextUrl.pathname)', bypassCall)
-  const fastPath = wrapper.indexOf('return handlePortalAnonymousDocumentRequest(req)', bypassCall)
+describe('build-time rewriting onto the lane shells', () => {
+  type RewriteRule = {
+    source: string
+    destination: string
+    has?: Array<{ type: string; value?: string }>
+  }
 
-  test('the shell branch sits behind the fail-closed Clerk-state guard', () => {
-    expect(portalGuard).toBeGreaterThan(-1)
-    expect(bypassCall).toBeGreaterThan(portalGuard)
-    // Inside the bypass: the helper already proved there is no Clerk state on
-    // the request (handshake jar, __session, active __client_uat, __clerk*).
-    expect(shellBranch).toBeGreaterThan(bypassCall)
-    expect(fastPath).toBeGreaterThan(bypassCall)
-    expect(wrapper).toContain('shouldBypassClerkForPortalRequest(')
-    expect(wrapper).toContain('return handlePortalAuthLaneShellRequest(req, authLaneShellPath)')
-    expect(wrapper).toContain('return clerkHandler(req, event)')
+  /**
+   * Mirror the path-to-regexp semantics Next uses for config rewrites:
+   * `:name` matches exactly one non-empty segment, and `:name*` repeats zero or
+   * more segments with the delimiter INSIDE the repeated group — `/a/:rest*`
+   * anchors the path after `/a` and then repeats `/[^/]+` zero or more times, so
+   * it matches `/a`, `/a/b` and `/a/b/c` and never requires a trailing
+   * separator (a trailing slash is also accepted).
+   *
+   * Modelling the repeat as a `/`-separated segment (`'/a/(?:/.*)?'`) is wrong:
+   * it demands an extra slash, so `/sign-in/student/factor-one` stops matching
+   * the very rule that serves it. This helper asserts the documented Next
+   * semantics instead of a hand-rolled approximation.
+   */
+  function rulePattern(source: string): RegExp {
+    let pattern = ''
+    for (const segment of source.split('/').filter(Boolean)) {
+      if (segment.startsWith(':') && segment.endsWith('*')) {
+        pattern += '(?:/[^/]+)*'
+      } else if (segment.startsWith(':')) {
+        pattern += '/[^/]+'
+      } else {
+        pattern += `/${segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
+      }
+    }
+    return new RegExp(`^${pattern}/?$`)
+  }
+
+  /** A rule applies only when every `has` condition matches the request. */
+  function ruleHostMatches(rule: RewriteRule, host: string): boolean {
+    if (!rule.has || rule.has.length === 0) return true
+    return rule.has.every((condition) => condition.type !== 'host' || condition.value === host)
+  }
+
+  async function authLaneRules(): Promise<RewriteRule[]> {
+    const rewrites = await nextConfig.rewrites!()
+    const beforeFiles = Array.isArray(rewrites) ? rewrites : (rewrites?.beforeFiles ?? [])
+    return (beforeFiles as RewriteRule[]).filter(
+      (rule) => rule.source.startsWith('/sign-in') || rule.source.startsWith('/sign-up'),
+    )
+  }
+
+  async function storefrontRules(): Promise<RewriteRule[]> {
+    const rewrites = await nextConfig.rewrites!()
+    const beforeFiles = Array.isArray(rewrites) ? rewrites : (rewrites?.beforeFiles ?? [])
+    return (beforeFiles as RewriteRule[]).filter((rule) => rule.source.startsWith('/shop/'))
+  }
+
+  /**
+   * First matching rewrite wins, exactly like Next/OpenNext routing. Defaults to
+   * the portal host because that is the only host these rules may serve.
+   */
+  async function rewrittenPath(
+    pathname: string,
+    host: string = RUNTIME_PORTAL_HOST ?? '',
+  ): Promise<string> {
+    const rule = (await authLaneRules()).find(
+      (candidate) => ruleHostMatches(candidate, host) && rulePattern(candidate.source).test(pathname),
+    )
+    return rule ? rule.destination : pathname
+  }
+
+  test('the config enumerates exactly the language of lane roots it must serve', async () => {
+    const rules = await authLaneRules()
+    const laneRules = rules.slice(0, SHELL_PATHS.length - 2)
+    expect(laneRules.map((rule) => rule.source)).toEqual(
+      (['sign-in', 'sign-up'] as const).flatMap((family) =>
+        portalAuthLaneRoots(family).map((lane) => `/${family}/${lane}/:screen*`),
+      ),
+    )
+    for (const rule of laneRules) {
+      expect(rule.destination).toBe(rule.source.replace('/:screen*', ''))
+    }
+    // The remaining rules are the canonical fallbacks for retired/unknown lanes.
+    expect(rules.slice(laneRules.length).map((rule) => [rule.source, rule.destination])).toEqual([
+      ['/sign-in/:lane/:rest*', '/sign-in/student'],
+      ['/sign-up/:lane/:rest*', '/sign-up/student'],
+    ])
   })
 
-  test('the shell handler is separate from the anonymous document answer', () => {
-    const shellHandler = middleware.indexOf('function handlePortalAuthLaneShellRequest(')
-    const anonymousHandler = middleware.indexOf('function handlePortalAnonymousDocumentRequest(')
-    const clerkStart = middleware.indexOf('const clerkHandler = clerkMiddleware(')
-    const anonymousSlice = middleware.slice(anonymousHandler, clerkStart)
+  test('every auth-lane rewrite is pinned to the runtime portal host', async () => {
+    // middleware.ts is the runtime entrypoint that decides what "the portal
+    // host" means; the build config cannot import it (it pulls Clerk), so the
+    // literal lives in two files and this contract keeps them equal.
+    expect(RUNTIME_PORTAL_HOST).toBe('portal.yousafeconsultancy.com')
 
-    expect(shellHandler).toBeGreaterThan(-1)
-    expect(shellHandler).toBeLessThan(anonymousHandler)
-    // #260's fast path still answers the root document with a plain pass-through.
-    expect(anonymousSlice).toContain('withPathHeaders(NextResponse.next(), pathname, search, lang)')
-    expect(anonymousSlice).not.toContain('NextResponse.rewrite')
-    expect(anonymousSlice).not.toContain('await auth()')
-    // The shell handler keeps the portal pre-Clerk contract (301 + preflight).
-    const shellHandlerSource = middleware.slice(shellHandler, anonymousHandler)
-    expect(shellHandlerSource).toContain('stripTrackingParams(new URL(req.url))')
-    expect(shellHandlerSource).toContain('status: 301')
-    expect(shellHandlerSource).toContain('isAllowedCorsPreflight(req)')
-    expect(shellHandlerSource).toContain('status: 204')
-    expect(shellHandlerSource).toContain(
-      'NextResponse.rewrite(new URL(shellPath, req.url))',
+    const rules = await authLaneRules()
+    expect(rules.length).toBe(SHELL_PATHS.length - 2 + 2)
+    for (const rule of rules) {
+      expect(rule.has).toEqual([{ type: 'host', value: RUNTIME_PORTAL_HOST }])
+    }
+    // And the value in the build config is that same host, not a copy that drifted.
+    expect(nextConfigSource).toContain(
+      `const PORTAL_AUTH_LANE_HOST = '${RUNTIME_PORTAL_HOST}'`,
     )
-    expect(shellHandlerSource).not.toContain('await auth()')
   })
 
-  test('the Clerk path keeps sessions fail-closed and only rewrites the portal shell', () => {
-    const clerkBody = middleware.slice(middleware.indexOf('const clerkHandler = clerkMiddleware('))
-    expect(clerkBody).toContain('const { userId } = await auth()')
-    expect(clerkBody).toContain("if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))")
-    expect(clerkBody).toContain("error: 'Unauthorized'")
-    expect(clerkBody).toContain('authorizedParties:')
-    // The Clerk-side shell branch is portal-only: a request that carried Clerk
-    // state still resolves its session first, then receives the prebuilt shell.
-    expect(clerkBody).toContain(
-      "hostname === PORTAL_HOST ? portalAuthLaneShellPath(pathname) : null",
+  test('the market host is never rewritten onto a portal lane shell', async () => {
+    const probes = [
+      '/sign-in',
+      '/sign-in/student',
+      '/sign-in/student/factor-one',
+      '/sign-in/student/sso-callback',
+      '/sign-in/attorney/factor-one',
+      '/sign-in/sso-callback',
+      '/sign-in/provider',
+      '/sign-in/provider/deep/path',
+      '/sign-up',
+      '/sign-up/student',
+      '/sign-up/consultant/verify-email-address',
+      '/sign-up/admin',
+    ]
+    for (const pathname of probes) {
+      // Untouched on the market host: the lane shells belong to the portal app.
+      expect(`${MARKET_HOST}${pathname} -> ${await rewrittenPath(pathname, MARKET_HOST)}`).toBe(
+        `${MARKET_HOST}${pathname} -> ${pathname}`,
+      )
+      // …and still served the shell on the portal host, so the condition scopes
+      // rather than disables the fix.
+      const portalTarget = await rewrittenPath(pathname, RUNTIME_PORTAL_HOST!)
+      expect(SHELL_PATHS).toContain(portalTarget)
+    }
+    // An unrelated/unknown host behaves like the market host: no rewrite.
+    expect(await rewrittenPath('/sign-in/student/factor-one', 'example.invalid')).toBe(
+      '/sign-in/student/factor-one',
     )
+  })
+
+  test('the storefront rewrites stay host-agnostic and unchanged', async () => {
+    const shopRules = await storefrontRules()
+    expect(shopRules.length).toBeGreaterThan(0)
+    for (const rule of shopRules) {
+      expect(rule.has).toBeUndefined()
+      expect(rule.source.startsWith('/shop/')).toBe(true)
+      expect(rule.destination.startsWith('/payhip-product/')).toBe(true)
+    }
+  })
+
+  test('every path resolves to the canonical shell the lib documents', async () => {
+    const probes = [
+      '/sign-in',
+      '/sign-in/student',
+      '/sign-in/student/factor-one',
+      '/sign-in/student/factor-two/deep',
+      '/sign-in/student/sso-callback',
+      '/sign-in/attorney/factor-one',
+      '/sign-in/admin/choose-organization',
+      '/sign-in/sso-callback',
+      '/sign-in/provider',
+      '/sign-in/provider/deep/path',
+      '/sign-up',
+      '/sign-up/student',
+      '/sign-up/consultant/verify-email-address',
+      '/sign-up/admin',
+      '/sign-up/marketing',
+    ]
+    for (const pathname of probes) {
+      const canonical = portalAuthLaneShellPath(pathname) ?? pathname
+      expect(`${pathname} -> ${await rewrittenPath(pathname)}`).toBe(`${pathname} -> ${canonical}`)
+      expect(SHELL_PATHS).toContain(canonical)
+    }
+  })
+
+  test('the rewrites are beforeFiles, ahead of the storefront rewrites', async () => {
+    const rewrites = await nextConfig.rewrites!()
+    const beforeFiles = Array.isArray(rewrites) ? rewrites : (rewrites?.beforeFiles ?? [])
+    // OpenNext applies beforeFiles rewrites in order, then asks the read-only
+    // static-assets incremental cache for the rewritten path — the lane rules
+    // must therefore come before any other beforeFiles rule.
+    const first = beforeFiles[0] as RewriteRule
+    expect([first.source, first.destination]).toEqual([
+      '/sign-in/student/:screen*',
+      '/sign-in/student',
+    ])
+    expect(first.has).toEqual([{ type: 'host', value: RUNTIME_PORTAL_HOST }])
+    expect((rewrites as { beforeFiles: RewriteRule[] }).beforeFiles.some((rule) => rule.source.startsWith('/shop/'))).toBe(true)
+    expect(nextConfigSource).toContain('portalAuthLaneShellRewrites')
+    expect(nextConfigSource).toContain("import portalAuthLaneManifest from './lib/portalAuthLaneShells.json'")
+  })
+
+  test('non-auth paths are never rewritten by the lane rules', async () => {
+    for (const pathname of [
+      '/',
+      '/dashboard',
+      '/api/v1/client/handshake',
+      '/login',
+      '/register',
+      '/sign-inx',
+      '/sign-upx/student',
+      '/marketplace/sign-in/student',
+      '/sign-in.student',
+    ]) {
+      expect(await rewrittenPath(pathname)).toBe(pathname)
+    }
   })
 })
 

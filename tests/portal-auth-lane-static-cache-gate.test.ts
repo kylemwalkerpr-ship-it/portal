@@ -360,6 +360,11 @@ describe('deploy wiring for the auth-lane gate', () => {
       populateStep.indexOf(`node ${GATE_SCRIPT}`),
     )
     expect(gateIndex).toBeGreaterThan(-1)
+    // The publish step sits after the build that produced the cache…
+    expect(workflow.indexOf(`- name: ${POPULATE_STEP_NAME}`)).toBeGreaterThan(
+      workflow.indexOf('- name: Build (Next + OpenNext)'),
+    )
+    // …and strictly before the deploy, so an unpublished lane can never ship.
     expect(deployIndex).toBeGreaterThan(gateIndex)
   })
 
@@ -372,8 +377,17 @@ describe('deploy wiring for the auth-lane gate', () => {
     )
   })
 
-  test('the workflow gate is the reviewed script in this repository', () => {
-    expect(fs.existsSync(GATE_SCRIPT_PATH)).toBe(true)
+  test('the deploy workflow is the single authority for publishing and gating', () => {
+    const pkg = JSON.parse(readRepo('package.json')) as { scripts: Record<string, string> }
+    // A `postbuild` hook would populate + gate a SECOND time on every
+    // `npm run build` — including the workflow's own build step — so the build
+    // script stays plain and the workflow keeps exactly one gate invocation.
+    expect(pkg.scripts.postbuild).toBeUndefined()
+    expect(pkg.scripts.build).toContain('next build --webpack')
+    expect(pkg.scripts.build).toContain('opennextjs-cloudflare build --skipNextBuild')
+    expect(pkg.scripts.build).not.toContain(GATE_SCRIPT)
+    expect(deployStep('Build (Next + OpenNext)')).not.toContain(GATE_SCRIPT)
     expect(workflow.split(`node ${GATE_SCRIPT}`).length - 1).toBe(1)
+    expect(fs.existsSync(GATE_SCRIPT_PATH)).toBe(true)
   })
 })

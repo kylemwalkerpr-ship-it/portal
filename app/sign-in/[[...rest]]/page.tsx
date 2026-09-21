@@ -24,15 +24,18 @@ import SignInClient from './SignInClient'
 // and one prerendered document per lane root, published in the read-only
 // static-assets incremental cache and served by OpenNext cache interception.
 // Clerk's own screens underneath the lane
-// (/sign-in/student/factor-one, /sign-in/student/sso-callback, ...) are routed
-// back to the lane shell by middleware.ts (lib/portalAuthLaneShell.ts), so no
-// path under /sign-in can reach per-request rendering. The client component
-// (SignInClient) still owns the entire auth flow.
+// (/sign-in/student/factor-one, /sign-in/student/sso-callback, ...) have no
+// portal route, so they are rewritten onto the lane's prebuilt shell by the
+// `beforeFiles` rules in next.config.ts (host-scoped to the portal host, one
+// rule per lane root), and no path under /sign-in can reach per-request
+// rendering. Next applies Proxy/middleware BEFORE `beforeFiles`, so middleware
+// still sees the original URL and middleware.ts makes no shell decision of its
+// own. The client component (SignInClient) still owns the entire auth flow.
 export const dynamic = 'force-static'
 
 // Fail closed: every path underneath the lane roots is served the lane shell
-// by middleware.ts (lib/portalAuthLaneShell.ts) before routing, so an
-// unenumerated param can only be a path that escaped that mapping. With
+// by the next.config.ts `beforeFiles` rules before routing, so an unenumerated
+// param can only be a path that escaped that mapping. With
 // `dynamicParams` left at its default such a request would fall back to an
 // on-demand render — the exact resource-limit class this fix removes — so the
 // route answers a cheap 404 instead.
