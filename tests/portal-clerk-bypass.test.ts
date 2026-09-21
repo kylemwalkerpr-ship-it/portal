@@ -183,7 +183,12 @@ describe('portal middleware wiring', () => {
   })
 
   test('the middleware matcher still covers the portal root document', () => {
-    expect(middleware).toContain("'/((?!_next|api/translate|api/webhooks|.*\\..*).*)'")
+    // Assert the matcher exactly as it is written in middleware.ts. The file
+    // literal is `.*\\..*` (a JS string escapes the backslash), which collapses
+    // to the runtime regex `.*\..*` — the dotted-path exclusion. String.raw
+    // keeps this expectation from re-escaping `\\` down to a single backslash,
+    // which is not valid source for a literal dot.
+    expect(middleware).toContain(String.raw`'/((?!_next|api/translate|api/webhooks|.*\\..*).*)'`)
     expect(middleware).toContain("'/sitemap.xml'")
   })
 })
