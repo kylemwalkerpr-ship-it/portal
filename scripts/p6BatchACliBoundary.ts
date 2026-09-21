@@ -25,6 +25,7 @@ import type { P6BatchAApplyAuthorityDecision } from './p6BatchAApplyAuthority'
 import {
   P6_BATCH_A_USAGE,
   parseBatchAArgs,
+  type P6BatchAArgParse,
 } from './p6BatchAStaleRejection'
 import {
   runP6BatchARejection,
@@ -66,6 +67,27 @@ export interface P6BatchACliBoundaryResult {
   summary: P6BatchASummary | null
 }
 
+/**
+ * Explicit refusal predicates for the two injected boolean discriminated
+ * unions. The CI typechecker does not narrow `if (!decision.ok)` at these
+ * sites, so the refusal variant is asserted by a declared type predicate
+ * instead: the refusal body reads the exact `{ ok: false; error: string }`
+ * member, and the success path keeps the remaining member. Fail-closed order
+ * is unchanged: neither refusal reaches a client, a read or a write, and only
+ * the exact declared success shape proceeds.
+ */
+function isBatchAArgParseRefusal(
+  parsed: P6BatchAArgParse,
+): parsed is { ok: false; error: string } {
+  return parsed.ok === false
+}
+
+function isBatchAApplyAuthorityRefusal(
+  authority: P6BatchAApplyAuthorityDecision,
+): authority is { ok: false; error: string } {
+  return authority.ok === false
+}
+
 /** Executable CLI boundary: returns the exit code instead of calling process.exit. */
 export async function runP6BatchACliBoundary(
   deps: P6BatchACliBoundaryDeps,
@@ -74,7 +96,7 @@ export async function runP6BatchACliBoundary(
   const stderr = deps.stderr || ((line: string) => console.error(line))
 
   const parsed = parseBatchAArgs(deps.argv)
-  if (!parsed.ok) {
+  if (isBatchAArgParseRefusal(parsed)) {
     stderr(`Refusing to run: ${parsed.error}`)
     stderr(P6_BATCH_A_USAGE)
     return { exitCode: 2, summary: null }
@@ -90,7 +112,7 @@ export async function runP6BatchACliBoundary(
   if (parsed.config.apply) {
     // APPLY: hard service-role prerequisite, enforced BEFORE any client exists.
     const authority = deps.resolveApplyAuthority()
-    if (!authority.ok) {
+    if (isBatchAApplyAuthorityRefusal(authority)) {
       stderr(
         `Refusing to run: apply mode requires genuine service-role authority — ${authority.error}`,
       )
