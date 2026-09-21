@@ -15,7 +15,19 @@
  * <head> and therefore still before every styled-jsx block in the body.
  */
 .cw-market { color: var(--ys-onPaper, #0F172A); background: var(--ys-paper, #F7F8FA); font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
-.cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.22; }
+/* Pattern canvas — consumes the shared theme variables written by
+   components/marketplace/market-theme.ts (and by the blocking boot script).
+   Nothing injects a <style> tag, so the motif can only change when the palette
+   provider is told to change it. Mirror of the rule in MarketplaceShell. */
+.cw-market::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-color: transparent;
+  background-image: var(--ys-pattern-image, none);
+  background-size: var(--ys-pattern-size, auto);
+  background-position: var(--ys-pattern-position, 0 0);
+  background-repeat: repeat;
+  opacity: var(--ys-pattern-opacity, 0.22);
+}
 .cw-market::after { content: none; }
 /* Pattern contract (matches MarketplaceShell): the fixed ::before texture
    sits ABOVE the shell's solid paper fill and BELOW all page content. */

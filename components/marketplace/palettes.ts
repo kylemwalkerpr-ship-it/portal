@@ -1,9 +1,14 @@
 /**
- * Marketplace colour palettes — light, professional, Fiverr-grade.
+ * Marketplace colour palettes — light, professional, botanical.
  *
- * Default Studio is a white sheet + charcoal actions (no hue on the page).
- * Other palettes are opt-in colourways the picker actually applies to paper
- * and the action accent. Accents never fill the page.
+ * Default Magnolia Studio is a near-white sheet + charcoal actions (no hue on
+ * the page). Other palettes are opt-in colourways the picker actually applies
+ * to paper and the action accent. Accents never fill the page.
+ *
+ * The family is one botanical set: paper stays a light paper tone, the action
+ * accent is the flower, and `moss` is the shared botanical green that the
+ * background motifs (components/marketplace/patterns.ts) mix from — so a
+ * palette change re-tints the floral texture instead of leaving it pasted on.
  *
  * Contract:
  *   - paper / paper2 / paper3 / footer are LIGHT chrome (page, header, rails)
@@ -13,6 +18,7 @@
  *     used on buttons, selected chips and links — never as the page fill
  *
  * Persisted palette ids stay stable so existing preferences survive.
+ * Only labels / descriptions / accents are refined.
  * Contrast is gated by tests/marketplace-palette-contrast.test.ts (WCAG AA).
  */
 
@@ -77,6 +83,7 @@ function lightPalette(opts: {
   accent: string
   accentDeep: string
   accentSoft: string
+  moss: string
 }): PaletteTokens {
   return {
     ...STUDIO_INK,
@@ -90,10 +97,11 @@ function lightPalette(opts: {
     indigoSoft:  opts.accentSoft,
     teal:        opts.accent,
     tealDeep:    opts.accentDeep,
+    moss:        opts.moss,
   }
 }
 
-/** Default — Fiverr-like white paper, charcoal actions, no colour wash. */
+/** Default Magnolia Studio — near-white magnolia paper, charcoal actions. */
 const STUDIO: PaletteTokens = lightPalette({
   paper:      '#F7F8FA',
   paper2:     '#F1F3F5',
@@ -103,53 +111,62 @@ const STUDIO: PaletteTokens = lightPalette({
   accent:     '#111827',
   accentDeep: '#030712',
   accentSoft: 'rgba(17,24,39,0.10)',
+  moss:       '#3F5A28',
 })
 
+/** Warm ivory paper + restrained rose-oxblood accent. */
 const PARCHMENT: PaletteTokens = lightPalette({
   paper:      '#F6F3EC',
   paper2:     '#EFEAE0',
   paper3:     '#E6DFD2',
   cream:      '#FAF8F3',
   footer:     '#E8E2D6',
-  accent:     '#9B2430',
-  accentDeep: '#6E1520',
-  accentSoft: 'rgba(155,36,48,0.14)',
+  accent:     '#9C2B3A',
+  accentDeep: '#6B1524',
+  accentSoft: 'rgba(156,43,58,0.14)',
+  moss:       '#4A5340',
 })
 
+/** Cool mineral paper + muted sage-slate accent. */
 const GRAPHITE: PaletteTokens = lightPalette({
   paper:      '#F5F6F8',
   paper2:     '#ECEEF2',
   paper3:     '#E2E5EB',
   cream:      '#F8F9FB',
   footer:     '#E4E7EC',
-  accent:     '#1E293B',
-  accentDeep: '#0F172A',
-  accentSoft: 'rgba(30,41,59,0.12)',
+  accent:     '#41564C',
+  accentDeep: '#2C3B34',
+  accentSoft: 'rgba(65,86,76,0.14)',
+  moss:       '#4F5E55',
 })
 
+/** Warm stone paper + deep camellia-claret accent. */
 const CLARET: PaletteTokens = lightPalette({
   paper:      '#F7F4F2',
   paper2:     '#F0EAE7',
   paper3:     '#E6DDD8',
   cream:      '#FBF8F6',
   footer:     '#E9E2DE',
-  accent:     '#8E2438',
+  accent:     '#8E2F44',
   accentDeep: '#5C1224',
-  accentSoft: 'rgba(142,36,56,0.14)',
+  accentSoft: 'rgba(142,47,68,0.14)',
+  moss:       '#4A4E35',
 })
 
-/** Quiet olive actions — the Messages selected-pill, never a green flood. */
+/** Cool linen paper + botanical green accent — never a green flood. */
 const OLIVE: PaletteTokens = lightPalette({
   paper:      '#F4F6F5',
   paper2:     '#EBEFEC',
   paper3:     '#E2E8E4',
   cream:      '#F7F9F8',
   footer:     '#E6EBE8',
-  accent:     '#1B6B48',
-  accentDeep: '#134D34',
-  accentSoft: 'rgba(27,107,72,0.14)',
+  accent:     '#2F5D43',
+  accentDeep: '#1E4230',
+  accentSoft: 'rgba(47,93,67,0.14)',
+  moss:       '#3B5A34',
 })
 
+/** Warm stone paper + terracotta flower accent. */
 const STONE: PaletteTokens = lightPalette({
   paper:      '#F6F5F2',
   paper2:     '#EEECE7',
@@ -159,55 +176,59 @@ const STONE: PaletteTokens = lightPalette({
   accent:     '#9A3F07',
   accentDeep: '#7C2D12',
   accentSoft: 'rgba(154,63,7,0.14)',
+  moss:       '#4E5636',
 })
 
 export const PALETTES: PaletteDef[] = [
   {
     name: 'mahogany',
-    label: 'Studio',
-    emoji: '●',
-    description: 'White paper, charcoal type, black actions. Clean professional default — no colour wash.',
+    label: 'Magnolia Studio',
+    emoji: '🌸',
+    description: 'Magnolia-white paper, charcoal ink, black actions. Quiet botanical neutrality.',
     tokens: STUDIO,
   },
   {
     name: 'luxury-classic',
-    label: 'Parchment',
-    emoji: '◆',
-    description: 'Warm ivory paper with oxblood actions. Quiet, editorial, and highly legible.',
+    label: 'Rose Parchment',
+    emoji: '🌹',
+    description: 'Warm ivory paper with a restrained rose-oxblood accent. Editorial and highly legible.',
     tokens: PARCHMENT,
   },
   {
     name: 'executive',
-    label: 'Graphite',
-    emoji: '■',
-    description: 'Neutral gray paper with slate actions. Precise, modern, no decorative hue.',
+    label: 'Silver Sage',
+    emoji: '🌿',
+    description: 'Cool mineral paper with a muted sage-slate accent. Precise, calm, botanical.',
     tokens: GRAPHITE,
   },
   {
     name: 'rich-heritage',
-    label: 'Claret',
-    emoji: '◈',
-    description: 'Warm stone paper with claret actions. Restrained heritage without a colour wash.',
+    label: 'Camellia',
+    emoji: '🌺',
+    description: 'Warm stone paper with a deep camellia-claret accent. Restrained heritage.',
     tokens: CLARET,
   },
   {
     name: 'modern-luxury',
-    label: 'Olive',
-    emoji: '◇',
-    description: 'Cool linen paper with olive actions used like Messages selected chips — never a green shell.',
+    label: 'Herbarium',
+    emoji: '🍃',
+    description: 'Cool linen paper with a botanical green accent. Field-notes clarity, never a green shell.',
     tokens: OLIVE,
   },
   {
     name: 'santorini',
-    label: 'Stone',
-    emoji: '○',
-    description: 'Warm stone paper with terracotta actions. Human, calm, and professional.',
+    label: 'Terracotta Bloom',
+    emoji: '🏵️',
+    description: 'Warm stone paper with a terracotta flower accent. Sunlit, human, professional.',
     tokens: STONE,
   },
 ]
 
-// Storage id stays `mahogany` so existing preferences migrate onto Studio.
+// Storage id stays `mahogany` so existing preferences migrate onto Magnolia Studio.
 export const DEFAULT_PALETTE_NAME = 'mahogany'
+
+/** localStorage key for the persisted palette id (shared with palette-boot). */
+export const PALETTE_STORAGE_KEY = 'ys-marketplace-palette'
 
 export function getPalette(name: string): PaletteDef {
   return PALETTES.find(p => p.name === name) ?? PALETTES[0]

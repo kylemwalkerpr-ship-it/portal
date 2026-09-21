@@ -95,5 +95,5 @@ export function applyPaletteCssVars(
   // Paint the body so overscroll / rubber-banding shows the palette instead
   // of a white flash. PaletteProvider clears this on unmount so leaving the
   // marketplace restores the portal's own body background.
-  if (tokens.paper) document.body.style.backgroundColor = tokens.paper
+  if (tokens.paper && document.body) document.body.style.backgroundColor = tokens.paper
 }

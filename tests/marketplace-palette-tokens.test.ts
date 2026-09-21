@@ -34,6 +34,7 @@ function makeDom(stored: string | null) {
     documentElement: html,
     body,
     querySelector: (sel: string) => (sel === '.cw-market' ? market : null),
+    querySelectorAll: (sel: string) => (sel === '.cw-market' ? [market] : []),
   }
   return { html, htmlSets, market, marketSets, body }
 }

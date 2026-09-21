@@ -795,9 +795,21 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
            the fixed ::before texture sits ABOVE the shell's solid paper fill
            (z-index: 0) and BELOW all page content (direct children are
            raised to z-index: 1). pointer-events: none keeps it inert.
-           PatternPicker / ThemePicker inject background-image here — nothing
-           may zero it except the picker's "Solid" option. */
-        .cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.22; }
+           The motif is DATA: the shared theme store writes --ys-pattern-* on
+           documentElement AND on every mounted .cw-market root
+           (components/marketplace/market-theme.ts) and this rule only consumes
+           it. No component injects a <style> tag, so a second picker (mobile
+           drawer, remount, nested root) can never rewrite the canvas. The
+           fallbacks keep the shipped default when the variables are absent. */
+        .cw-market::before {
+          content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+          background-color: transparent;
+          background-image: var(--ys-pattern-image, none);
+          background-size: var(--ys-pattern-size, auto);
+          background-position: var(--ys-pattern-position, 0 0);
+          background-repeat: repeat;
+          opacity: var(--ys-pattern-opacity, 0.22);
+        }
         .cw-market::after { content: none; }
         .cw-market > * { position: relative; z-index: 1; }
         .cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }

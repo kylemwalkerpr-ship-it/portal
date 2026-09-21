@@ -13,15 +13,21 @@ describe('marketplace professional palette set', () => {
     expect(DEFAULT_PALETTE_NAME).toBe('mahogany')
   })
 
-  test('ships light professional palette labels', () => {
+  test('ships one coherent botanical label family (ids stay stable)', () => {
     expect(PALETTES.map((p) => p.label)).toEqual([
-      'Studio',
-      'Parchment',
-      'Graphite',
-      'Claret',
-      'Olive',
-      'Stone',
+      'Magnolia Studio',
+      'Rose Parchment',
+      'Silver Sage',
+      'Camellia',
+      'Herbarium',
+      'Terracotta Bloom',
     ])
+    // Labels stay unique — the picker uses them as the user-facing identity.
+    expect(new Set(PALETTES.map((p) => p.label)).size).toBe(PALETTES.length)
+    for (const palette of PALETTES) {
+      expect(palette.description.length).toBeGreaterThan(24)
+      expect(palette.emoji.length).toBeGreaterThan(0)
+    }
   })
 
   test('uses light chrome instead of mahogany / teal / emerald / blue floods', () => {
@@ -56,7 +62,13 @@ describe('marketplace professional palette set', () => {
       expect(palette.tokens.indigoDeep).toBe(palette.tokens.tealDeep)
       expect(palette.tokens.indigo).not.toBe(palette.tokens.paper)
       expect(palette.tokens.onPaperSoft).toBe('rgba(15,23,42,0.72)')
+      // Every palette carries a botanical moss tone — the motifs in
+      // components/marketplace/patterns.ts mix from it, so a palette change
+      // re-tints the floral texture instead of leaving it pasted on.
+      expect(palette.tokens.moss).toMatch(/^#[0-9A-F]{6}$/)
+      expect(palette.tokens.moss).not.toBe(palette.tokens.paper)
     }
+    expect(new Set(PALETTES.map((p) => p.tokens.moss)).size).toBe(PALETTES.length)
   })
 
   test('default Studio is white paper + charcoal actions, not a blue wash', () => {
