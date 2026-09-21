@@ -220,7 +220,7 @@ Repair evidence (no Jest/`tsc`/CI claim — both remain unavailable locally and 
 
 ## 2026-09-21 — Post-merge reconciliation: Batch A tool authored, NOT executed
 
-**Status: IN_PROGRESS — never PASS.** P5 PASS untouched, P7+ PENDING, broad net-new CREATE frozen until P13. Branch `seo/p6-backlog-reconciliation-20260921` at base/HEAD `ab6305a7c5c362f01b46947e53be0e462772c88e` (the merged `main` tip), one ordinary local commit, no history rewrite.
+**Status: IN_PROGRESS — never PASS.** P5 PASS untouched, P7+ PENDING, broad net-new CREATE frozen until P13. Branch `seo/p6-backlog-reconciliation-20260921` at base `ab6305a7c5c362f01b46947e53be0e462772c88e` (the merged `main` tip), **two ordinary local commits** (no history rewrite, no amend): commit 1 = the Batch A tool + this documentation; commit 2 = registering the new authorized writer in the exhaustive least-privilege audit (`tests/p6-interlink-least-privilege.test.ts`), which the first commit had not anticipated and which cannot be folded back because amend/history-rewrite authority was not granted. The branch is squash-mergeable to one commit on `main` without further local history rewriting.
 
 **Post-merge production truth.**
 
@@ -238,6 +238,7 @@ Repair evidence (no Jest/`tsc`/CI claim — both remain unavailable locally and 
 - `scripts/p6BatchAStaleRejectionRunner.ts` — dependency-injected orchestration (read/observe/write/count/clock), fail-closed on read error/truncation and on global verification failure, zero write calls in dry run, abort-on-first-write-error, per-row CAS skip accounting.
 - `scripts/p6-batch-a-stale-rejection.mts` — executable wrapper: SELECT-only candidate read with the jobless/no-proof SQL fence and truncation probe, fresh per-run probes through the repository authority (`verifyUrlsLive` HEAD→GET fallback + `classifyLiveStatus`), and the exact-row CAS `UPDATE` only in apply mode.
 - `tests/p6-batch-a-stale-rejection.test.ts` — pins dry-run zero-write construction, 404/410-only dead classification, 200/401/403/405/429/0/5xx/other untouched, the exact CAS fence, the bounded hard maximum, deterministic ordering, idempotency, fail-closed reads/verification, and no proof-field fabrication.
+- `tests/p6-interlink-least-privilege.test.ts` (updated) — the exhaustive `seo_interlinks` writer audit now registers the operator-run Batch A CLI as a third authorized server-side writer and pins that its only write is the fenced `status='rejected'` stale disposition (`.select('id')` read-back, no `status: 'applied'`, no upsert/insert/delete/rpc).
 
 **Write contract (each write is exact-row CAS).** `status='rejected'` plus the existing auditable `gate_reason` (`stale_target_http_404` | `stale_target_http_410`), `gate_actor` (`p6-batch-a-stale-rejection`) and `gate_updated_at`; fenced on `id` + `status='planned'` + the exact observed `target_url` + `IS NULL` for all eight identity/proof/staging columns. A concurrent change yields a zero-row update, counted as `casSkips` — never success. No proof/identity/staging column is ever written or fabricated, no schema change, no insert/delete/upsert/rpc.
 
@@ -246,6 +247,7 @@ Repair evidence (no Jest/`tsc`/CI claim — both remain unavailable locally and 
 **Verification for this checkpoint (no Jest/`tsc` — `node_modules` is an empty linked directory; no install attempted).**
 
 - The committed test file was executed through a type-stripping Node harness with a minimal Jest shim over the REAL modules: **34 PASS / 0 FAIL**.
+- The updated exhaustive writer audit (`tests/p6-interlink-least-privilege.test.ts`) was executed through the same shim against the real repository tree: **10 PASS / 0 FAIL**.
 - A separate no-dependency harness over the same real modules (dry-run zero writes, 404/410-only, CAS fence/patch key set, bounds, ordering, idempotency, fail-closed) ran **34 PASS / 0 FAIL**.
 - `node --check` parses every new `.ts`/`.mts` file; exhaustive static assertions prove the pure module and runner contain no write verb and no Supabase import, the runner returns before any write call in dry run, and the CLI wires `verifyUrlsLive` + `classifyLiveStatus` with no upsert/delete/rpc and no raw `method: 'HEAD'`.
 - `node scripts/migration-ledger-policy.mjs --check` exit 0; `node scripts/migration-order.mjs --json` keeps `20260920130000_seo_interlinks_verification_truth.sql` last after `20260920120000_seo_cannibal_decisions_append_only_search_path.sql`; **no migration was added or changed**.

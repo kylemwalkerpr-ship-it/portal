@@ -2,7 +2,11 @@
  * P6 — no unverified path may set `seo_interlinks.status = 'applied'`.
  *
  * Exhaustive repository audit:
- *   · the only writers of `seo_interlinks` are server-side modules;
+ *   · the only writers of `seo_interlinks` are server-side modules: the
+ *     planner, the live-proof verifier and the operator-run Batch A
+ *     stale-rejection CLI (`scripts/p6-batch-a-stale-rejection.mts`), whose
+ *     only write is the exact-row-CAS `status='rejected'` stale disposition;
+ *     it can never write `applied` or any verification/proof column;
  *   · the only file that can write `status: 'applied'` is the live-proof
  *     verifier, and its applied patch must carry the full proof contract;
  *   · no browser/client component writes to the table (the Realtime
@@ -38,7 +42,24 @@ describe('A) every seo_interlinks write is server/admin code', () => {
   const writers = FILES.filter((file) => SEQUEL_WRITE_RE.test(read(file))).map(rel).sort()
 
   it('names exactly the allowed server-side writer modules', () => {
-    expect(writers).toEqual(['lib/seoEngine/interlink.ts', 'lib/seoFactory/interlinkVerification.ts'])
+    expect(writers).toEqual([
+      'lib/seoEngine/interlink.ts',
+      'lib/seoFactory/interlinkVerification.ts',
+      'scripts/p6-batch-a-stale-rejection.mts',
+    ])
+  })
+
+  it('the Batch A operator CLI can only write the fenced rejected disposition', () => {
+    const body = read(path.join(ROOT, 'scripts/p6-batch-a-stale-rejection.mts'))
+    // The only write is the pure planner's patch, applied through every CAS
+    // fence entry and read back so a zero-row race is a skip, never success.
+    expect(body).toMatch(/update\(write\.patch\)/)
+    expect(body).toContain(".select('id')")
+    expect(body).toMatch(
+      /entry\.op === 'eq' \? query\.eq\(entry\.column, entry\.value\) : query\.is\(entry\.column, null\)/,
+    )
+    expect(body).not.toMatch(APPLIED_STATUS_RE)
+    expect(body).not.toMatch(/\.(upsert|insert|delete|rpc)\s*\(/)
   })
 
   it('the planner writer can only upsert plan metadata (no applied status)', () => {
