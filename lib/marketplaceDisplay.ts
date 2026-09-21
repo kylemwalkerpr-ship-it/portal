@@ -4,7 +4,6 @@
 // server-rendered landing and the client FeaturedBriefsGrid render cards
 // identically from one source of truth (headshots, glyphs, prices, pager
 // chips). Pure functions only — no fetching, no hooks.
-//
 
 import type { CSSProperties } from 'react'
 import { T, F } from '@/components/marketplace/tokens'
