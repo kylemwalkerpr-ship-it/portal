@@ -28,6 +28,7 @@ import {
   P6_SOURCE_STALE_USAGE,
   parseSourceStaleArgs,
   type P6SourceStaleArgParse,
+  type P6ShippedSourceResolution,
 } from './p6SourceStaleRejection'
 import {
   runP6SourceStaleRejection,
@@ -37,14 +38,11 @@ import {
   type P6SourceStaleMissionRead,
   type P6SourceStaleRunnerDeps,
   type P6ShippedMissionResolutionInput,
-  type P6ShippedSourceResolution,
   type P6SourceStaleStatusCounts,
   type P6SourceStaleSummary,
   type P6SourceStaleWrite,
   type P6SourceStaleWriteResult,
 } from './p6SourceStaleRejectionRunner'
-import type { P6TargetObservation } from './p6InterlinkDisposition'
-
 export interface P6SourceStaleCliBoundaryDeps {
   argv: string[]
   readSupabaseUrl: () => string | null | undefined
