@@ -37,6 +37,52 @@ export function contentFingerprint(content: string): string {
   return `${content.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
+/**
+ * `content_jobs.audit_json` key that records WHICH body the persisted
+ * `shipReady` / `editorialReview` verdict was evaluated against. Without it a
+ * carried verdict is only tied to the row it lives on, so a later body write
+ * could ship different bytes under an old verdict (P8 stale-gate defect).
+ */
+export const AUDIT_GATE_BODY_FINGERPRINT_KEY = 'contentFingerprint'
+
+/** Stable refusal code for "the carried gate verdict does not cover this body". */
+export const STALE_GATE_VERDICT_CODE = 'ship_gate_stale_body'
+
+/** Exact-body normalization of the publication hash contract
+ *  (`artifactContentHash` / `contentHash`): CRLF → LF, trimmed. A re-save that
+ *  only changes line endings or surrounding whitespace is the same body. */
+function exactBodyText(content: unknown): string {
+  return String(content ?? '').replace(/\r\n/g, '\n').trim()
+}
+
+/**
+ * Fingerprint the ship gate verdict is bound to. Reuses the canonical review
+ * layer fingerprint (`contentFingerprint`, the same helper editorial supervision,
+ * review snapshots and the studio gate snapshot use) over the exact-body
+ * normalization above — deliberately NOT a second hash system.
+ */
+export function gateVerdictBodyFingerprint(content: unknown): string {
+  return contentFingerprint(exactBodyText(content))
+}
+
+/**
+ * The fingerprint persisted WITH the current verdict, if the row carries one.
+ * Legacy rows predate the stamp → `null`, and callers fall back to the existing
+ * contract: the verdict belongs to the row's stored body.
+ */
+export function persistedGateVerdictFingerprint(auditJson: unknown): string | null {
+  if (!auditJson || typeof auditJson !== 'object' || Array.isArray(auditJson)) return null
+  const value = (auditJson as Record<string, unknown>)[AUDIT_GATE_BODY_FINGERPRINT_KEY]
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+/** Refusal text for a stale verdict: the operator must re-audit this body. */
+export const STALE_GATE_VERDICT_MESSAGE =
+  'Ship gate not cleared: the recorded shipReady/editorial verdict was evaluated against a different body. ' +
+  'Save this exact draft and re-audit it (Audit & Fix) before publishing.'
+
 export function shipGateFromPersistedReview(
   review: { contentFingerprint?: unknown; shipReady?: unknown; blockers?: unknown } | null | undefined,
   currentContent: string,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { latestGateReviewSnapshot, latestReviewSnapshot, listReviewSnapshots, persistReviewSnapshot } from '@/lib/seoFactory/reviewSnapshots'
 import { inspectDraftIntegrity } from '@/lib/seoFactory/draftIntegrity'
+import { gateVerdictBodyFingerprint } from '@/lib/seoFactory/currentGate'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser()
@@ -164,6 +165,9 @@ export async function POST(request: NextRequest) {
           shipReady,
           blockers: blockersArr,
           blockersCount: blockersArr.length,
+          // P8: record which body this Save's verdict covers, so a later body
+          // change cannot be read as clearing the gate for the saved bytes.
+          contentFingerprint: gateVerdictBodyFingerprint(content),
           ...(typeof qualityOk === 'boolean' ? { qualityOk } : {}),
         })
         await db.from('content_jobs').update({ audit_json }).eq('id', jobId)

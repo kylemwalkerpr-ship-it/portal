@@ -17,7 +17,12 @@ import { resolveKeywordContract } from '@/lib/seoFactory/keywordContract'
 import { countBodyWords } from '@/lib/seoFactory/contentDepth'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { enqueueAuthorityMultiplexerSignal } from '@/lib/seoFactory/specialistFeeds'
-import { jobPassesShipGate, mergeAuditJsonPreservingGate } from '@/lib/seoFactory/jobShipGate'
+import {
+  gateVerdictBoundToBody,
+  jobPassesShipGate,
+  mergeAuditJsonBoundToBody,
+  type GateVerdictBodyBinding,
+} from '@/lib/seoFactory/jobShipGate'
 import { jobCompetingPages } from '@/lib/seoFactory/jobColumns'
 import { currentContentStudioExecution } from '@/lib/seoFactory/contentStudioExecutionContext'
 import { assertContentStudioExecution } from '@/lib/seoFactory/writingContractStore'
@@ -26,6 +31,20 @@ function db() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
+/**
+ * P8 stale-gate refusal: a stored shipReady/editorialReview verdict only ever
+ * describes the exact body it evaluated. When the body that would be stored or
+ * shipped is a different body, the carried verdict is invalid — fail closed
+ * (the operator must re-audit this body) instead of publishing new bytes under
+ * an old verdict.
+ */
+function staleGateVerdictResponse(binding: GateVerdictBodyBinding): Response {
+  return NextResponse.json(
+    { ok: false, code: binding.code, error: binding.error },
+    { status: 409 },
   )
 }
 
@@ -212,6 +231,10 @@ async function mergeExistingPr(
   if (!jobPassesShipGate(job)) {
     return NextResponse.json({ error: 'Ship gate not cleared' }, { status: 409 })
   }
+  // P8: the verdict carried by this row must cover the exact reviewed body the
+  // merge publishes. A body change after the verdict makes it stale.
+  const mergeBinding = gateVerdictBoundToBody(job, job.content)
+  if (!mergeBinding.ok) return staleGateVerdictResponse(mergeBinding)
   // P0 global publication freeze: re-resolve ownership and require the
   // persisted destination to be the current existing owner. Enforced before
   // the dry-run branch too, so a dry run cannot report a mergeable PR while
@@ -364,6 +387,11 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
   if (!jobPassesShipGate(job)) {
     return NextResponse.json({ error: 'Ship gate not cleared' }, { status: 409 })
   }
+  // P8: bind the carried verdict to the FINAL body that would be stored and
+  // shipped. `body.content` may replace the persisted draft, so the gate must
+  // be re-established for those exact bytes before any write/ship.
+  const shipBinding = gateVerdictBoundToBody(job, content)
+  if (!shipBinding.ok) return staleGateVerdictResponse(shipBinding)
 
   let shipMode: ShipMode = 'pr'
   if (action === 'approve') shipMode = 'autodeploy'
@@ -378,7 +406,11 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
         content,
         word_count: countBodyWords(content),
         seo_score: audit.score,
-        audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
+        // Never copy a verdict for the previous body onto these bytes.
+        audit_json: mergeAuditJsonBoundToBody(job.audit_json, { ...audit }, {
+          previousContent: job.content,
+          content,
+        }),
       })
     }
 
@@ -422,7 +454,10 @@ export async function strictManualPublicationPATCH(request: NextRequest): Promis
       ship_mode: ship.mode === 'pr' ? 'pr' : 'autodeploy',
       seo_score: audit.score,
       word_count: audit.wordCount,
-      audit_json: mergeAuditJsonPreservingGate(job.audit_json, { ...audit }),
+      audit_json: mergeAuditJsonBoundToBody(job.audit_json, { ...audit }, {
+        previousContent: job.content,
+        content,
+      }),
     })
 
     let monitor = null

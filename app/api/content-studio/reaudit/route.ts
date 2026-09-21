@@ -1,4 +1,5 @@
 import { applyEditorialHold } from '@/lib/seoFactory/editorialGate'
+import { gateVerdictBodyFingerprint } from '@/lib/seoFactory/currentGate'
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
@@ -739,6 +740,10 @@ export async function POST(request: NextRequest) {
               ...(body.editorialReview ? { editorialReview: body.editorialReview } : {}),
               ...(typeof response.score === 'number' ? { score: response.score } : {}),
               shipReady: shipReadyFlag,
+              // P8: record WHICH body this verdict evaluated. The body column is
+              // deliberately not written by a POST re-audit, so without this stamp
+              // the verdict could later be read as backing the older stored body.
+              contentFingerprint: gateVerdictBodyFingerprint(effective),
               blockers: response.blockersData || [],
               blockersCount:
                 typeof response.blockers === 'number'
@@ -1304,6 +1309,9 @@ Return ONLY the JSON EditorPatch.`
                 contentLoop,
                 ...(body.editorialReviewPending ? { editorialReview: { status: 'pending' } } : {}),
                 shipReady: finalShipReady,
+                // P8: the verdict belongs to `finalContent` — the repaired body
+                // this fix run evaluated — not to whatever body is stored later.
+                contentFingerprint: gateVerdictBodyFingerprint(finalContent),
                 blockers: finalContract.blockersData || [],
                 blockersCount:
                   typeof finalContract.blockers === 'number'
@@ -2275,6 +2283,8 @@ ${enginePlan.promptBlock}` + editorResponseContract()
               ...baseAudit,
               ...(typeof finalResponse.score === 'number' ? { score: finalResponse.score } : {}),
               shipReady: shipReadyFlag,
+              // P8: bind the verdict to the exact repaired body it evaluated.
+              contentFingerprint: gateVerdictBodyFingerprint(finalResponse.fixedContent),
               blockers: finalResponse.blockersData || [],
               blockersCount:
                 typeof finalResponse.blockers === 'number'
