@@ -234,6 +234,36 @@ export const PLAN_ELIGIBLE_INTERLINK_STATUSES = ['planned', 'applied'] as const
 const PLAN_ELIGIBLE_STATUS_SET: ReadonlySet<string> = new Set(PLAN_ELIGIBLE_INTERLINK_STATUSES)
 
 /**
+ * Verification verdicts that are durable proof the edge must NOT be suggested:
+ * the target is dead (`target_not_live`) or the source itself is gone
+ * (`source_not_live`). `absent` is a per-source verdict for a live page that
+ * did not embed the edge — it does not prove the target dead, so such rows may
+ * still be suggested while they wait for a re-verification. Applied rows are
+ * exposed by their own row proof and keep their lifecycle guard.
+ */
+const PLAN_INELIGIBLE_VERIFICATION_STATES: ReadonlySet<string> = new Set([
+  'target_not_live',
+  'source_not_live',
+])
+
+/**
+ * Shape of the bounded `seo_interlinks` read below. The untyped Supabase
+ * client surfaces a failed query as a `GenericStringError[]` data union, so a
+ * direct cast to a record array is not a safe conversion; naming the selected
+ * columns and casting through `unknown` keeps the read typed without changing
+ * the fail-closed behaviour (any DB error above still returns zero
+ * suggestions).
+ */
+interface EngineInterlinkCellRow {
+  target_url?: string | null
+  target_host?: string | null
+  anchor_text?: string | null
+  reason?: string | null
+  status?: string | null
+  verification_state?: string | null
+}
+
+/**
  * Load the engine's PERSISTED interlink edges for a lifecycle cell —
  * `seo-<country>-<stage>-%` source slugs (planner missions). Shaped like the
  * Opportunity Radar's interlink options so the pipeline's interlinkAllowlist
@@ -250,30 +280,111 @@ export async function loadEngineInterlinksForCell(
 ): Promise<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>> {
   try {
     const supabase = createSupabaseAdminClient()
-    const { data } = await supabase
-      .from('seo_interlinks')
-      .select('target_url,target_host,anchor_text,reason,status')
-      .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
-      .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
-      .order('score', { ascending: false })
-      .limit(limit)
-    const rows = (data as Array<Record<string, unknown>>) || []
+    const readCell = (columns: string) =>
+      supabase
+        .from('seo_interlinks')
+        .select(columns)
+        .ilike('source_slug', `seo-${country.toLowerCase()}-${stage}-%`)
+        .in('status', [...PLAN_ELIGIBLE_INTERLINK_STATUSES])
+        .order('score', { ascending: false })
+        .limit(limit)
+    let { data, error } = await readCell(
+      'target_url,target_host,anchor_text,reason,status,verification_state',
+    )
+    // PARTIAL-migration observability: the additive P6 `verification_state`
+    // column may not be deployed yet (the pre-P6 table and its columns do
+    // exist). That is NOT "zero candidates" — retry the legacy select without
+    // it and treat every verdict as unknown, with an explicit warning.
+    //
+    // Signature-narrowed: ONLY a missing-object error that names
+    // `verification_state` is that known state. A generic "does not exist"
+    // naming any other object (a dropped table, a typo'd column, a true
+    // pre-migration schema with no P6 columns at all) must NOT be relabelled
+    // as "verification_state unavailable" and retried — it falls through to
+    // the fail-closed path below with its REAL error.
+    const message = String(error?.message || '')
+    if (error && /verification_state/i.test(message)) {
+      console.warn(
+        '[seoEngine/interlink] verification_state unavailable (partial P6 migration) — retrying the legacy select; verdicts treated as unknown:',
+        message,
+      )
+      const legacy = await readCell('target_url,target_host,anchor_text,reason,status')
+      data = legacy.data
+      error = legacy.error
+    }
+    // Any other DB failure fails closed AND stays observable: a permission /
+    // RLS / network error must never look like an empty (zero-candidate) cell.
+    if (error) {
+      console.warn(
+        '[seoEngine/interlink] loadEngineInterlinksForCell failed — no interlink suggestion is offered (fail closed):',
+        String(error.message || error),
+      )
+      return []
+    }
+    const rows = (data as unknown as EngineInterlinkCellRow[] | null) ?? []
     // Defence-in-depth: even if a caller's query ever stops filtering, an
-    // ineligible lifecycle row can never reach automatic suggestions.
+    // ineligible lifecycle row — or a row whose durable verification verdict
+    // already proved the target/source dead — can never reach automatic
+    // suggestions.
     return rows
       .filter((r) => PLAN_ELIGIBLE_STATUS_SET.has(String(r.status || 'planned')))
+      .filter((r) => !PLAN_INELIGIBLE_VERIFICATION_STATES.has(String(r.verification_state || '')))
       .map((r) => ({
         label: String(r.anchor_text || r.target_url || ''),
         url: String(r.target_url || ''),
         site: String(r.target_host || ''),
         matchedOn: [String(r.reason || 'engine_interlink')],
       }))
-  } catch {
+  } catch (error) {
+    console.warn(
+      '[seoEngine/interlink] loadEngineInterlinksForCell threw — no interlink suggestion is offered (fail closed):',
+      error instanceof Error ? error.message : error,
+    )
     return []
   }
 }
 
-/** Persist ontology interlink edges for planner missions (idempotent upsert). */
+/**
+ * Comparison key for target liveness proof: host lowercased, fragment
+ * dropped, trailing slashes stripped (root preserved), query kept strict.
+ */
+function interlinkTargetKey(url: string): string {
+  const raw = String(url || '').trim()
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    const path = (parsed.pathname || '/').replace(/\/+$/, '') || '/'
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}${parsed.search}`
+  } catch {
+    let out = raw.split('#')[0]
+    if (out.length > 1) out = out.replace(/\/+$/, '')
+    return out
+  }
+}
+
+/**
+ * Keep only edges whose target URL the live-validity authority proved live.
+ * Pure: the caller supplies the verified live URLs, so this is directly
+ * unit-testable and never invents a replacement target.
+ */
+export function selectLiveInterlinkEdges(edges: InterlinkEdge[], liveUrls: string[]): InterlinkEdge[] {
+  const liveKeys = new Set((liveUrls || []).map((url) => interlinkTargetKey(url)).filter(Boolean))
+  if (!liveKeys.size) return []
+  return edges.filter((edge) => liveKeys.has(interlinkTargetKey(String(edge.targetUrl || ''))))
+}
+
+/**
+ * Persist ontology interlink edges for planner missions (idempotent upsert).
+ *
+ * FAIL-CLOSED TARGET GATE (P6): generated edges only persist when the exact
+ * target URL is proven live by the existing link-validity authority
+ * (`filterLiveInternalUrls`). Synthetic journey/cross-country/cluster targets
+ * that 404 today are expected P6 hygiene: they are counted in `filtered` and
+ * persist ZERO rows instead of becoming planner backlog — that is NOT an
+ * error. A verifier exception/unavailability (or a DB write failure) IS one:
+ * it persists zero unverified edges AND returns a truthful error. No
+ * replacement URL is ever invented.
+ */
 export async function persistPlannerInterlinks(
   plans: Array<{
     clusterId: string
@@ -282,8 +393,10 @@ export async function persistPlannerInterlinks(
     relatedTerms?: string[]
     plan: { contentType: ContentType }
   }>,
-): Promise<number> {
+): Promise<{ stored: number; filtered: number; errors: string[] }> {
   let stored = 0
+  let filtered = 0
+  const errors: string[] = []
   for (const p of plans) {
     if (!p.clusterId || !p.stage || !p.country) continue
     const edges = generateInterlinkPlan({
@@ -294,9 +407,12 @@ export async function persistPlannerInterlinks(
       clusterId: p.clusterId,
       relatedTerms: p.relatedTerms,
     })
-    stored += (await persistInterlinkPlan(edges)).stored
+    const persisted = await persistInterlinkPlan(edges)
+    stored += persisted.stored
+    filtered += persisted.filtered
+    if (persisted.error) errors.push(`${p.clusterId}: ${persisted.error}`)
   }
-  return stored
+  return { stored, filtered, errors }
 }
 
 /**
@@ -320,8 +436,10 @@ export function findNoncanonicalMarketplaceCta(edges: InterlinkEdge[]): string |
   return null
 }
 
-export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ stored: number; error?: string }> {
-  if (!edges.length) return { stored: 0 }
+export async function persistInterlinkPlan(
+  edges: InterlinkEdge[],
+): Promise<{ stored: number; filtered: number; error?: string }> {
+  if (!edges.length) return { stored: 0, filtered: 0 }
   // Validate BEFORE the Supabase client exists: one noncanonical
   // marketplace_cta edge rejects the whole batch atomically (zero writes) —
   // never normalized, never partially stored, never silently reinterpreted
@@ -330,20 +448,46 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
   if (noncanonical) {
     return {
       stored: 0,
+      filtered: 0,
       error: `marketplace_cta target is not a canonical Marketplace category URL: ${noncanonical}`.slice(0, 300),
     }
   }
+  // FAIL-CLOSED target liveness gate. Runs before the Supabase client exists
+  // and before any write: zero unverified edges persist, and a verifier throw
+  // (unavailable) is reported truthfully instead of silently storing a dead
+  // planner target. Never substitutes a replacement URL.
+  let verifiedEdges: InterlinkEdge[]
+  try {
+    const { filterLiveInternalUrls } = await import('@/lib/seoFactory/linkAudit')
+    const targetUrls = [...new Set(edges.map((e) => String(e.targetUrl || '').trim()).filter(Boolean))]
+    const liveUrls = await filterLiveInternalUrls(targetUrls)
+    verifiedEdges = selectLiveInterlinkEdges(edges, liveUrls || [])
+  } catch (e) {
+    return {
+      stored: 0,
+      filtered: 0,
+      error: `internal target liveness verification failed — persisted zero unverified edges: ${e instanceof Error ? e.message : 'verifier error'}`.slice(0, 300),
+    }
+  }
+  // Successfully checked-and-rejected targets (dead/synthetic 404s, legacy
+  // auth walls) are expected P6 hygiene: report the truthful `filtered` count
+  // and persist nothing for them. This is never a fatal engine error.
+  const filtered = edges.length - verifiedEdges.length
+  if (!verifiedEdges.length) return { stored: 0, filtered }
   try {
     const supabase = createSupabaseAdminClient()
     // Replanning (idempotent upsert on source_slug,target_url) may only rewrite
     // plan metadata. Lifecycle truth — status, applied_at, gate_state/reason/
-    // actor/timestamps — belongs to the ship loop and the compliance gate, so
-    // those columns are deliberately omitted from the payload. With
-    // `defaultToNull: false` PostgREST sends `Prefer: missing=default`: on
-    // INSERT the omitted columns take their DB defaults (status -> 'planned'),
-    // while on conflict only the keys present here are updated. No
-    // read-before-write race needed.
-    const rows = edges.map((e) => ({
+    // actor/timestamps, and the P6 verification/job truth (source_url,
+    // source_job_id, verification_state, verified_at, verification_evidence,
+    // verification_attempted_at, staged_at)
+    // — belongs to the ship loop, the live verifier and the compliance gate,
+    // so those columns are deliberately omitted from the payload. With
+    // `defaultToNull: false`
+    // PostgREST sends `Prefer: missing=default`: on INSERT the omitted columns
+    // take their DB defaults (status -> 'planned'), while on conflict only the
+    // keys present here are updated. No read-before-write race needed.
+    const rows = verifiedEdges.map((e) => ({
       source_slug: e.sourceSlug,
       target_url: e.targetUrl,
       target_host: e.targetHost,
@@ -359,28 +503,11 @@ export async function persistInterlinkPlan(edges: InterlinkEdge[]): Promise<{ st
     if (error) {
       // A missing table (migration not applied) is just as real a failure as
       // any other — never mask it as "nothing to store".
-      return { stored: 0, error: error.message.slice(0, 300) }
+      return { stored: 0, filtered, error: error.message.slice(0, 300) }
     }
-    return { stored: rows.length }
+    return { stored: rows.length, filtered }
   } catch (e) {
-    return { stored: 0, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
-  }
-}
-
-export async function markInterlinkApplied(sourceSlugs: string[], targetUrls: string[]): Promise<void> {
-  try {
-    const supabase = createSupabaseAdminClient()
-    for (const slug of sourceSlugs) {
-      for (const url of targetUrls) {
-        await supabase
-          .from('seo_interlinks')
-          .update({ status: 'applied', applied_at: new Date().toISOString() })
-          .eq('source_slug', slug)
-          .eq('target_url', url)
-      }
-    }
-  } catch {
-    // best-effort
+    return { stored: 0, filtered, error: e instanceof Error ? e.message.slice(0, 300) : 'persist failed' }
   }
 }
 

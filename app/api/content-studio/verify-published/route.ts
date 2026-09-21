@@ -17,6 +17,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { verifyLiveUrl, type LiveVerifyInput, type LiveVerifyResult } from '@/lib/seoFactory/liveVerify'
+import { isDeploymentProvenLiveResult } from '@/lib/seoFactory/deploymentProvenLive'
+import { finalizeStagedInterlinksForLiveSource } from '@/lib/seoFactory/interlinkVerification'
+import { verifyStampMessage } from '@/lib/seoFactory/verifyStampMessage'
 
 interface VerifyRequestBody {
   canonicalUrl?: string
@@ -77,7 +80,54 @@ export async function POST(request: NextRequest) {
               : `HTTP ${result.httpStatus || '?'} · needs review`),
     }
 
-    return NextResponse.json({ ok: true, stamp, result })
+    // Interlink truth is finalized ONLY after verifyLiveUrl has actually
+    // established ok=true for this exact canonicalUrl: staged rows are checked
+    // against the live source HTML (exact anchor href) and target liveness.
+    // Never weakens the content verification above — a finalization failure is
+    // reported beside the result, not instead of it.
+    //
+    // Job binding (P6): when the caller supplied the exact content_jobs.id,
+    // finalization is bound to that exact job so admin verification can never
+    // finalize rows staged by ANOTHER ship job that shares the canonical.
+    // M1: a job-bound finalization additionally requires the SAME positive
+    // deployment-lineage gate as the scheduled reconciler — ok=true alone is
+    // not enough for a supplied job id (an uncontracted/legacy health verdict
+    // proves nothing about that job's official deployment). When no jobId
+    // exists the documented legacy path runs, which is jobless-only (H1):
+    // only rows with source_job_id IS NULL are read/finalized.
+    const jobId = String(body?.jobId || '').trim()
+    const lineageProven = isDeploymentProvenLiveResult(result)
+    const interlinksWithheld =
+      result.ok && jobId && !lineageProven ? 'deployment_lineage_not_proven' : null
+    if (interlinksWithheld) {
+      // M2: the ARTICLE verification succeeded, but interlink finalization was
+      // deliberately withheld. Say both things — a bare "Verified" would imply
+      // the staged rows were finalized.
+      stamp.message = verifyStampMessage({ stampMessage: stamp.message, interlinksWithheld })
+      console.warn(
+        '[verify-published] interlink finalization withheld — ok=true verdict without positive deployment lineage for the supplied job id',
+        {
+          canonicalUrl,
+          jobId,
+          publicationPhase: result.publicationPhase ?? null,
+          lineageVerified: result.lineageVerified ?? null,
+        },
+      )
+    }
+    const interlinks = result.ok && !interlinksWithheld
+      ? await finalizeStagedInterlinksForLiveSource({
+          canonicalUrl,
+          ...(jobId ? { sourceJobId: jobId } : {}),
+        })
+      : null
+
+    return NextResponse.json({
+      ok: true,
+      stamp,
+      result,
+      interlinks,
+      ...(interlinksWithheld ? { interlinksWithheld } : {}),
+    })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'verify-published failed' },

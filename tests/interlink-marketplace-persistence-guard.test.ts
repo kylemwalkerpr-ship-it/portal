@@ -9,6 +9,12 @@
  * Portal-hosted targets remain allowed for those callers.
  */
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+jest.mock('@/lib/seoFactory/linkAudit', () => ({
+  // P6 target-liveness gate: this suite is about marketplace canonical shapes,
+  // so targets pass the liveness gate by default and the liveness-specific
+  // cases live in tests/p6-*.
+  filterLiveInternalUrls: jest.fn(async (urls: string[]) => urls),
+}))
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
@@ -53,7 +59,7 @@ describe('A) canonical marketplace_cta persists normally', () => {
         marketplaceEdge({ targetUrl: `${MARKET}/categories/${id}` }),
       ])
 
-      expect(result).toEqual({ stored: 1 })
+      expect(result).toEqual({ stored: 1, filtered: 0 })
       expect(createSupabaseAdminClientMock).toHaveBeenCalledTimes(1)
       expect(from).toHaveBeenCalledWith('seo_interlinks')
       expect(upsert).toHaveBeenCalledTimes(1)
@@ -132,7 +138,7 @@ describe('D) non-marketplace_cta reasons are not globally blocked', () => {
 
     const result = await persistInterlinkPlan([portalEdge])
 
-    expect(result).toEqual({ stored: 1 })
+    expect(result).toEqual({ stored: 1, filtered: 0 })
     expect(createSupabaseAdminClientMock).toHaveBeenCalledTimes(1)
     expect(upsert).toHaveBeenCalledTimes(1)
   })
@@ -166,7 +172,7 @@ describe('E) generator/helper contract stays canonical', () => {
     })
     const result = await persistInterlinkPlan(plan)
 
-    expect(result).toEqual({ stored: plan.length })
+    expect(result).toEqual({ stored: plan.length, filtered: 0 })
     expect(upsert).toHaveBeenCalledTimes(1)
   })
 

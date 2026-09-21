@@ -48,6 +48,7 @@ import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } fro
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
+import { verifyStampMessage } from '@/lib/seoFactory/verifyStampMessage'
 import SeoIntelligenceDashboard, { type OppRow, type SeoIntelCluster, type SeoIntelHandle, type SeoIntelStats } from './seo-intelligence-dashboard'
 import EditorSeoIntelPanel from './editor-seo-intel-panel'
 import { subscribeToTables } from '@/lib/supabaseRealtime'
@@ -1418,17 +1419,27 @@ function PublishLedger({
       const data = await res.json().catch(() => ({})) as {
         ok?: boolean; stamp?: { status: string; message: string }
         result?: { httpStatus?: number | null; verifiedAt?: string }
+        interlinks?: { checked?: number; applied?: number } | null
+        interlinksWithheld?: string | null
         error?: string
       }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       const status = data.stamp?.status
       const ok = data.ok && (status === 'verified' || data.result?.httpStatus === 200)
+      // P6 M2 — the article verification can succeed while interlink
+      // finalization was withheld (no positive deployment lineage for the
+      // exact job). The badge/notice must never read as a bare "Verified"
+      // then: it would imply the staged interlinks were finalized.
+      const message = verifyStampMessage({
+        stampMessage: data.stamp?.message,
+        interlinksWithheld: data.interlinksWithheld,
+      })
       if (ok) {
         setVerify((prev) => ({
           ...prev,
           [jobId]: {
             stage: 'ok',
-            message: data.stamp?.message || `HTTP ${data.result?.httpStatus || 200}`,
+            message,
             httpStatus: data.result?.httpStatus ?? null,
             verifiedAt: data.result?.verifiedAt || new Date().toISOString(),
           },
@@ -1444,7 +1455,7 @@ function PublishLedger({
           },
         }))
       }
-      setActionNotice?.(data.stamp?.message || 'Verified')
+      setActionNotice?.(ok ? message : data.stamp?.message || data.error || 'Verification failed')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Verify failed'
       setVerify((prev) => ({

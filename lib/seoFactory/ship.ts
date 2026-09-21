@@ -45,6 +45,10 @@ import {
 } from '@/lib/githubContents'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
+import {
+  stageEngineInterlinksForVerification,
+  type StageEngineInterlinksResult,
+} from './interlinkVerification'
 import { stripNoIndex } from './siteHealthFixes'
 import { publicPathFromRepoFile, sitemapPathForShippedFile, upsertStudioSitemapEntry } from './siteHealth'
 
@@ -142,6 +146,63 @@ export interface ShipResult {
    *  (e.g. keyword_backfill, cannibal_differentiation_note). Lets the studio
    *  ship dialog and E2E see what mechanically changed before gates ran. */
   repairsApplied?: string[]
+  /**
+   * Durable interlink staging summary for this ship (P6). Additive/optional:
+   * a staging failure NEVER fails a successful content ship, but it must be
+   * observable — `failed > 0`, `error` or `warning` distinguishes a degraded
+   * staging write (permission/RLS/network/missing migration column) from a
+   * genuine zero-candidate no-op.
+   */
+  interlinkStaging?: InterlinkStagingSummary
+}
+
+export interface InterlinkStagingSummary {
+  staged: number
+  candidates: number
+  skipped: number
+  failed: number
+  /** Planned rows rebound to the current exact ship job id (reship). */
+  rebounded?: number
+  sourceUrl: string | null
+  warning?: string
+  error?: string
+}
+
+function interlinkStagingSummary(result: StageEngineInterlinksResult): InterlinkStagingSummary {
+  return {
+    staged: result.staged,
+    candidates: result.candidates,
+    skipped: result.skipped,
+    failed: result.failed,
+    sourceUrl: result.sourceUrl,
+    ...(result.rebounded ? { rebounded: result.rebounded } : {}),
+    ...(result.warning ? { warning: result.warning } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  }
+}
+
+/**
+ * Surface a degraded interlink staging result WITHOUT turning a successful
+ * content ship into a failure. A missing migration column / permission / RLS
+ * / network error must never look identical to a zero-candidate no-op.
+ */
+function observeInterlinkStaging(
+  shipPath: 'direct_main' | 'pr_merge',
+  summary: InterlinkStagingSummary,
+): void {
+  if (summary.failed > 0 || summary.error || summary.warning) {
+    console.warn('[ship] interlink staging degraded', {
+      shipPath,
+      sourceUrl: summary.sourceUrl,
+      staged: summary.staged,
+      candidates: summary.candidates,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      rebounded: summary.rebounded ?? 0,
+      warning: summary.warning ?? null,
+      error: summary.error ?? null,
+    })
+  }
 }
 
 /** Poll GitHub check-runs / combined status until green, red, or timeout. */
@@ -849,9 +910,28 @@ export async function shipContent(opts: {
       })
     }
 
-    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-    // Close the interlink loop: mark engine-planned edges that are now LIVE.
-    await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
+    // Lifecycle ordering is load-bearing (P6): STAGE (never "apply")
+    // engine-planned edges for live verification first — recording the real
+    // source canonicalUrl and leaving the row planned — and only THEN launch
+    // background live verification, which finalizes staged rows for this exact
+    // canonicalUrl once verifyLiveUrl establishes ok=true. Launching
+    // verification before staging would race the staging write and could leave
+    // valid staged rows planned indefinitely (nothing would finalize them).
+    // `applied` is only ever written after verifyLiveUrl + exact live-anchor
+    // proof.
+    const interlinkStaging = await stageEngineInterlinksForVerification({
+      canonicalUrl: opts.plan.canonicalUrl,
+      // Exact ship job identity: the scheduled reconciler can only prove the
+      // official deployment lineage (and therefore auto-finalize) for a staged
+      // row that carries this exact content_jobs.id.
+      jobId: opts.jobId || null,
+      primaryKeyword: opts.primaryKeyword,
+      body: shipContent_,
+    })
+    const stagingSummary = interlinkStagingSummary(interlinkStaging)
+    // Observability only — a degraded staging write never fails the ship.
+    observeInterlinkStaging('direct_main', stagingSummary)
+    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
     return {
       mode: 'autodeploy',
       owner,
@@ -862,6 +942,7 @@ export async function shipContent(opts: {
       canonicalUrl: opts.plan.canonicalUrl,
       status: 'deployed',
       humanApproved: true,
+      interlinkStaging: stagingSummary,
     }
   }
 
@@ -1001,9 +1082,19 @@ export async function shipContent(opts: {
         if (opts.plan.canonicalUrl) {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
-        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
-        // Closed loop: mark the engine's planned edges that are now live on main.
-        await recordAppliedEngineInterlinks({ primaryKeyword: opts.primaryKeyword, body: shipContent_ })
+        // Stage FIRST, then launch background verification (see the
+        // direct-main path above): staged rows must exist before a background
+        // verifier can finalize them, otherwise valid links stay planned.
+        const interlinkStaging = await stageEngineInterlinksForVerification({
+          canonicalUrl: opts.plan.canonicalUrl,
+          jobId: opts.jobId || null,
+          primaryKeyword: opts.primaryKeyword,
+          body: shipContent_,
+        })
+        const stagingSummary = interlinkStagingSummary(interlinkStaging)
+        // Observability only — a degraded staging write never fails the merge.
+        observeInterlinkStaging('pr_merge', stagingSummary)
+        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: opts.jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
         return {
           mode: 'merge',
           owner,
@@ -1019,6 +1110,7 @@ export async function shipContent(opts: {
           humanApproved: opts.humanApproved,
           ciState: ci.state,
           ciNote: ci.note,
+          interlinkStaging: stagingSummary,
         }
       }
     } catch (mergeErr) {
@@ -1081,44 +1173,4 @@ export function parseRepoSlug(targetRepo: string): { owner: string; repo: string
     process.env.GITHUB_CONTENT_OWNER ?? process.env.GITHUB_REPO_OWNER ?? 'kylemwalkerpr-ship-it',
     targetRepo,
   )
-}
-
-/**
- * Close the interlink loop: once content is LIVE (merged/deployed), flip the
- * engine's planned edges for this mission to `applied` — but ONLY the edges
- * whose target URL actually made it into the shipped body. Edges the draft
- * never embedded stay `planned`, so the "applied" metric is honest.
- */
-async function recordAppliedEngineInterlinks(opts: {
-  primaryKeyword: string
-  body: string
-}): Promise<number> {
-  try {
-    const { bestCellForTerm, MIN_CELL_MATCH_SCORE, plannerClusterId } = await import('@/lib/seoEngine/planner')
-    const cell = bestCellForTerm(opts.primaryKeyword)
-    if (!cell || cell.score < MIN_CELL_MATCH_SCORE) return 0
-    const slug = plannerClusterId(cell.country, cell.stage, opts.primaryKeyword)
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    const supabase = createSupabaseAdminClient()
-    const { data } = await supabase
-      .from('seo_interlinks')
-      .select('target_url')
-      .eq('source_slug', slug)
-      .eq('status', 'planned')
-    const rows = (data as Array<{ target_url?: string }> | null) || []
-    let applied = 0
-    for (const r of rows) {
-      const url = String(r.target_url || '')
-      if (!url || !opts.body.includes(url)) continue
-      const { error } = await supabase
-        .from('seo_interlinks')
-        .update({ status: 'applied', applied_at: new Date().toISOString() })
-        .eq('source_slug', slug)
-        .eq('target_url', url)
-      if (!error) applied += 1
-    }
-    return applied
-  } catch {
-    return 0
-  }
 }

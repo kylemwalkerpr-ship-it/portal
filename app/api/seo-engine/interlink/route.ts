@@ -60,9 +60,14 @@ export async function POST(req: NextRequest) {
     const persisted = await persistInterlinkPlan(edges)
     if (persisted.error) {
       // A real persist failure must not look like an empty success.
-      return NextResponse.json({ ok: false, error: persisted.error, edges, stored: 0 }, { status: 500 })
+      return NextResponse.json(
+        { ok: false, error: persisted.error, edges, stored: 0, filtered: persisted.filtered },
+        { status: 500 },
+      )
     }
-    return NextResponse.json({ ok: true, edges, stored: persisted.stored })
+    // `filtered` is truthful hygiene (dead/synthetic targets the liveness
+    // authority checked and rejected) — not an error.
+    return NextResponse.json({ ok: true, edges, stored: persisted.stored, filtered: persisted.filtered })
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'interlink generation failed' }, { status: 500 })
   }

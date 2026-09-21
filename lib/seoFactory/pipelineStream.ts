@@ -38,11 +38,14 @@ import { applyShipWithhold, finalizeShipError, resolveShipMode } from './resolve
 import { isJunkTopic, isOffMissionDemandQuery } from './queryNoise'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { collapseDuplicatedTitle } from './formatContract'
+import { pruneInterlinksToLiveTargets } from './interlinkInjection'
 import { stripNoIndex } from './siteHealthFixes'
 import { resolveContentSpecForJob, bindContentSpecToPrimary, type ContentSpec } from './contentSpec'
 import { resolveProviderAuthors } from './providerAuthors'
+import type { AuthorPack } from './authorPack'
 import { finalizePipelineContentType, normalizeJobContentType } from './jobContentType'
 import { persistPipelineJob } from './persistContentJob'
+import { bindStagedInterlinksToPersistedJob } from './postPersistInterlinkBind'
 import { keywordContractForDraft } from './keywordContract'
 import { runFactoryThroughline, shouldRunThroughline } from './throughline'
 import { runFactoryMaskedDenoise, shouldRunMaskedDenoise } from './maskedDenoise'
@@ -351,7 +354,7 @@ export async function* runSeoFactoryPipelineStream(
 
     // ── Opportunity Radar autopilot brief (transparency into the draft) ──
     const opp = input.opportunity
-    const radarInterlinks = Array.isArray(input.interlinks) ? [...input.interlinks] : []
+    let radarInterlinks = Array.isArray(input.interlinks) ? [...input.interlinks] : []
     // ── Master Engine interlink graph (seo_interlinks) ──────────────────────
     // The planner's persisted journey edges for this term's lifecycle cell are
     // a first-class internal-link allowlist (same contract as radar links), so
@@ -377,20 +380,33 @@ export async function* runSeoFactoryPipelineStream(
         /* engine interlinks are additive — never fail the run */
       }
     }
-    try {
-      const { filterLiveInternalUrls } = await import('./linkAudit')
-      const live = new Set(
-        await filterLiveInternalUrls(radarInterlinks.map((l) => String(l.url || '')).filter(Boolean)),
+    // FAIL-CLOSED live injection (P6): if the live-internal-link verification
+    // throws or proves nothing live, every automatic planner/radar interlink is
+    // withheld. The draft is never handed unverified links, and no replacement
+    // target is invented.
+    {
+      const { filterLiveInternalUrls, resolveEstateUrl } = await import('./linkAudit')
+      const pruned = await pruneInterlinksToLiveTargets(
+        radarInterlinks,
+        (urls) => filterLiveInternalUrls(urls),
+        { resolveCandidate: resolveEstateUrl },
       )
-      const keep = (url: string) => {
-        const n = String(url || '').replace(/\/+$/, '')
-        return live.has(url) || live.has(n) || [...live].some((u) => u.replace(/\/+$/, '') === n)
+      if (!pruned.ok && radarInterlinks.length) {
+        yield {
+          type: 'progress',
+          stage: 'gsc',
+          message: pruned.verifierUnavailable
+            ? `Withheld ${pruned.withheld} automatic interlink target(s): live verification was UNAVAILABLE — no unverified links injected`
+            : `Withheld ${pruned.withheld} automatic interlink target(s): live verification completed but NO candidate was proven live — no unverified links injected`,
+        }
+      } else if (pruned.withheld > 0) {
+        yield {
+          type: 'progress',
+          stage: 'gsc',
+          message: `Withheld ${pruned.withheld} automatic interlink target(s) that did not verify live — no unverified links injected`,
+        }
       }
-      for (let i = radarInterlinks.length - 1; i >= 0; i--) {
-        if (!keep(String(radarInterlinks[i].url || ''))) radarInterlinks.splice(i, 1)
-      }
-    } catch {
-      /* live filter is best-effort — never invent replacements */
+      radarInterlinks = pruned.links
     }
 
     const providerAuthors = await resolveProviderAuthors({
@@ -399,20 +415,60 @@ export async function* runSeoFactoryPipelineStream(
       primaryKeyword,
       contentType,
     })
-    if (providerAuthors.links.length) {
-      const seen = new Set(radarInterlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean))
-      for (const link of providerAuthors.links) {
-        const key = link.url.replace(/\/+$/, '').toLowerCase()
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        radarInterlinks.push({ label: link.label, url: link.url, matchedOn: ['ymyl-marketplace'] })
+    // Provider/profile/gig marketplace citations are automatic links too. The
+    // generic estate helper deliberately exempts market.yousafeconsultancy.com
+    // provider URLs from its sitemap-coverage check, so that exemption is NOT
+    // treated as proof: every provider URL is verified through the
+    // repository's actual HTTP liveness authority before it can enter the
+    // prompt. Dead / unverifiable links are withheld (never replaced), while
+    // the author citation metadata (name, credential, role) is preserved.
+    // H1: the writer/ContentSpec author pack is derived from the PRUNED
+    // citation state below, never from the raw provider pack (whose
+    // marketplaceUrl is only an unverified profile URL guess until the liveness
+    // authority proves it).
+    let authorPack: AuthorPack | null = providerAuthors.author
+    let citedProviders = providerAuthors.cited
+    {
+      const { authorPackFromPrunedCitations, pruneProviderAuthorLinks, verifyMarketplaceServiceUrlsLive } =
+        await import('./interlinkInjection')
+      const providerPruned = await pruneProviderAuthorLinks(
+        providerAuthors.links,
+        providerAuthors.cited,
+        (urls) => verifyMarketplaceServiceUrlsLive(urls),
+      )
+      citedProviders = providerPruned.cited
+      // Derive the ContentSpec/playbook/prompt author pack from the PRUNED
+      // citation state: metadata survives, but an unproven marketplace/profile
+      // URL (and its service pages) can never reach the spec or the prompt.
+      authorPack = authorPackFromPrunedCitations(providerAuthors.author, providerPruned.cited)
+      if (!providerPruned.ok) {
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: `Withheld ${providerPruned.withheld} marketplace citation link(s): live verification was UNAVAILABLE — author citation kept, no unverified link injected`,
+        }
+      } else if (providerPruned.withheld > 0) {
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: `Withheld ${providerPruned.withheld} marketplace citation link(s) that did not verify live — author citation kept`,
+        }
       }
-      yield {
-        type: 'progress',
-        stage: 'brief',
-        message: providerAuthors.author
-          ? `Citing ${providerAuthors.author.name} (${providerAuthors.author.credential}) from the marketplace`
-          : `Attached ${providerAuthors.links.length} marketplace service link(s)`,
+      if (providerPruned.links.length) {
+        const seen = new Set(radarInterlinks.map((l) => String(l.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean))
+        for (const link of providerPruned.links) {
+          const key = link.url.replace(/\/+$/, '').toLowerCase()
+          if (!key || seen.has(key)) continue
+          seen.add(key)
+          radarInterlinks.push({ label: link.label, url: link.url, matchedOn: ['ymyl-marketplace'] })
+        }
+        yield {
+          type: 'progress',
+          stage: 'brief',
+          message: authorPack
+            ? `Citing ${authorPack.name} (${authorPack.credential}) from the marketplace`
+            : `Attached ${providerPruned.links.length} live marketplace service link(s)`,
+        }
       }
     }
     const autopilotBlock = [
@@ -464,7 +520,7 @@ export async function* runSeoFactoryPipelineStream(
         targetWords,
         maxWords,
         plannerRunId: input.sourceJobId || undefined,
-        author: providerAuthors.author || undefined,
+        author: authorPack || undefined,
       })
       contentSpec = specResolution.spec
       if (contentSpec && primaryKeyword) {
@@ -502,7 +558,7 @@ export async function* runSeoFactoryPipelineStream(
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
       spec: contentSpec ?? undefined,
-      citedProviders: providerAuthors.cited,
+      citedProviders,
     })
 
     let content = input.resumeContent?.trim() || ''
@@ -1824,6 +1880,12 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           audit,
           dryRun: Boolean(input.dryRun),
+          // EXACT ship job identity: the early realtime content_jobs row this
+          // stream created (or the caller's existing row). Never a synthetic
+          // `plan-*` id — a guessed job id would poison the job-bound staging/
+          // verification contract. No early row = no jobId (jobless staging,
+          // which the scheduled reconciler never auto-finalizes).
+          ...(earlyJobId ? { jobId: earlyJobId } : {}),
           requiredShortKeywords,
           requiredLongTailKeywords,
           shortKeywordTerms,
@@ -1916,6 +1978,26 @@ export async function* runSeoFactoryPipelineStream(
         : null,
     })
 
+    // ── P6 M1: close the post-persist JOBLESS window (stream) ─────────────
+    // The stream normally creates its realtime content_jobs row BEFORE ship,
+    // so the ship already carried an exact `earlyJobId` and this pass is a
+    // truthful skip. When that early row could NOT be created the ship ran
+    // without job identity (exactly like the non-stream path) and the durable
+    // id only exists now — rebind the planned rows to it so the scheduled
+    // reconciler can prove this exact job's deployment lineage. Planned rows
+    // only (never applied truth), and a degraded rebind is observability:
+    // it never fails the content ship. The cluster's `existingJobId` is
+    // metadata only and is never used as job identity.
+    const interlinkPostPersistBind = await bindStagedInterlinksToPersistedJob({
+      canonicalUrl: plan.canonicalUrl,
+      persistedJobId: jobId,
+      shippedJobId: earlyJobId,
+      shipResult,
+      dryRun: Boolean(input.dryRun),
+      primaryKeyword,
+      body: content,
+    })
+
     const result: PipelineResult = {
       ok: !shipError,
       content,
@@ -1935,6 +2017,7 @@ export async function* runSeoFactoryPipelineStream(
         warnings: gscBrief.warnings,
       },
       jobId,
+      interlinkPostPersistBind,
       error: shipError || undefined,
     }
 
