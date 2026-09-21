@@ -32,8 +32,12 @@ const mockRequireAdminUser = jest.fn(async () => ({
 }))
 jest.mock('@/lib/portalAuth', () => ({ requireAdminUser: () => mockRequireAdminUser() }))
 
-const mockMergePullRequest = jest.fn(async () => ({ merged: true, sha: 'merge-sha', message: 'merged' }))
-const mockShipContent = jest.fn(async () => ({ status: 'deployed' }))
+// Declared variadic so the `jest.mock` factories below can forward whatever
+// production passes (a zero-arity implementation would pin the mock's
+// `Parameters<T>` to `[]`). The args are still recorded on `mock.calls`, which
+// is where the ship payload is asserted.
+const mockMergePullRequest = jest.fn(async (..._args: unknown[]) => ({ merged: true, sha: 'merge-sha', message: 'merged' }))
+const mockShipContent = jest.fn(async (..._args: unknown[]) => ({ status: 'deployed' }))
 jest.mock('@/lib/seoFactory/ship', () => ({
   shipContent: (...args: unknown[]) => mockShipContent(...args),
   mergePullRequest: (...args: unknown[]) => mockMergePullRequest(...args),
