@@ -1148,7 +1148,7 @@ export const CONTENT_QUALITY_PLAYBOOK: readonly GateDefinition[] = [
     code: 'ahrefs_schema_invalid', title: 'JSON-LD fails schema.org validation (Ahrefs)',
     severity: 'warning', owner: 'deterministic', repairClass: 'deterministic', appliesTo: 'all',
     requirement: 'Article/FAQPage JSON-LD parse and validate.',
-    promptInstruction: 'Article needs headline, image, datePublished, author; FAQPage needs mainEntity Question/Answer.',
+    promptInstruction: 'Article needs headline, image, author; FAQPage needs mainEntity Question/Answer. Never invent datePublished/dateModified to complete the schema.',
     evidence: 'ahrefsIssues.articleJsonLdErrors',
     shipEffect: 'allow_with_flag', evaluator: 'ahrefsIssues.evaluateAhrefsDraft',
     testFixture: 'tests/contentQualityPlaybook.test.ts#ahrefs fixtures',
