@@ -1,8 +1,10 @@
 /* Marketplace polish — Fiverr-grade professional chrome
    ------------------------------------------------------
    White/neutral paper. One action accent (palette-driven). No page wash,
-   no glass header, no hue sitting on the sheet. PatternPicker still owns
-   .cw-market::before; do not override its image. */
+   no glass header, no hue sitting on the sheet. The pattern canvas
+   (.cw-market::before) is fed by the shared theme variables
+   --ys-pattern-image/-size/-position/-opacity; do not set a literal
+   background-image there or the motif can drift from the picker state. */
 
 .cw-market {
   --ys-goldBright: #F0D078;

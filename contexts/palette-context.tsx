@@ -1,11 +1,28 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { PALETTES, DEFAULT_PALETTE_NAME, getPalette, type PaletteDef } from '@/components/marketplace/palettes'
-import { applyPaletteCssVars } from '@/components/marketplace/tokens'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { PALETTES, getPalette, type PaletteDef } from '@/components/marketplace/palettes'
+import {
+  applyMarketTheme,
+  clearMarketBodyPaint,
+  getMarketThemeServerSnapshot,
+  getMarketThemeSnapshot,
+  hydrateMarketTheme,
+  setMarketThemePreference,
+  subscribeMarketTheme,
+} from '@/components/marketplace/market-theme'
+import { getPattern, type PatternDef, type PatternId } from '@/components/marketplace/patterns'
 
-const STORAGE_KEY = 'ys-marketplace-palette'
-
+/**
+ * Marketplace theme provider — the ONE source of truth for the selected
+ * palette AND background pattern.
+ *
+ * Both ThemePicker instances (desktop nav + mobile drawer) and the standalone
+ * PatternPicker read this context, so they cannot hold divergent pattern
+ * state, and no component writes the global canvas itself: every mutation goes
+ * through the shared store in components/marketplace/market-theme.ts, which
+ * paints documentElement and all mounted .cw-market roots.
+ */
 interface PaletteContextValue {
   /** All available palettes */
   palettes: PaletteDef[]
@@ -13,6 +30,12 @@ interface PaletteContextValue {
   palette: PaletteDef
   /** Switch to a different palette by name */
   setPaletteName: (name: string) => void
+  /** Currently selected background pattern (shared by every picker) */
+  patternId: PatternId
+  /** Resolved registry entry for `patternId` */
+  pattern: PatternDef
+  /** Switch to a different background pattern by id */
+  setPatternId: (id: PatternId) => void
 }
 
 const PaletteContext = createContext<PaletteContextValue | null>(null)
@@ -23,48 +46,58 @@ export function usePalette(): PaletteContextValue {
   return ctx
 }
 
+/** Readable alias — the provider now owns palette + pattern. */
+export const useMarketplaceTheme = usePalette
+
 export function PaletteProvider({ children }: { children: React.ReactNode }) {
-  const [paletteName, setPaletteNameRaw] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_PALETTE_NAME
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY)
-      if (stored && PALETTES.some(p => p.name === stored)) return stored
-    } catch { /* localStorage blocked */ }
-    return DEFAULT_PALETTE_NAME
-  })
+  const preference = useSyncExternalStore(
+    subscribeMarketTheme,
+    getMarketThemeSnapshot,
+    getMarketThemeServerSnapshot,
+  )
 
-  const palette = getPalette(paletteName)
-
-  const apply = useCallback((name: string) => {
-    if (typeof document === 'undefined') return
-    const next = getPalette(name)
-    const root = document.querySelector('.cw-market') as HTMLElement | null
-    if (root) applyPaletteCssVars(root, next.tokens)
-    document.documentElement.setAttribute('data-ys-palette', name)
-  }, [])
-
-  // Always write tokens onto .cw-market. The boot script paints <html>
-  // before the shell exists; globals.css also declares first-paint fallbacks
-  // on .cw-market which would otherwise lock the default hue and make the
-  // picker look like a no-op. Re-applying identical values is visually idle.
+  // Single applier for palette + pattern. Runs once after hydration (the
+  // blocking boot script already painted identical values) and again whenever
+  // the preference changes or a provider/layout remounts. The live snapshot is
+  // re-read here so a stale render value can never repaint an older theme over
+  // a newer one.
   useEffect(() => {
-    apply(paletteName)
-  }, [paletteName, apply])
+    hydrateMarketTheme()
+    applyMarketTheme(getMarketThemeSnapshot())
+  }, [preference])
 
-  useEffect(() => {
-    return () => {
-      if (typeof document !== 'undefined') document.body.style.backgroundColor = ''
-    }
+  // Route remounts (/marketplace ↔ /shop) must not strand market paper on
+  // portal pages. Drop the body paint only once no market root is left, so the
+  // handoff between two providers never flashes white.
+  useEffect(() => () => {
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return
+    window.requestAnimationFrame(() => {
+      if (typeof document !== 'undefined' && !document.querySelector('.cw-market')) clearMarketBodyPaint()
+    })
   }, [])
 
   const setPaletteName = useCallback((name: string) => {
-    setPaletteNameRaw(name)
-    try { window.localStorage.setItem(STORAGE_KEY, name) } catch {}
-    apply(name)
-  }, [apply])
+    setMarketThemePreference({ paletteName: name })
+  }, [])
+
+  const setPatternId = useCallback((id: PatternId) => {
+    setMarketThemePreference({ patternId: id })
+  }, [])
+
+  const palette = getPalette(preference.paletteName)
+  const pattern = getPattern(preference.patternId)
+
+  const value = useMemo<PaletteContextValue>(() => ({
+    palettes: PALETTES,
+    palette,
+    setPaletteName,
+    patternId: preference.patternId,
+    pattern,
+    setPatternId,
+  }), [palette, setPaletteName, preference.patternId, pattern, setPatternId])
 
   return (
-    <PaletteContext.Provider value={{ palettes: PALETTES, palette, setPaletteName }}>
+    <PaletteContext.Provider value={value}>
       {children}
     </PaletteContext.Provider>
   )

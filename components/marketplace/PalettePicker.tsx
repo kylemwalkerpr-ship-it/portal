@@ -33,16 +33,6 @@ export function PalettePicker() {
     }
   }, [open])
 
-  // Apply CSS vars eagerly on mount (before the context useEffect fires in some edge cases)
-  useEffect(() => {
-    const root = document.querySelector('.cw-market') as HTMLElement | null
-    if (!root) return
-    // We re-apply here in case the layout paints before the context provider
-    import('@/components/marketplace/tokens').then(({ applyPaletteCssVars }) => {
-      applyPaletteCssVars(root, palette.tokens)
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleSelect = (name: string) => {
     setPaletteName(name)
     setOpen(false)

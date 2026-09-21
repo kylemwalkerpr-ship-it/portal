@@ -1,114 +1,44 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useMarketplaceTheme } from '@/contexts/palette-context'
 import { T } from './tokens'
-
-const STORAGE_KEY = 'ys-marketplace-pattern'
-
-export type PatternId =
-  | 'none'
-  | 'linen'
-  | 'dots'
-  | 'diagonal'
-  | 'woodgrain'
-  | 'crosshatch'
-  | 'diamonds'
-
-interface PatternDef {
-  id: PatternId
-  label: string
-  emoji: string
-  css: string  // CSS background-image value
-  /** Max strength of the texture layer — keeps patterns subtle behind vellum
-   *  cards on every palette. Denser textures get lower caps. */
-  opacity: number
-}
-
-const PATTERNS: PatternDef[] = [
-  { id: 'none', label: 'Solid', emoji: '◼️', css: 'none', opacity: 0 },
-  {
-    id: 'linen', label: 'Linen', emoji: '🧵', opacity: 0.18,
-    css: 'repeating-linear-gradient(0deg, rgba(15,23,42,0.028) 0px, rgba(15,23,42,0.028) 1px, transparent 1px, transparent 6px)',
-  },
-  {
-    id: 'dots', label: 'Dots', emoji: '🔲', opacity: 0.4,
-    css: 'radial-gradient(circle, rgba(0,0,0,0.045) 1px, transparent 1px)',
-  },
-  {
-    id: 'diagonal', label: 'Diagonal', emoji: '📐', opacity: 0.28,
-    css: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 10px)',
-  },
-  {
-    id: 'woodgrain', label: 'Wood grain', emoji: '🪵', opacity: 0.26,
-    css: [
-      'repeating-linear-gradient(0deg, rgba(0,0,0,0.022) 0px, rgba(0,0,0,0.022) 1px, transparent 1px, transparent 4px)',
-      'repeating-linear-gradient(2deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 8px)',
-    ].join(', '),
-  },
-  {
-    id: 'crosshatch', label: 'Crosshatch', emoji: '🔺', opacity: 0.26,
-    css: [
-      'repeating-linear-gradient(45deg, rgba(0,0,0,0.028) 0px, rgba(0,0,0,0.028) 1px, transparent 1px, transparent 10px)',
-      'repeating-linear-gradient(-45deg, rgba(0,0,0,0.028) 0px, rgba(0,0,0,0.028) 1px, transparent 1px, transparent 10px)',
-    ].join(', '),
-  },
-  {
-    id: 'diamonds', label: 'Diamonds', emoji: '💎', opacity: 0.32,
-    css: [
-      'linear-gradient(45deg, rgba(0,0,0,0.03) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.03) 75%)',
-      'linear-gradient(45deg, rgba(0,0,0,0.03) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.03) 75%)',
-    ].join(', '),
-  },
-]
-
-export function getPatternCss(id: PatternId): string {
-  return PATTERNS.find(p => p.id === id)?.css ?? 'none'
-}
-
-export function getPatternOpacity(id: PatternId): number {
-  return PATTERNS.find(p => p.id === id)?.opacity ?? 0.5
-}
+import { PATTERNS, getPattern, type PatternId } from './patterns'
 
 /**
- * Palette-adaptive variant of a pattern's CSS: ink strokes mix with
- * --ys-onPaper so the texture stays a faint charcoal weave on light Studio
- * chrome. Browsers without color-mix keep the original ink-stroke fallback.
+ * PatternPicker — compact background-motif switcher for the marketplace.
+ *
+ * Reliability contract (MARKETPLACE-PALETTE-FLORAL-RELIABILITY):
+ *   - Keeps NO pattern state, NO localStorage access and NO style-tag writer of
+ *     its own. It reads/writes the shared provider store, so it can never
+ *     diverge from ThemePicker (or from a second picker mounted elsewhere).
+ *   - Motifs and their CSS come from the pure registry in ./patterns.
  */
-export function getPatternCssAdaptive(id: PatternId): string {
-  return getPatternCss(id).replace(
-    /rgba\(0,\s*0,\s*0,\s*([\d.]+)\)/g,
-    (_m, a: string) => `color-mix(in srgb, var(--ys-onPaper, #0F172A) ${Math.round(parseFloat(a) * 100)}%, transparent)`,
+
+/** Motif preview swatch — same layered gradients the canvas uses. */
+function PatternSwatch({ id }: { id: PatternId }) {
+  const def = getPattern(id)
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        width: 22,
+        height: 22,
+        flexShrink: 0,
+        borderRadius: 3,
+        backgroundColor: 'var(--ys-cream, #F9FAFB)',
+        backgroundImage: def.layers.length ? def.layers.join(', ') : undefined,
+        backgroundSize: def.backgroundSize,
+        backgroundPosition: def.backgroundPosition,
+        border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
+      }}
+    />
   )
 }
 
-export function getPatternBackgroundSize(id: PatternId): string {
-  switch (id) {
-    case 'dots': return '16px 16px'
-    case 'diamonds': return '16px 16px'
-    default: return 'auto'
-  }
-}
-
-export function getPatternPosition(id: PatternId): string {
-  switch (id) {
-    case 'diamonds': return '0 0, 8px 8px'
-    default: return '0 0'
-  }
-}
-
-/**
- * PatternPicker — compact background texture switcher for the marketplace.
- * Lives next to the PalettePicker in the shell header.
- */
 export function PatternPicker() {
-  const [selected, setSelected] = useState<PatternId>(() => {
-    if (typeof window === 'undefined') return 'linen'
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored && PATTERNS.some(p => p.id === stored)) return stored as PatternId
-    } catch {}
-    return 'linen'
-  })
+  const { patternId, pattern, setPatternId } = useMarketplaceTheme()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
@@ -129,48 +59,17 @@ export function PatternPicker() {
     }
   }, [open])
 
-  // Apply pattern by injecting a <style> tag that overrides .cw-market::before.
-  // The ::before pseudo-element has position:fixed inset:0 z-index:-2 and
-  // covers the entire viewport — setting backgroundImage on .cw-market itself
-  // is invisible behind it.
-  const applyPattern = useCallback((id: PatternId) => {
-    const css = getPatternCss(id)
-    const bgSize = getPatternBackgroundSize(id)
-    const bgPos = getPatternPosition(id)
-    let tag = document.getElementById('ys-pattern-override') as HTMLStyleElement | null
-    if (!tag) {
-      tag = document.createElement('style')
-      tag.id = 'ys-pattern-override'
-      document.head.appendChild(tag)
-    }
-    if (id === 'none') {
-      tag.textContent = ''
-    } else {
-      // Fallback (fixed black strokes) first, then the palette-adaptive
-      // color-mix layer — unsupported browsers keep the fallback. The
-      // per-pattern opacity cap keeps every texture subtle behind vellum.
-      const adaptive = getPatternCssAdaptive(id)
-      const opacity = getPatternOpacity(id)
-      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-image: ${adaptive} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; opacity: ${opacity} !important; }`
-    }
-  }, [])
-
-  useEffect(() => {
-    applyPattern(selected)
-  }, [selected, applyPattern])
-
-  const handleSelect = (id: PatternId) => {
-    setSelected(id)
-    try { localStorage.setItem(STORAGE_KEY, id) } catch {}
+  const handleSelect = useCallback((id: PatternId) => {
+    setPatternId(id)
     setOpen(false)
-  }
-
-  const current = PATTERNS.find(p => p.id === selected) ?? PATTERNS[0]
+  }, [setPatternId])
 
   return (
     <div
       ref={wrapRef}
       data-no-translate
+      data-ys-pattern-picker=""
+      data-ys-selected-pattern={patternId}
       style={{
         position: 'relative',
         display: 'inline-flex',
@@ -179,7 +78,7 @@ export function PatternPicker() {
     >
       <button
         type="button"
-        aria-label={`Background pattern: ${current.label}. Click to change.`}
+        aria-label={`Botanical pattern: ${pattern.label}. Click to change.`}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
@@ -201,19 +100,19 @@ export function PatternPicker() {
           fontFamily: 'inherit',
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: 12 }}>{current.emoji}</span>
+        <PatternSwatch id={patternId} />
         <span aria-hidden="true" style={{ fontSize: 9, opacity: 0.55, marginLeft: 1 }}>▾</span>
       </button>
 
       {open && (
         <ul
           role="listbox"
-          aria-label="Choose background pattern"
+          aria-label="Choose botanical pattern"
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
             right: 0,
-            minWidth: 200,
+            minWidth: 220,
             margin: 0,
             padding: 4,
             listStyle: 'none',
@@ -227,11 +126,13 @@ export function PatternPicker() {
           }}
         >
           {PATTERNS.map(p => {
-            const active = p.id === selected
+            const active = p.id === patternId
             return (
               <li key={p.id} role="option" aria-selected={active}>
                 <button
                   type="button"
+                  data-ys-pattern-option={p.id}
+                  title={p.description}
                   onClick={() => handleSelect(p.id)}
                   style={{
                     width: '100%',
@@ -250,23 +151,11 @@ export function PatternPicker() {
                     fontFamily: 'inherit',
                   }}
                 >
-                  {/* Pattern preview swatch */}
-                  <span
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 3,
-                      background: '#FAFAF7',
-                      backgroundImage: p.css,
-                      backgroundSize: getPatternBackgroundSize(p.id),
-                      backgroundPosition: getPatternPosition(p.id),
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      flexShrink: 0,
-                    }}
-                  />
+                  <PatternSwatch id={p.id} />
                   <span style={{ flex: 1 }}>
-                    <span style={{ display: 'block', lineHeight: 1.3 }}>
-                      {p.emoji} {p.label}
+                    <span style={{ display: 'block', lineHeight: 1.3 }}>{p.label}</span>
+                    <span style={{ display: 'block', fontSize: 10.5, fontWeight: 500, lineHeight: 1.35, color: active ? T.indigoDeep : T.inkSoft }}>
+                      {p.description}
                     </span>
                   </span>
                   {active && (

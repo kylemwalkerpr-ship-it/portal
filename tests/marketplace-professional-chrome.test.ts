@@ -32,6 +32,8 @@ const MARKET_SURFACES = [
   'components/marketplace/PalettePicker.tsx',
   'components/marketplace/PatternPicker.tsx',
   'components/marketplace/ThemePicker.tsx',
+  'components/marketplace/patterns.ts',
+  'components/marketplace/market-theme.ts',
   'app/marketplace/marketplace-brand.css',
   'app/marketplace/marketplace-polish.css',
   'app/marketplace/page.tsx',
@@ -70,18 +72,27 @@ describe('marketplace professional chrome (source scan)', () => {
     expect(discovery).not.toMatch(/titleStyle[\s\S]{0,160}color:\s*['\"]#fff/i)
   })
 
-  test('pattern overlay stays a faint charcoal weave, not a flood', () => {
-    const picker = read('components/marketplace/PatternPicker.tsx')
-    expect(picker).not.toMatch(/opacity:\s*number\s*\}\s*as const/)
-    expect(picker).toMatch(/id: 'linen'[\s\S]{0,80}opacity:\s*0\.1[0-9]/)
+  test('pattern overlay stays a faint botanical weave, not a flood', () => {
+    // The motif registry moved out of the picker into ONE pure module
+    // (MARKETPLACE-PALETTE-FLORAL-RELIABILITY); pickers only consume it.
+    const patterns = read('components/marketplace/patterns.ts')
+    expect(patterns).toMatch(/PATTERN_OPACITY_CEILING\s*=\s*0\.[0-6]/)
+    // Motifs mix from palette variables, so they can never read as pasted-on.
+    expect(patterns).toContain('var(--ys-moss')
+    expect(patterns).toContain('var(--ys-onPaper')
+    expect(patterns).not.toMatch(/url\(/)
     const shell = read('components/marketplace/MarketplaceShell.tsx')
     // The landing stylesheet moved out of the component into a route stylesheet
     // (MARKET-ROOT-TRANSFER-LATENCY); the pattern contract itself is unchanged.
     const landing =
       read('app/marketplace/PublicMarketplaceLanding.tsx') +
       read('app/marketplace/marketplace-landing.css')
-    expect(shell).toMatch(/\.cw-market::before[^}]*opacity:\s*0\.22/)
-    expect(landing).toMatch(/\.cw-market::before[^}]*opacity:\s*0\.22/)
+    // The canvas consumes the shared variables (0.22 stays as the shipped
+    // no-variable fallback) instead of a runtime style-tag override.
+    expect(shell).toMatch(/\.cw-market::before[\s\S]{0,400}?opacity:\s*var\(--ys-pattern-opacity,\s*0\.22\)/)
+    expect(landing).toMatch(/\.cw-market::before[\s\S]{0,400}?opacity:\s*var\(--ys-pattern-opacity,\s*0\.22\)/)
+    expect(shell).toContain('background-image: var(--ys-pattern-image, none)')
+    expect(landing).toContain('background-image: var(--ys-pattern-image, none)')
   })
 
   test('account trigger is light chrome, not cream-on-glass', () => {
@@ -113,8 +124,15 @@ describe('marketplace professional chrome (source scan)', () => {
   })
 
   test('palette picker always writes tokens onto the market shell', () => {
+    // ONE writer for palette + pattern now lives in the shared store, so two
+    // pickers can never paint the shell.
     const ctx = read('contexts/palette-context.tsx')
-    expect(ctx).toContain('applyPaletteCssVars(root, next.tokens)')
+    const theme = read('components/marketplace/market-theme.ts')
+    expect(theme).toContain('applyPaletteCssVars(root, next.tokens)')
+    // Every mounted .cw-market root is painted (the landing nests roots and
+    // /shop remounts its own provider) — not just the first one.
+    expect(theme).toContain("querySelectorAll<HTMLElement>('.cw-market')")
+    expect(ctx).toContain('setMarketThemePreference')
     expect(ctx).not.toContain("getAttribute('data-ys-palette') === paletteName")
   })
 

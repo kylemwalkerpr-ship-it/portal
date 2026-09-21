@@ -1,33 +1,47 @@
 'use client'
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { usePalette } from '@/contexts/palette-context'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useMarketplaceTheme } from '@/contexts/palette-context'
 import { T } from './tokens'
-import { getPatternCss, getPatternCssAdaptive, getPatternOpacity, getPatternBackgroundSize, getPatternPosition } from './PatternPicker'
-import type { PatternId } from './PatternPicker'
+import { PATTERNS, getPattern, type PatternId } from './patterns'
 
-const STORAGE_KEY = 'ys-marketplace-pattern'
+/**
+ * ThemePicker — one control for the marketplace colour palette + background
+ * motif.
+ *
+ * Reliability contract (MARKETPLACE-PALETTE-FLORAL-RELIABILITY):
+ *   - Palette AND pattern come from the shared provider store. This component
+ *     keeps NO pattern state of its own and injects NO global style tag, so
+ *     the desktop instance and the mobile-drawer instance always agree, and
+ *     opening/closing the drawer can never rewrite the current pattern.
+ *   - Selecting a motif is a single shared-store mutation; the provider
+ *     repaints documentElement and every mounted .cw-market root.
+ */
 
-const PATTERNS: Array<{ id: PatternId; label: string; emoji: string }> = [
-  { id: 'none', label: 'Solid', emoji: '◼️' },
-  { id: 'linen', label: 'Linen', emoji: '🧵' },
-  { id: 'dots', label: 'Dots', emoji: '🔲' },
-  { id: 'diagonal', label: 'Diagonal', emoji: '📐' },
-  { id: 'woodgrain', label: 'Wood grain', emoji: '🪵' },
-  { id: 'crosshatch', label: 'Crosshatch', emoji: '🔺' },
-  { id: 'diamonds', label: 'Diamonds', emoji: '💎' },
-]
+/** Motif preview swatch — same layered gradients the canvas uses. */
+function PatternSwatch({ id, size = 22 }: { id: PatternId; size?: number }) {
+  const def = getPattern(id)
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        width: size,
+        height: size,
+        flexShrink: 0,
+        borderRadius: 3,
+        backgroundColor: 'var(--ys-cream, #F9FAFB)',
+        backgroundImage: def.layers.length ? def.layers.join(', ') : undefined,
+        backgroundSize: def.backgroundSize,
+        backgroundPosition: def.backgroundPosition,
+        border: '1px solid var(--ys-rule, rgba(15,23,42,0.10))',
+      }}
+    />
+  )
+}
 
 export function ThemePicker() {
-  const { palettes, palette, setPaletteName } = usePalette()
-  const [selectedPattern, setSelectedPattern] = useState<PatternId>(() => {
-    if (typeof window === 'undefined') return 'none'
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored && PATTERNS.some(p => p.id === stored)) return stored as PatternId
-    } catch {}
-    return 'none'
-  })
+  const { palettes, palette, setPaletteName, patternId, setPatternId, pattern } = useMarketplaceTheme()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
@@ -48,57 +62,24 @@ export function ThemePicker() {
     }
   }, [open])
 
-  // Apply CSS vars on mount
-  useEffect(() => {
-    const root = document.querySelector('.cw-market') as HTMLElement | null
-    if (!root) return
-    import('@/components/marketplace/tokens').then(({ applyPaletteCssVars }) => {
-      applyPaletteCssVars(root, palette.tokens)
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Apply pattern by injecting a <style> tag
-  const applyPattern = useCallback((id: PatternId) => {
-    const css = getPatternCss(id)
-    const bgSize = getPatternBackgroundSize(id)
-    const bgPos = getPatternPosition(id)
-    let tag = document.getElementById('ys-pattern-override') as HTMLStyleElement | null
-    if (!tag) {
-      tag = document.createElement('style')
-      tag.id = 'ys-pattern-override'
-      document.head.appendChild(tag)
-    }
-    if (id === 'none') {
-      tag.textContent = ''
-    } else {
-      // Fallback (black strokes) then palette-adaptive color-mix layer, with
-      // the per-pattern opacity cap — same contract as PatternPicker.
-      const adaptive = getPatternCssAdaptive(id)
-      const opacity = getPatternOpacity(id)
-      tag.textContent = `.cw-market::before { background-image: ${css} !important; background-image: ${adaptive} !important; background-size: ${bgSize} !important; background-position: ${bgPos} !important; opacity: ${opacity} !important; }`
-    }
-  }, [])
-
-  useEffect(() => {
-    applyPattern(selectedPattern)
-  }, [selectedPattern, applyPattern])
-
-  const handlePaletteSelect = (name: string) => {
+  const handlePaletteSelect = useCallback((name: string) => {
     setPaletteName(name)
     setOpen(false)
-  }
+  }, [setPaletteName])
 
-  const handlePatternSelect = (id: PatternId) => {
-    setSelectedPattern(id)
-    try { localStorage.setItem(STORAGE_KEY, id) } catch {}
-  }
-
-  const currentPattern = PATTERNS.find(p => p.id === selectedPattern) ?? PATTERNS[0]
+  // Pattern stays open so several motifs can be compared against the live
+  // page; the store persists + repaints on every pick.
+  const handlePatternSelect = useCallback((id: PatternId) => {
+    setPatternId(id)
+  }, [setPatternId])
 
   return (
     <div
       ref={wrapRef}
       data-no-translate
+      data-ys-theme-picker=""
+      data-ys-selected-palette={palette.name}
+      data-ys-selected-pattern={patternId}
       style={{
         position: 'relative',
         display: 'inline-flex',
@@ -107,7 +88,7 @@ export function ThemePicker() {
     >
       <button
         type="button"
-        aria-label={`Theme: ${palette.label} + ${currentPattern.label}. Click to change.`}
+        aria-label={`Theme: ${palette.label} + ${pattern.label}. Click to change.`}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
@@ -130,7 +111,7 @@ export function ThemePicker() {
         }}
       >
         <span aria-hidden="true" style={{ fontSize: 12 }}>{palette.emoji}</span>
-        <span aria-hidden="true" style={{ fontSize: 10 }}>{currentPattern.emoji}</span>
+        <PatternSwatch id={patternId} size={14} />
         <span aria-hidden="true" style={{ fontSize: 9, opacity: 0.55, marginLeft: 1 }}>▾</span>
       </button>
 
@@ -142,7 +123,7 @@ export function ThemePicker() {
             position: 'absolute',
             top: 'calc(100% + 6px)',
             right: 0,
-            minWidth: 260,
+            minWidth: 300,
             border: '1px solid rgba(148,163,184,0.30)',
             borderRadius: 8,
             background: '#fff',
@@ -154,7 +135,7 @@ export function ThemePicker() {
         >
           {/* Color palette section */}
           <div style={{ padding: '8px 10px 4px', fontSize: 9, fontWeight: 700, color: '#5C6070', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
-            🎨 Color Palette
+            🌿 Colour Palette
           </div>
           {palettes.map(p => {
             const active = p.name === palette.name
@@ -162,6 +143,8 @@ export function ThemePicker() {
               <button
                 key={p.name}
                 type="button"
+                data-ys-palette-option={p.name}
+                aria-selected={active}
                 onClick={() => handlePaletteSelect(p.name)}
                 style={{
                   width: '100%',
@@ -183,10 +166,13 @@ export function ThemePicker() {
                 <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                   <span style={{ width: 12, height: 12, borderRadius: 2, background: p.tokens.paper }} />
                   <span style={{ width: 12, height: 12, borderRadius: 2, background: p.tokens.vellum }} />
-                  <span style={{ width: 12, height: 12, borderRadius: 2, background: p.tokens.gold }} />
+                  <span style={{ width: 12, height: 12, borderRadius: 2, background: p.tokens.indigo }} />
                 </span>
                 <span style={{ flex: 1 }}>
                   <span style={{ display: 'block', lineHeight: 1.3 }}>{p.emoji} {p.label}</span>
+                  <span style={{ display: 'block', fontSize: 10.5, fontWeight: 500, lineHeight: 1.35, color: active ? T.indigoDeep : T.inkSoft }}>
+                    {p.description}
+                  </span>
                 </span>
                 {active && (
                   <span style={{ fontSize: 11, fontWeight: 800, color: T.indigo, flexShrink: 0 }}>✓</span>
@@ -198,37 +184,41 @@ export function ThemePicker() {
           {/* Divider */}
           <div style={{ height: 1, background: 'rgba(148,163,184,0.2)', margin: '4px 10px' }} />
 
-          {/* Pattern section */}
+          {/* Pattern section — motif names + matching swatches, not emoji-only */}
           <div style={{ padding: '4px 10px 4px', fontSize: 9, fontWeight: 700, color: '#5C6070', letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
-            ✨ Background Pattern
+            🌸 Botanical Pattern
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, padding: '4px 10px 10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, padding: '4px 10px 10px' }}>
             {PATTERNS.map(p => {
-              const active = p.id === selectedPattern
+              const active = p.id === patternId
               return (
                 <button
                   key={p.id}
                   type="button"
+                  role="option"
+                  data-ys-pattern-option={p.id}
+                  aria-selected={active}
+                  title={p.description}
                   onClick={() => handlePatternSelect(p.id)}
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 3,
-                    padding: '6px 2px',
+                    gap: 7,
+                    padding: '6px 6px',
                     border: active ? `2px solid ${T.indigo}` : '1px solid rgba(148,163,184,0.25)',
                     borderRadius: 6,
                     background: active ? T.indigoSoft : '#FAFAF8',
                     cursor: 'pointer',
-                    fontSize: 10,
+                    fontSize: 10.5,
                     fontWeight: active ? 700 : 500,
                     color: active ? T.indigoDeep : T.ink,
                     fontFamily: 'inherit',
+                    textAlign: 'left',
                     transition: 'border-color 120ms, background 120ms',
                   }}
                 >
-                  <span style={{ fontSize: 16 }}>{p.emoji}</span>
-                  <span style={{ lineHeight: 1.1, textAlign: 'center' as const }}>{p.label}</span>
+                  <PatternSwatch id={p.id} size={20} />
+                  <span style={{ lineHeight: 1.15 }}>{p.label}</span>
                 </button>
               )
             })}
