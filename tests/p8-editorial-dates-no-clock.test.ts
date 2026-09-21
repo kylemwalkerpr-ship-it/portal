@@ -368,7 +368,7 @@ describe('blog index + frontmatter renderer — never synthesize date:', () => {
 
   it('omits frontmatter date: on the markdown/MDX renderer with no trusted date', () => {
     const p = plan({
-      host: 'portal',
+      host: 'market',
       repo: 'portal',
       filePath: 'catalogue/guides/h1b-visa.md',
       canonicalUrl: 'https://portal.yousafeconsultancy.com/catalogue/guides/h1b-visa',
