@@ -9,6 +9,7 @@
 
 import { finalizePipelineContentType } from './jobContentType'
 import type { OwnerPlan } from './ownership'
+import type { AuthorPack } from './authorPack'
 import {
   assertPlanRepoConsistency,
   HOST_REPO,
@@ -616,6 +617,13 @@ export async function shipContent(opts: {
   /** Hard max body words for the content type — passed to the deterministic
    *  repair so over-long drafts are trimmed into their window before gates. */
   maxWords?: number
+  /**
+   * Truthful author identity for the rendered byline + structured data: the
+   * PRUNED AuthorPack the pipeline actually cited. Omitted → the renderer
+   * keeps its existing Organization/editorial fallback rather than inventing
+   * a named person.
+   */
+  author?: AuthorPack | null
 }): Promise<ShipResult> {
   // Hard gate: strategy host → repo must match HOST_REPO table
   assertPlanRepoConsistency(opts.plan)
@@ -709,6 +717,7 @@ export async function shipContent(opts: {
     primaryKeyword: opts.primaryKeyword,
     indexable,
     canonicalUrl: opts.plan.canonicalUrl,
+    author: opts.author ?? null,
   })
 
   // ── Master gate stack (approve / merge cannot skip any layer) ────────────
