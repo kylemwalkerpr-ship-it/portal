@@ -9,16 +9,42 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  P6_SOURCE_STALE_GATE_ACTOR,
+  P6_SOURCE_STALE_GATE_REASONS,
+  P6_SOURCE_STALE_REASON_HTTP_404,
+  P6_SOURCE_STALE_REASON_HTTP_410,
+  P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION,
   buildP6DispositionReport,
   classifyP6Row,
+  computeP6GateAccounting,
   fetchP6DispositionRows,
   fetchP6DispositionRowsWithTruncation,
   hasDurableVerificationProof,
+  isAllowlistedSourceStaleRejection,
+  isAuditedStaleRejection,
   p6ObservationFromLiveCheck,
+  p6SourceStaleReasonForStatus,
   runP6DispositionReport,
   type P6InterlinkRow,
   type P6TargetObservation,
 } from '../scripts/p6InterlinkDisposition'
+import {
+  P6_SOURCE_STALE_GATE_ACTOR as WRITER_GATE_ACTOR,
+  P6_SOURCE_STALE_GATE_REASONS as WRITER_GATE_REASONS,
+  P6_SOURCE_STALE_REASON_HTTP_404 as WRITER_REASON_HTTP_404,
+  P6_SOURCE_STALE_REASON_HTTP_410 as WRITER_REASON_HTTP_410,
+  P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION as WRITER_REASON_UNSHIPPED,
+} from '../scripts/p6SourceStaleRejection'
+
+/** A live-target row explicitly rejected by the P6 source-stale actor. */
+function rejectedRow(reason: string, overrides: Partial<P6InterlinkRow> = {}): P6InterlinkRow {
+  return row({
+    status: 'rejected',
+    gate_reason: reason,
+    gate_actor: P6_SOURCE_STALE_GATE_ACTOR,
+    ...overrides,
+  })
+}
 
 const LIVE = 'https://market.yousafeconsultancy.com/categories/study-permits'
 const PORTAL = 'https://portal.yousafeconsultancy.com/dashboard'
@@ -150,11 +176,30 @@ describe('B) report aggregation keeps raw backlog separate', () => {
   })
 
   it('derives the approved-useful denominator/numerator from live-target rows only', () => {
-    expect(report.approvedUseful).toEqual({ denominator: 3, numerator: 2, unverified: 1 })
+    expect(report.approvedUseful).toMatchObject({
+      denominator: 3,
+      numerator: 2,
+      unverified: 1,
+      explicitlyRejected: 0,
+      resolved: 2,
+      resolvedByReason: {},
+    })
+    expect(report.approvedUseful.verifiedAppliedRatio).toBeCloseTo(2 / 3)
+    expect(report.approvedUseful.resolvedRatio).toBeCloseTo(2 / 3)
+    expect(report.approvedUseful.basis).toMatch(/ALLOWLISTED P6 source-stale/)
   })
 
   it('reports stale/rejected backlog separately and keeps the gate unevaluable', () => {
-    expect(report.stale).toEqual({ target404: 1, legacyAuthWall: 1, rejected: 1 })
+    expect(report.stale).toEqual({
+      target404: 1,
+      legacyAuthWall: 1,
+      rejected: 1,
+      rejectedWithAudit: 0,
+      rejectedUnaudited: 1,
+      rejectedByReason: { '(no gate_reason)': 1 },
+      rejectedAllowlisted: 0,
+      rejectedAuditedNonAllowlisted: 0,
+    })
     expect(report.unknown).toBe(1)
     expect(report.gate.evaluated).toBe(false)
     expect(report.gate.note).toMatch(/read-only/i)
@@ -311,5 +356,174 @@ describe('C) SELECT-only fetch and read-only run', () => {
     expect(source).not.toMatch(/\.insert\s*\(/)
     expect(source).not.toMatch(/\.rpc\s*\(/)
     expect(source).toContain('verification_evidence')
+  })
+})
+
+describe('E) gate credit is ALLOWLIST-ONLY (RED controls)', () => {
+  const observations = { [LIVE]: observation(200) }
+
+  it('credits only the allowlisted P6 source-stale actor + reasons', () => {
+    for (const reason of [
+      P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION,
+      P6_SOURCE_STALE_REASON_HTTP_404,
+      P6_SOURCE_STALE_REASON_HTTP_410,
+    ]) {
+      expect(isAllowlistedSourceStaleRejection(rejectedRow(reason))).toBe(true)
+      expect(isAuditedStaleRejection(rejectedRow(reason))).toBe(true)
+    }
+    expect(p6SourceStaleReasonForStatus(404)).toBe(P6_SOURCE_STALE_REASON_HTTP_404)
+    expect(p6SourceStaleReasonForStatus(410)).toBe(P6_SOURCE_STALE_REASON_HTTP_410)
+    for (const status of [0, 200, 301, 403, 500, 503]) {
+      expect(p6SourceStaleReasonForStatus(status)).toBeNull()
+    }
+  })
+
+  it('excludes an ARBITRARY audited reason even with the right actor', () => {
+    const arbitrary = rejectedRow('looks-stale-to-me')
+    expect(isAuditedStaleRejection(arbitrary)).toBe(true)
+    expect(isAllowlistedSourceStaleRejection(arbitrary)).toBe(false)
+    const report = buildP6DispositionReport([arbitrary], observations)
+    expect(report.approvedUseful.explicitlyRejected).toBe(0)
+    expect(report.approvedUseful.resolved).toBe(0)
+    expect(report.stale.rejectedWithAudit).toBe(1)
+    expect(report.stale.rejectedAuditedNonAllowlisted).toBe(1)
+  })
+
+  it('excludes the right reason written by the WRONG actor', () => {
+    for (const actor of ['p6-batch-a-stale-rejection', 'someone-else', '', null]) {
+      const wrongActor = rejectedRow(P6_SOURCE_STALE_REASON_HTTP_404, { gate_actor: actor })
+      expect(isAllowlistedSourceStaleRejection(wrongActor)).toBe(false)
+    }
+    const report = buildP6DispositionReport(
+      [rejectedRow(P6_SOURCE_STALE_REASON_HTTP_404, { gate_actor: 'p6-batch-a-stale-rejection' })],
+      observations,
+    )
+    expect(report.approvedUseful.explicitlyRejected).toBe(0)
+    expect(report.stale.rejectedAuditedNonAllowlisted).toBe(1)
+  })
+
+  it('excludes the Batch A TARGET-stale vocabulary even if artificially supplied', () => {
+    for (const reason of ['stale_target_http_404', 'stale_target_http_410']) {
+      const batchA = rejectedRow(reason, { gate_actor: 'p6-batch-a-stale-rejection' })
+      expect(isAllowlistedSourceStaleRejection(batchA)).toBe(false)
+      const report = buildP6DispositionReport([batchA], observations)
+      expect(report.approvedUseful.explicitlyRejected).toBe(0)
+      expect(report.approvedUseful.resolved).toBe(0)
+      expect(report.approvedUseful.denominator).toBe(1)
+      expect(report.stale.rejectedByReason[reason]).toBe(1)
+    }
+  })
+
+  it('never credits an unaudited rejection, and keeps applied truth separate', () => {
+    const unaudited = row({ status: 'rejected' })
+    const report = buildP6DispositionReport([unaudited, appliedRow()], observations)
+    expect(report.approvedUseful.numerator).toBe(1)
+    expect(report.approvedUseful.explicitlyRejected).toBe(0)
+    expect(report.approvedUseful.resolved).toBe(1)
+    expect(report.stale.rejectedUnaudited).toBe(1)
+  })
+
+  it('counts allowlisted rejections per reason inside the cohort', () => {
+    const report = buildP6DispositionReport(
+      [
+        rejectedRow(P6_SOURCE_STALE_REASON_HTTP_404),
+        rejectedRow(P6_SOURCE_STALE_REASON_HTTP_404, { id: 'row-404b' }),
+        rejectedRow(P6_SOURCE_STALE_REASON_HTTP_410, { id: 'row-410' }),
+        rejectedRow(P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION, { id: 'row-unshipped' }),
+        // Outside the live-target cohort (dead target): resolved nothing.
+        rejectedRow(P6_SOURCE_STALE_REASON_HTTP_404, { id: 'row-dead', target_url: DEAD }),
+      ],
+      { ...observations, [DEAD]: observation(404) },
+    )
+    // Five rejected rows, but only the FOUR live-target ones are cohort members.
+    expect(report.approvedUseful.denominator).toBe(4)
+    expect(report.approvedUseful.explicitlyRejected).toBe(4)
+    expect(report.approvedUseful.resolvedByReason).toEqual({
+      [P6_SOURCE_STALE_REASON_HTTP_404]: 2,
+      [P6_SOURCE_STALE_REASON_HTTP_410]: 1,
+      [P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION]: 1,
+    })
+    expect(report.approvedUseful.resolved).toBe(4)
+    // A target-stale row is never resurrected into the live cohort: the fifth
+    // (404 target) row stays outside and contributes nothing.
+    expect(report.approvedUseful.numerator).toBe(0)
+    expect(report.classes.target_404).toBe(1)
+    expect(report.stale.rejectedAllowlisted).toBe(5)
+  })
+
+  it('the writer and the gate share ONE allowlist (no drift possible)', () => {
+    expect(WRITER_GATE_ACTOR).toBe(P6_SOURCE_STALE_GATE_ACTOR)
+    expect([...WRITER_GATE_REASONS]).toEqual([...P6_SOURCE_STALE_GATE_REASONS])
+    expect(WRITER_REASON_HTTP_404).toBe(P6_SOURCE_STALE_REASON_HTTP_404)
+    expect(WRITER_REASON_HTTP_410).toBe(P6_SOURCE_STALE_REASON_HTTP_410)
+    expect(WRITER_REASON_UNSHIPPED).toBe(P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION)
+    expect([...P6_SOURCE_STALE_GATE_REASONS]).not.toContain('stale_target_http_404')
+    expect([...P6_SOURCE_STALE_GATE_REASONS]).not.toContain('stale_target_http_410')
+  })
+})
+
+describe('F) literal spec gate arithmetic (59/73 passes, 58/73 fails)', () => {
+  function cohortReport(resolvedRows: number, opts: { truncated?: boolean } = {}) {
+    const rows = Array.from({ length: 73 }, (_, index) =>
+      index < resolvedRows
+        ? rejectedRow(P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION, { id: `resolved-${index}` })
+        : row({ id: `planned-${index}` }),
+    )
+    return buildP6DispositionReport(rows, { [LIVE]: observation(200) }, opts)
+  }
+
+  it('passes the literal resolved reading at 59/73 and fails the strict applied reading', () => {
+    const accounting = computeP6GateAccounting(cohortReport(59))
+    expect(accounting.approvedUseful).toBe(73)
+    expect(accounting.verifiedApplied).toBe(0)
+    expect(accounting.explicitlyRejected).toBe(59)
+    expect(accounting.resolved).toBe(59)
+    expect(accounting.resolvedRatio).toBeCloseTo(59 / 73)
+    expect(accounting.evaluable).toBe(true)
+    expect(accounting.notEvaluableReason).toBeNull()
+    expect(accounting.resolvedGateMet).toBe(true)
+    expect(accounting.verifiedAppliedGateMet).toBe(false)
+    expect(accounting.appliedCountBasis).toBe('durable_proof_plus_live_target_classification')
+  })
+
+  it('fails at 58/73 and never renames a rejection as applied', () => {
+    const accounting = computeP6GateAccounting(cohortReport(58))
+    expect(accounting.resolved).toBe(58)
+    expect(accounting.resolvedRatio).toBeCloseTo(58 / 73)
+    expect(accounting.resolvedGateMet).toBe(false)
+    expect(accounting.verifiedApplied).toBe(0)
+    expect(accounting.verifiedAppliedGateMet).toBe(false)
+  })
+
+  it('a zero denominator is an EXPLICIT non-pass, not a pass by default', () => {
+    const accounting = computeP6GateAccounting(buildP6DispositionReport([], {}))
+    expect(accounting.approvedUseful).toBe(0)
+    expect(accounting.evaluable).toBe(false)
+    expect(accounting.notEvaluableReason).toMatch(/cohort is empty/i)
+    expect(accounting.verifiedAppliedGateMet).toBe(false)
+    expect(accounting.resolvedGateMet).toBe(false)
+  })
+
+  it('an unknown or truncated report can never claim an evaluable PASS', () => {
+    const unknownRow = row({ id: 'row-unobserved', target_url: 'https://legal.yousafeconsultancy.com/us/never-probed/' })
+    const withUnknown = computeP6GateAccounting(
+      buildP6DispositionReport([...cohortReport(59).rows, unknownRow], { [LIVE]: observation(200) }),
+    )
+    expect(withUnknown.evaluable).toBe(false)
+    expect(withUnknown.notEvaluableReason).toMatch(/unknown/i)
+    expect(withUnknown.resolvedGateMet).toBe(false)
+
+    const truncated = computeP6GateAccounting(cohortReport(59, { truncated: true }))
+    expect(truncated.resolved).toBe(59)
+    expect(truncated.evaluable).toBe(false)
+    expect(truncated.notEvaluableReason).toMatch(/truncated/i)
+    expect(truncated.resolvedGateMet).toBe(false)
+    expect(truncated.verifiedAppliedGateMet).toBe(false)
+  })
+
+  it('a higher required ratio is honoured (and reported side by side)', () => {
+    const accounting = computeP6GateAccounting(cohortReport(59), { requiredRatio: 0.9 })
+    expect(accounting.requiredRatio).toBe(0.9)
+    expect(accounting.resolvedGateMet).toBe(false)
   })
 })

@@ -4,9 +4,12 @@
  * Exhaustive repository audit:
  *   · the only writers of `seo_interlinks` are server-side modules: the
  *     planner, the live-proof verifier and the operator-run Batch A
- *     stale-rejection CLI (`scripts/p6-batch-a-stale-rejection.mts`), whose
- *     only write is the exact-row-CAS `status='rejected'` stale disposition;
- *     it can never write `applied` or any verification/proof column;
+ *     stale-rejection CLI (`scripts/p6-batch-a-stale-rejection.mts`) plus the
+ *     operator-run Batch B source-stale CLI
+ *     (`scripts/p6-source-stale-rejection.mts`), whose only write is the
+ *     exact-row-CAS `status='rejected'` stale disposition with a gate-creditable
+ *     allowlisted reason; neither can write `applied` or any
+ *     verification/proof column;
  *   · the only file that can write `status: 'applied'` is the live-proof
  *     verifier, and its applied patch must carry the full proof contract;
  *   · no browser/client component writes to the table (the Realtime
@@ -46,6 +49,7 @@ describe('A) every seo_interlinks write is server/admin code', () => {
       'lib/seoEngine/interlink.ts',
       'lib/seoFactory/interlinkVerification.ts',
       'scripts/p6-batch-a-stale-rejection.mts',
+      'scripts/p6-source-stale-rejection.mts',
     ])
   })
 
@@ -60,6 +64,37 @@ describe('A) every seo_interlinks write is server/admin code', () => {
     )
     expect(body).not.toMatch(APPLIED_STATUS_RE)
     expect(body).not.toMatch(/\.(upsert|insert|delete|rpc)\s*\(/)
+  })
+
+  it('the Batch B operator CLI can only write the fenced rejected disposition', () => {
+    const body = read(path.join(ROOT, 'scripts/p6-source-stale-rejection.mts'))
+    // Same shape as Batch A: the pure planner's patch, applied through every CAS
+    // fence entry and read back so a zero-row race is a skip, never success.
+    expect(body).toMatch(/update\(write\.patch\)/)
+    expect(body).toContain(".select('id')")
+    expect(body).toMatch(
+      /entry\.op === 'eq' \? query\.eq\(entry\.column, entry\.value\) : query\.is\(entry\.column, null\)/,
+    )
+    expect(body).not.toMatch(APPLIED_STATUS_RE)
+    expect(body).not.toMatch(/\.(upsert|insert|delete|rpc)\s*\(/)
+    // The write patch itself comes from the pure module, whose reason argument
+    // is validated against the ONE allowlist the read-only gate also counts.
+    const pure = read(path.join(ROOT, 'scripts/p6SourceStaleRejection.ts'))
+    expect(pure).toContain('P6_SOURCE_STALE_GATE_REASONS.includes(gateReason)')
+    expect(pure).not.toMatch(APPLIED_STATUS_RE)
+  })
+
+  it('the applied migration keeps seo_interlinks writes service-role-only', () => {
+    // Least privilege: an anon/authenticated client can only ever SELECT, so a
+    // degraded (anon) key can never silently write this lane.
+    const migration = read(
+      path.join(ROOT, 'supabase/migrations/20260920130000_seo_interlinks_verification_truth.sql'),
+    )
+    expect(migration).toMatch(
+      /revoke all privileges on table public\.seo_interlinks from public, anon, authenticated;/,
+    )
+    expect(migration).toMatch(/grant select on table public\.seo_interlinks to anon, authenticated;/)
+    expect(migration).toMatch(/grant all privileges on table public\.seo_interlinks to service_role;/)
   })
 
   it('the planner writer can only upsert plan metadata (no applied status)', () => {

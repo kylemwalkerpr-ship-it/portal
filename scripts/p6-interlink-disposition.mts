@@ -13,7 +13,10 @@
  *      unknown),
  *   3. prints the JSON report (raw backlog kept separate from the
  *      approved-useful numerator/denominator, plus explicit `truncated` /
- *      `rowLimit` truth when the row cap was reached).
+ *      `rowLimit` truth when the row cap was reached), followed by the P6 gate
+ *      arithmetic (`gateAccounting`) which reports the strict verified-applied
+ *      ratio and the literal "verified applied or explicitly rejected/stale"
+ *      ratio side by side — a rejected row is never counted as applied.
  *
  * There is no --apply flag, no update/delete/upsert path, and no table is
  * mutated. Unknown stays unknown.
@@ -25,6 +28,7 @@ import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 import { classifyLiveStatus, verifyUrlsLive } from '../lib/seoFactory/linkAudit'
 import {
+  computeP6GateAccounting,
   p6ObservationFromLiveCheck,
   p6TargetKey,
   runP6DispositionReport,
@@ -74,7 +78,12 @@ async function main() {
     supabase: supabase as unknown as Parameters<typeof runP6DispositionReport>[0]['supabase'],
     observeTargets,
   })
-  console.log(JSON.stringify(report, null, 2))
+  // The read-only gate arithmetic is reported by this CLI, not by the report
+  // module: `report.gate.evaluated` stays the module's foundation flag, while
+  // `gateAccounting` exposes both spec readings explicitly.
+  console.log(
+    JSON.stringify({ ...report, gateAccounting: computeP6GateAccounting(report) }, null, 2),
+  )
 }
 
 main().catch((e) => {

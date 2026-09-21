@@ -11,6 +11,17 @@
  * target observation, and keeps raw backlog counts separate from the
  * approved-useful numerator/denominator.
  *
+ * Two terminal dispositions are reported SIDE BY SIDE and never merged:
+ * `approvedUseful.numerator` counts verified applied rows only (durable proof
+ * + live target), while `approvedUseful.explicitlyRejected` counts audited
+ * P6 SOURCE-STALE rejections (allowlisted reason + exact actor) INSIDE the same
+ * live-target cohort. `resolved` adds them for the spec's literal "verified
+ * applied or explicitly rejected/stale" wording, and a rejected row can never
+ * enter the applied numerator. An arbitrary audited reason, a wrong actor and
+ * Batch A's target-stale vocabulary are reported but resolve NOTHING.
+ * `stale.*` reports the whole rejected estate separately, split into allowed /
+ * audited-but-not-allowlisted / unaudited and a `gate_reason` histogram.
+ *
  * READ-ONLY BY CONSTRUCTION:
  *   - `fetchP6DispositionRows` only ever issues SELECT ... ORDER BY ... RANGE;
  *   - classification and aggregation are pure functions over fetched rows;
@@ -38,6 +49,89 @@ export interface P6InterlinkRow {
   verified_at?: string | null
   verification_evidence?: unknown
   applied_at?: string | null
+  /** Auditable stale-disposition metadata (never a verification proof). */
+  gate_reason?: string | null
+  gate_actor?: string | null
+}
+
+/**
+ * True only for an AUDITED explicit stale rejection: `status='rejected'` with
+ * both `gate_reason` and `gate_actor` present. An unaudited rejection row is
+ * legal estate hygiene but is NOT evidence of an explicit disposition, so it
+ * is excluded from the resolved numerator and reported under
+ * `stale.rejectedUnaudited` instead.
+ *
+ * AUDITED IS NOT ENOUGH FOR GATE CREDIT: this predicate is the WIDE reading
+ * used for the stale histogram only. The approved-useful cohort uses
+ * `isAllowlistedSourceStaleRejection`, which additionally requires the exact P6
+ * source-stale actor and one of the allowlisted P6 source-stale reasons.
+ */
+export function isAuditedStaleRejection(row: P6InterlinkRow): boolean {
+  if (String(row?.status || '') !== 'rejected') return false
+  return nonblank(row?.gate_reason) && nonblank(row?.gate_actor)
+}
+
+/**
+ * ── P6 SOURCE-STALE AUDIT VOCABULARY (single source of truth) ──────────────
+ *
+ * This module OWNS the allowlist of reasons that may resolve an approved-useful
+ * cohort row, and the ONE actor allowed to write them. The Batch B writer
+ * (`scripts/p6SourceStaleRejection.ts`) imports these constants instead of
+ * spelling its own literals, so the gate can only ever count a reason the
+ * writer is structurally able to produce — a rename cannot silently loosen (or
+ * silently tighten) the numerator.
+ *
+ * Batch A's `stale_target_http_404` / `stale_target_http_410` target-stale
+ * reasons are deliberately NOT in this list: a dead TARGET is a stale row but
+ * is never a live-target cohort member, and an artificially supplied Batch A
+ * reason must therefore never resolve a cohort row.
+ */
+export const P6_SOURCE_STALE_GATE_ACTOR = 'p6-source-stale-rejection'
+
+/** Never-shipped planner mission whose exact target is still live. */
+export const P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION = 'stale_source_unshipped_mission'
+/** Shipped mission whose deterministically resolved canonical source is gone. */
+export const P6_SOURCE_STALE_REASON_HTTP_404 = 'stale_source_http_404'
+export const P6_SOURCE_STALE_REASON_HTTP_410 = 'stale_source_http_410'
+
+/** The complete allowlist of gate-creditable P6 source-stale reasons. */
+export const P6_SOURCE_STALE_GATE_REASONS: readonly string[] = [
+  P6_SOURCE_STALE_REASON_UNSHIPPED_MISSION,
+  P6_SOURCE_STALE_REASON_HTTP_404,
+  P6_SOURCE_STALE_REASON_HTTP_410,
+]
+
+/**
+ * The exact reason a raw source status justifies, or null when the status
+ * proves nothing (2xx/3xx source stays live, 0/5xx/other stays unknown).
+ */
+export function p6SourceStaleReasonForStatus(status: number): string | null {
+  if (status === 404) return P6_SOURCE_STALE_REASON_HTTP_404
+  if (status === 410) return P6_SOURCE_STALE_REASON_HTTP_410
+  return null
+}
+
+/**
+ * True only for a rejection this gate may count as an explicit P6
+ * SOURCE-STALE disposition: `status='rejected'`, the exact P6 source-stale
+ * actor, and an allowlisted P6 source-stale reason. Arbitrary vocabulary, a
+ * wrong actor, a blank/missing reason and the Batch A target-stale reasons are
+ * all excluded.
+ */
+export function isAllowlistedSourceStaleRejection(row: P6InterlinkRow): boolean {
+  if (String(row?.status || '') !== 'rejected') return false
+  if (String(row?.gate_actor ?? '').trim() !== P6_SOURCE_STALE_GATE_ACTOR) return false
+  const reason = String(row?.gate_reason ?? '').trim()
+  return reason.length > 0 && P6_SOURCE_STALE_GATE_REASONS.includes(reason)
+}
+
+/** The spec's approved-useful cohort membership (live-target rows). */
+export function isApprovedUsefulClass(classification: P6DispositionClass): boolean {
+  return (
+    classification === 'applied_present' ||
+    classification === 'live_target_source_verified' ||
+    classification === 'live_target_source_unverified'
+  )
 }
 
 /** Injected live target observation (from the existing link-validity authority). */
@@ -51,6 +145,14 @@ export interface P6DispositionRow extends P6InterlinkRow {
   classification: P6DispositionClass
   liveObserved: boolean
   liveStatus: number | null
+  /**
+   * True only when the persisted row is `status='rejected'` with an
+   * ALLOWLISTED P6 source-stale reason written by the P6 source-stale actor.
+   * An unaudited rejection, an arbitrary reason, a wrong actor and the Batch A
+   * target-stale vocabulary are never counted as an explicit stale disposition
+   * (and never as verified applied).
+   */
+  explicitlyRejected: boolean
 }
 
 export interface P6DispositionReport {
@@ -66,18 +168,47 @@ export interface P6DispositionReport {
   /**
    * Approved-useful backlog = rows whose target live-checks as a current,
    * reachable estate/market URL. `numerator` counts those with durable
-   * verification proof (applied_present + live_target_source_verified).
+   * verification proof (applied_present + live_target_source_verified) and is
+   * NEVER mixed with rejections. `explicitlyRejected` counts cohort rows whose
+   * persisted status is an ALLOWLISTED P6 source-stale rejection (exact actor +
+   * allowlisted reason), and `resolved` is the sum of the two — the spec's
+   * "verified applied or explicitly rejected/stale" reading — reported NEXT TO
+   * (never inside) the applied-only numerator.
    */
   approvedUseful: {
     denominator: number
     numerator: number
     unverified: number
+    explicitlyRejected: number
+    resolved: number
+    verifiedAppliedRatio: number
+    resolvedRatio: number
+    basis: string
+    /** Cohort rows resolved per allowlisted source-stale reason (audit view). */
+    resolvedByReason: Record<string, number>
   }
   /** Explicitly dispositioned stale backlog, reported separately. */
   stale: {
     target404: number
     legacyAuthWall: number
     rejected: number
+    /** Rejected rows carrying gate_reason + gate_actor (auditable). */
+    rejectedWithAudit: number
+    /** Rejected rows with no audit metadata (never treated as evidence). */
+    rejectedUnaudited: number
+    /** Rejected-row histogram by `gate_reason` (audit vocabulary truth). */
+    rejectedByReason: Record<string, number>
+    /**
+     * Rejected rows whose reason AND actor are the allowlisted P6
+     * source-stale pair — the ONLY rejections this report may resolve.
+     */
+    rejectedAllowlisted: number
+    /**
+     * Audited rejections excluded from gate credit (arbitrary reason, wrong
+     * actor, or Batch A target-stale vocabulary). Reported so the exclusion is
+     * visible rather than silent.
+     */
+    rejectedAuditedNonAllowlisted: number
   }
   unknown: number
   /** P6 gate is NOT evaluable from this foundation checkpoint. */
@@ -89,6 +220,16 @@ export interface P6DispositionReport {
 
 const P6_GATE_NOTE =
   'P6 foundation only: production rows are unclassified until a read-only run is performed. The gate is unevaluable here and no production row is mutated.'
+
+/** Spec ratio for the P6 gate ("≥80% of approved useful backlog …"). */
+export const P6_GATE_REQUIRED_RATIO = 0.8
+
+/**
+ * Explicit-basis string carried by every report so a reader can never mistake
+ * a stale rejection for verified applied truth.
+ */
+export const P6_APPROVED_USEFUL_BASIS =
+  'denominator = rows whose target classifies live now; numerator = verified applied only (durable proof + live target); explicitlyRejected = ALLOWLISTED P6 source-stale rejection (exact actor + reason) inside the same cohort; resolved = numerator + explicitlyRejected (the spec\'s "verified applied or explicitly rejected/stale" reading). Arbitrary reasons, wrong actors and Batch A target-stale reasons add nothing; a rejection is never counted as verified applied.'
 
 const LEGACY_AUTH_WALL_HOSTS = new Set(['portal.yousafeconsultancy.com'])
 
@@ -212,6 +353,11 @@ export function buildP6DispositionReport(
     unknown: 0,
   }
   let rejected = 0
+  let rejectedWithAudit = 0
+  let rejectedAllowlisted = 0
+  const rejectedByReason: Record<string, number> = {}
+  let cohortExplicitlyRejected = 0
+  const resolvedByReason: Record<string, number> = {}
 
   for (const row of rows) {
     const key = p6TargetKey(row.target_url)
@@ -220,17 +366,41 @@ export function buildP6DispositionReport(
       : undefined
     const classification = classifyP6Row(row, observation)
     classes[classification] += 1
-    if (String(row.status || '') === 'rejected') rejected += 1
+    // Gate credit is ALLOWLIST-ONLY: an audited rejection with an arbitrary
+    // reason, a wrong actor or the Batch A target-stale vocabulary resolves
+    // nothing.
+    const explicitlyRejected = isAllowlistedSourceStaleRejection(row)
+    const allowlistedReason = String(row.gate_reason || '').trim()
+    if (String(row.status || '') === 'rejected') {
+      rejected += 1
+      if (isAuditedStaleRejection(row)) rejectedWithAudit += 1
+      if (explicitlyRejected) rejectedAllowlisted += 1
+      const reason = nonblank(row.gate_reason)
+        ? String(row.gate_reason).trim()
+        : '(no gate_reason)'
+      rejectedByReason[reason] = (rejectedByReason[reason] || 0) + 1
+      // A live-target row that was explicitly rejected/stale is a RESOLVED
+      // member of the approved-useful cohort — the spec's second terminal
+      // disposition. It stays in the denominator (cohort membership is
+      // target-liveness based) and never enters the applied numerator.
+      if (explicitlyRejected && isApprovedUsefulClass(classification)) {
+        cohortExplicitlyRejected += 1
+        resolvedByReason[allowlistedReason] = (resolvedByReason[allowlistedReason] || 0) + 1
+      }
+    }
     classified.push({
       ...row,
       classification,
       liveObserved: Boolean(observation),
       liveStatus: observation ? observation.status : null,
+      explicitlyRejected,
     })
   }
 
   const approvedUsefulDenominator =
     classes.applied_present + classes.live_target_source_verified + classes.live_target_source_unverified
+  const approvedUsefulNumerator = classes.applied_present + classes.live_target_source_verified
+  const approvedUsefulResolved = approvedUsefulNumerator + cohortExplicitlyRejected
   return {
     rawBacklog: rows.length,
     total: rows.length,
@@ -240,13 +410,28 @@ export function buildP6DispositionReport(
     classes,
     approvedUseful: {
       denominator: approvedUsefulDenominator,
-      numerator: classes.applied_present + classes.live_target_source_verified,
+      numerator: approvedUsefulNumerator,
       unverified: classes.live_target_source_unverified,
+      explicitlyRejected: cohortExplicitlyRejected,
+      resolved: approvedUsefulResolved,
+      verifiedAppliedRatio:
+        approvedUsefulDenominator > 0
+          ? approvedUsefulNumerator / approvedUsefulDenominator
+          : 0,
+      resolvedRatio:
+        approvedUsefulDenominator > 0 ? approvedUsefulResolved / approvedUsefulDenominator : 0,
+      basis: P6_APPROVED_USEFUL_BASIS,
+      resolvedByReason,
     },
     stale: {
       target404: classes.target_404,
       legacyAuthWall: classes.legacy_auth_wall,
       rejected,
+      rejectedWithAudit,
+      rejectedUnaudited: rejected - rejectedWithAudit,
+      rejectedByReason,
+      rejectedAllowlisted,
+      rejectedAuditedNonAllowlisted: rejectedWithAudit - rejectedAllowlisted,
     },
     unknown: classes.unknown,
     gate: { evaluated: false, note: P6_GATE_NOTE },
@@ -256,6 +441,92 @@ export function buildP6DispositionReport(
 /** Hard row cap for a single report run (never silently treated as complete). */
 export const P6_DISPOSITION_ROW_LIMIT = 5000
 export const P6_DISPOSITION_PAGE_SIZE = 1000
+
+export interface P6GateAccounting {
+  /** Spec ratio required by the P6 gate (0.8). */
+  requiredRatio: number
+  /** Approved-useful denominator (live-target cohort size). */
+  approvedUseful: number
+  /** Verified applied inside that cohort (durable proof + live target). */
+  verifiedApplied: number
+  /** Audited stale rejections inside that cohort (no applied claim). */
+  explicitlyRejected: number
+  /** verifiedApplied + explicitlyRejected. */
+  resolved: number
+  verifiedAppliedRatio: number
+  resolvedRatio: number
+  /**
+   * True only when the report can actually carry a PASS/FAIL verdict: the read
+   * was complete (`truncated === false`), no row was left `unknown`, and the
+   * cohort is non-empty. An evaluable:false report can never claim a gate.
+   */
+  evaluable: boolean
+  /** Why the report is not evaluable (null when it is). */
+  notEvaluableReason: string | null
+  /** Strict reading: the cohort must be ≥80% VERIFIED APPLIED. */
+  verifiedAppliedGateMet: boolean
+  /** Literal reading: the cohort must be ≥80% resolved (applied or explicitly rejected/stale). */
+  resolvedGateMet: boolean
+  /**
+   * Third spec bullet ("no applied count is based solely on DB state") is
+   * structurally satisfied: the applied numerator requires durable proof AND a
+   * live-target classification, never a bare persisted status.
+   */
+  appliedCountBasis: 'durable_proof_plus_live_target_classification'
+  note: string
+}
+
+/**
+ * Turn a read-only disposition report into the spec's P6 gate arithmetic.
+ *
+ * Two readings are returned side by side and NEVER merged:
+ *   · `verifiedAppliedRatio` — the strict "verified applied" measure;
+ *   · `resolvedRatio` — the literal spec wording that also accepts an
+ *     explicitly rejected/stale row inside the approved-useful cohort.
+ * A caller that prints only one of them is hiding half of the truth, so this
+ * helper always exposes both plus the exact basis of the applied count.
+ */
+export function computeP6GateAccounting(
+  report: P6DispositionReport,
+  opts: { requiredRatio?: number } = {},
+): P6GateAccounting {
+  const requiredRatio =
+    typeof opts.requiredRatio === 'number' && Number.isFinite(opts.requiredRatio)
+      ? opts.requiredRatio
+      : P6_GATE_REQUIRED_RATIO
+  const denominator = Number(report?.approvedUseful?.denominator || 0)
+  const verifiedApplied = Number(report?.approvedUseful?.numerator || 0)
+  const explicitlyRejected = Number(report?.approvedUseful?.explicitlyRejected || 0)
+  const resolved = verifiedApplied + explicitlyRejected
+  const verifiedAppliedRatio = denominator > 0 ? verifiedApplied / denominator : 0
+  const resolvedRatio = denominator > 0 ? resolved / denominator : 0
+  // A truncated read, any `unknown` row or an empty cohort means the gate is NOT
+  // evaluable: no ratio can be claimed, so both readings stay false.
+  const notEvaluableReason = report?.truncated
+    ? 'the row read was truncated at the cap, so the estate is incomplete'
+    : Number(report?.unknown || 0) > 0
+      ? `${Number(report?.unknown || 0)} row(s) remain unclassified/unknown`
+      : denominator <= 0
+        ? 'the approved-useful cohort is empty (zero denominator)'
+        : null
+  const evaluable = notEvaluableReason == null
+  return {
+    requiredRatio,
+    approvedUseful: denominator,
+    verifiedApplied,
+    explicitlyRejected,
+    resolved,
+    verifiedAppliedRatio,
+    resolvedRatio,
+    evaluable,
+    notEvaluableReason,
+    verifiedAppliedGateMet: evaluable && verifiedAppliedRatio >= requiredRatio,
+    resolvedGateMet: evaluable && resolvedRatio >= requiredRatio,
+    appliedCountBasis: 'durable_proof_plus_live_target_classification',
+    note:
+      'Explicit stale rejection is a terminal disposition, NOT applied truth: a rejected row enters `explicitlyRejected`/`resolved` only, never `verifiedApplied`, and only an ALLOWLISTED P6 source-stale reason written by the P6 source-stale actor counts at all. Both readings are reported side by side — `verifiedAppliedGateMet` is the strict measured outcome and `resolvedGateMet` is the literal spec wording — and both are false unless the report is evaluable (complete, non-truncated, zero unknown, non-empty cohort), so neither can be mistaken for the other and an unevaluable report can never read as PASS.',
+  }
+}
 
 /** Structural, SELECT-only Supabase surface used by this report. */
 export interface P6SelectBuilder {
@@ -272,7 +543,7 @@ export interface P6ReadOnlySupabase {
 }
 
 const P6_DISPOSITION_COLUMNS =
-  'id,source_slug,target_url,status,source_url,verification_state,verified_at,verification_evidence,applied_at'
+  'id,source_slug,target_url,status,source_url,verification_state,verified_at,verification_evidence,applied_at,gate_reason,gate_actor'
 
 async function readDispositionRange(
   supabase: P6ReadOnlySupabase,
