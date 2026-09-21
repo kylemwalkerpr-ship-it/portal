@@ -33,6 +33,15 @@ import {
   parseLandingCardsPage,
   type LandingWindowState,
 } from '@/lib/marketplaceLandingPaging'
+import {
+  createSingleFlightWindows,
+  prefetchTargetPage,
+  scheduleIdlePrefetch,
+  shouldPrefetchAdjacentWindow,
+  type PrefetchConnectionInfo,
+  type PrefetchIdleHost,
+  type SingleFlightWindows,
+} from '@/lib/marketplacePrefetchPlan'
 import { T } from '@/components/marketplace/tokens'
 import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscoveryControls'
 
@@ -45,6 +54,35 @@ const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, He
  *  · none    — the URL is already correct (Back/Forward, first paint).
  */
 type NavMode = 'push' | 'replace' | 'none'
+
+/** `navigator.connection` — Network Information, absent on some browsers. */
+type NetworkInformationLike = PrefetchConnectionInfo & { effectiveType?: string | null }
+
+/** One page window's JSON result — what the grid renders and caches. */
+type WindowFetchResult = { cards: LandingCardGig[]; total: number }
+
+/** A window fetch: the JSON request options a caller may add. */
+interface WindowFetchOptions {
+  signal?: AbortSignal
+  /** Speculative warm-ups run at low priority so they never compete with a click. */
+  priority?: 'low'
+}
+
+/**
+ * The single adjacent prefetch this grid may keep alive.
+ *
+ * `cancel` drops the idle task (or aborts the request once it started) and
+ * `target` is looked up in the shared `windowFetches` map, which is what makes
+ * a click on a prefetching page reuse one request instead of issuing a
+ * duplicate.
+ */
+interface AdjacentPrefetch {
+  target: number
+  /** Exact request path the plan warms — a country/filter change supersedes it. */
+  path: string
+  controller: AbortController
+  cancel: () => void
+}
 
 interface Props {
   /**
@@ -88,6 +126,15 @@ export function FeaturedBriefsGrid({
   // One inventory fetch at a time: a page change replaces the window, so two
   // overlapping requests could otherwise apply their results out of order.
   const inFlightRef = useRef(false)
+  // One request per page window, shared by navigation and prefetch. Entries are
+  // dropped as soon as a request settles, so this map only ever holds IN-FLIGHT
+  // windows — settled payloads live in `pages`.
+  const windowFetchesRef = useRef<SingleFlightWindows<WindowFetchResult> | null>(null)
+  if (windowFetchesRef.current == null) windowFetchesRef.current = createSingleFlightWindows()
+  const windowFetches = windowFetchesRef.current
+  // The single adjacent warm-up this grid may keep alive. One plan cancels the
+  // previous one, so prefetching can never fan out past one extra request.
+  const prefetchRef = useRef<AdjacentPrefetch | null>(null)
   const didMountRef = useRef(false)
   // Mirror of the paging state for the async navigation handler, so a fetch
   // that started before a render still resolves against the newest window.
@@ -142,8 +189,12 @@ export function FeaturedBriefsGrid({
    * means one request, and the full inventory is never requested.
    */
   const fetchWindow = useCallback(
-    async (pageToLoad: number): Promise<{ cards: LandingCardGig[]; total: number }> => {
-      const response = await fetch(landingCardsPath(country, pageToLoad), { credentials: 'same-origin' })
+    async (pageToLoad: number, options?: WindowFetchOptions): Promise<WindowFetchResult> => {
+      const response = await fetch(landingCardsPath(country, pageToLoad), {
+        credentials: 'same-origin',
+        signal: options?.signal,
+        priority: options?.priority,
+      })
       if (!response.ok) throw new Error(`listing request failed (HTTP ${response.status})`)
       const parsed = parseLandingCardsPage(await response.json().catch(() => null))
       // De-dup inside the window only (a repeated row can never render twice on
@@ -153,6 +204,100 @@ export function FeaturedBriefsGrid({
     },
     [country],
   )
+
+  /**
+   * One request per page window. A prefetch and the click that follows it share
+   * the SAME promise (and therefore the same HTTP request), so a pager click on
+   * a warming page can never issue a duplicate — the click adopts the warm-up.
+   */
+  const startWindowFetch = useCallback(
+    (target: number, options?: WindowFetchOptions): Promise<WindowFetchResult> =>
+      // `start` only runs the request when that window is not already in flight,
+      // so an adopted warm-up keeps its own signal/priority and the click cannot
+      // turn into a second request.
+      windowFetches.start(target, () => fetchWindow(target, options)),
+    [fetchWindow, windowFetches],
+  )
+
+  /**
+   * Drop the planned warm-up (idle task or in-flight request). The shared
+   * promise is removed BEFORE the abort so a click arriving in the same tick
+   * starts its own request instead of awaiting the cancelled one.
+   */
+  const cancelPrefetch = useCallback(() => {
+    const planned = prefetchRef.current
+    if (!planned) return
+    prefetchRef.current = null
+    windowFetches.drop(planned.target)
+    planned.cancel()
+    planned.controller.abort()
+  }, [windowFetches])
+
+  /** Browser connection hints — absent on Safari/Firefox, hence optional. */
+  const connectionInfo = useCallback((): NetworkInformationLike | null => {
+    if (typeof navigator === 'undefined') return null
+    const nav = navigator as Navigator & { connection?: NetworkInformationLike }
+    return nav.connection ?? null
+  }, [])
+
+  /**
+   * Warm exactly the NEXT page's JSON once the current window is stable.
+   *
+   * Deliberately narrow (MARKETPLACE-PAGINATION-PREFETCH): one page ahead, on an
+   * idle callback, at low priority, cancellable, skipped under Save-Data or a
+   * 2g-class connection, and silent on failure — a failed warm-up never sets an
+   * error, never writes the window cache and never touches the URL, so the
+   * visitor's own navigation still owns its request, its spinner and its retry.
+   */
+  const scheduleAdjacentPrefetch = useCallback(() => {
+    const snapshot = stateRef.current
+    const target = prefetchTargetPage(snapshot.page, snapshot.total)
+    const path = target == null ? null : landingCardsPath(country, target)
+    const allowed =
+      path != null &&
+      shouldPrefetchAdjacentWindow({
+        page: snapshot.page,
+        total: snapshot.total,
+        // Read from the ref: a navigation that started in this same commit has
+        // already set it, so a render-stale `pending` cannot warm a window the
+        // visitor is still waiting to replace.
+        pending: inFlightRef.current,
+        visible: typeof document === 'undefined' || document.visibilityState === 'visible',
+        online: typeof navigator === 'undefined' ? undefined : navigator.onLine !== false,
+        connection: connectionInfo(),
+      })
+    // A plan for another window, or one whose gate has since closed, is dropped
+    // first: the grid keeps at most one warm-up and it is always the adjacent,
+    // currently-allowed one.
+    if (prefetchRef.current && (!allowed || prefetchRef.current.path !== path)) cancelPrefetch()
+    if (!allowed || target == null || path == null || prefetchRef.current) return
+    if (pages.has(target)) return
+    // A window that is already being fetched needs no warm-up: the click reuses
+    // that very request (see startWindowFetch / goToPage).
+    if (windowFetches.has(target)) return
+    const controller = new AbortController()
+    const entry: AdjacentPrefetch = { target, path, controller, cancel: () => {} }
+    prefetchRef.current = entry
+    entry.cancel = scheduleIdlePrefetch(
+      typeof window === 'undefined' ? undefined : (window as unknown as PrefetchIdleHost),
+      () => {
+        // Cancelled between scheduling and idling: the plan no longer owns the
+        // slot, so this task must not issue a request.
+        if (prefetchRef.current !== entry || controller.signal.aborted) return
+        void startWindowFetch(target, { signal: controller.signal, priority: 'low' })
+          .then((fetched) => {
+            // An aborted or empty warm-up is not a window: never cache it, or a
+            // later click would render an empty page from the cache.
+            if (controller.signal.aborted || fetched.cards.length === 0) return
+            pages.set(target, fetched.cards)
+          })
+          .catch(() => { /* speculative: failures stay silent and retryable */ })
+          .finally(() => {
+            if (prefetchRef.current === entry) prefetchRef.current = null
+          })
+      },
+    )
+  }, [cancelPrefetch, connectionInfo, country, pages, startWindowFetch, windowFetches])
 
   /**
    * Move to `requested` and render ONLY that window. A page change replaces the
@@ -176,12 +321,32 @@ export function FeaturedBriefsGrid({
         return
       }
 
+      // A planned warm-up for a page the visitor did NOT ask for is dropped so
+      // the navigation gets the connection to itself.
+      if (prefetchRef.current && prefetchRef.current.target !== target) cancelPrefetch()
+
       inFlightRef.current = true
       setPendingPage(target)
       setError(null)
       setFailed(null)
       try {
-        const fetched = await fetchWindow(target)
+        // A click on a page that is already prefetching reuses that request —
+        // the same promise, never a duplicate — and takes ownership of it, so
+        // the warm-up can no longer cancel the navigation out from under the
+        // visitor (and a warm-up failure still lands in this click's own error
+        // path, which keeps the current page and stays retryable).
+        const shared = windowFetches.get(target)
+        if (shared && prefetchRef.current?.target === target) {
+          // Adopted: the navigation owns the request now, so the warm-up must
+          // not abort it. Nothing has been dropped — the request continues.
+          prefetchRef.current = null
+        } else if (!shared && prefetchRef.current?.target === target) {
+          // The warm-up was still waiting for idle time, so nothing has been
+          // requested yet: the click takes over and the scheduled task is
+          // dropped instead of firing a second request mid-navigation.
+          cancelPrefetch()
+        }
+        const fetched = await (shared ?? startWindowFetch(target))
         let nextTotal = fetched.total > 0 ? fetched.total : snapshot.total
         // Inventory can shrink between the build snapshot and the click, so the
         // requested window may no longer exist: follow the API's own page count
@@ -216,7 +381,7 @@ export function FeaturedBriefsGrid({
         setPendingPage(null)
       }
     },
-    [applyWindow, fetchWindow, pages, scrollToGridStart],
+    [applyWindow, cancelPrefetch, pages, scrollToGridStart, startWindowFetch, windowFetches],
   )
 
   /**
@@ -252,6 +417,32 @@ export function FeaturedBriefsGrid({
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [goToPage])
+
+  /**
+   * Schedule the next window's warm-up whenever the current one settles: the
+   * first paint, a page change, or a deep link that finished loading. While a
+   * window is in flight `pending` is true and the plan is skipped, so the
+   * prefetch can only ever follow a STABLE window (`isLandingBrowsingQuery` and
+   * the pager keep their own contract — nothing here reads or writes the URL).
+   */
+  useEffect(() => {
+    scheduleAdjacentPrefetch()
+  }, [country, page, pending, scheduleAdjacentPrefetch, total])
+
+  // A background tab warms nothing; coming back to the foreground re-arms the
+  // plan for whatever window is on screen by then.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') scheduleAdjacentPrefetch()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [scheduleAdjacentPrefetch])
+
+  // Leaving the page cancels the speculative request; `cancelPrefetch` is
+  // stable, so this cleanup only ever runs on unmount.
+  useEffect(() => () => cancelPrefetch(), [cancelPrefetch])
 
   const retryFailedPage = useCallback(() => {
     if (!failed || inFlightRef.current) return
