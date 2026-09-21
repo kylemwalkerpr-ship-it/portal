@@ -43,7 +43,9 @@ function authorCitationPromptBlock(opts: {
   if (opts.author?.name) {
     return [
       'YMYL AUTHOR / MARKETPLACE CITATION (mandatory — this person consented at signup to be cited).',
-      `Named author/reviewer: ${opts.author.name} — ${opts.author.credential}`,
+      // The cited practitioner is an AUTHOR identity, not a review event: the
+      // prompt must never invite the writer to publish them as their own reviewer.
+      `Named author: ${opts.author.name} — ${opts.author.credential} (author only — never claim they reviewed or approved this page)`,
       opts.author.experienceScope ? `Field: ${opts.author.experienceScope}` : '',
       opts.author.marketplaceUrl ? `Profile: ${opts.author.marketplaceUrl}` : '',
       ...(opts.author.servicePages || []).map((page) => `Service: [${page.title}](${page.url})`),

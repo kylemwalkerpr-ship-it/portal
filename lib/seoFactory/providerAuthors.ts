@@ -649,13 +649,24 @@ export function isMarketplaceServiceUrl(url: string): boolean {
   }
 }
 
+/**
+ * AuthorPack for the cited marketplace provider.
+ *
+ * A citation is an AUTHOR identity — it is not a review event. Setting
+ * `reviewedBy` to the cited person (or stamping `lastReviewed` with the
+ * generation clock) manufactured a self-review claim that no persisted review
+ * record supports: the same person was rendered as both author and reviewer,
+ * and the "last reviewed" date was simply the moment the page was generated.
+ *
+ * Both fields are therefore omitted unless a distinct, persisted review event
+ * supplies them downstream. `validateAuthorPack` treats them as optional, and
+ * every renderer treats a missing reviewer as "no reviewer to disclose".
+ */
 export function authorPackFromProvider(cited: CitedProvider): AuthorPack {
   return {
     name: cited.name,
     credential: cited.credentialLine,
     experienceScope: cited.experienceScope,
-    reviewedBy: cited.name,
-    lastReviewed: new Date().toISOString().slice(0, 10),
     experienceBeats: [],
     marketplaceUrl: cited.profileUrl,
     providerType: cited.role,
@@ -733,7 +744,7 @@ export function citedProvidersPromptBlock(cited: CitedProvider[]): string {
   const hasVerifiedUrl = cited.some((person) => person.profileUrl || person.servicePages.length)
   const lines = [
     'YMYL AUTHOR / MARKETPLACE CITATION (mandatory — these people consented at signup to be cited).',
-    'Pick the FIRST person as the named author/reviewer. Cite only their recorded credential and field.',
+    'Pick the FIRST person as the named author. They are the author ONLY — never state or imply that they reviewed, approved, or checked this page. Cite only their recorded credential and field.',
     'YAML `author` MUST be this person\'s name — never invent YouSafe Editorial Team.',
     'Do not invent additional people, bar numbers, case results, or service pages.',
   ]

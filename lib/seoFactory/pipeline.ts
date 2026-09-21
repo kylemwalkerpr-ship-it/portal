@@ -1380,6 +1380,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       requiredLongTailKeywords,
       shortKeywordTerms,
       longTailKeywordTerms,
+      // Truthful byline identity: the same PRUNED author pack the brief,
+      // ContentSpec and prompt were built from.
+      author: authorPack,
       maxWords,
     })
     } catch (e) {

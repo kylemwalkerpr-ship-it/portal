@@ -313,6 +313,23 @@ describe('author pack and prompt block', () => {
     expect(experienceScopeFor(cited[0]!)).toMatch(/immigration/i)
   })
 
+  it('never fabricates a reviewer or a generation-time review date from a citation', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    const pack = authorPackFromProvider(cited[0]!)
+    // Citing somebody as the author is NOT a review event. reviewedBy used to
+    // echo the author's own name and lastReviewed was the generation clock,
+    // which rendered the same person as author AND reviewer.
+    expect(pack.reviewedBy).toBeUndefined()
+    expect(pack.lastReviewed).toBeUndefined()
+    expect('reviewedBy' in pack).toBe(false)
+    expect('lastReviewed' in pack).toBe(false)
+    expect(JSON.stringify(pack)).not.toContain(new Date().toISOString().slice(0, 10))
+    expect(validateAuthorPack(pack, { contentType: 'legal_guide', ymyl: true })).toEqual([])
+  })
+
   it('SECRET-99 never appears in AuthorPack.credential, prompt block, or public citation when showBarNumber true', () => {
     const cited = matchProvidersToTopic(
       [attorney({
