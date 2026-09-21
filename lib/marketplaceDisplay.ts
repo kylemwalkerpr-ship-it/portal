@@ -4,6 +4,7 @@
 // server-rendered landing and the client FeaturedBriefsGrid render cards
 // identically from one source of truth (headshots, glyphs, prices, pager
 // chips). Pure functions only — no fetching, no hooks.
+//
 
 import type { CSSProperties } from 'react'
 import { T, F } from '@/components/marketplace/tokens'
@@ -188,8 +189,8 @@ export function pagerChipStyle(isActive: boolean): CSSProperties {
   }
 }
 
-// Featured-grid page size, shared by the server landing (initial clamp) and
-// the client FeaturedBriefsGrid (Load-more increments).
+// Featured-grid page size, shared by the server landing (first window) and the
+// client FeaturedBriefsGrid (page-by-page navigation).
 export const FEATURED_PAGE_SIZE = 48
 
 /* ── Pure paging math (unit-tested in tests/marketplace-featured-grid.test.ts) ── */
@@ -207,14 +208,52 @@ export function clampPage(page: number, totalItems: number): number {
 }
 
 // Zero-based index of the first card of `page` — the scroll target for
-// deep links and pager jumps.
+// deep links and pager jumps, and the base of the page-window status range.
 export function pageStartIndex(page: number, totalItems: number): number {
   return (clampPage(page, totalItems) - 1) * FEATURED_PAGE_SIZE
 }
 
-// Cumulative SSR visibility for a deep-linked ?page=N: pages 1..N render
-// server-side (SSR always matches the URL for crawlers), so page 3 shows
-// cards 1–144 on first paint. The client grid then takes over.
-export function deepLinkVisibleCount(page: number, totalItems: number): number {
-  return Math.min(clampPage(page, totalItems) * FEATURED_PAGE_SIZE, totalItems)
+/**
+ * One page-local window over the ranked slice (TRUE PAGINATION).
+ *
+ * The grid renders exactly one window at a time — page 2 is cards 49-96 and
+ * never cards 1-96 — so every consumer needs the clamped page, the window's
+ * zero-based start index, and the existence of neighbours. Nothing cumulative
+ * belongs here: cards 1..N are never a valid render state.
+ */
+export interface PageWindow {
+  /** Clamped page the window belongs to. */
+  page: number
+  totalPages: number
+  /** Zero-based index of the window's first card inside the ranked slice. */
+  firstIndex: number
+  hasPrev: boolean
+  hasNext: boolean
+}
+
+export function pageWindowFor(page: number, totalItems: number): PageWindow {
+  const totalPages = totalPagesFor(totalItems)
+  const current = clampPage(page, totalItems)
+  return {
+    page: current,
+    totalPages,
+    firstIndex: pageStartIndex(current, totalItems),
+    hasPrev: current > 1,
+    hasNext: current < totalPages,
+  }
+}
+
+/**
+ * Status line for the rendered window, computed from the cards actually on
+ * screen so a drifted window can never claim briefs it does not have:
+ * "Showing 49-96 of 217 · Page 2 of 5".
+ */
+export function landingPageStatus(page: number, shownCount: number, totalItems: number): string {
+  const totalPages = totalPagesFor(totalItems)
+  const current = clampPage(page, totalItems)
+  if (shownCount <= 0) return `No briefs to show · Page ${current} of ${totalPages}`
+  const from = pageStartIndex(current, totalItems) + 1
+  const to = from + shownCount - 1
+  const fmt = (value: number) => value.toLocaleString('en-US')
+  return `Showing ${fmt(from)}-${fmt(to)} of ${fmt(totalItems)} · Page ${current} of ${totalPages}`
 }

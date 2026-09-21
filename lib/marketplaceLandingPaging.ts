@@ -147,9 +147,12 @@ export function parseLandingCardsPage(payload: unknown): LandingCardsPage {
 }
 
 /**
- * Keep only cards the grid has not shown yet (order preserved). The build
- * snapshot and the live listing can drift by a row or two while gigs are
- * published/paused, so appended windows are always de-duplicated by id.
+ * Keep only cards not already present (order preserved).
+ *
+ * The build snapshot and the live listing can drift by a row or two while gigs
+ * are published/paused, so every window is de-duplicated by id BEFORE it is
+ * rendered — and `applyLandingWindow` runs one window through this helper so a
+ * repeated row inside a single response can never render twice.
  */
 export function mergeNewLandingCards(
   existing: LandingCardGig[],
@@ -163,4 +166,40 @@ export function mergeNewLandingCards(
     merged.push(card)
   }
   return merged
+}
+
+/**
+ * The grid's rendered window: exactly ONE page of the ranked slice.
+ *
+ * TRUE PAGINATION — `cards` is the requested page's own window and is never a
+ * prefix of the slice ("page 2 shows cards 49-96", not "the first 96"). The
+ * previous cumulative state (`allCards` + `visibleCount`) is gone, so there is
+ * no shape left in which earlier pages can leak into a later one.
+ */
+export interface LandingWindowState {
+  /** Clamped page the window belongs to. */
+  page: number
+  /** That page's cards, in ranked order. */
+  cards: LandingCardGig[]
+  /** Honest ranked size of the whole slice. */
+  total: number
+}
+
+/**
+ * Apply a navigation to the rendered window.
+ *
+ * Deliberately a REPLACEMENT reducer: the incoming window becomes the rendered
+ * cards wholesale (only de-duplicated inside itself), so no caller can
+ * accidentally go back to appending pages. `total` is only replaced by a real
+ * positive count — an empty/absent API total keeps the last honest one — and
+ * the same total keeps the page pointer clamped to the pages that exist.
+ */
+export function applyLandingWindow(
+  state: LandingWindowState,
+  next: { page: number; cards: LandingCardGig[]; total?: number },
+): LandingWindowState {
+  const total = next.total != null && next.total > 0 ? next.total : state.total
+  const totalPages = Math.max(1, Math.ceil(total / FEATURED_PAGE_SIZE))
+  const page = Number.isFinite(next.page) ? Math.min(Math.max(1, Math.trunc(next.page)), totalPages) : 1
+  return { page, cards: mergeNewLandingCards([], next.cards), total }
 }

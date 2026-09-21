@@ -14,7 +14,7 @@ const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
 
 /**
  * `view=card` — narrow projection used by the marketplace landing grid's
- * "Load more"/pager windows (MARKET-ROOT-TRANSFER-LATENCY).
+ * page-by-page windows (MARKET-ROOT-TRANSFER-LATENCY).
  *
  * The default response is unchanged: every consumer that needs full listing
  * rows (drawer, discovery page, dashboards) keeps getting `select('*')` +
