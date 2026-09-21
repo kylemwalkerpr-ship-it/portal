@@ -130,6 +130,18 @@ jobs:
           }
           echo "Verified critical Marketplace prerender cache assets for build ${BUILD_ID} (${GIG_DETAIL_CACHE_COUNT} gig-detail entries)."
 
+      # MARKET-ROOT-TRANSFER-LATENCY payload budget gate. The market root is
+      # served from the static incremental cache, and the PRE-FIX document was
+      # 524,455 bytes because the landing serialized the whole active inventory
+      # (~217 brief records, twice) and rendered its stylesheet as an inline
+      # <style> element. This step reads the PUBLISHED cache entry (the exact
+      # bytes the Worker will serve) and fails closed if the document exceeds
+      # its budget, drops below the required reduction, stops shipping exactly
+      # one crawlable page of brief cards, re-inlines the stylesheet, or links a
+      # stylesheet that was not published with the assets.
+      - name: Market-root payload budget gate
+        run: node scripts/verify-market-landing-payload.mjs
+
       - name: SEO audit guard (report-only)
         continue-on-error: true
         run: |

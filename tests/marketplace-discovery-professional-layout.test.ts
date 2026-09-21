@@ -41,7 +41,7 @@ describe('Marketplace professional discovery layout', () => {
 
   test('featured landing replaces legacy chips with the richer filter bar and roomier four-column cards', () => {
     expect(featured).toContain("import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscoveryControls'")
-    expect(featured).toContain('<LandingDiscoveryControls gigs={gigs} country={country} />')
+    expect(featured).toContain('<LandingDiscoveryControls categoryCounts={categoryCounts} country={country} />')
     expect(featured).toContain('.cw-market .featured .wrap > .filters')
     expect(featured).toContain('display: none !important')
     expect(featured).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')

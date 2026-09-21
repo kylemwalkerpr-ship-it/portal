@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import {
   avatarBgFor,
@@ -18,35 +18,79 @@ import {
   withCountry,
   type Country,
   type JxCode,
-  type LandingGig,
+  type LandingCardGig,
 } from '@/lib/marketplaceDisplay'
 import { LEGACY_CATEGORY_MAP, normalizeCategory } from '@/lib/categories'
+import {
+  landingCardsPath,
+  mergeNewLandingCards,
+  parseLandingCardsPage,
+} from '@/lib/marketplaceLandingPaging'
 import { T } from '@/components/marketplace/tokens'
 import { LandingDiscoveryControls } from '@/components/marketplace/LandingDiscoveryControls'
 
 const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
 
+/**
+ * Hard bound on listing requests triggered by ONE user action (Load more / a
+ * pager jump). Every request returns FEATURED_PAGE_SIZE cards and only counts
+ * toward the target when it yields cards the grid has not shown yet, so a small
+ * snapshot↔live drift cannot turn one click into an unbounded fetch fan.
+ */
+const MAX_PAGE_REQUESTS_PER_ACTION = 4
+
 interface Props {
-  gigs: LandingGig[]
+  /** First ranked page of the slice, server-rendered into the document. */
+  cards: LandingCardGig[]
+  /** Ranked size of the whole slice as of the build snapshot (a real count). */
+  total: number
+  /** Server facet counts for the discovery chips (whole slice, not page 1). */
+  categoryCounts: Record<string, number>
   initialVisible: number
   country: Country
   currency: string
 }
 
-export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: Props) {
-  const total = gigs.length
+export function FeaturedBriefsGrid({
+  cards: initialCards,
+  total: initialTotal,
+  categoryCounts,
+  initialVisible,
+  country,
+  currency,
+}: Props) {
+  // Cards fetched after the server-rendered first page, in ranked order.
+  const [extraCards, setExtraCards] = useState<LandingCardGig[]>([])
+  const [total, setTotal] = useState(initialTotal)
+  const [nextPage, setNextPage] = useState(2)
+  const [exhausted, setExhausted] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [scrollToIdx, setScrollToIdx] = useState<number | null>(null)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  // One inventory fetch at a time: two overlapping windows would both dedupe
+  // against the same snapshot and could append the same brief twice.
+  const inFlightRef = useRef(false)
+
+  const allCards = useMemo(() => [...initialCards, ...extraCards], [initialCards, extraCards])
+
+  // Mirror of the paging state for async handlers: the fetches must read the
+  // newest values without re-creating callbacks on every render.
+  const pagingRef = useRef({ initialCards, allCards, total, nextPage, exhausted })
+  pagingRef.current = { initialCards, allCards, total, nextPage, exhausted }
+
   const totalPages = totalPagesFor(total)
   // The server passes the cumulative visible count for ?page=N. Resolve that
   // back to the shared paging contract rather than duplicating pagination math
   // here, so deep links and the redesigned client grid stay in lockstep.
-  const initialPage = total > 0
+  const initialPage = initialTotal > 0
     ? clampPage(Math.max(1, Math.ceil(initialVisible / FEATURED_PAGE_SIZE)), total)
     : 1
   const [visibleCount, setVisibleCount] = useState(() =>
-    total > 0 ? deepLinkVisibleCount(initialPage, total) : 0,
+    initialTotal > 0
+      ? Math.min(deepLinkVisibleCount(initialPage, initialTotal), initialCards.length)
+      : 0,
   )
-  const [scrollToIdx, setScrollToIdx] = useState<number | null>(null)
-  const gridRef = useRef<HTMLDivElement | null>(null)
 
   const didMountRef = useRef(false)
   useEffect(() => {
@@ -65,16 +109,112 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
     setScrollToIdx(null)
   }, [scrollToIdx])
 
+  /**
+   * Fetch until at least `targetNew` cards the grid has not shown exist (or the
+   * listing is exhausted / the request bound is hit). Returns how many were
+   * added; on failure it keeps the already-rendered cards and surfaces an error.
+   */
+  const loadCards = useCallback(
+    async (targetNew: number): Promise<number> => {
+      const snapshot = pagingRef.current
+      if (targetNew <= 0 || snapshot.exhausted || inFlightRef.current) return 0
+
+      inFlightRef.current = true
+      setPending(true)
+      setLoadError(null)
+      let page = snapshot.nextPage
+      let seen = snapshot.allCards
+      let added: LandingCardGig[] = []
+      let sawEnd = snapshot.exhausted
+      let apiTotal = snapshot.total
+
+      try {
+        for (
+          let requests = 0;
+          requests < MAX_PAGE_REQUESTS_PER_ACTION && added.length < targetNew;
+          requests++
+        ) {
+          const response = await fetch(landingCardsPath(country, page), { credentials: 'same-origin' })
+          if (!response.ok) throw new Error(`listing request failed (HTTP ${response.status})`)
+          const parsed = parseLandingCardsPage(await response.json().catch(() => null))
+          const fresh = mergeNewLandingCards(seen, parsed.cards)
+          added = added.concat(fresh)
+          seen = seen.concat(fresh)
+          page += 1
+          apiTotal = Math.max(apiTotal, parsed.total)
+          // The API's own hasMore owns "end of inventory"; an empty page ends it
+          // too, so a stale page pointer can never loop.
+          if (!parsed.hasMore || parsed.cards.length === 0) {
+            sawEnd = true
+            break
+          }
+        }
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : 'Unable to load more briefs')
+        inFlightRef.current = false
+        setPending(false)
+        return 0
+      }
+
+      const loadedCount = snapshot.allCards.length + added.length
+      // Dedupe inside the updater as well: the appended window must never repeat
+      // a card the grid already holds, whatever the state timing.
+      setExtraCards((prev) => mergeNewLandingCards([...snapshot.initialCards, ...prev], added))
+      setNextPage(page)
+      setExhausted(sawEnd)
+      // Honest counts only: once the listing is exhausted the reachable count is
+      // the size that actually exists, so pager chips cannot point at an empty
+      // window, and a drifted smaller live total can never sit below what is
+      // already rendered.
+      setTotal(sawEnd ? loadedCount : Math.max(apiTotal, loadedCount))
+      inFlightRef.current = false
+      setPending(false)
+      return added.length
+    },
+    [country],
+  )
+
+  const loadMore = useCallback(async () => {
+    if (pending) return
+    const snapshot = pagingRef.current
+    const wanted = Math.min(FEATURED_PAGE_SIZE, Math.max(0, snapshot.total - snapshot.allCards.length))
+    if (wanted <= 0) return
+    const added = await loadCards(wanted)
+    if (added <= 0) return
+    setVisibleCount(Math.min(snapshot.allCards.length + added, pagingRef.current.total))
+  }, [loadCards, pending])
+
   const jumpToPage = (p: number) => (e: MouseEvent) => {
     e.preventDefault()
-    const target = clampPage(p, total)
-    setVisibleCount(deepLinkVisibleCount(target, total))
-    setScrollToIdx(target === 1 ? 0 : pageStartIndex(target, total))
+    void (async () => {
+      const target = clampPage(p, pagingRef.current.total)
+      const snapshot = pagingRef.current
+      const loadedAfterFirstPage = Math.max(0, snapshot.allCards.length - snapshot.initialCards.length)
+      const needed = Math.max(0, (target - 1) * FEATURED_PAGE_SIZE - loadedAfterFirstPage)
+      if (needed > 0) {
+        const added = await loadCards(needed)
+        if (added < needed) {
+          // Inventory ended before the requested window: land on the deepest
+          // page that has cards instead of scrolling to an empty grid.
+          const reachable = Math.max(1, Math.ceil(pagingRef.current.allCards.length / FEATURED_PAGE_SIZE))
+          setVisibleCount(pagingRef.current.allCards.length)
+          setScrollToIdx(reachable === 1 ? 0 : pageStartIndex(reachable, pagingRef.current.total))
+          return
+        }
+      }
+      const deepest = clampPage(target, pagingRef.current.total)
+      setVisibleCount(
+        Math.min(
+          deepLinkVisibleCount(deepest, pagingRef.current.total),
+          pagingRef.current.allCards.length,
+        ),
+      )
+      setScrollToIdx(deepest === 1 ? 0 : pageStartIndex(deepest, pagingRef.current.total))
+    })()
   }
 
-  const shown = gigs.slice(0, visibleCount)
-  const hasMore = visibleCount < total
-
+  const shown = allCards.slice(0, visibleCount)
+  const hasMore = !exhausted && allCards.length < total
   return (
     <>
       <style jsx global>{`
@@ -298,9 +438,9 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
         }
       `}</style>
 
-      <LandingDiscoveryControls gigs={gigs} country={country} />
+      <LandingDiscoveryControls categoryCounts={categoryCounts} country={country} />
 
-      <div className="gig-grid" id="featured-grid" ref={gridRef}>
+      <div className="gig-grid" id="featured-grid" ref={gridRef} aria-busy={pending}>
         {shown.map((g, idx) => {
           const tag = `${(g.jx ?? (country === 'all' ? (g.jx ?? 'us') : country)).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
           const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
@@ -367,12 +507,27 @@ export function FeaturedBriefsGrid({ gigs, initialVisible, country, currency }: 
 
       {total > FEATURED_PAGE_SIZE && (
         <>
+          {/* Appended windows are fetched from /api/marketplace/gigs?view=card
+              (the server-rendered first page is the only inventory the document
+              carries). The status line is announced, and a failed fetch keeps the
+              cards already on screen instead of dropping the grid. */}
+          <p
+            role="status"
+            aria-live="polite"
+            style={{ margin: '10px 0 0', textAlign: 'center', fontFamily: DISCOVERY_FONT, fontSize: 12, color: loadError ? T.brick : T.inkSoft }}
+          >
+            {loadError
+              ? `${loadError} — the briefs already shown are still available; retry with Load more.`
+              : pending
+                ? 'Loading more briefs…'
+                : ''}
+          </p>
           {hasMore && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '30px 0 4px' }}>
-              <button type="button" onClick={() => setVisibleCount((c) => Math.min(c + FEATURED_PAGE_SIZE, total))} style={loadMoreStyle}>
+              <button type="button" disabled={pending} onClick={() => void loadMore()} style={pending ? { ...loadMoreStyle, opacity: 0.6, cursor: 'progress' } : loadMoreStyle}>
                 Load more briefs
                 <span style={{ opacity: 0.65, fontWeight: 500 }}>
-                  &nbsp;· {Math.min(FEATURED_PAGE_SIZE, total - visibleCount)} more of {total.toLocaleString('en-US')}
+                  &nbsp;· {Math.min(FEATURED_PAGE_SIZE, total - shown.length)} more of {total.toLocaleString('en-US')}
                 </span>
               </button>
             </div>

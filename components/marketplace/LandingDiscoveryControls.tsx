@@ -1,14 +1,20 @@
 'use client'
 
 import React from 'react'
-import { CATEGORIES, LEGACY_CATEGORY_MAP, normalizeCategory } from '@/lib/categories'
-import { withCountry, type Country, type LandingGig } from '@/lib/marketplaceDisplay'
+import { CATEGORIES } from '@/lib/categories'
+import { withCountry, type Country } from '@/lib/marketplaceDisplay'
 import { T } from './tokens'
 
 const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
 
 type Props = {
-  gigs: LandingGig[]
+  /**
+   * Category facet counts for the WHOLE ranked slice, computed server-side from
+   * full inventory. The grid only receives the first page of cards now
+   * (MARKET-ROOT-TRANSFER-LATENCY), so counting `gigs` here would silently
+   * report page-1-only numbers while the chips claim slice totals.
+   */
+  categoryCounts: Record<string, number>
   country: Country
 }
 
@@ -64,21 +70,11 @@ function Popover({
   )
 }
 
-export function LandingDiscoveryControls({ gigs, country }: Props) {
+export function LandingDiscoveryControls({ categoryCounts, country }: Props) {
   const [openId, setOpenId] = React.useState<string | null>(null)
 
-  const categoryCounts = React.useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const gig of gigs) {
-      if (!gig.category) continue
-      const id = LEGACY_CATEGORY_MAP[gig.category] || normalizeCategory(gig.category)
-      if (id) counts.set(id, (counts.get(id) || 0) + 1)
-    }
-    return counts
-  }, [gigs])
-
   const categories = CATEGORIES
-    .map((category) => ({ ...category, count: categoryCounts.get(category.id) || 0 }))
+    .map((category) => ({ ...category, count: categoryCounts[category.id] || 0 }))
     .filter((category) => category.count > 0)
     .sort((a, b) => b.count - a.count)
 

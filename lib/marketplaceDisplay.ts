@@ -43,6 +43,53 @@ export interface LandingGig {
   gallery_images?: Array<{ url: string }>
 }
 
+/**
+ * The gig record the featured grid (and therefore the market-root document)
+ * actually renders. MARKET-ROOT-TRANSFER-LATENCY: the card surface reads only
+ * these fields, so the build snapshot and the on-demand listing pages are
+ * projected down to them. `tiers`, `rank_score`, `order_count` and
+ * `providerCountry` are deliberately absent — `tiers` was ~13% of the
+ * serialized array and is still used server-side for the hero case file.
+ */
+export interface LandingCardGig {
+  id: string
+  slug: string | null
+  title: string
+  category: string | null
+  provider_type: 'attorney' | 'consultant' | null
+  avg_rating: number
+  review_count: number
+  starting_price: number | null
+  delivery_days: number | null
+  providerName: string
+  providerHeadshot: string | null
+  jx: JxCode | null
+  cover_image_url: string | null
+}
+
+/** Field-for-field card projection — one shape for the snapshot and the API. */
+export function toLandingCard(gig: LandingGig): LandingCardGig {
+  return {
+    id: gig.id,
+    slug: gig.slug,
+    title: gig.title,
+    category: gig.category,
+    provider_type: gig.provider_type,
+    avg_rating: gig.avg_rating,
+    review_count: gig.review_count,
+    starting_price: gig.starting_price,
+    delivery_days: gig.delivery_days,
+    providerName: gig.providerName,
+    providerHeadshot: gig.providerHeadshot,
+    jx: gig.jx,
+    cover_image_url: gig.cover_image_url,
+  }
+}
+
+export function toLandingCards(gigs: LandingGig[]): LandingCardGig[] {
+  return gigs.map(toLandingCard)
+}
+
 export const COUNTRY_CODE_MAP: Record<string, JxCode> = {
   US: 'us', USA: 'us', 'UNITED STATES': 'us',
   UK: 'uk', GB: 'uk', GBR: 'uk', 'UNITED KINGDOM': 'uk',

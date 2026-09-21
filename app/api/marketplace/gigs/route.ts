@@ -3,12 +3,34 @@ import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { buildCategoryOrFilter } from '@/lib/categories'
 import { jurisdictionCountryOrFilter } from '@/lib/jurisdictionFilter'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
+import { resolveJurisdiction } from '@/lib/marketplaceDisplay'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { marketplaceGigSortOrder } from '@/lib/marketplaceGigSort'
 
 const CACHE_TTL_SECONDS = 60
 const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
+
+/**
+ * `view=card` — narrow projection used by the marketplace landing grid's
+ * "Load more"/pager windows (MARKET-ROOT-TRANSFER-LATENCY).
+ *
+ * The default response is unchanged: every consumer that needs full listing
+ * rows (drawer, discovery page, dashboards) keeps getting `select('*')` +
+ * tiers + provider. The landing grid needs 13 card fields, so `view=card`
+ * returns exactly those (plus rank_score, which the route's own sort paths
+ * read) and never the description/pitch/provider-email payload.
+ *
+ * NOTE: `cover_image_url` is deliberately NOT named here — that column is
+ * optional on some deployments and naming it raises PostgREST 42703 and
+ * empties the whole page. The cover is derived from gallery_images instead,
+ * exactly as the landing snapshot does.
+ */
+const CARD_VIEW_SELECT =
+  'id, slug, title, category, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, email, country)'
+
+const CARD_VIEW_JURISDICTIONS = ['us', 'uk', 'ca', 'au']
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -46,6 +68,7 @@ export async function GET(req: Request) {
 
   // Use authenticated db when available, otherwise create a shared admin client
   const db = auth ? auth.db : createSupabaseAdminClient()
+  const cardView = (url.searchParams.get('view') || '').trim().toLowerCase() === 'card'
   const q = (url.searchParams.get('q') || '').trim()
   const categories = url.searchParams.getAll('category').filter(Boolean)
   const providerTypes = url.searchParams.getAll('provider_type').filter(Boolean)
@@ -82,7 +105,12 @@ export async function GET(req: Request) {
 
   let query = db
     .from('gigs')
-    .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)', { count: 'exact' })
+    .select(
+      cardView
+        ? CARD_VIEW_SELECT
+        : '*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)',
+      { count: 'exact' },
+    )
     .eq('status', 'active')
 
   if (safeQ) {
@@ -172,6 +200,33 @@ export async function GET(req: Request) {
       const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
       const cheapest = activeTiers.sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
       const gallery = normalizeGallery(gig.gallery_images)
+      if (cardView) {
+        // Card fields only — the same shape lib/marketplaceLandingPaging.ts maps
+        // into the landing grid's LandingCardGig (plus rank_score for the sort
+        // paths above; the grid ignores it).
+        const rawJx = String(gig.jurisdiction || '').toLowerCase()
+        const providerCountry = typeof gig.provider?.country === 'string' ? gig.provider.country : null
+        return {
+          id: gig.id,
+          slug: gig.slug ?? null,
+          title: gig.title ?? '',
+          category: gig.category ?? null,
+          provider_type: gig.provider_type ?? null,
+          avg_rating: Number(gig.avg_rating ?? 0),
+          review_count: Number(gig.review_count ?? 0),
+          rank_score: Number(gig.rank_score ?? 0),
+          order_count: Number(gig.order_count ?? 0),
+          starting_price: cheapest?.price ?? null,
+          delivery_days: cheapest?.delivery_days ?? null,
+          provider_name: providerDisplayName(gig.provider),
+          provider_country: providerCountry,
+          provider_headshot_url: headshotByProfileId.get(gig.provider_id) || null,
+          jx: CARD_VIEW_JURISDICTIONS.includes(rawJx)
+            ? rawJx
+            : resolveJurisdiction(providerCountry),
+          cover_image_url: resolveCoverUrl(gig),
+        }
+      }
       return {
         ...gig,
         // Coerce gallery_images so consumers can safely read [0]?.url

@@ -6,19 +6,26 @@ import {
   LEGACY_CATEGORY_MAP,
   normalizeCategory,
 } from '@/lib/categories'
+// MARKET-ROOT-TRANSFER-LATENCY: the landing stylesheet is a route stylesheet,
+// not an inline <style> element. An inline style element is serialized into
+// BOTH the HTML document and the RSC flight payload, so the same ~50 KB of CSS
+// was shipped twice in every market-root document.
+import './marketplace-landing.css'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   COUNTRY_META,
-  clampPage,
-  deepLinkVisibleCount,
   FEATURED_PAGE_SIZE,
+  deepLinkVisibleCount,
   resolveJurisdiction,
+  toLandingCards,
   withCountry,
   type Country,
   type JxCode,
+  type LandingCardGig,
   type LandingGig,
 } from '@/lib/marketplaceDisplay'
+import { rankedGigComparator } from '@/lib/marketplaceGigSort'
 import { FeaturedBriefsGrid } from '@/components/marketplace/FeaturedBriefsGrid'
 import {
   computeFacetCounts,
@@ -87,7 +94,16 @@ interface LandingReview {
 }
 
 interface Slice {
-  featured: LandingGig[]
+  /**
+   * First ranked page of the slice — the cards the SERVER renders (crawlable)
+   * and the only gig records that travel to the browser. Later pages are
+   * fetched on demand from /api/marketplace/gigs?view=card (MARKET-ROOT-TRANSFER-LATENCY).
+   */
+  featured: LandingCardGig[]
+  /** Ranked size of the whole slice (never truncated) — pager totals, chips. */
+  totalFeatured: number
+  /** Full-slice category facet counts for the discovery chip row. */
+  categoryCounts: Record<string, number>
   caseFile: (LandingGig & { caseTiers: Array<{ tier: string; price: number }> }) | null
   categories: CategoryStat[]
   totalActive: number
@@ -107,6 +123,8 @@ interface LandingData {
 function emptySlice(label: string, currency: string): Slice {
   return {
     featured: [],
+    totalFeatured: 0,
+    categoryCounts: {},
     caseFile: null,
     categories: CATEGORIES.slice(0, 8).map((cat) => ({ cat, count: 0, fromCents: null })),
     totalActive: 0,
@@ -137,12 +155,17 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
     }
   }
 
-  // Featured grid shows the full slice, ranked by demand & review score.
-  // It was previously capped at 6 cards, which made the chips row claim
-  // "All (217)" while the grid rendered 6 — the exact mismatch users
-  // reported. The inventory query below already pulls every active gig,
-  // so no truncation here.
-  const featured = [...gigs].sort((a, b) => b.rank_score - a.rank_score)
+  // Featured grid is ranked by demand & review score using the SAME total order
+  // the listing API paginates with (rank_score desc, order_count desc, id asc —
+  // marketplaceGigSort.ts). That equality is what lets the client append later
+  // windows from /api/marketplace/gigs without duplicates or gaps: the build
+  // snapshot and the API must window the same ranked sequence.
+  //
+  // Only the first page is serialized into the document. The rest of the slice
+  // is fetched on demand (the size fix — the market root used to embed every
+  // active gig, ~217 records twice-serialized, in the HTML + RSC payload).
+  const ranked = [...gigs].sort(rankedGigComparator)
+  const featured = toLandingCards(ranked.slice(0, FEATURED_PAGE_SIZE))
 
   // "Case file" hero card = highest-impressions-or-most-reviews gig in the
   // slice. We use a composite signal (max(order_count, review_count)) since
@@ -165,6 +188,10 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
 
   return {
     featured,
+    totalFeatured: ranked.length,
+    // Chips must count the WHOLE slice, not the serialized first page: the
+    // numbers are computed here from full inventory and travel as numbers.
+    categoryCounts: Object.fromEntries(catCount.entries()),
     caseFile,
     categories: CATEGORIES.slice(0, 8).map((cat) => ({
       cat,
@@ -435,7 +462,10 @@ async function computeLandingData(): Promise<LandingData | null> {
 // incremental-cache backend.
 const LANDING_CACHE_TTL_SECONDS = 300
 const LANDING_CACHE_PATH = '/marketplace-landing'
-const LANDING_CACHE_QUERY = 'v1'
+// Bumped v1 -> v2 with the first-page projection: the old entry holds the whole
+// inventory, so it must never be served again (it would put all ~217 gigs back
+// into the document). `isLandingData` below rejects it a second time.
+const LANDING_CACHE_QUERY = 'v2'
 
 function isLandingData(value: unknown): value is LandingData {
   const v = value as LandingData | null
@@ -445,6 +475,10 @@ function isLandingData(value: unknown): value is LandingData {
       v.slices &&
       v.slices.all &&
       Array.isArray(v.slices.all.featured) &&
+      // MARKET-ROOT-TRANSFER-LATENCY: a snapshot that still carries the whole
+      // inventory (a pre-fix entry, or a future regression) is rejected as a
+      // cache miss instead of being re-serialized into the document.
+      v.slices.all.featured.length <= FEATURED_PAGE_SIZE &&
       Array.isArray(v.reviews) &&
       Array.isArray(v.jurisdictions),
   )
@@ -585,370 +619,6 @@ const FAQ_JSONLD = {
   })),
 }
 
-/* ───────────────────────── CSS ─────────────────────────── */
-
-const CSS = `
-.cw-market { color: ${T.onPaper}; background: ${T.paper}; font-family: ${F.ui}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; scroll-behavior: smooth; position: relative; isolation: isolate; }
-.cw-market::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-color: transparent; opacity: 0.22; }
-.cw-market::after { content: none; }
-/* Pattern contract (matches MarketplaceShell): the fixed ::before texture
-   sits ABOVE the shell's solid paper fill and BELOW all page content. */
-.cw-market > * { position: relative; z-index: 1; }
-.cw-market, .cw-market *, .cw-market *::before, .cw-market *::after { box-sizing: border-box; }
-.cw-market a { color: inherit; text-decoration: none; }
-.cw-market button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
-.cw-market img, .cw-market svg { display: block; max-width: 100%; }
-.cw-market .wrap { width: min(1280px, calc(100vw - 32px)); margin: 0 auto; }
-.cw-market .serif { font-family: ${F.display}; }
-.cw-market .mono  { font-family: ${F.mono}; }
-
-.cw-market .topbar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; backdrop-filter: blur(6px); font-size: 12px; color: ${T.inkMid}; }
-.cw-market .topbar-inner { display: flex; align-items: center; justify-content: space-between; height: 32px; }
-.cw-market .topbar-left { display: flex; gap: 22px; align-items: center; }
-.cw-market .topbar-left .mono { letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
-.cw-market .topbar-right { display: flex; gap: 18px; align-items: center; }
-.cw-market .pill-mini { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: ${T.paper2}; border: 1px solid ${T.rule}; font-size: 11px; font-weight: 600; color: ${T.onPaper}; }
-.cw-market .pill-mini::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: ${T.moss}; box-shadow: 0 0 0 3px rgba(95,107,58,0.18); }
-
-.cw-market header.nav { position: sticky; top: 0; z-index: 50; background: ${T.vellum}; backdrop-filter: blur(10px); border-bottom: 1px solid ${T.rule}; }
-.cw-market .nav-inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; height: 60px; }
-.cw-market .brand { display: inline-flex; align-items: center; gap: 12px; }
-.cw-market .brand-mark { width: 38px; height: 38px; border-radius: 8px; background: ${T.indigo}; color: #FFFFFF; display: inline-grid; place-items: center; font-family: ${F.display}; font-size: 22px; font-weight: 700; box-shadow: 0 10px 22px -10px rgba(60,59,110,0.45); position: relative; overflow: hidden; }
-.cw-market .brand-mark::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: ${T.gold}; }
-.cw-market .brand-name { line-height: 1.1; }
-.cw-market .brand-name b { display: block; font-family: ${F.display}; font-weight: 600; font-size: 20px; letter-spacing: -0.01em; }
-.cw-market .brand-name span { display: block; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: ${T.inkSoft}; margin-top: 2px; font-weight: 600; }
-
-.cw-market .nav-search { display: flex; align-items: center; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 999px; height: 40px; padding: 0 6px 0 16px; gap: 10px; transition: border-color .15s, box-shadow .15s; }
-.cw-market .nav-search:focus-within { border-color: ${T.ink}; box-shadow: 0 0 0 4px rgba(29,36,51,0.06); }
-.cw-market .nav-search svg { color: ${T.inkSoft}; flex: 0 0 18px; }
-.cw-market .nav-search input { flex: 1; height: 100%; border: 0; background: transparent; font: inherit; font-size: 14px; color: ${T.ink}; outline: none; }
-.cw-market .nav-search input::placeholder { color: ${T.inkSoft}; }
-.cw-market .nav-search button.go { height: 32px; padding: 0 14px; border-radius: 999px; background: ${T.ink}; color: #FFFFFF; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
-.cw-market nav.nav-links { display: flex; align-items: center; gap: 6px; }
-.cw-market nav.nav-links a { padding: 8px 12px; font-size: 14px; font-weight: 500; color: ${T.inkMid}; border-radius: 8px; }
-.cw-market nav.nav-links a:hover { color: ${T.ink}; background: ${T.paper2}; }
-.cw-market nav.nav-links a.cta { margin-left: 4px; padding: 10px 18px; background: ${T.indigo}; color: #FFFFFF; border-radius: 999px; font-weight: 600; }
-.cw-market nav.nav-links a.cta:hover { background: ${T.indigoDeep}; }
-
-.cw-market .country-bar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; }
-.cw-market .country-bar-inner { display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
-.cw-market .country-bar .label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-right: 4px; }
-.cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.onPaper}; transition: all .12s; cursor: pointer; }
-.cw-market .country-bar a:hover { color: ${T.ink}; background: ${T.paper2}; border-color: ${T.rule}; }
-.cw-market .country-bar a.active { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; font-weight: 600; }
-.cw-market .country-bar .divider { height: 18px; width: 1px; background: ${T.rule}; margin: 0 6px; }
-
-.cw-cat-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid ${T.rule}; background: ${T.paper2}; border-radius: 999px; font-size: 13px; font-weight: 600; color: ${T.onPaper}; font-family: ${F.ui}; transition: all .12s; }
-.cw-cat-trigger:hover { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; }
-.cw-cat-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; display: grid; grid-template-columns: 240px 380px; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; box-shadow: 0 30px 60px -20px rgba(29,36,51,0.25); overflow: hidden; min-width: 620px; max-width: calc(100vw - 32px); }
-@media (max-width: 720px) { .cw-cat-panel { grid-template-columns: 1fr; min-width: min(360px, calc(100vw - 32px)); } .cw-cat-detail { display: none; } }
-.cw-cat-list { list-style: none; margin: 0; padding: 10px 0; border-right: 1px solid ${T.ruleSoft}; background: ${T.paper2}; max-height: 440px; overflow-y: auto; }
-.cw-cat-list li a { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13.5px; color: ${T.onPaper}; }
-.cw-cat-list li a:hover, .cw-cat-list li a.is-focus { background: ${T.paper3}; color: ${T.ink}; }
-.cw-cat-icon { font-size: 14px; line-height: 1; }
-.cw-cat-name { font-weight: 500; }
-.cw-cat-count { font-family: ${F.mono}; font-size: 10.5px; color: ${T.onPaperSoft}; letter-spacing: 0.04em; }
-.cw-cat-arrow { color: ${T.onPaperSoft}; }
-.cw-cat-detail { padding: 22px 24px; background: ${T.vellum}; display: flex; flex-direction: column; gap: 12px; max-height: 440px; overflow-y: auto; }
-.cw-cat-detail-eyebrow { font-family: ${F.display}; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; color: ${T.ink}; }
-.cw-cat-detail-desc { margin: 0; font-size: 13px; line-height: 1.5; color: ${T.inkMid}; }
-.cw-cat-sublist { list-style: none; margin: 0; padding: 8px 0 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
-.cw-cat-sublist a { font-size: 13px; color: ${T.inkMid}; padding: 4px 0; display: block; border-bottom: 1px dashed transparent; }
-.cw-cat-sublist a:hover { color: ${T.ink}; border-bottom-color: ${T.rule}; }
-.cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
-.cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
-
-.cw-market .hero { position: relative; padding: 64px 0 68px; border-bottom: 0; background: transparent; overflow: hidden; }
-.cw-market .hero-media { position: absolute; inset: 0; pointer-events: none; }
-.cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(0.88) contrast(1.08) brightness(0.58); }
-.cw-market .hero-media-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(15,23,42,0.58) 46%, rgba(15,23,42,0.78) 100%); }
-.cw-market .hero h1, .cw-market .hero p.lede { text-shadow: 0 1px 12px rgba(8,11,26,0.45); }
-.cw-market .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
-@keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 6px 14px; }
-.cw-market .flagbar { display: none; }
-.cw-market .hero h1 { font-family: ${F.display}; font-size: clamp(34px, 4vw, 50px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 800; margin: 16px 0 14px; color: #FFFFFF; text-wrap: balance; }
-.cw-market .hero h1 em { font-style: italic; font-weight: 700; color: #F0D078; }
-.cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.84); margin: 0 0 24px; }
-.cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 0; border-radius: 12px; padding: 6px 6px 6px 18px; gap: 10px; box-shadow: 0 18px 50px rgba(0,0,0,0.32); transition: box-shadow .18s cubic-bezier(0.22,1,0.36,1); }
-.cw-market .hero-search:focus-within { box-shadow: 0 18px 50px rgba(15,23,42,0.16), 0 0 0 3px color-mix(in srgb, ${T.indigo} 28%, transparent); }
-.cw-market .hero-search svg { color: ${T.inkSoft}; flex: 0 0 18px; width: 18px; height: 18px; }
-.cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 15px; height: 46px; color: ${T.ink}; min-width: 0; }
-.cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
-.cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 46px; border-left: 1px solid ${T.ruleSoft}; color: ${T.inkSoft}; font-size: 13px; white-space: nowrap; }
-.cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
-.cw-market .hero-search button.search-go { height: 48px; padding: 0 28px; background: ${T.indigo}; color: #FFFFFF; border-radius: 10px; font-weight: 800; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 10px 22px rgba(57,72,200,0.28); transition: background .15s, transform .12s, box-shadow .15s; }
-.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; transform: translateY(-1px); box-shadow: 0 14px 26px rgba(57,72,200,0.36); }
-.cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
-.cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.onPaperSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
-.cw-market .suggest a { display: inline-flex; align-items: center; padding: 7px 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #FFFFFF; font-weight: 600; transition: background .15s, color .15s, border-color .15s, transform .15s; }
-.cw-market .suggest a:hover { background: #fff; border-color: #FFFFFF; color: ${T.ink}; transform: translateY(-1px); }
-
-.cw-market .hero-card { position: relative; background: #fff; border: 1px solid ${T.rule}; border-radius: 16px; padding: 20px 22px 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 16px 40px -24px rgba(15,23,42,0.18); transition: transform .15s, box-shadow .15s; }
-.cw-market .hero-card-link:hover .hero-card { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15,23,42,0.06), 0 20px 44px -24px rgba(15,23,42,0.24); }
-.cw-market .hero-card .file-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.cw-market .hero-card .file-meta .badge { display: inline-flex; align-items: center; gap: 6px; font-family: ${F.ui}; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
-.cw-market .hero-card .file-meta .badge.popular { background: ${T.indigoSoft}; color: ${T.indigo}; }
-.cw-market .hero-card .file-meta .badge.verified { background: #ECFDF5; color: #047857; }
-.cw-market .hero-card h3 { font-family: ${F.ui}; font-weight: 600; font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; margin: 12px 0 12px; color: ${T.ink}; }
-.cw-market .hero-card h3 em { color: ${T.indigo}; font-style: normal; }
-.cw-market .hero-card .attorney { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid ${T.ruleSoft}; }
-.cw-market .hero-card .avatar { width: 36px; height: 36px; border-radius: 50%; color: #FFFFFF; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; font-size: 14px; flex: 0 0 36px; }
-.cw-market .hero-card .attorney-name { line-height: 1.2; flex: 1; }
-.cw-market .hero-card .attorney-name b { font-size: 14px; font-weight: 600; }
-.cw-market .hero-card .attorney-name span { display: block; font-size: 12px; color: ${T.inkSoft}; margin-top: 2px; }
-.cw-market .stars { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; }
-.cw-market .stars svg { color: ${T.star}; width: 14px; height: 14px; }
-.cw-market .stars span.rev { color: ${T.inkSoft}; font-weight: 500; margin-left: 2px; }
-.cw-market .hero-card .tiers { margin-top: 2px; border-top: 1px solid ${T.ruleSoft}; padding-top: 10px; }
-.cw-market .hero-card .tier-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px dotted ${T.rule}; }
-.cw-market .hero-card .tier-row:last-child { border: 0; padding-bottom: 0; }
-.cw-market .hero-card .tier-row .lbl { font-family: ${F.ui}; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: capitalize; color: ${T.inkSoft}; width: 70px; }
-.cw-market .hero-card .tier-row .name { color: ${T.inkMid}; }
-.cw-market .hero-card .tier-row .price { font-family: ${F.ui}; font-weight: 700; font-size: 16px; color: ${T.ink}; }
-.cw-market .hero-card .stamp { display: none; }
-.cw-market .hero-empty { background: #fff; border: 1px dashed ${T.rule}; border-radius: 16px; padding: 48px 32px; text-align: center; color: ${T.inkSoft}; font-family: ${F.ui}; font-size: 15px; line-height: 1.5; }
-
-.cw-market .trust { padding: 16px 0; border-bottom: 1px solid ${T.rule}; background: transparent; font-family: ${F.ui}; font-size: 13px; letter-spacing: 0; text-transform: none; color: ${T.onPaper}; }
-.cw-market .trust-inner { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; justify-content: space-between; }
-.cw-market .trust-inner .label { color: ${T.onPaper}; font-weight: 600; opacity: 0.85; }
-.cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
-.cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
-
-.cw-files-band { padding: 22px 0; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; }
-.cw-files-band-inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-.cw-files-band .kicker { margin: 0; font-family: ${F.ui}; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${T.indigo}; }
-.cw-files-band h2 { margin: 6px 0 0; font-family: ${F.display}; font-size: clamp(22px, 3vw, 32px); font-weight: 700; letter-spacing: -0.02em; color: ${T.ink}; }
-.cw-files-band p.lede { margin: 6px 0 0; max-width: 52ch; color: ${T.inkMid}; font-size: 15px; line-height: 1.45; }
-.cw-files-band-cta { display: inline-flex; align-items: center; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.ui}; font-weight: 800; font-size: 15px; padding: 12px 22px; border-radius: 10px; box-shadow: 0 8px 18px rgba(15,23,42,0.12); }
-.cw-files-band-cta:hover { transform: translateY(-1px); }
-
-.cw-files-rail { padding: 28px 0 16px; background: transparent; border-bottom: 1px solid ${T.rule}; }
-.cw-files-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.cw-files-rail-head h2 { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; }
-.cw-files-rail-head a { font-size: 13px; font-weight: 700; color: ${T.onPaper}; }
-.cw-files-scroller-wrap { position: relative; }
-.cw-files-scroller { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 12px; }
-.cw-files-scroller-wrap::after { content: ""; pointer-events: none; position: absolute; top: 4px; right: 0; bottom: 12px; width: 56px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ys-paper, #F7F8FA) 88%, transparent)); }
-.cw-files-scroller-next { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(0,0,0,0.14); cursor: pointer; }
-.cw-files-scroller-next:hover { background: #fff; }
-.cw-files-scroller::-webkit-scrollbar { display: none; }
-.cw-files-card { position: relative; flex: 0 0 220px; scroll-snap-align: start; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden; text-decoration: none; color: ${T.ink}; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform .22s, box-shadow .22s; }
-.cw-files-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
-.cw-files-card img { width: 100%; height: 168px; object-fit: cover; display: block; background: ${T.paper2}; transition: transform .4s cubic-bezier(0.22,1,0.36,1); }
-.cw-files-card:hover img { transform: scale(1.06); }
-.cw-files-card .body { padding: 12px 12px 14px; color: ${T.ink}; }
-.cw-files-card h3 { margin: 0; font-family: ${F.ui}; font-size: 14px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; color: ${T.ink}; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
-.cw-files-card .price { position: absolute; top: 12px; right: 12px; font-family: ${F.ui}; font-weight: 800; font-size: 13px; color: #FFFFFF; background: ${T.indigo}; padding: 4px 10px; border-radius: 999px; box-shadow: 0 8px 16px -10px rgba(4,31,30,0.7); }
-
-.cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
-.cw-market .section-head h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.12; letter-spacing: -0.02em; margin: 0; color: ${T.onPaper}; max-width: 24ch; }
-.cw-market .section-head h2 em { font-style: italic; color: ${T.onPaperEm}; }
-.cw-market .section-head .meta { display: flex; flex-direction: column; gap: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.onPaperSoft}; text-align: right; }
-.cw-market .section-head .meta a { color: ${T.onPaper}; border-bottom: 1px solid ${T.onPaperSoft}; padding-bottom: 1px; }
-.cw-market .section-head .meta a:hover { color: ${T.indigo}; border-color: ${T.indigo}; }
-
-.cw-market .featured { padding: 36px 0 40px; border-top: 0; background: transparent; }
-.cw-market .filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
-.cw-market .filters a { padding: 5px 12px; border: 1px solid ${T.rule}; background: #FFFFFF; border-radius: 999px; font-size: 12px; font-weight: 500; color: ${T.ink}; transition: all .15s; }
-.cw-market .filters a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
-.cw-market .filters a.on { background: ${T.indigo}; color: #FFFFFF; border-color: ${T.indigo}; }
-.cw-market .filters a .ct { font-family: ${F.mono}; font-size: 10.5px; margin-left: 6px; color: currentColor; opacity: 0.7; }
-.cw-market .gig-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 1400px) { .cw-market .gig-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 1180px) { .cw-market .gig-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 900px)  { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } }
-@media (max-width: 700px) {
-  .cw-market .gig-grid { grid-template-columns: 1fr; }
-  .cw-market .nav-search { display: none; }
-  /* Hero search becomes a stack so it fits a phone width without overflow.
-     The button and jurisdiction picker get their own row under the input. */
-  .cw-market .hero-search { flex-wrap: wrap; padding: 8px; gap: 8px; border-radius: 14px; }
-  .cw-market .hero-search > svg { display: none; }
-  .cw-market .hero-search input { flex-basis: 100%; min-width: 0; height: 40px; font-size: 14px; padding: 0 6px; }
-  .cw-market .hero-search .pick { border-left: 0; padding: 0 6px; height: 36px; font-size: 12px; flex: 1 1 auto; }
-  .cw-market .hero-search button.search-go { height: 36px; padding: 0 16px; font-size: 12.5px; flex: 0 0 auto; }
-  .cw-market .hero h1 { font-size: clamp(28px, 9vw, 38px); }
-  .cw-market .hero p.lede { font-size: 14px; }
-  /* Topbar (announcements row) becomes more compact and wraps. */
-  .cw-market .topbar-inner { flex-wrap: wrap; gap: 6px 12px; height: auto; padding: 6px 0; }
-  .cw-market .topbar-left, .cw-market .topbar-right { gap: 10px; }
-  /* Country-bar's pills already wrap; just trim padding so they fit. */
-  .cw-market .country-bar a { padding: 5px 10px; font-size: 12px; }
-  /* Trust strip wraps cleanly on mobile already; tighten spacing. */
-  .cw-market .trust-inner { gap: 10px 18px; }
-  /* Section heads stack vertically so meta doesn't crash into the title. */
-  .cw-market .section-head { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .cw-market .section-head .meta { text-align: left; }
-  /* Filters wrap (they already do via flex-wrap) — just verify spacing. */
-  .cw-market .filters { gap: 4px; }
-  /* Suggest chips shrink. */
-  .cw-market .suggest { gap: 4px; }
-  .cw-market .suggest a { padding: 4px 9px; font-size: 11.5px; }
-}
-
-.cw-market .gig-link { display: flex; }
-.cw-market .gig { flex: 1; min-width: 0; color: ${T.ink}; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform .22s, box-shadow .22s; }
-.cw-market .gig:hover { transform: translateY(-5px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
-.cw-market .gig .plate { position: relative; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; }
-.cw-market .gig .plate::before { content: ""; position: absolute; inset: 0; background: ${T.paper2}; }
-.cw-market .gig .plate::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: ${T.indigo}; }
-.cw-market .gig[data-c="uk"] .plate::after { background: #012169; }
-.cw-market .gig[data-c="ca"] .plate::after { background: #C8102E; }
-.cw-market .gig .plate-tag { position: absolute; left: 12px; bottom: 12px; padding: 5px 10px; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.ui}; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px; }
-.cw-market .gig .plate-glyph { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-family: ${F.display}; font-style: italic; font-size: 56px; color: color-mix(in srgb, ${T.indigo} 22%, transparent); letter-spacing: -0.02em; font-weight: 700; pointer-events: none; }
-.cw-market .gig .plate-img { position: static; width: 100%; height: auto; aspect-ratio: 1280/769; object-fit: contain; object-position: center top; display: block; }
-.cw-market .gig .plate.has-cover { background: ${T.ink}; }
-.cw-market .gig .plate.has-cover::before { content: ""; background: rgba(8,10,14,0.4); }
-.cw-market .gig .plate.has-cover .plate-tag { background: ${T.indigo}; box-shadow: 0 8px 16px -10px rgba(4,31,30,0.6); }
-.cw-market .gig .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.cw-market .gig .seller { display: flex; align-items: center; gap: 10px; }
-.cw-market .gig .seller .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: ${F.display}; font-weight: 700; font-size: 13px; color: #FFFFFF; flex: 0 0 30px; }
-.cw-market .gig .seller .info { line-height: 1.15; }
-.cw-market .gig .seller .info b { font-size: 13px; font-weight: 700; color: ${T.ink}; }
-.cw-market .gig .seller .info span { display: block; margin-top: 2px; font-family: ${F.ui}; font-size: 11px; color: ${T.inkSoft}; letter-spacing: 0.02em; text-transform: none; font-weight: 500; }
-.cw-market .gig .seller .pro { margin-left: auto; padding: 3px 8px; border-radius: 999px; background: rgba(232,185,49,0.22); color: #7A5A0A; border: 1px solid rgba(232,185,49,0.55); font-family: ${F.ui}; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 800; }
-.cw-market .gig h4 { font-family: ${F.ui}; font-weight: 700; font-size: 14.5px; line-height: 1.35; letter-spacing: -0.015em; margin: 0; color: ${T.ink}; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: calc(3 * 1.35em); }
-.cw-market .gig .seller { min-height: 40px; }
-.cw-market .gig h4 a:hover { color: ${T.indigo}; }
-.cw-market .gig .gig-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 10px; border-top: 1px solid ${T.ruleSoft}; }
-.cw-market .gig .price { text-align: right; }
-.cw-market .gig .price .from { font-family: ${F.ui}; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: ${T.inkSoft}; font-weight: 600; }
-.cw-market .gig .price b { display: block; font-family: ${F.ui}; font-weight: 800; font-size: 18px; color: ${T.indigo}; line-height: 1; margin-top: 1px; }
-.cw-market .gig .delivery { font-family: ${F.ui}; font-size: 11px; color: ${T.inkSoft}; letter-spacing: .04em; font-weight: 600; }
-
-.cw-market .how { padding: 36px 0; border-top: 1px solid ${T.rule}; background: transparent; }
-.cw-market .how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid ${T.rule}; border-radius: 14px; background: ${T.vellum}; color: ${T.ink}; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-@media (max-width: 800px) { .cw-market .how-grid { grid-template-columns: 1fr; } }
-.cw-market .how-step { padding: 20px 22px; border-right: 1px solid ${T.rule}; position: relative; }
-.cw-market .how-step:nth-child(1) { box-shadow: inset 0 4px 0 ${T.indigo}; }
-.cw-market .how-step:nth-child(2) { box-shadow: inset 0 4px 0 ${T.gold}; }
-.cw-market .how-step:nth-child(3) { box-shadow: inset 0 4px 0 ${T.brick}; }
-.cw-market .how-step:last-child { border-right: 0; }
-@media (max-width: 800px) { .cw-market .how-step { border-right: 0; border-bottom: 1px solid ${T.rule}; } .cw-market .how-step:last-child { border-bottom: 0; } }
-.cw-market .how-step .step-num { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: ${T.inkSoft}; display: flex; align-items: center; gap: 10px; }
-.cw-market .how-step .step-num::before { content: ""; width: 22px; height: 1px; background: ${T.inkMid}; }
-.cw-market .how-step h3 { font-family: ${F.display}; font-weight: 700; font-size: 20px; line-height: 1.25; letter-spacing: -0.015em; margin: 8px 0 6px; color: ${T.ink}; }
-.cw-market .how-step h3 em { font-style: italic; color: ${T.indigo}; }
-.cw-market .how-step p { margin: 0; font-size: 13px; line-height: 1.55; color: ${T.inkMid}; }
-.cw-market .how-step .icon { position: absolute; top: 18px; right: 20px; font-family: ${F.display}; font-style: italic; font-size: 36px; color: ${T.paper3}; line-height: 1; }
-
-.cw-market .quotes { padding: 36px 0; border-top: 1px solid ${T.rule}; background: transparent; }
-.cw-market .quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-@media (max-width: 900px) { .cw-market .quotes-grid { grid-template-columns: 1fr; gap: 28px; } }
-.cw-market .quote { border-top: 2px solid ${T.gold}; padding-top: 14px; color: ${T.onPaper}; }
-.cw-market .quote .stars { margin-bottom: 10px; }
-.cw-market .quote blockquote { margin: 0 0 12px; font-family: ${F.display}; font-size: 16px; line-height: 1.45; color: ${T.onPaper}; letter-spacing: -0.005em; text-wrap: pretty; }
-.cw-market .quote blockquote em { color: ${T.onPaperEm}; font-style: italic; }
-.cw-market .quote cite { display: flex; align-items: center; gap: 10px; font-style: normal; font-size: 13px; color: ${T.onPaperSoft}; }
-.cw-market .quote cite b { color: ${T.onPaper}; font-weight: 600; }
-.cw-market .quote cite .av { width: 36px; height: 36px; border-radius: 50%; background: ${T.indigo}; color: #FFFFFF; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; }
-
-.cw-market .seller-cta { padding: 28px 0 32px; border-top: 1px solid ${T.rule}; }
-.cw-market .seller-card { position: relative; overflow: hidden; border-radius: 14px; background: ${T.vellum}; color: ${T.ink}; padding: 32px 36px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; border: 1px solid ${T.rule}; box-shadow: 0 1px 0 rgba(15,23,42,0.04), 0 24px 48px -28px rgba(15,23,42,0.16); }
-@media (max-width: 800px) { .cw-market .seller-card { grid-template-columns: 1fr; padding: 24px 22px; } }
-.cw-market .seller-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: ${T.indigo}; }
-.cw-market .seller-card::after { content: "§"; position: absolute; right: 32px; bottom: -50px; font-family: ${F.display}; font-style: italic; font-weight: 500; font-size: 240px; color: rgba(15,23,42,0.04); pointer-events: none; line-height: 1; }
-.cw-market .seller-card .mono-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${T.inkSoft}; }
-.cw-market .seller-card h2 { font-family: ${F.display}; font-weight: 700; font-size: clamp(22px, 2.8vw, 32px); line-height: 1.1; letter-spacing: -0.014em; margin: 8px 0 10px; color: ${T.ink}; max-width: 20ch; }
-.cw-market .seller-card h2 em { font-style: italic; color: ${T.indigo}; }
-.cw-market .seller-card p { margin: 0 0 14px; max-width: 56ch; font-size: 13.5px; line-height: 1.55; color: ${T.inkMid}; }
-.cw-market .seller-card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.cw-market .seller-card .btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 18px; border-radius: 999px; font-weight: 600; font-size: 13px; transition: transform .12s, background .12s; }
-.cw-market .seller-card .btn.primary { background: ${T.indigo}; color: #FFFFFF; border: 1px solid ${T.indigo}; }
-.cw-market .seller-card .btn.primary:hover { transform: translateY(-1px); background: ${T.indigoDeep}; }
-.cw-market .seller-card .btn.ghost { border: 1px solid ${T.rule}; color: ${T.ink}; background: transparent; }
-.cw-market .seller-card .btn.ghost:hover { background: ${T.paper2}; }
-.cw-market .seller-card .stats { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 0 4px; position: relative; z-index: 1; }
-.cw-market .seller-card .stat { border-left: 2px solid ${T.indigo}; padding-left: 12px; }
-.cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: ${T.ink}; letter-spacing: -0.01em; }
-.cw-market .seller-card .stat span { display: block; margin-top: 4px; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; }
-
-.cw-market .hero-card-link { display: block; transition: transform .25s ease; }
-.cw-market .hero-fallback-hint { margin-top: 10px; padding: 8px 10px; background: ${T.paper2}; border: 1px dashed ${T.rule}; border-radius: 8px; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.06em; color: ${T.inkMid}; text-transform: none; }
-.cw-market .hero-fallback-hint b { color: ${T.ink}; }
-
-.cw-market .quotes-empty { margin: 0; padding: 18px 22px; background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 12px; font-family: ${F.display}; font-style: italic; font-size: 15px; line-height: 1.5; color: ${T.inkMid}; }
-.cw-market .quotes-empty a { color: ${T.indigo}; text-decoration: none; }
-
-.cw-market .close-strip { padding: 14px 0; border-top: 1px solid ${T.rule}; background: transparent; }
-.cw-market .close-strip-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; font-size: 12.5px; font-weight: 600; color: ${T.onPaper}; letter-spacing: 0.01em; }
-.cw-market .close-strip-inner .dot { width: 3px; height: 3px; border-radius: 50%; background: ${T.onPaperSoft}; opacity: 0.6; }
-
-.cw-market .faq-section { padding: 28px 0 36px; background: transparent; }
-.cw-market .faq-heading { font-family: ${F.display}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 14px; color: ${T.onPaper}; }
-.cw-market .faq-grid { display: grid; gap: 8px; max-width: 820px; }
-.cw-market .faq-item { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 10px; padding: 12px 16px; color: ${T.ink}; transition: border-color .12s; }
-.cw-market .faq-item:hover, .cw-market .faq-item.is-open { border-color: ${T.gold}; }
-.cw-market .faq-summary { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0; background: none; border: 0; cursor: pointer; text-align: left; font-family: ${F.ui}; font-size: 15px; font-weight: 650; color: ${T.ink}; }
-.cw-market .faq-sym { font-family: ${F.ui}; font-size: 18px; color: ${T.inkSoft}; font-weight: 300; line-height: 1; flex-shrink: 0; }
-.cw-market .faq-body { color: ${T.inkMid}; font-size: 13px; line-height: 1.55; margin: 8px 0 0; }
-
-.cw-all-trigger { background: none; border: 0; padding: 0; cursor: pointer; color: ${T.ink}; border-bottom: 1px solid ${T.ink}; font: inherit; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
-.cw-all-trigger:hover { color: ${T.indigo}; border-bottom-color: ${T.indigo}; }
-.cw-all-overlay { position: fixed; inset: 0; z-index: 200; font-family: ${F.ui}; }
-.cw-all-backdrop { position: absolute; inset: 0; background: rgba(15, 19, 30, 0.45); backdrop-filter: blur(2px); }
-.cw-all-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(1100px, 100vw); background: ${T.paper}; box-shadow: -24px 0 60px -20px rgba(29,36,51,0.35); display: flex; flex-direction: column; animation: cw-drawer-in .2s ease-out; }
-@keyframes cw-drawer-in { from { transform: translateX(40px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
-.cw-all-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 22px 14px; border-bottom: 1px solid ${T.rule}; gap: 16px; }
-.cw-all-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; }
-.cw-all-title { margin: 4px 0 0; font-family: ${F.display}; font-size: 22px; font-weight: 500; color: ${T.ink}; letter-spacing: -0.012em; }
-.cw-all-close { width: 36px; height: 36px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; font-size: 20px; cursor: pointer; display: grid; place-items: center; }
-.cw-all-close:hover { background: ${T.ink}; color: #FFFFFF; border-color: ${T.ink}; }
-.cw-all-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr; }
-@media (max-width: 760px) { .cw-all-body { grid-template-columns: 1fr; } .cw-all-side { border-right: 0 !important; border-bottom: 1px solid ${T.rule}; } }
-.cw-all-side { border-right: 1px solid ${T.rule}; background: ${T.paper2}; padding: 16px 18px; overflow-y: auto; }
-.cw-all-filterblock { margin-bottom: 18px; }
-.cw-all-filter-label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
-.cw-all-bulk { display: inline-flex; gap: 6px; align-items: center; font-family: ${F.ui}; font-size: 11px; letter-spacing: 0; text-transform: none; }
-.cw-all-bulk button { background: none; border: 0; padding: 0; cursor: pointer; color: ${T.indigo}; font-size: 11px; }
-.cw-all-bulk button:disabled { color: ${T.inkSoft}; cursor: default; }
-.cw-all-jx { display: flex; gap: 6px; flex-wrap: wrap; }
-.cw-all-jx button { padding: 5px 12px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 999px; font-size: 12px; color: ${T.inkMid}; cursor: pointer; }
-.cw-all-jx button.on { background: ${T.ink}; color: #FFFFFF; border-color: ${T.ink}; }
-.cw-all-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.cw-all-cats label { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 13px; color: ${T.ink}; cursor: pointer; }
-.cw-all-cats label:hover { background: ${T.vellum}; }
-.cw-all-cats input { width: 14px; height: 14px; accent-color: ${T.ink}; }
-.cw-all-cat-icon { font-size: 12px; line-height: 1; }
-.cw-all-sort { width: 100%; height: 34px; padding: 0 10px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 8px; font-family: ${F.ui}; font-size: 13px; color: ${T.ink}; }
-.cw-all-results { padding: 16px 22px 22px; overflow-y: auto; }
-.cw-all-count { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: ${T.inkSoft}; margin-bottom: 12px; }
-.cw-all-empty { padding: 28px; background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 12px; font-family: ${F.display}; font-style: italic; color: ${T.inkMid}; text-align: center; }
-.cw-all-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.cw-all-card { display: block; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 12px; overflow: hidden; text-decoration: none; color: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; }
-.cw-all-card:hover { transform: translateY(-2px); border-color: ${T.ink}; box-shadow: 0 12px 24px -16px rgba(29,36,51,0.2); }
-.cw-all-card-plate { position: relative; aspect-ratio: 16/6; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; }
-.cw-all-card-plate::before { content: ""; position: absolute; inset: 0; background: ${T.paper2}; }
-.cw-all-card-plate::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: ${T.indigo}; }
-.cw-all-card-plate[data-c="uk"]::after { background: #012169; }
-.cw-all-card-plate[data-c="ca"]::after { background: #C8102E; }
-.cw-all-card-tag { position: absolute; left: 10px; bottom: 8px; padding: 3px 7px; background: rgba(29,36,51,0.85); color: #FFFFFF; font-family: ${F.mono}; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; border-radius: 3px; }
-.cw-all-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
-.cw-all-card-body h4 { margin: 0; font-family: ${F.ui}; font-size: 14px; font-weight: 700; line-height: 1.3; color: ${T.ink}; }
-.cw-all-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: ${T.inkSoft}; }
-.cw-all-card-rating { color: ${T.inkMid}; }
-.cw-all-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding-top: 8px; border-top: 1px solid ${T.ruleSoft}; }
-.cw-all-card-delivery { font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.inkSoft}; }
-.cw-all-card-price { font-family: ${F.ui}; font-weight: 800; font-size: 16px; color: ${T.indigo}; }
-
-.cw-help-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border: 1px solid transparent; border-radius: 999px; font-family: ${F.ui}; font-size: 12px; font-weight: 500; color: ${T.inkMid}; cursor: pointer; transition: all .12s; }
-.cw-help-trigger:hover, .cw-help[aria-expanded="true"] .cw-help-trigger { color: ${T.ink}; background: ${T.paper2}; border-color: ${T.rule}; }
-.cw-help-icon { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: ${T.indigo}; color: #FFFFFF; font-family: ${F.display}; font-style: italic; font-size: 11px; font-weight: 600; line-height: 1; }
-.cw-help-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 80; width: min(360px, calc(100vw - 32px)); background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 12px; box-shadow: 0 24px 48px -16px rgba(29,36,51,0.28); overflow: hidden; font-family: ${F.ui}; }
-.cw-help-panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 16px 10px; border-bottom: 1px solid ${T.ruleSoft}; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; }
-.cw-help-panel-head > span:first-child { color: ${T.ink}; font-weight: 600; }
-.cw-help-panel-hint { font-size: 9.5px; }
-.cw-help-list { list-style: none; margin: 0; padding: 4px 0; }
-.cw-help-list li { border-bottom: 1px solid ${T.ruleSoft}; }
-.cw-help-list li:last-child { border-bottom: 0; }
-.cw-help-q { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 16px; background: none; border: 0; cursor: pointer; text-align: left; font-family: ${F.display}; font-size: 14px; font-weight: 500; color: ${T.ink}; line-height: 1.3; }
-.cw-help-q:hover { background: ${T.paper2}; }
-.cw-help-q-sym { font-family: ${F.ui}; font-size: 16px; color: ${T.inkSoft}; flex: 0 0 auto; line-height: 1; }
-.cw-help-a { margin: 0; padding: 0 16px 12px; font-size: 12.5px; line-height: 1.55; color: ${T.inkMid}; }
-`
-
 /* ───────────────────────── Component ─────────────────────────── */
 
 const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; lede: string }> = {
@@ -1069,10 +739,13 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   // renders to ?page=N (SSR matches the URL for crawlers); the client
   // FeaturedBriefsGrid then appends pages in place (Load more) or jumps
   // between page windows without a reload.
-  const fullList = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
+  // First page (serialized) + ranked total (a number, not the gigs). The client
+  // grid appends later windows from the listing API on demand.
+  const firstPageCards = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
   const featuredIsFallback = slice.featured.length === 0 && data.slices.all.featured.length > 0
-  const safePage = clampPage(page, fullList.length)
-  const serverVisible = deepLinkVisibleCount(page, fullList.length)
+  const totalRanked = featuredIsFallback ? data.slices.all.totalFeatured : slice.totalFeatured
+  const categoryCounts = featuredIsFallback ? data.slices.all.categoryCounts : slice.categoryCounts
+  const serverVisible = Math.min(deepLinkVisibleCount(page, totalRanked), firstPageCards.length)
 
   const trustItems: Array<{ label: string }> = []
   if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active briefs` })
@@ -1081,7 +754,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
 
   return (
     <div className="cw-market" style={{ minHeight: '100vh' }}>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SERVICE_JSONLD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }} />
 
@@ -1184,7 +856,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
       </section>
 
       {/* Featured gigs */}
-      {fullList.length > 0 ? (
+      {firstPageCards.length > 0 ? (
         <section className="featured" id="featured">
           <div className="wrap">
             <div className="section-head">
@@ -1210,7 +882,9 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             </div>
 
             <FeaturedBriefsGrid
-              gigs={fullList}
+              cards={firstPageCards}
+              total={totalRanked}
+              categoryCounts={categoryCounts}
               initialVisible={serverVisible}
               country={active}
               currency={currency}
