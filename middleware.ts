@@ -582,11 +582,18 @@ const clerkHandler = clerkMiddleware(
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
   if (requestHostname(req) === MARKET_HOST) {
     const allowedCorsPreflight = isAllowedCorsPreflight(req)
+    // The cookie jar is part of the eligibility contract: Clerk's cross-domain
+    // handoff returns from the FAPI as a `__clerk_handshake` cookie on the
+    // shared registrable domain (Domain=yousafeconsultancy.com) with no
+    // `__clerk*` parameter left to match. Answering that request from the
+    // anonymous cache is what let the handoff be re-driven on every navigation
+    // until the shared Worker hit the Free-plan CPU limit (1102).
     if (
       shouldBypassClerkForMarketRequest(
         req.nextUrl.pathname,
         req.nextUrl.searchParams,
         allowedCorsPreflight,
+        req.cookies.getAll(),
       )
     ) {
       return handleMarketHostRequest(req)
@@ -604,6 +611,7 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
         req.nextUrl.pathname,
         req.nextUrl.searchParams,
         req.cookies.get('__client_uat')?.value,
+        req.cookies.getAll(),
       )
     ) {
       return handlePortalAnonymousDocumentRequest(req)
