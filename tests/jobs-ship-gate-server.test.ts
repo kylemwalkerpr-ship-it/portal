@@ -400,7 +400,7 @@ describe('POST bulk_approve — never ships an ungated row', () => {
 })
 
 describe('PATCH save — protects gate state and accepted content', () => {
-  it('merges bare auditContent overlay over prior gate fields', async () => {
+  it('invalidates carried shipReady when save repairs change body while preserving non-body gate context', async () => {
     const priorAudit = {
       score: 96,
       shipReady: true,
@@ -409,12 +409,18 @@ describe('PATCH save — protects gate state and accepted content', () => {
       contentLoop: { action: 'fix_until_gates', status: 'cleared' },
       model: 'grok',
     }
+    const submitted = mkContent()
     supabaseClient.__builder._rows.set('j1', baseJob({ status: 'drafting', pr_number: null, audit_json: priorAudit }))
-    const res = await patch({ id: 'j1', action: 'save', content: mkContent() })
+    const res = await patch({ id: 'j1', action: 'save', content: submitted })
     expect(res.status).toBe(200)
+    const response = await res.json()
+    expect(response.appliedRepairs.length).toBeGreaterThan(0)
     const patchWritten = supabaseClient.__builder._patch
     expect(patchWritten).toBeTruthy()
-    expect(patchWritten.audit_json.shipReady).toBe(true)
+    expect(patchWritten.content).not.toBe(submitted)
+    expect(patchWritten.audit_json.shipReady).toBeUndefined()
+    expect(patchWritten.audit_json.editorialReview).toBeUndefined()
+    expect(patchWritten.audit_json.contentFingerprint).toBeUndefined()
     expect(patchWritten.audit_json.contentSpec).toEqual(priorAudit.contentSpec)
     expect(patchWritten.audit_json.contentLoop).toEqual(priorAudit.contentLoop)
   })
