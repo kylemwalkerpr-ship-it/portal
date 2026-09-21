@@ -7,13 +7,15 @@
  * stylesheet was inline (serialized into BOTH the document and the flight
  * payload). This suite locks the data-shape contract that removes it, and runs
  * the shipped artifact gate (scripts/verify-market-landing-payload.mjs) against
- * a synthetic built document so the gate's pass/fail behavior is regression
- * tested rather than assumed.
+ * synthetic built documents so the gate's pass/fail behavior is regression
+ * tested rather than assumed — including the JSON-escaped published
+ * cache-entry encoding, in which a quote-shape-sensitive occurrence count
+ * read 0 against the real artifact while the document rendered every card.
  */
 
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   FEATURED_PAGE_SIZE,
   toLandingCards,
@@ -147,99 +149,141 @@ describe('shipped artifact gate (scripts/verify-market-landing-payload.mjs)', ()
   const fixtureRoot = join(repoRoot, '.next', 'payload-gate-test')
   const htmlPath = join(fixtureRoot, 'server', 'app', 'marketplace.html')
   const cacheDir = join(fixtureRoot, 'cache')
+  const cacheFile = join(cacheDir, 'fixture', 'marketplace.cache')
   const assetsDir = join(fixtureRoot, 'assets')
+  const stylesheetHref = '/_next/static/css/fixture.css'
+  const baseArgs = ['--build-id', 'fixture', '--html', htmlPath, '--cache', cacheDir, '--assets', assetsDir]
 
-  const cards = (count: number) =>
-    Array.from({ length: count }, (_, i) => `<a href="/gigs/brief-${i}" class="jsx-1 gig-link"><article></article></a>`).join('')
+  const cardMarkup = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `<a href="/gigs/brief-${i}" class="jsx-1 gig-link"><article></article></a>`,
+    ).join('')
 
-  // The flight payload escapes quotes: the marker the gate counts is
-  // \"providerHeadshot\": exactly as React serializes a card record.
-  const serializedRecord = '\\"providerHeadshot\\":null,'
+  // Flight escaping exactly as React emits it inside the document: one projected
+  // first-page card record, and one FULL inventory record. `rank_score` /
+  // `order_count` exist on LandingGig only, so their presence in the shipped
+  // document is proof that whole gig records were serialized again.
+  const cardRecord = '\\"providerHeadshot\\":null,\\"starting_price\\":25000,'
+  const leakedRecord = '\\"rank_score\\":0.42,\\"order_count\\":3,'
 
-  const document = (cardCount: number, serializedRecords: number, inlineStyleBytes: number) =>
+  const document = (
+    {
+      cardCount = FEATURED_PAGE_SIZE,
+      recordCount = FEATURED_PAGE_SIZE + 4,
+      record = cardRecord,
+      inlineStyleBytes = 1024,
+    }: { cardCount?: number; recordCount?: number; record?: string; inlineStyleBytes?: number } = {},
+  ) =>
     [
-      '<!DOCTYPE html><html><head><link rel="stylesheet" href="/_next/static/css/fixture.css"/></head><body>',
+      `<!DOCTYPE html><html><head><link rel="stylesheet" href="${stylesheetHref}"/></head><body>`,
       `<style>${'.a{color:#fff}'.repeat(Math.ceil(inlineStyleBytes / 13))}</style>`,
-      cards(cardCount),
-      `<script>self.__next_f.push([1,"${serializedRecord.repeat(serializedRecords)}"])</script>`,
+      cardMarkup(cardCount),
+      `<script>self.__next_f.push([1,"${record.repeat(recordCount)}"])</script>`,
       '</body></html>',
     ].join('')
+
+  /**
+   * The published cache entry is the runtime's JSON value (`response.json()`),
+   * so the document travels as an escaped JSON string. This is the encoding the
+   * deployed gate actually reads — and the one in which a quote-shape-sensitive
+   * key count silently read 0 on the real artifact.
+   */
+  const cacheEntry = (html: string) => Buffer.from(JSON.stringify({ type: 'app', html }))
+
+  /** Publish the stylesheet the fixture document links (assets are real). */
+  const publishStylesheet = () => {
+    const target = join(assetsDir, stylesheetHref.replace(/^\//, ''))
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, '.a{color:#fff}')
+  }
 
   const runGate = (args: string[]) =>
     execFileSync('node', [gateScript, ...args], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' })
 
+  /** Run the gate expecting failure; returns its stderr for further assertions. */
+  const expectGateFailure = (expected: string) => {
+    let stderr = ''
+    try {
+      runGate(baseArgs)
+    } catch (error: any) {
+      stderr = String(error.stderr)
+    }
+    expect(stderr).not.toBe('')
+    expect(stderr).toContain(expected)
+    return stderr
+  }
+
   beforeEach(() => {
     rmSync(fixtureRoot, { recursive: true, force: true })
     mkdirSync(join(fixtureRoot, 'server', 'app'), { recursive: true })
-    mkdirSync(cacheDir, { recursive: true })
+    mkdirSync(join(cacheDir, 'fixture'), { recursive: true })
   })
 
   afterAll(() => {
     rmSync(fixtureRoot, { recursive: true, force: true })
   })
 
-  const baseArgs = ['--build-id', 'fixture', '--html', htmlPath, '--cache', cacheDir, '--assets', assetsDir]
-
-  it('passes a document that carries exactly one page and no inline stylesheet', () => {
-    writeFileSync(htmlPath, document(FEATURED_PAGE_SIZE, FEATURED_PAGE_SIZE + 4, 1024))
+  it('passes a document that carries exactly one page and no full records', () => {
+    publishStylesheet()
+    writeFileSync(htmlPath, document())
     const output = runGate(baseArgs)
     expect(output).toContain('OK cards=48')
+    expect(output).toContain('rank_score=0')
+    expect(output).toContain('order_count=0')
+    // The linked-stylesheet publication check ran for real (not skipped).
+    expect(output).toContain('verified 1 linked stylesheet(s)')
+  })
+
+  it('passes the same document in the published cache-entry (JSON) encoding', () => {
+    publishStylesheet()
+    writeFileSync(cacheFile, cacheEntry(document()))
+    const output = runGate(baseArgs)
+    expect(output).toContain('OK cards=48')
+    expect(output).toContain('verified 1 linked stylesheet(s)')
   })
 
   it('fails when the document embeds later pages of briefs', () => {
-    writeFileSync(htmlPath, document(FEATURED_PAGE_SIZE + 48, 217, 1024))
-    expect(() => runGate(baseArgs)).toThrow()
-    try {
-      runGate(baseArgs)
-    } catch (error: any) {
-      expect(String(error.stderr)).toContain('brief cards')
-    }
+    writeFileSync(htmlPath, document({ cardCount: FEATURED_PAGE_SIZE + 48 }))
+    expectGateFailure('brief cards')
   })
 
-  it('fails when the serialized brief records exceed one page + hero slides', () => {
-    writeFileSync(htmlPath, document(FEATURED_PAGE_SIZE, 217, 1024))
-    try {
-      runGate(baseArgs)
-      throw new Error('gate should have failed')
-    } catch (error: any) {
-      expect(String(error.stderr)).toContain('serializes 217 brief records')
-    }
+  it('fails when full-inventory-only record fields leak back into the payload', () => {
+    // 217 leaked full records, small enough that the byte budget and the
+    // reduction floor both pass: only the leakage guard can reject this.
+    writeFileSync(htmlPath, document({ record: leakedRecord, recordCount: 217 }))
+    const stderr = expectGateFailure('full-inventory-only record field')
+    expect(stderr).toContain('rank_score')
+    expect(stderr).toContain('order_count')
+    expect(stderr).not.toContain('byte budget')
+  })
+
+  it('fails the same leak through the published cache-entry (JSON) encoding', () => {
+    writeFileSync(cacheFile, cacheEntry(document({ record: leakedRecord, recordCount: 217 })))
+    expectGateFailure('rank_score')
+  })
+
+  it('fails an unescaped leak in the prerender-output encoding too', () => {
+    writeFileSync(htmlPath, document({ record: '"rank_score":0.42,"order_count":3,', recordCount: 217 }))
+    expectGateFailure('rank_score')
   })
 
   it('fails when the landing stylesheet is inline again', () => {
-    writeFileSync(htmlPath, document(FEATURED_PAGE_SIZE, FEATURED_PAGE_SIZE + 4, 60000))
-    try {
-      runGate(baseArgs)
-      throw new Error('gate should have failed')
-    } catch (error: any) {
-      expect(String(error.stderr)).toContain('inline <style> block')
-    }
+    writeFileSync(htmlPath, document({ inlineStyleBytes: 60000 }))
+    expectGateFailure('inline <style> block')
   })
 
   it('fails when a linked stylesheet was not published with the assets', () => {
-    writeFileSync(htmlPath, document(FEATURED_PAGE_SIZE, FEATURED_PAGE_SIZE + 4, 1024))
+    writeFileSync(htmlPath, document())
     mkdirSync(assetsDir, { recursive: true })
-    try {
-      runGate(baseArgs)
-      throw new Error('gate should have failed')
-    } catch (error: any) {
-      expect(String(error.stderr)).toContain('not published')
-    }
+    expectGateFailure('not published')
   })
 
   it('fails a pre-fix sized document against the budget', () => {
-    // Well-formed (one page, no mega inline style) but big: the budget alone
-    // must reject it, which is the exact pre-fix failure mode.
-    const oversized = document(FEATURED_PAGE_SIZE, FEATURED_PAGE_SIZE + 4, 1024).replace(
-      '</body>',
-      `${' '.repeat(310000)}</body>`,
-    )
+    // Well-formed (one page, no leaked records, no mega inline style) but big:
+    // the budget alone must reject it, which is the exact pre-fix failure mode.
+    const oversized = document().replace('</body>', `${' '.repeat(310000)}</body>`)
     writeFileSync(htmlPath, oversized)
-    try {
-      runGate(baseArgs)
-      throw new Error('gate should have failed')
-    } catch (error: any) {
-      expect(String(error.stderr)).toContain('byte budget')
-    }
+    expectGateFailure('byte budget')
   })
 })

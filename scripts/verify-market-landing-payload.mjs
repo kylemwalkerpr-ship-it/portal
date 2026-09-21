@@ -19,11 +19,21 @@
  *   1. the document exceeds the byte budget, or is not >= MIN_REDUCTION below
  *      the recorded pre-fix baseline;
  *   2. the document does not ship EXACTLY one ranked page of brief cards;
- *   3. more card records than one page (+ hero case-file slides) are serialized
- *      into the RSC flight payload — the regression this gate exists for;
+ *   3. the document serializes a full-inventory-only record field
+ *      (`rank_score`, `order_count`) — the regression this gate exists for:
+ *      whole gig records travelling to the browser again;
  *   4. the landing stylesheet is back inline in the document;
  *   5. a stylesheet the document links is missing from the published assets
  *      (an unstyled deploy would otherwise go unnoticed).
+ *
+ * Encoding note: the published cache entry is the runtime's JSON value, read
+ * with `response.json()` (`{"type":"app","html":"…"}`), so every quote inside
+ * the flight markup arrives escaped — a `\"rank_score\":` in the prerender
+ * output is `\\\"rank_score\\\":` in the shipped entry. Every marker counted
+ * below is therefore matched at ANY escaping depth. A marker that only matches
+ * one encoding is not a verifiable shipped-artifact signal: the previous
+ * `providerHeadshot` record count read 0 on the real cache entry for exactly
+ * that reason, while the same document rendered all 48 first-page cards.
  *
  * Local filesystem only: no network, no Cloudflare API, no credentials.
  *
@@ -43,10 +53,14 @@ const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 /** One ranked page of brief cards (lib/marketplaceDisplay FEATURED_PAGE_SIZE). */
 const FEATURED_PAGE_SIZE = 48
 /**
- * Hero case-file slides are the only other brief records a document may carry
- * (one per jurisdiction + the global fallback, deduplicated by id).
+ * Record fields that exist only on the full inventory record (`LandingGig`) and
+ * are dropped by the card projection (`LandingCardGig`) — `rank_score` is the
+ * ranking key and `order_count` the demand signal, both consumed server-side
+ * only (lib/marketplaceDisplay.ts, PublicMarketplaceLanding.buildSlice). The
+ * hero slides never carried them either, so a non-zero count means whole gig
+ * records are serialized to the browser again.
  */
-const MAX_HERO_SLIDES = 8
+const FULL_RECORD_ONLY_FIELDS = ['rank_score', 'order_count']
 
 /** Measured live baseline of market.yousafeconsultancy.com/ before the fix. */
 const BASELINE_BYTES = 524455
@@ -63,7 +77,8 @@ const DEFAULT_CACHE = join('.open-next', 'assets', 'cdn-cgi', '_next_cache')
 const USAGE = `Usage: node scripts/verify-market-landing-payload.mjs [options]
 
 Verifies that the prerendered market-root document stays inside its payload
-budget and ships exactly one ranked page of brief cards.
+budget, ships exactly one ranked page of brief cards, and leaks no
+full-inventory-only record field.
 
 Options:
   --build-id <id>   Build id directory inside the static cache (default: .next/BUILD_ID)
@@ -131,50 +146,49 @@ function readPayload(file) {
 
 /**
  * Extract the HTML document out of a cache payload. OpenNext stores the
- * prerender body verbatim (plain or inside a JSON envelope), so the document is
- * sliced from `<!DOCTYPE html` through `</html>` and, when the payload is a JSON
- * envelope, its escaped quotes are unescaped for counting.
+ * prerender body verbatim (plain in the Next prerender output, inside a
+ * `{"type":"app","html":"…"}` JSON envelope in the published cache entry), so
+ * the document is sliced from `<!DOCTYPE html` through `</html>`. The slice is
+ * NOT unescaped: escaping is an artifact of the container, and every marker
+ * counted below is matched at any escaping depth instead.
  */
 export function extractDocument(payload) {
   const text = payload.toString('utf8')
   const start = text.indexOf('<!DOCTYPE html')
-  if (start < 0) return { document: text, jsonEscaped: false }
+  if (start < 0) return { document: text }
   const end = text.indexOf('</html>', start)
   const slice = end < 0 ? text.slice(start) : text.slice(start, end + '</html>'.length)
-  return { document: slice, jsonEscaped: slice.includes('\\"') }
-}
-
-function countOccurrences(haystack, needle) {
-  let count = 0
-  let index = haystack.indexOf(needle)
-  while (index >= 0) {
-    count += 1
-    index = haystack.indexOf(needle, index + needle.length)
-  }
-  return count
+  return { document: slice }
 }
 
 /**
  * Card markup the server rendered. styled-jsx appends its own hash class to the
  * element, so the marker is the `gig-link` class inside a `class="…"` attribute
- * (never the stylesheet selector, which has no quotes after the class name).
+ * (never the stylesheet selector, which has no quotes after the class name) —
+ * matched at any escaping depth: `class="…gig-link"` in the prerender output,
+ * `class=\"…gig-link\"` in the published cache entry.
  */
 export function countRenderedCards(document) {
-  const plain = document.match(/class="[^"]*\bgig-link"/g)
-  const escaped = document.match(/class=\\"[^"\\]*\bgig-link\\"/g)
-  return (plain?.length ?? 0) + (escaped?.length ?? 0)
+  return document.match(/class=\\{0,2}"[^"\\]*\bgig-link\\{0,2}"/g)?.length ?? 0
 }
 
 /**
- * Serialized brief records in the RSC flight payload. Every card and hero slide
- * carries a `providerHeadshot` key (null included), so its occurrence count is
- * the number of brief records the browser receives as data.
+ * Occurrences of a serialized record field, matched at ANY escaping depth, so
+ * the same key counts in the prerender output (`"rank_score":`), the
+ * single-escaped flight stream (`\"rank_score\":`) and the shipped cache entry
+ * (`\\\"rank_score\\\":`).
  */
-export function countSerializedBriefRecords(document) {
-  return (
-    countOccurrences(document, '"providerHeadshot":') +
-    countOccurrences(document, '\\"providerHeadshot\\":')
-  )
+export function countSerializedField(text, field) {
+  return text.match(new RegExp('(?:\\\\)*"' + field + '(?:\\\\)*":', 'g'))?.length ?? 0
+}
+
+/**
+ * Escaping-depth independent occurrence count for a bare field name — the
+ * fail-closed leakage signal (it cannot be dodged by adding another escaping
+ * layer around the key).
+ */
+export function countFieldName(text, field) {
+  return text.match(new RegExp('\\b' + field + '\\b', 'g'))?.length ?? 0
 }
 
 /**
@@ -199,9 +213,14 @@ export function largestInlineStyleBlock(document) {
  */
 const MAX_INLINE_STYLE_BYTES = 32768
 
+/**
+ * Local stylesheets the document links, matched at any escaping depth so the
+ * publication check below is never vacuous on the shipped cache entry
+ * (`href="/_next/static/css/x.css"` vs `href=\"/_next/static/css/x.css\"`).
+ */
 function linkedLocalStylesheets(document) {
   const hrefs = new Set()
-  const pattern = /href="(\/_next\/static\/css\/[^"]+\.css)"/g
+  const pattern = /href=\\{0,2}"(\/_next\/static\/css\/[^"\\]+\.css)\\{0,2}"/g
   let match
   while ((match = pattern.exec(document))) hrefs.add(match[1])
   return [...hrefs]
@@ -237,6 +256,8 @@ function main() {
 
   const payloadBytes = readPayload(source)
   const { document } = extractDocument(payloadBytes)
+  // Measured AS STORED: for a published cache entry that includes the JSON
+  // envelope's escaping overhead, so the budget below is never optimistic.
   const bytes = Buffer.byteLength(document, 'utf8')
   const br = brotliCompressSync(Buffer.from(document), {
     params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
@@ -270,19 +291,23 @@ function main() {
     )
   }
 
-  const serializedRecords = countSerializedBriefRecords(document)
-  const serializedLimit = FEATURED_PAGE_SIZE + MAX_HERO_SLIDES
-  if (serializedRecords > serializedLimit) {
+  // Whole-record leakage guard. The card projection drops the two fields that
+  // only the server needs, so ANY serialized occurrence — in any encoding —
+  // means the full active inventory is travelling to the browser again. Later
+  // pages belong to /api/marketplace/gigs?view=card.
+  const leakCounts = FULL_RECORD_ONLY_FIELDS.map((field) => ({
+    field,
+    occurrences: countFieldName(document, field),
+    keyed: countSerializedField(document, field),
+  }))
+  const leaked = leakCounts.filter((entry) => entry.occurrences > 0)
+  if (leaked.length > 0) {
     fail(
-      `the document serializes ${serializedRecords} brief records; at most ${serializedLimit} ` +
-        `(${FEATURED_PAGE_SIZE} first-page cards + ${MAX_HERO_SLIDES} hero slides) may travel to the browser. ` +
-        'Later pages belong to /api/marketplace/gigs?view=card.',
-    )
-  }
-  if (serializedRecords < FEATURED_PAGE_SIZE) {
-    fail(
-      `the document serializes only ${serializedRecords} brief records; the ${FEATURED_PAGE_SIZE} ` +
-        'first-page cards must hydrate from the RSC payload.',
+      `the document serializes full-inventory-only record field(s) ` +
+        `${leaked.map((entry) => `${entry.field}×${entry.occurrences}`).join(', ')}; ` +
+        `only the ${FEATURED_PAGE_SIZE} first-page cards (+ hero case-file slides) may travel to the browser. ` +
+        'Whole gig records are back in the shipped payload — project them with toLandingCards() ' +
+        '(lib/marketplaceDisplay.ts).',
     )
   }
 
@@ -312,8 +337,9 @@ function main() {
   }
 
   info(
-    `OK cards=${renderedCards} serializedBriefRecords=${serializedRecords} ` +
-      `budget=${args.budget} reduction=${(reduction * 100).toFixed(1)}%`,
+    `OK cards=${renderedCards} ` +
+      `${leakCounts.map((entry) => `${entry.field}=${entry.occurrences}(keys=${entry.keyed})`).join(' ')} ` +
+      `inlineStyle=${largestStyleBlock} budget=${args.budget} reduction=${(reduction * 100).toFixed(1)}%`,
   )
 }
 
