@@ -24,6 +24,19 @@
  *     is dead. Classified-live observations (2xx/3xx plus the authority-host
  *     401/403/405/429 exemptions) stay untouched. 0/5xx and every other
  *     status is UNKNOWN and stays untouched.
+ *   · EXACT binding: a proof is bound to the EXACT trimmed stored
+ *     `target_url` it was observed on — never a normalized/synthesized key.
+ *     Two stored spellings that normalize alike (e.g. `…/a/` and `…/a`) are
+ *     different Batch A targets and each needs its own proof.
+ *   · ELIGIBILITY: only absolute http(s) targets (parseable URL, http/https
+ *     scheme, non-empty host) may be Batch A. Relative paths, bare hosts,
+ *     `mailto:`/`ftp:`/`javascript:` etc. are `noncanonical_target`: untouched
+ *     and counted truthfully, never probed, never written.
+ *   · HEAD 404/410 is never sufficient on its own: a candidate whose primary
+ *     observation is a raw 404/410 is `head_dead_unconfirmed` (untouched)
+ *     unless an explicit GET re-confirmation of the SAME exact target also
+ *     proves a raw 404/410 in this run. The GET-confirmed status is the
+ *     recorded proof/`gate_reason`.
  *   · Legacy Portal auth-wall targets are NEVER Batch A: they are counted and
  *     left read-only/report-only even if they currently answer 404/410.
  *   · Every write is an exact-row CAS (`buildBatchACasFence`): a zero-row
@@ -34,7 +47,6 @@
 
 import {
   isLegacyAuthWallTarget,
-  p6TargetKey,
   type P6TargetObservation,
 } from './p6InterlinkDisposition'
 
@@ -54,20 +66,23 @@ export const P6_BATCH_A_GATE_ACTOR = 'p6-batch-a-stale-rejection'
 export const P6_BATCH_A_GATE_REASON_404 = 'stale_target_http_404'
 export const P6_BATCH_A_GATE_REASON_410 = 'stale_target_http_410'
 
-export const P6_BATCH_A_USAGE = `P6 Batch A — reject historical jobless planned seo_interlinks whose exact target freshly proves 404/410.
+export const P6_BATCH_A_USAGE = `P6 Batch A — reject historical jobless planned seo_interlinks whose exact trimmed target freshly proves 404/410 via HEAD + explicit GET re-confirmation.
 
 Usage:
   npx tsx --env-file=.env.local scripts/p6-batch-a-stale-rejection.mts [--limit N] [--json] [--apply --confirm ${P6_BATCH_A_APPLY_CONFIRM_TOKEN}]
 
-  (no flags)     DRY RUN — SELECT + live probe only, ZERO writes.
+  (no flags)     DRY RUN — SELECT + live probe + GET re-confirmation only, ZERO writes.
   --limit N      rows max per invocation (default ${P6_BATCH_A_DEFAULT_LIMIT}, hard max ${P6_BATCH_A_HARD_MAX_ROWS}).
   --json         machine-readable summary (always emitted by this CLI regardless).
   --apply        enable writes ONLY together with --confirm <token>.
   --confirm T    exact confirmation token (${P6_BATCH_A_APPLY_CONFIRM_TOKEN}); required for and only valid with --apply.
   --help         print this usage and exit 0.
 
-Apply is never enabled by an environment variable. Legacy Portal auth-wall rows,
-live targets and unknown/network/5xx targets are never written.`
+Every rejection requires BOTH a fresh primary 404/410 and an explicit GET
+re-confirmation of the same exact trimmed target_url; a HEAD 404/410 alone can
+never reject. Apply is never enabled by an environment variable. Legacy Portal
+auth-wall rows, non-http(s)/non-absolute targets, live targets and
+unknown/network/5xx targets are never written.`
 
 /** The persisted row shape this tool reads (SELECT-only projection). */
 export interface P6BatchACandidateRow {
@@ -91,7 +106,9 @@ export type P6BatchAClass =
   | 'dead_410'
   | 'live'
   | 'unknown'
+  | 'head_dead_unconfirmed'
   | 'legacy_auth_wall'
+  | 'noncanonical_target'
 
 /** SELECT projection required to prove the Batch A subject fence. */
 export const P6_BATCH_A_CANDIDATE_COLUMNS =
@@ -99,6 +116,29 @@ export const P6_BATCH_A_CANDIDATE_COLUMNS =
 
 function nonblank(value: unknown): boolean {
   return typeof value === 'string' ? value.trim().length > 0 : Boolean(value)
+}
+
+/**
+ * The EXACT trimmed stored `target_url` a Batch A proof must bind to.
+ *
+ * Returns `null` unless the trimmed value is an absolute http(s) URL with a
+ * non-empty host. The returned string is the trimmed input ITSELF — it is
+ * never re-serialized, host-normalized, path-synthesized or trailing-slash
+ * folded — so `https://HOST/a/` and `https://host/a` stay distinct Batch A
+ * targets and an observation for one can never reject a row spelled the other
+ * way.
+ */
+export function batchAExactTarget(raw: unknown): string | null {
+  const trimmed = typeof raw === 'string' ? raw.trim() : ''
+  if (!trimmed) return null
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    if (!parsed.hostname) return null
+    return trimmed
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -125,20 +165,32 @@ export function isHistoricalJoblessNoProofCandidate(row: P6BatchACandidateRow): 
  * Pure target classification.
  *
  * Precedence: legacy Portal auth-wall (report-only, never a candidate) →
- * raw HTTP 404/410 (dead) → classified live (`ok === true`, which already
- * includes the authority-host 401/403/405/429 exemptions) → UNKNOWN.
- * 401/403/405/429/0/5xx that the authority did NOT classify live are unknown
- * and never dead.
+ * non-http(s)/non-absolute target (untouched, counted) → primary raw HTTP
+ * 404/410, which is dead ONLY when the explicit GET re-confirmation of the
+ * same exact target is also a raw 404/410 (`head_dead_unconfirmed` otherwise)
+ * → classified live (`ok === true`, which already includes the authority-host
+ * 401/403/405/429 exemptions) → UNKNOWN. 401/403/405/429/0/5xx that the
+ * authority did NOT classify live are unknown and never dead.
  */
 export function classifyBatchARow(
   row: P6BatchACandidateRow,
   observation?: P6TargetObservation | null,
+  getConfirmation?: P6TargetObservation | null,
 ): P6BatchAClass {
   if (isLegacyAuthWallTarget(row?.target_url)) return 'legacy_auth_wall'
+  if (!batchAExactTarget(row?.target_url)) return 'noncanonical_target'
   const observed =
     observation && typeof observation.status === 'number' ? observation : null
-  if (observed && observed.status === 404) return 'dead_404'
-  if (observed && observed.status === 410) return 'dead_410'
+  const confirmed =
+    getConfirmation && typeof getConfirmation.status === 'number' ? getConfirmation : null
+  if (observed && (observed.status === 404 || observed.status === 410)) {
+    if (confirmed && (confirmed.status === 404 || confirmed.status === 410)) {
+      // The explicit GET re-confirmation is the surviving proof.
+      return confirmed.status === 410 ? 'dead_410' : 'dead_404'
+    }
+    // HEAD 404/410 alone can never reject; GET 2xx/3xx/other is ambiguous.
+    return 'head_dead_unconfirmed'
+  }
   if (observed && observed.ok === true) return 'live'
   return 'unknown'
 }
@@ -201,10 +253,10 @@ export type P6BatchAFenceEntry =
 
 /**
  * Exact-row CAS fence for one Batch A rejection. `id` + `status='planned'` +
- * the exact observed `target_url` + every historical jobless/no-proof column
- * fenced `IS NULL`. A row that changed concurrently (status, target, any
- * proof/identity/staging column) yields a zero-row UPDATE → SKIP, never
- * success.
+ * the exact RAW STORED `target_url` (never a trimmed/normalized surrogate) +
+ * every historical jobless/no-proof column fenced `IS NULL`. A row that
+ * changed concurrently (status, target, any proof/identity/staging column)
+ * yields a zero-row UPDATE → SKIP, never success.
  */
 export function buildBatchACasFence(
   row: P6BatchACandidateRow,
@@ -226,33 +278,47 @@ export function buildBatchACasFence(
 
 export interface P6BatchASelectedRow {
   id: string
+  /** Exact stored target_url used for the CAS fence (never normalized). */
   target_url: string
-  targetKey: string
+  /** Exact trimmed stored target the proof is bound to (never synthesized). */
+  exactTarget: string
+  /** GET-re-confirmed raw HTTP status that justifies this rejection. */
   httpStatus: number
   gateReason: string
 }
 
 export interface P6BatchAPlan {
   scannedRows: number
+  /** Distinct EXACT trimmed http(s) targets across the candidate rows. */
   distinctTargets: number
+  /** Rows with a raw primary 404/410 AND a raw GET re-confirmation 404/410. */
   deadCandidateRows: number
+  /** Rows whose primary probe said 404/410 but with no raw GET re-confirmation. */
+  headDeadUnconfirmedRows: number
   deadRowsBeyondLimit: number
   liveUntouchedRows: number
+  /** Non-http(s)/non-absolute targets: untouched, never probed, never written. */
+  noncanonicalTargetRows: number
   legacyAuthWallRows: number
   unknownUntouchedRows: number
   /** Raw observed HTTP status histogram across candidate rows that were observed. */
   observedStatusCounts: Record<string, number>
+  /** Raw GET re-confirmation status histogram for HEAD-dead targets. */
+  confirmationStatusCounts: Record<string, number>
   selected: P6BatchASelectedRow[]
 }
 
 /**
  * Pure planning: classify every scanned candidate row against the injected
- * fresh observations, never select legacy/live/unknown rows, and select at
- * most `limit` dead rows in deterministic order.
+ * fresh observations plus the explicit GET re-confirmations (both keyed by the
+ * EXACT trimmed stored target_url), never select legacy/noncanonical/
+ * live/unconfirmed/unknown rows, and select at most `limit` confirmed-dead
+ * rows in deterministic order.
  */
 export function planBatchA(
   rows: P6BatchACandidateRow[],
   observations: Record<string, P6TargetObservation | undefined> = {},
+  getConfirmations: Record<string, P6TargetObservation | undefined> = {},
   opts: { limit?: number } = {},
 ): P6BatchAPlan {
   const requestedLimit = opts.limit ?? P6_BATCH_A_DEFAULT_LIMIT
@@ -266,43 +332,61 @@ export function planBatchA(
     ),
   )
 
-  const targetKeys = new Set<string>()
+  const exactTargets = new Set<string>()
   for (const row of candidates) {
-    const key = p6TargetKey(row.target_url)
-    if (key) targetKeys.add(key)
+    const exact = batchAExactTarget(row.target_url)
+    if (exact) exactTargets.add(exact)
   }
 
   const observedStatusCounts: Record<string, number> = {}
+  const confirmationStatusCounts: Record<string, number> = {}
   const dead: P6BatchASelectedRow[] = []
   let liveUntouchedRows = 0
+  let headDeadUnconfirmedRows = 0
+  let noncanonicalTargetRows = 0
   let legacyAuthWallRows = 0
   let unknownUntouchedRows = 0
 
   for (const row of candidates) {
-    const key = p6TargetKey(row.target_url)
-    const observation = key ? observations[key] : undefined
+    const exact = batchAExactTarget(row.target_url)
+    const observation = exact ? observations[exact] : undefined
+    const confirmation = exact ? getConfirmations[exact] : undefined
     if (observation && typeof observation.status === 'number') {
       const statusKey = String(observation.status)
       observedStatusCounts[statusKey] = (observedStatusCounts[statusKey] || 0) + 1
     }
-    const classification = classifyBatchARow(row, observation)
+    if (confirmation && typeof confirmation.status === 'number') {
+      const statusKey = String(confirmation.status)
+      confirmationStatusCounts[statusKey] =
+        (confirmationStatusCounts[statusKey] || 0) + 1
+    }
+    const classification = classifyBatchARow(row, observation, confirmation)
     if (classification === 'legacy_auth_wall') {
       legacyAuthWallRows += 1
+      continue
+    }
+    if (classification === 'noncanonical_target') {
+      noncanonicalTargetRows += 1
       continue
     }
     if (classification === 'live') {
       liveUntouchedRows += 1
       continue
     }
+    if (classification === 'head_dead_unconfirmed') {
+      headDeadUnconfirmedRows += 1
+      unknownUntouchedRows += 1
+      continue
+    }
     if (classification === 'unknown') {
       unknownUntouchedRows += 1
       continue
     }
-    const httpStatus = Number(observation?.status)
+    const httpStatus = Number(confirmation?.status)
     dead.push({
       id: String(row.id),
       target_url: String(row.target_url),
-      targetKey: key,
+      exactTarget: exact as string,
       httpStatus,
       gateReason: buildBatchAUpdatePatch({
         httpStatus,
@@ -313,13 +397,16 @@ export function planBatchA(
 
   return {
     scannedRows: candidates.length,
-    distinctTargets: targetKeys.size,
+    distinctTargets: exactTargets.size,
     deadCandidateRows: dead.length,
+    headDeadUnconfirmedRows,
     deadRowsBeyondLimit: Math.max(0, dead.length - limit),
     liveUntouchedRows,
+    noncanonicalTargetRows,
     legacyAuthWallRows,
     unknownUntouchedRows,
     observedStatusCounts,
+    confirmationStatusCounts,
     selected: dead.slice(0, limit),
   }
 }

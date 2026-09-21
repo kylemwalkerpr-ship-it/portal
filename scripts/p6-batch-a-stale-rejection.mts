@@ -3,22 +3,32 @@
  *
  * Rejects (does not delete, does not retarget) HISTORICAL JOBLESS planned
  * `seo_interlinks` rows whose exact current target FRESHLY proves HTTP 404 or
- * 410 in this run. Pure planning lives in `scripts/p6BatchAStaleRejection.ts`;
- * the injectable orchestration lives in
+ * 410 in this run AND is explicitly re-confirmed by a fresh GET of the same
+ * exact trimmed target_url. Pure planning lives in
+ * `scripts/p6BatchAStaleRejection.ts`; the injectable orchestration lives in
  * `scripts/p6BatchAStaleRejectionRunner.ts` (dry-run provably makes zero write
- * calls). This wrapper only wires the real boundaries:
+ * calls); the executable argv/authority/client boundary lives in
+ * `scripts/p6BatchACliBoundary.ts` (unit-executable with fakes). This wrapper
+ * only wires the real boundaries:
  *   1. SELECT the candidate columns with the historical jobless/no-proof NULL
  *      fence, paginated and truncation-proven — a failed/truncated read is
  *      fail-closed and no write plan is produced;
- *   2. probe each DISTINCT normalized target ONCE per run through the
- *      repository link-liveness authority: `verifyUrlsLive` (HEAD, retried as
- *      GET on 403/405/501) + `classifyLiveStatus` (2xx/3xx and the
- *      authority-host 401/403/405/429 exemptions are live; only 404/410 are
- *      dead; 0/5xx/anything else is unknown and untouched);
- *   3. in apply mode only, issue the exact-row CAS UPDATE
+ *   2. probe each DISTINCT EXACT trimmed stored target ONCE per run through
+ *      the repository link-liveness authority: `verifyUrlsLive` (HEAD, retried
+ *      as GET on 403/405/501) + `classifyLiveStatus` (2xx/3xx and the
+ *      authority-host 401/403/405/429 exemptions are live; 0/5xx/anything else
+ *      is unknown and untouched). No normalization/synthesis: only absolute
+ *      http(s) targets are probed, and observations are keyed by the exact
+ *      trimmed stored target_url;
+ *   3. for every EXACT target whose primary probe is a raw 404/410, perform an
+ *      explicit GET-only re-confirmation (`verifyUrlsLiveGet`, fresh and
+ *      uncached) of that same URL. Only a raw GET 404/410 permits rejection;
+ *      a HEAD 404/410 alone never rejects;
+ *   4. in apply mode only, issue the exact-row CAS UPDATE
  *      (`status='rejected'`, audit `gate_reason`/`gate_actor`/
- *      `gate_updated_at`) with the fence built by the pure module, reading back
- *      affected rows so a zero-row race is a SKIP, never success.
+ *      `gate_updated_at`) with the fence built by the pure module — including
+ *      the exact RAW STORED `target_url` — reading back affected rows so a
+ *      zero-row race is a SKIP, never success.
  *
  * Apply is enabled ONLY by `--apply --confirm REJECT-BATCH-A-STALE-404-410`;
  * there is no environment variable that enables writes, no upsert, no delete,
@@ -43,24 +53,25 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
-import { classifyLiveStatus, verifyUrlsLive } from '../lib/seoFactory/linkAudit'
+import {
+  classifyLiveStatus,
+  verifyUrlsLive,
+  verifyUrlsLiveGet,
+} from '../lib/seoFactory/linkAudit'
 import type { P6TargetObservation } from './p6InterlinkDisposition'
 import { resolveP6BatchAApplyAuthority } from './p6BatchAApplyAuthority'
+import { runP6BatchACliBoundary } from './p6BatchACliBoundary'
 import {
   P6_BATCH_A_CANDIDATE_COLUMNS,
   P6_BATCH_A_PAGE_SIZE,
   P6_BATCH_A_SCAN_LIMIT,
-  P6_BATCH_A_USAGE,
-  parseBatchAArgs,
   type P6BatchACandidateRow,
 } from './p6BatchAStaleRejection'
-import {
-  runP6BatchARejection,
-  type P6BatchACandidateRead,
-  type P6BatchARunnerDeps,
-  type P6BatchAStatusCounts,
-  type P6BatchAWrite,
-  type P6BatchAWriteResult,
+import type {
+  P6BatchACandidateRead,
+  P6BatchAStatusCounts,
+  P6BatchAWrite,
+  P6BatchAWriteResult,
 } from './p6BatchAStaleRejectionRunner'
 
 /** The historical jobless/no-proof NULL fence, also mirrored in the CAS write. */
@@ -131,27 +142,49 @@ async function readCandidates(
 }
 
 /**
- * Fresh proof through the repository authority. One probe per distinct target
- * per run; the classified verdict is projected (the raw `verifyUrlsLive.ok` is
- * 2xx/3xx only and would call a live authority-host 403 dead).
+ * Fresh primary proof through the repository authority. One probe per distinct
+ * EXACT trimmed stored target per run; the classified verdict is projected
+ * (the raw `verifyUrlsLive.ok` is 2xx/3xx only and would call a live
+ * authority-host 403 dead). No key normalization: the observation map is keyed
+ * by the exact target string that was probed.
  */
 async function observeTargets(
-  targetKeys: string[],
+  exactTargets: string[],
 ): Promise<Record<string, P6TargetObservation | undefined>> {
-  const results = await verifyUrlsLive(targetKeys)
+  const results = await verifyUrlsLive(exactTargets)
   const observations: Record<string, P6TargetObservation | undefined> = {}
-  for (const key of targetKeys) {
-    const result = results.get(key)
+  for (const exact of exactTargets) {
+    const result = results.get(exact)
     if (!result) {
-      observations[key] = undefined
+      observations[exact] = undefined
       continue
     }
-    const classified = classifyLiveStatus(key, result.status)
-    observations[key] = {
+    const classified = classifyLiveStatus(exact, result.status)
+    observations[exact] = {
       status: result.status,
       ok: classified.ok,
       finalUrl: result.finalUrl,
     }
+  }
+  return observations
+}
+
+/**
+ * Explicit GET-only re-confirmation for targets the primary probe classified
+ * raw 404/410. `verifyUrlsLiveGet` never reads/writes the shared probe cache
+ * and refuses relative/non-http(s) inputs instead of synthesizing a target, so
+ * the re-confirmation can only ever fetch the exact URL the proof is bound to.
+ */
+async function confirmDeadTargets(
+  exactTargets: string[],
+): Promise<Record<string, P6TargetObservation | undefined>> {
+  const results = await verifyUrlsLiveGet(exactTargets)
+  const observations: Record<string, P6TargetObservation | undefined> = {}
+  for (const exact of exactTargets) {
+    const result = results.get(exact)
+    observations[exact] = result
+      ? { status: result.status, ok: result.ok, finalUrl: result.finalUrl }
+      : undefined
   }
   return observations
 }
@@ -209,61 +242,29 @@ async function countStatuses(
 }
 
 async function main(): Promise<void> {
-  const parsed = parseBatchAArgs(process.argv.slice(2))
-  if (!parsed.ok) {
-    console.error(`Refusing to run: ${parsed.error}`)
-    console.error(P6_BATCH_A_USAGE)
-    process.exitCode = 2
-    return
-  }
-  if (parsed.config.help) {
-    console.log(P6_BATCH_A_USAGE)
-    return
-  }
-
-  // Key resolution happens only AFTER argv parsing (never at module load).
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-  let supabaseKey: string | null
-
-  if (parsed.config.apply) {
-    // APPLY: hard service-role prerequisite. A degraded/anon fallback is
-    // refused here — before any client exists and before any DB/network call.
-    const authority = resolveP6BatchAApplyAuthority()
-    if (!authority.ok) {
-      console.error(`Refusing to run: apply mode requires genuine service-role authority — ${authority.error}`)
-      console.error('No Supabase client was created; no DB or network call was made.')
-      process.exitCode = 1
-      return
-    }
-    supabaseKey = authority.key
-  } else {
-    // DRY RUN: the existing read-capable fallback (anon allowed) is unchanged.
-    supabaseKey = resolveSupabaseKey()
-  }
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')
-    process.exitCode = 1
-    return
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-
-  const deps: P6BatchARunnerDeps = {
-    readCandidates: () => readCandidates(supabase),
+  const result = await runP6BatchACliBoundary({
+    argv: process.argv.slice(2),
+    // Every real boundary is resolved/created only when the boundary reaches
+    // it: argv parsing precedes the apply-authority decision, which precedes
+    // `createClient`.
+    readSupabaseUrl: () =>
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || null,
+    resolveReadKey: () => resolveSupabaseKey(),
+    resolveApplyAuthority: () => resolveP6BatchAApplyAuthority(),
+    createClient: (url, key) =>
+      createClient(url, key, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      }),
+    readCandidates: (client) =>
+      readCandidates(client as ReturnType<typeof createClient>),
     observeTargets,
-    applyRejection: (write) => applyRejection(supabase, write),
-    countStatuses: () => countStatuses(supabase),
-    log: (line) => console.error(line),
-  }
-
-  const summary = await runP6BatchARejection(parsed.config, deps)
-  console.log(JSON.stringify(summary, null, 2))
-  if (summary.fatalErrors.length > 0) {
-    process.exitCode = 1
-  }
+    confirmDeadTargets,
+    applyRejection: (client, write) =>
+      applyRejection(client as ReturnType<typeof createClient>, write),
+    countStatuses: (client) =>
+      countStatuses(client as ReturnType<typeof createClient>),
+  })
+  process.exitCode = result.exitCode
 }
 
 main().catch((error) => {
