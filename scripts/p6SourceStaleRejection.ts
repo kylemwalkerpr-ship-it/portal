@@ -703,7 +703,7 @@ export function planSourceStale(
         }
       } else {
         const reason =
-          resolution && resolution.ok === false
+          resolution && 'reason' in resolution
             ? String(resolution.reason || 'no deterministic source resolution')
             : 'no deterministic source resolution'
         unresolvedReasons[reason] = (unresolvedReasons[reason] || 0) + 1

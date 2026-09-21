@@ -22,13 +22,13 @@
  *      always emitted as JSON and any fatal summary exits 1.
  */
 
-import type { P6TargetObservation } from './p6InterlinkDisposition'
+import type { P6TargetObservation as P6SourceStaleTargetObservation } from './p6InterlinkDisposition'
 import type { P6BatchAApplyAuthorityDecision } from './p6BatchAApplyAuthority'
 import {
   P6_SOURCE_STALE_USAGE,
   parseSourceStaleArgs,
   type P6SourceStaleArgParse,
-  type P6ShippedSourceResolution,
+  type P6ShippedSourceResolution as P6SourceStaleResolution,
 } from './p6SourceStaleRejection'
 import {
   runP6SourceStaleRejection,
@@ -64,15 +64,15 @@ export interface P6SourceStaleCliBoundaryDeps {
   /** Deterministic ownership resolution for the shipped-source lane. */
   resolveShippedSources: (
     missions: P6ShippedMissionResolutionInput[],
-  ) => Promise<Record<string, P6ShippedSourceResolution | undefined>>
+  ) => Promise<Record<string, P6SourceStaleResolution | undefined>>
   /** Fresh GET-only probe of resolved canonical source URLs (exact key). */
   probeSourceUrls: (
     urls: string[],
-  ) => Promise<Record<string, P6TargetObservation | undefined>>
+  ) => Promise<Record<string, P6SourceStaleTargetObservation | undefined>>
   /** Fresh live-target probe keyed by the EXACT trimmed stored target_url. */
   observeTargets: (
     exactTargets: string[],
-  ) => Promise<Record<string, P6TargetObservation | undefined>>
+  ) => Promise<Record<string, P6SourceStaleTargetObservation | undefined>>
   applyRejection: (
     client: unknown,
     write: P6SourceStaleWrite,
