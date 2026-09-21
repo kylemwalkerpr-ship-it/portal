@@ -577,6 +577,9 @@ describe('D) bounded, idempotent cadence', () => {
       staged({
         id: 'b',
         sourceUrl: SOURCE_B,
+        // Exact ship-job identity is part of the subject: the fixture must
+        // carry the job that staged SOURCE_B, not the `staged()` default.
+        sourceJobId: JOB_B,
         stagedAt: new Date(NOW - 50 * HOUR).toISOString(),
         attemptedAt: new Date(NOW - 30 * HOUR).toISOString(),
       }),

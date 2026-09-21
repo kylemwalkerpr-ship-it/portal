@@ -11,6 +11,7 @@ import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
 import { runRankingPassForPlans, attributizeOutcomes } from '@/lib/seoEngine/rankingModel'
 import { loadForecastTracker } from '@/lib/seoEngine/forecastTracker'
 import { persistGscQueryPageRows } from '@/lib/seoFactory/gscPersistence'
+import type { InterlinkReconciliationSummary } from '@/lib/seoFactory/interlinkReconciliation'
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -87,6 +88,46 @@ jest.mock('@/lib/seoEngine/ahrefsAudit', () => ({
 
 jest.mock('@/lib/seoFactory/gscPersistence', () => ({
   persistGscQueryPageRows: jest.fn(),
+}))
+
+// This suite's subject is scheduled GSC query×page persistence. The daily
+// route also runs the real P6 interlink reconciliation on `phase:'all'`, which
+// has its own dedicated suites (p6-interlink-reconciliation-cron.test.ts and
+// the P6 reconciliation unit suites). Mock it here with a TRUTHFUL healthy
+// no-op summary — typed against the real summary so a shape change is a
+// compile error, not a silently "healthy" lie — so an unrelated (and
+// intentionally minimal) Supabase mock can never turn these GSC assertions
+// into an accidental partial run.
+jest.mock('@/lib/seoFactory/interlinkReconciliation', () => ({
+  reconcileStagedInterlinks: jest.fn(
+    async (): Promise<InterlinkReconciliationSummary> => ({
+      scannedRows: 0,
+      stagedSources: 0,
+      eligibleSources: 0,
+      unavailable: false,
+      unavailableReason: null,
+      skippedYoung: 0,
+      skippedCooldown: 0,
+      skippedAttemptCooldown: 0,
+      skippedInvalidSource: 0,
+      skippedMissingJobIdentity: 0,
+      missingJobIdentityRows: 0,
+      missingJobIdentityError: null,
+      verifiedLive: 0,
+      notDeploymentProven: 0,
+      verificationFailed: 0,
+      verificationUnavailable: 0,
+      finalized: 0,
+      applied: 0,
+      plannedVerdicts: 0,
+      dbErrors: 0,
+      attemptMarkerErrors: 0,
+      remaining: 0,
+      ok: true,
+      errors: [],
+      details: [],
+    }),
+  ),
 }))
 
 const ingest = ingestKnowledge as jest.Mock

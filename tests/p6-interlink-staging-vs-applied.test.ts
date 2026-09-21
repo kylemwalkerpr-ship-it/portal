@@ -15,7 +15,11 @@ jest.mock('@/lib/seoEngine/planner', () => ({
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { stageEngineInterlinksForVerification } from '@/lib/seoFactory/interlinkVerification'
-import { createP6FakeDb, type P6FakeRow } from './helpers/p6InterlinkFakeDb'
+import {
+  createP6FakeDb,
+  type P6CapturedFilter,
+  type P6FakeRow,
+} from './helpers/p6InterlinkFakeDb'
 
 const CANONICAL = 'https://market.yousafeconsultancy.com/articles/f1-checklist/'
 const LIVE_TARGET = 'https://legal.yousafeconsultancy.com/us/student-visas/'
@@ -23,6 +27,18 @@ const DEAD_TARGET = 'https://legal.yousafeconsultancy.com/us/made-up-journey/'
 const SHIP_JOB = '33333333-3333-4333-8333-333333333333'
 
 const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
+
+/**
+ * Predicate ORDER is not a DB/PostgREST semantic: the same exact fence can be
+ * issued in any order. Compare the fence as an exact SET — same length and
+ * same members — so a dropped, weakened or invented predicate still fails.
+ */
+function fenceKey(filter: P6CapturedFilter): string {
+  return `${filter.op}:${filter.column}:${JSON.stringify(filter.value)}`
+}
+function expectFenceSet(actual: P6CapturedFilter[], expected: P6CapturedFilter[]): void {
+  expect(actual.map(fenceKey).sort()).toEqual(expected.map(fenceKey).sort())
+}
 
 function row(overrides: Partial<P6FakeRow> = {}): P6FakeRow {
   return {
@@ -70,7 +86,7 @@ describe('A) staging records source_url only', () => {
     expect(patch).not.toHaveProperty('verification_state')
     expect(patch).not.toHaveProperty('verified_at')
     expect(patch).not.toHaveProperty('verification_evidence')
-    expect(filters).toEqual([
+    expectFenceSet(filters, [
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
       // M2: first staging CASes the OBSERVED (null) revision.
@@ -164,7 +180,7 @@ describe('E) exact job identity is staged with the source URL', () => {
     expect(patch).not.toHaveProperty('status')
     expect(patch).not.toHaveProperty('applied_at')
     expect(patch).not.toHaveProperty('verification_state')
-    expect(filters).toEqual([
+    expectFenceSet(filters, [
       { op: 'eq', column: 'id', value: 'row-1' },
       { op: 'eq', column: 'status', value: 'planned' },
       // M2: first staging CASes the OBSERVED (null) revision.

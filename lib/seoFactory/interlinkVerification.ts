@@ -23,7 +23,11 @@
  *      never clear an existing source_job_id and a different durable source_url
  *      stays untouchable. First staging and every rebind write the durable
  *      nullable `staged_at` revision timestamp in the same planned-only update
- *      (never when job identity / the column is unavailable).
+ *      (never when job identity / the column is unavailable). A rebind is a
+ *      strictly LATER revision than the stamp it observed: the new stamp is
+ *      `max(now, observed staged_at + 1ms)`, so a verdict/attempt of the
+ *      previous revision can never be mistaken for the current one even when
+ *      two ship calls land inside the same millisecond.
  *      Every staging/rebind write is ALSO a compare-and-set on the row's
  *      OBSERVED revision (exact id + planned + observed source_url +
  *      observed source_job_id null/A + observed staged_at where available), so
@@ -522,10 +526,28 @@ export async function stageEngineInterlinksForVerification(
     // constraint, and is withheld entirely when the exact job identity (or the
     // column itself) is unavailable — the revision identity cannot exist
     // without its exact job, so the stamp must never be invented.
-    const stagedAt = writeJobId ? new Date().toISOString() : null
-    let stagedAtAvailable = Boolean(stagedAt) && revisionStampAvailable
-    const withStagedAt = (patch: Record<string, unknown>): Record<string, unknown> =>
-      stagedAt && stagedAtAvailable ? { ...patch, staged_at: stagedAt } : patch
+    let stagedAtAvailable = Boolean(writeJobId) && revisionStampAvailable
+    /**
+     * One logical revision stamp per planned-row write (M1 + revision
+     * freshness). The FIRST staging of a row uses the current time. A genuine
+     * REBIND to a different exact job IS a new revision and must be STRICTLY
+     * LATER than the observed staged_at revision, even when the wall clock has
+     * not advanced past it (two ship calls can land inside one millisecond):
+     * the stamp is `max(now, observed + 1ms)`. The OBSERVED revision remains
+     * the CAS subject below — this helper only decides the value of the NEW
+     * revision, so a same-job no-op never reaches it.
+     */
+    const withStagedAt = (
+      patch: Record<string, unknown>,
+      row: InterlinkDbRow,
+    ): Record<string, unknown> => {
+      if (!stagedAtAvailable) return patch
+      const nowMs = Date.now()
+      const observedStamp = revisionStampAvailable ? String(row.staged_at || '').trim() : ''
+      const observedMs = observedStamp ? Date.parse(observedStamp) : Number.NaN
+      const stampMs = Number.isFinite(observedMs) && observedMs >= nowMs ? observedMs + 1 : nowMs
+      return { ...patch, staged_at: new Date(stampMs).toISOString() }
+    }
     /**
      * M2 — compare-and-set fence on the EXACT revision OBSERVED by the read
      * above. The UPDATE only matches while the row still is that observed
@@ -615,7 +637,7 @@ export async function stageEngineInterlinksForVerification(
           // bind to job B: zero affected rows is a concurrency skip.
           const rebind = await writePlanned(
             row,
-            withStagedAt({ source_job_id: writeJobId }),
+            withStagedAt({ source_job_id: writeJobId }, row),
             observedFence(row),
           )
           if (rebind.error) {
@@ -640,10 +662,13 @@ export async function stageEngineInterlinksForVerification(
       // the scheduled reconciler refuses to auto-finalize it.
       const write = await writePlanned(
         row,
-        withStagedAt({
-          source_url: sourceUrl,
-          ...(writeJobId ? { source_job_id: writeJobId } : {}),
-        }),
+        withStagedAt(
+          {
+            source_url: sourceUrl,
+            ...(writeJobId ? { source_job_id: writeJobId } : {}),
+          },
+          row,
+        ),
         // First staging of a jobless row must not overwrite a concurrent
         // exact-job bind: the fence matches only while source_url is still the
         // observed NULL (plus the observed job/stamp revision).

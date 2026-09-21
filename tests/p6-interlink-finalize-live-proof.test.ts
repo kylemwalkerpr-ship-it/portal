@@ -27,6 +27,10 @@ import {
 import { createP6FakeDb, type P6FakeRow } from './helpers/p6InterlinkFakeDb'
 
 const SOURCE = 'https://legal.yousafeconsultancy.com/us/student-visas/'
+// `normalizeInterlinkProofUrl` canonical form: the finalizer's proof identity
+// drops the trailing slash while the durable row identity keeps the exact
+// observed `source_url`.
+const SOURCE_CANONICAL = SOURCE.replace(/\/+$/, '')
 const TARGET = 'https://market.yousafeconsultancy.com/categories/study-permits'
 
 const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
@@ -93,11 +97,14 @@ describe('A) live source + exact anchor href => applied with durable proof', () 
     const { patch, filters } = db.updates[0]
     expect(patch.status).toBe('applied')
     expect(typeof patch.applied_at).toBe('string')
+    // The durable row identity stays the exact observed source_url...
     expect(patch.source_url).toBe(SOURCE)
     expect(patch.verification_state).toBe('present')
     expect(typeof patch.verified_at).toBe('string')
+    // ...while the recorded proof uses the NORMALIZED canonical subject the
+    // verdict was established for (same source, canonical comparison form).
     expect(patch.verification_evidence).toMatchObject({
-      source: SOURCE,
+      source: SOURCE_CANONICAL,
       target: TARGET,
       proof: INTERLINK_LIVE_EXACT_HREF_PROOF,
       observedHref: TARGET,

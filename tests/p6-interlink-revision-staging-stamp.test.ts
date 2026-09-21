@@ -170,8 +170,38 @@ describe('A) the staging write records the revision stamp', () => {
     expect(db.rows[0].source_job_id).toBe(JOB_B)
     const rebindPatch = db.updates[db.updates.length - 1].patch
     expect(rebindPatch.staged_at).not.toBe(firstStamp)
+    // A rebind is a NEW revision: the stamp must be strictly LATER, never the
+    // same millisecond reused as a "fresh" revision.
+    expect(Date.parse(String(rebindPatch.staged_at))).toBeGreaterThan(Date.parse(String(firstStamp)))
     expect(Number.isFinite(Date.parse(String(rebindPatch.staged_at)))).toBe(true)
     expect(db.rows[0].staged_at).toBe(rebindPatch.staged_at)
+  })
+
+  it('writes a strictly later revision even when wall-clock now is inside the observed stamp', async () => {
+    // Deterministic same-millisecond boundary: the observed revision is pinned
+    // AHEAD of the wall clock, so the rebind write happens while
+    // now < observed — exactly the case where a bare `new Date()` stamp would
+    // reuse/regress the revision and let an old verdict suppress verification.
+    const observedStamp = new Date(Date.now() + 60_000).toISOString()
+    db = createP6FakeDb(
+      [seedRow({ source_url: CANONICAL, source_job_id: JOB_A, staged_at: observedStamp })],
+      { now: () => clock },
+    )
+    createSupabaseAdminClientMock.mockReturnValue(db.client as never)
+
+    const rebind = await stage(JOB_B)
+
+    expect(rebind.rebounded).toBe(1)
+    const written = db.updates[db.updates.length - 1]
+    expect(Date.parse(String(written.patch.staged_at))).toBeGreaterThan(Date.parse(observedStamp))
+    expect(db.rows[0].staged_at).toBe(written.patch.staged_at)
+    // The write is still a CAS on the EXACT revision it observed.
+    expect(written.filters).toContainEqual({
+      op: 'eq',
+      column: 'staged_at',
+      value: observedStamp,
+    })
+    expect(db.rows[0].source_job_id).toBe(JOB_B)
   })
 })
 
