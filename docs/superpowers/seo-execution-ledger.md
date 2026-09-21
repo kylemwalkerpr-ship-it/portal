@@ -1040,3 +1040,82 @@ Repair evidence (no Jest/`tsc`/CI claim — both remain unavailable locally and 
 **Changed files.** `lib/seoFactory/linkAuditCore.ts` (new `verifyUrlsLiveGet`), `scripts/p6BatchAStaleRejection.ts` (exact-target/eligibility/classification/plan semantics; `dead_404`/`dead_410` now require the GET re-confirmation), `scripts/p6BatchAStaleRejectionRunner.ts` (mandatory re-confirmation dependency + fail-closed accounting), `scripts/p6-batch-a-stale-rejection.mts` (real wiring: probe→re-confirm→CAS), **new** `scripts/p6BatchACliBoundary.ts` (executable argv → apply-authority → client → runner boundary with every dependency injected: no environment read, no Supabase import, no network, no write verb), `tests/p6-batch-a-stale-rejection.test.ts` (expanded coverage), plus this entry and the matching addendum in `docs/superpowers/plans/2026-09-20-seo-parity-p6-internal-authority.md`.
 
 **Local substitute evidence (Jest/`tsc` unavailable: `node_modules` is an empty linked directory; `npx --no-install jest` cannot resolve, no install attempted, no network).** Committed `tests/p6-batch-a-stale-rejection.test.ts` through a type-stripping Node harness over the REAL modules: **69 PASS / 0 FAIL** (exact binding, noncanonical untouched, HEAD-vs-GET matrix incl. an executed `verifyUrlsLiveGet`/`verifyUrlsLive` pair with a deterministic in-process fetch stub proving the GET is fresh, ignores the cached HEAD verdict and never populates that cache, plus CLI-boundary exit codes 0/1/2, zero-client authority refusals, client key selection, NULL-fence/pagination pins). `tests/p6-interlink-least-privilege.test.ts` through the same harness: **10 PASS / 0 FAIL** (the new boundary adds no `seo_interlinks` writer). End-to-end execution of the REAL `.mts` wrapper with a stubbed `@supabase/supabase-js` PostgREST stub + deterministic fetch stub (no socket, no network, no DB): **51 PASS / 0 FAIL** — dry run selects exactly the HEAD-404+GET-404 row, leaves the HEAD-404+GET-200 and the noncanonical row untouched, makes ZERO update calls, reads with the eight NULL fences + `(created_at, id)` order + bounded range, and re-confirms both head-dead targets by GET; apply with a legacy `eyJ…` service-role key makes exactly ONE fenced update whose `eq` fence carries the RAW padded stored `target_url` while HEAD and GET hit the trimmed exact URL, patch keys are exactly the four disposition/audit fields, and a degraded-anon apply exits nonzero with ZERO clients and ZERO fetches. `node --check` parses all six changed/added `.ts`/`.mts` files; `git diff --check` clean. Residual: no real estate probe, no real Supabase client, no apply execution, Jest/`tsc`/PR CI unproven locally. **Batch A remains authored-but-NOT-executed; the ≥80% P6 gate remains unevaluable until verified-applied volume exists.**
+
+## 2026-09-21 — P6 closeout attempt: main/CI/deploy reconciliation, live disposition truth, Batch A blocked (still IN_PROGRESS)
+
+**Status: BLOCKED — never PASS.** P5 PASS and the staged P7 `PASS` matrix row are untouched; P7 implementation, P8–P13, the `MARKET-PORTAL-AUTH-HANDOFF-1102`/`auth/sign-in` work and broad net-new CREATE were out of scope and untouched. Branch `seo/p6-closeout-20260921` at base `d23a13e47db37b5552c0269e0538d2e9cec6af5a` (= `main` tip) plus the already-staged P7 docs commit `759c05445310622e7d82173652dece52185d30d6`; this closeout adds one docs-only commit. No merge, no deploy, no migration change, no credential acquisition, no fabricated `source_url`/`source_job_id`, and **no `seo_interlinks` row was mutated**.
+
+### Repository, main, CI and deploy state (read-only)
+
+- `origin/main` = `d23a13e47db37b5552c0269e0538d2e9cec6af5a`; this branch's tip before the closeout commit = `759c0544…`, whose only change is the P7 row of the parity matrix (1 file, +1/−1).
+- PR #256 (`seo/p6-internal-authority-20260920`) merged → `ab6305a7c5c362f01b46947e53be0e462772c88e`; official `Apply SEO Factory Migrations` run `35556091287` = success, i.e. `20260920130000_seo_interlinks_verification_truth.sql` is applied.
+- PR #257 (`seo/p6-backlog-reconciliation-20260921`) merged → `96abd1b2ee6f41ba3b04062e937e149db47814f9`.
+- PR #258 (`seo/p6-batch-a-proof-fix-20260921`) merged 2026-09-21T05:46:53Z → `58f13ca2e98b8a6ab7cad35f8d2a6859c8b3f007` (2 commits, 8 files); GitHub compare `58f13ca2…d23a13e4` = `ahead`, ahead_by 9 ⇒ contained in the current `main`.
+- **PR 258 exact-main deployment verified live:** `Deploy YouSafe Portal` run `35565841544` (event `push`, branch `main`, `head_sha` `58f13ca2…`) is `completed`/`success` with every step green — `Typecheck`, `Unit tests`, `Build (Next + OpenNext)`, `Populate static incremental cache`, `Deploy via OpenNext to Cloudflare (with transient-failure retry)`, `Remove ephemeral Worker secrets file`, `Verify Worker secrets health (startup check)` and `Post-deploy smoke test (studio contract + build freshness)` — the last of which hard-asserts that production serves exactly the buildId built from that commit. The current `main` deploy run `35581942397` (`head_sha` `d23a13e4…`) is also green.
+- Independent live production probe now (`node scripts/smoke-prod.mjs`, read-only GETs, 2026-09-21T11:07Z): **4/4 PASS** — portal root 200 `text/html` (122,062 bytes), studio auth-gate 307 → `/sign-in/student` (200), `GSC connect API guard` 401, build freshness `buildId YkwYn5Tqc2_7onlWrstFC` CDN-consistent across both sampled pages. No deployment was triggered by this closeout (and none may be: direct provider deploys are prohibited by `AGENTS.md`).
+
+### Production `seo_interlinks` truth (independent of the report tool)
+
+Independent PostgREST count probes plus a full paginated row pull with the public anon key (read-only; 2026-09-21T11:07Z):
+
+| fact | value |
+| --- | --- |
+| rows total | **1,899** |
+| `status` counts | `planned` **1,899** · `applied` **0** · `rejected` **0** · `gated` **0** |
+| distinct `target_url` / `source_slug` | **236** / **206** |
+| target hosts | `yousafeconsultancy.com` 1,456 · `portal.yousafeconsultancy.com` 332 · `market.yousafeconsultancy.com` 111 |
+| rows with any P6 truth/job/staging/gate field non-null | **0** for each of `source_url`, `source_job_id`, `staged_at`, `verification_state`, `verified_at`, `verification_evidence`, `applied_at`, `verification_attempted_at`, `gate_reason`, `gate_updated_at` (each probe returned `content-range: */0`) |
+| control for those zeroes | positive: the P6 additive columns resolve HTTP 200 as a projection; negative: an unknown column returns HTTP 400 `42703` (`column seo_interlinks.nonexistent_p6_col does not exist`), so the zeroes are real zeroes rather than swallowed errors |
+| `created_at` range | 2026-08-09T07:18:28Z → 2026-09-17T18:27:36Z |
+
+Independent plain-GET probes confirm the three backlog targets that answer 200 (`market.yousafeconsultancy.com/categories/{immigration,study-permits,work-permits}` → 200) and sampled dead targets (`yousafeconsultancy.com/us/visa`, `yousafeconsultancy.com/uk/work` → 404).
+
+### Canonical P6 disposition report (executed live)
+
+`scripts/p6-interlink-disposition.mts` was executed unmodified over the repository modules (bundled as an ESM entry with the dependency tree's esbuild, because this workspace's managed `node_modules` has no `.bin`, so `npx tsx` is not runnable; env from `.env.production`; SELECT-only CLI, no `--apply` flag exists):
+
+- `rawBacklog` **1,899**, `total` 1,899, `truncated` **false**, `rowLimit` 5,000;
+- classes: `applied_present` **0** · `target_404` **1,643** (186 distinct targets) · `legacy_auth_wall` **183** (47 distinct targets) · `live_target_source_verified` **0** · `live_target_source_unverified` **73** (3 distinct live targets) · `unknown` **0**;
+- `approvedUseful` = `{ denominator: 73, numerator: 0, unverified: 73 }`;
+- `stale` = `{ target404: 1,643, legacyAuthWall: 183, rejected: 0 }`; `gate.evaluated` remains the module's foundation flag `false` (the report deliberately never asserts a gate verdict);
+- the report's 1,899 `(id, target_url)` pairs reconcile **1:1** with the independent production pull (0 rows only-in-report, 0 rows only-in-independent).
+
+### Gate arithmetic per the existing P6 contract
+
+- **Verified-applied / approved-useful = 0 / 73 = 0.0%**, far below the ≥80% gate ⇒ **NOT MET**.
+- The raw 1,899 is explicitly **not** the approved-useful denominator (documented in `scripts/p6InterlinkDisposition.ts` and the plan), so no whole-backlog ratio is claimed. The one reading that would print a passing number — (0 verified applied + 1,826 explicitly rejected/stale) / 1,899 = 96.2% — is excluded by the same contract: rows whose target is 404/410 or a legacy auth wall are by definition **not** “approved useful”, so that numerator and denominator are disjoint by construction.
+
+### Batch A (bounded; dry run only)
+
+Dry run (`--json`; hard max 200 respected, default limit 50):
+
+- scanned **1,899** candidate rows (planned + the full 8-column no-proof NULL fence), probed **236** distinct exact targets, re-confirmed **177/177** head-dead targets with a fresh uncached GET; `observedStatusCounts` = 404 1,627 · 200 204 · 503 68;
+- **1,477 eligible proven-404/410 historical rows**; 1 head-dead row failed GET re-confirmation; 1,427 rows lay beyond the run limit; 73 live-200 rows, 332 legacy Portal-wall rows and 17 transient-unknown rows stayed untouched by design; `noncanonicalTargetRows` 0; `truncated` false;
+- **0 writes**: `before == after` (`planned` 1,899, `rejected` 0, `applied` 0), `attemptedWrites` 0, `writeResults` empty.
+- The gap between the report's non-portal 404 rows (1,494) and Batch A's eligible set (1,477) is fully accounted for: 17 rows were transient 503/unknown at Batch A probe time and stay untouched (fail-closed), plus 1 head-dead row whose GET re-confirmation returned no status.
+- Exclusion-policy cross-check: the report's 1,643 `target_404` rows = 1,456 `yousafeconsultancy.com` + 149 `portal.yousafeconsultancy.com` + 38 `market.yousafeconsultancy.com`; Batch A additionally excludes every legacy Portal-wall target (332 rows) even when it answers 404.
+
+### The real blocker (write path)
+
+`--limit 200 --apply --confirm REJECT-BATCH-A-STALE-404-410` → **exit 1**, zero IO:
+
+```
+Refusing to run: apply mode requires genuine service-role authority — supabaseAuthMode()=degraded-anon — apply requires service-role; the anon fallback is read-only by contract
+No Supabase client was created; no DB or network call was made.
+```
+
+This run holds no service-role credential: the requested Cloudflare and Supabase MCP profiles exposed no tools, and the only key reachable from the workspace is the public anon key in `.env.production` (`.env.local` is absent and the run sandbox exposes no secret store). That refusal is the tool's designed fail-closed prerequisite, not a defect. The batch was **not** bypassed with ad-hoc SQL writes and no direct provider/CLI mutation path was used.
+
+### Already-designed reconciliation/finalization steps: zero eligible subjects
+
+- The job-bound scheduled reconciliation (`lib/seoFactory/interlinkReconciliation.ts`), the ship-time background finalizer and the admin `verify-published` route all require exact source/job identity plus a live `<a href>` proof on the live source. **0 rows carry `source_url`, `source_job_id` or `staged_at`**, so no subject is eligible and the pass would finalize nothing (`missingJobIdentityRows` covers the whole `source_url`-bearing subset, which is empty).
+- Source identity cannot be recovered from `source_slug`: `source_slug` is a planner identity, exact `source_slug` → `content_jobs.slug` resolution found only 2 of 206 sources, and the P6 contract forbids guessing the job. Fabricating identity, destructive retargeting or new architecture is out of scope ⇒ **STOP**, per the closeout stop rule.
+
+### Verification performed in this closeout
+
+`node node_modules/jest/bin/jest.js --ci --runInBand tests/p6-` → **22 suites PASS, 380 tests PASS, 0 failures** (the real toolchain from the linked dependency tree; `--runInBand` because the sandbox denies the worker pool's process-kill teardown, which makes the default parallel mode crash in an unrelated jest-worker `EPERM`, not in any test). Focused first: `tests/p6-batch-a-stale-rejection.test.ts`, `tests/p6-interlink-disposition-report.test.ts`, `tests/p6-interlink-least-privilege.test.ts` → 3 suites / 99 tests PASS. This closeout changes documentation only (no code, migration, workflow or `seo_interlinks` row).
+
+### Result
+
+- **PASS not claimed; status BLOCKED.** The gate moved from “unevaluable” to *evaluable* and is **0/73 = 0.0%**. Closing it requires P6-external authority: a genuine service-role operator credential so the already-designed, already-authorized Batch A rejection can run (1,477 eligible rows, ≤200 per run, 8 runs), plus real verified-applied volume for live targets, which can only come from real ship jobs with exact job identity.
+- Zero production mutation: 1,899 planned / 0 rejected / 0 applied before and after this attempt. No P7, P8–P13, migration, workflow or application-code change; the only repository change is this documentation record.
