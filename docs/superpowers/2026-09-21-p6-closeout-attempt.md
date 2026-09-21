@@ -11,7 +11,7 @@ The closeout's canonical home is the P6 row of `docs/superpowers/seo-parity-matr
 - the sandbox denies `git`'s HTTPS remote helper — `fatal: cannot exec 'git-remote-https': Operation not permitted`, reproduced on two invocations (with and without `-u`), so `git push` cannot complete from this workspace; and
 - a byte-exact rewrite of those two files through the GitHub contents API is out of reach in one call (ledger `211,933` bytes, matrix `88,420` bytes), and a non-byte-exact rewrite of a 200 KB canonical record is not an acceptable risk.
 
-The delivered branch therefore carries the same evidence as this standalone record, with the exact proposed canonical blocks reproduced in [Appendix A](#appendix-a--proposed-parity-matrix-p6-cell-block). A reviewer can either paste those blocks into the canonical documents or push local commit `6bb21483` from an environment whose git transport works.
+The delivered branch therefore carries the same evidence as this standalone record, with the exact proposed canonical blocks reproduced in [Appendix A](#appendix-a--proposed-parity-matrix-p6-cell-block). A reviewer can either paste those blocks into the canonical documents or push local commit `6bb21483` from an environment whose git transport works. That branch is based on `main` so the pull request's diff is exactly this file; the run's local worktree branch additionally carries the already-staged P7 docs commit `759c0544…`, which this record neither adds nor modifies (the staged P7 PASS row is preserved untouched, and P7 remains a separate decision for the supervisor).
 
 ## Repository, main, CI and deploy state (read-only)
 
