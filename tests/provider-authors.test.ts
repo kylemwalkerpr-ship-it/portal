@@ -313,6 +313,64 @@ describe('author pack and prompt block', () => {
     expect(experienceScopeFor(cited[0]!)).toMatch(/immigration/i)
   })
 
+  it('never fabricates a reviewer or a generation-time review date from a citation', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    const pack = authorPackFromProvider(cited[0]!)
+    // The real author identity is still carried after the review fields went away.
+    expect(pack.name).toBe('Jordan Hale')
+    expect(pack.credential).toMatch(/attorney/i)
+    expect(pack.experienceScope).toMatch(/immigration/i)
+    expect(pack.marketplaceUrl).toBe('https://market.yousafeconsultancy.com/providers/jordan-hale')
+    expect(pack.providerType).toBe('attorney')
+    expect(pack.servicePages?.length).toBeGreaterThan(0)
+    // Citing somebody as the author is NOT a review event. reviewedBy used to
+    // echo the author's own name and lastReviewed was the generation clock,
+    // which rendered the same person as author AND reviewer.
+    expect(pack.reviewedBy).toBeUndefined()
+    expect(pack.lastReviewed).toBeUndefined()
+    expect('reviewedBy' in pack).toBe(false)
+    expect('lastReviewed' in pack).toBe(false)
+    expect(pack.reviewedBy).not.toBe(pack.name)
+    // No review/date-shaped key may exist at all, so a rename cannot smuggle the
+    // fabricated review stamp back into the pack.
+    expect(Object.keys(pack).filter((k) => /review|date|updated|stamp/i.test(k))).toEqual([])
+    expect(JSON.stringify(pack)).not.toContain(new Date().toISOString().slice(0, 10))
+    expect(validateAuthorPack(pack, { contentType: 'legal_guide', ymyl: true })).toEqual([])
+  })
+
+  it('authorPackFromProvider is clock-independent — no generation-time review stamp', () => {
+    const cited = matchProvidersToTopic(
+      [attorney({ profileId: 'a-us', name: 'Jordan Hale', username: 'jordan-hale' })],
+      { region: 'US', topic: 'H-1B visa', primaryKeyword: 'h-1b visa', contentType: 'legal_guide' },
+    )
+    expect(cited[0]).toBeTruthy()
+    const buildAt = (iso: string) => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(iso))
+      try {
+        return authorPackFromProvider(cited[0]!)
+      } finally {
+        jest.useRealTimers()
+      }
+    }
+    const packAtPast = buildAt('2019-03-04T05:06:07.000Z')
+    const packAtFuture = buildAt('2031-12-31T23:59:59.000Z')
+    // Identical identity, byte for byte, at two very different clocks: nothing in
+    // the pack is derived from "when this page was generated".
+    expect(packAtFuture).toEqual(packAtPast)
+    expect(JSON.stringify(packAtPast)).not.toContain('2019-03-04')
+    expect(JSON.stringify(packAtPast)).not.toContain('2031-12-31')
+    // No manufactured date of any kind may appear in the pack.
+    expect(JSON.stringify(packAtPast)).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+    // The cited author is never also the reviewer.
+    expect(packAtPast.reviewedBy).not.toBe(packAtPast.name)
+    expect(Object.keys(packAtPast)).not.toContain('reviewedBy')
+    expect(Object.keys(packAtPast)).not.toContain('lastReviewed')
+  })
+
   it('SECRET-99 never appears in AuthorPack.credential, prompt block, or public citation when showBarNumber true', () => {
     const cited = matchProvidersToTopic(
       [attorney({

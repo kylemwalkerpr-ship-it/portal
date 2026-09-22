@@ -14,7 +14,16 @@ import { editorialReportReady } from './editorialGate'
  * and tests can import it without dragging UI code into the Worker bundle.
  */
 
-import { shipGateFromResponse, shipGateReady } from './currentGate'
+import {
+  AUDIT_GATE_BODY_FINGERPRINT_KEY,
+  STALE_GATE_VERDICT_CODE,
+  STALE_GATE_VERDICT_MESSAGE,
+  contentFingerprint,
+  gateVerdictBodyFingerprint,
+  persistedGateVerdictFingerprint,
+  shipGateFromResponse,
+  shipGateReady,
+} from './currentGate'
 import { slimBlockersForClient } from './shipBlockers'
 
 /** Normalize `audit_json.blockers` (array of findings, count, or missing) to a count. */
@@ -43,6 +52,126 @@ export function jobPassesShipGate(job: unknown): boolean {
 
 /** Gate / loop fields bare `auditContent()` never emits. */
 export const AUDIT_GATE_PRESERVE_KEYS = ['shipReady', 'contentSpec', 'contentLoop', 'editorialReview'] as const
+
+/**
+ * `audit_json` keys that describe ONE exact body and may never be carried onto
+ * different bytes: the ship verdict itself, the Harper editorial verdict for
+ * that body, and the fingerprint recording which body they evaluated.
+ */
+export const AUDIT_GATE_BODY_KEYS = [
+  'shipReady',
+  'editorialReview',
+  AUDIT_GATE_BODY_FINGERPRINT_KEY,
+] as const
+
+export type GateVerdictBodyBinding = {
+  /** True only when the carried verdict is proven to belong to this exact body. */
+  ok: boolean
+  bodyFingerprint: string
+  /** Fingerprint persisted with the verdict (`null` on pre-stamp legacy rows). */
+  verdictFingerprint: string | null
+  /** Fingerprint of the body stored on the row (`null` when no body is stored). */
+  storedBodyFingerprint: string | null
+  reason: 'persisted_fingerprint' | 'unchanged_stored_body' | null
+  code: string | null
+  error: string | null
+}
+
+/**
+ * Bind a carried ship verdict to the exact body that would be stored/shipped.
+ *
+ * A verdict is BOUND only when either
+ *   1. the row records the fingerprint of the body the verdict evaluated and it
+ *      equals this body's fingerprint (the durable binding), or
+ *   2. the row predates that stamp and this body IS the row's stored body
+ *      (the pre-existing contract — an unchanged exact body reuses its verdict).
+ *
+ * Anything else — changed bytes, a stamp for another body, a row with no stored
+ * body to fall back to, or a carried `editorialReview` that does not cover this
+ * body — is NOT bound and must fail closed with a re-audit refusal.
+ */
+export function gateVerdictBoundToBody(
+  job: { content?: unknown; audit_json?: unknown } | null | undefined,
+  content: unknown,
+): GateVerdictBodyBinding {
+  const bodyFingerprint = gateVerdictBodyFingerprint(content)
+  const auditJson = job && typeof job === 'object' ? job.audit_json : null
+  const verdictFingerprint = persistedGateVerdictFingerprint(auditJson)
+  const storedBodyFingerprint =
+    job && typeof job === 'object' && typeof job.content === 'string'
+      ? gateVerdictBodyFingerprint(job.content)
+      : null
+
+  const bound = (reason: GateVerdictBodyBinding['reason']): GateVerdictBodyBinding => ({
+    ok: true,
+    bodyFingerprint,
+    verdictFingerprint,
+    storedBodyFingerprint,
+    reason,
+    code: null,
+    error: null,
+  })
+  const stale = (): GateVerdictBodyBinding => ({
+    ok: false,
+    bodyFingerprint,
+    verdictFingerprint,
+    storedBodyFingerprint,
+    reason: null,
+    code: STALE_GATE_VERDICT_CODE,
+    error: STALE_GATE_VERDICT_MESSAGE,
+  })
+
+  // A carried editorial verdict is part of the same gate decision: if Harper
+  // cleared a different body, no shipReady value may authorize this one. The
+  // fingerprint must match these bytes, under the raw bytes the review layer
+  // fingerprints or under the exact-body normalization (whitespace-only re-save).
+  const editorial = auditJson && typeof auditJson === 'object' && !Array.isArray(auditJson)
+    ? (auditJson as { editorialReview?: unknown }).editorialReview
+    : null
+  if (editorial) {
+    const reviewFingerprint = (editorial as { fingerprint?: unknown }).fingerprint
+    const coversBody =
+      typeof reviewFingerprint === 'string'
+      && (reviewFingerprint === contentFingerprint(String(content ?? ''))
+        || reviewFingerprint === bodyFingerprint)
+    if (!coversBody) return stale()
+  }
+
+  if (verdictFingerprint) {
+    return verdictFingerprint === bodyFingerprint ? bound('persisted_fingerprint') : stale()
+  }
+  if (storedBodyFingerprint && storedBodyFingerprint === bodyFingerprint) {
+    return bound('unchanged_stored_body')
+  }
+  return stale()
+}
+
+/**
+ * Merge a fresh audit overlay onto prior `audit_json` WITHOUT carrying a ship
+ * verdict onto bytes it never evaluated (`body.previousContent` is the body the
+ * carried verdict belongs to). When the body changes — or the row carries a
+ * verdict stamp for another body — `shipReady`, `editorialReview` and the
+ * verdict fingerprint are dropped, so the row cannot authorize a later ship of
+ * the new body until it is re-audited. Overlay keys the caller sets explicitly
+ * (a fresh verdict for the incoming body) are never dropped.
+ */
+export function mergeAuditJsonBoundToBody(
+  prior: unknown,
+  overlay: Record<string, unknown>,
+  body: { previousContent: unknown; content: unknown },
+): Record<string, unknown> {
+  const merged = mergeAuditJsonPreservingGate(prior, overlay)
+  const nextFingerprint = gateVerdictBodyFingerprint(body.content)
+  const stampedFingerprint = persistedGateVerdictFingerprint(prior)
+  const evaluatedFingerprint = stampedFingerprint
+    ?? (body.previousContent == null ? null : gateVerdictBodyFingerprint(body.previousContent))
+  if (evaluatedFingerprint === nextFingerprint) return merged
+  for (const key of AUDIT_GATE_BODY_KEYS) {
+    const overlaySetsIt = key in overlay && overlay[key] !== undefined
+    if (!overlaySetsIt) delete merged[key]
+  }
+  return merged
+}
 
 /**
  * Merge a fresh audit overlay onto prior `audit_json` without wiping gate

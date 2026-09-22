@@ -1890,6 +1890,9 @@ export async function* runSeoFactoryPipelineStream(
           requiredLongTailKeywords,
           shortKeywordTerms,
           longTailKeywordTerms,
+          // Truthful byline identity: the same PRUNED author pack the brief,
+          // ContentSpec and prompt were built from.
+          author: authorPack,
         })
       } catch (e) {
         shipError = e instanceof Error ? e.message : 'Ship failed'
