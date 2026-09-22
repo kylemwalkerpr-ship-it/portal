@@ -13,13 +13,18 @@
  */
 
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { createClient } from '@supabase/supabase-js'
 import { OBSERVED_REWARD_CALIBRATION_PREFIX, isObservedCalibrationRow } from '@/lib/seoEngine/rankingModel'
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const admin = await requireAdminUser()
+    // Request-aware Clerk resolution (getAuth(NextRequest)): this handler always
+    // receives a real NextRequest, so it takes the cheaper verified middleware-
+    // signature path instead of App Router auth()'s extra request-data
+    // decryptions. Same authorization semantics — never trusts client headers
+    // directly.
+    const admin = await requireAdminUser(req)
     if ('error' in admin) {
       return NextResponse.json(
         { ok: false, error: admin.error },
@@ -27,10 +32,10 @@ export async function GET(req: Request) {
       )
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
+    // Reuse the already-resolved admin DB from auth. This avoids even a second
+    // singleton lookup on this request while preserving the route's existing
+    // authorization and query client.
+    const supabase = admin.db
 
     // ── Current observed-reward calibrations only ──
     // Legacy forecast/manual rows remain in the audit table but must never be

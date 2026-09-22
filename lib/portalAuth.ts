@@ -1,5 +1,5 @@
 import { getClerkUserId } from './auth'
-import { createSupabaseAdminClient } from './supabase'
+import { createSupabaseAdminClient, getSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
 import { headers as nextHeaders } from 'next/headers'
 import { extractCountryFromRequest } from './countryDetection'
@@ -66,7 +66,11 @@ export async function requirePortalUser(request?: NextRequest): Promise<
   const clerkUserId = await getClerkUserId(request)
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 }
 
-  const db = createSupabaseAdminClient()
+  // Shared per-isolate service-role client (see lib/supabase.ts). The client is
+  // stateless (no auth persistence/refresh, env-only key material), so reusing
+  // it across requests deletes a per-request supabase-js construction CPU term
+  // without changing any query or authorization behavior.
+  const db = getSupabaseAdminClient()
   let profileRes = await db
     .from('profiles')
     .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
@@ -153,12 +157,14 @@ export async function requirePortalUser(request?: NextRequest): Promise<
   if (!profile) return { error: 'Profile not found.', status: 404 }
   if (profile.status && profile.status !== 'active') return { error: 'Account is not active.', status: 403 }
 
-  // Fire-and-forget country backfill on the first authed hit. Awaited so the
+  // Await the country backfill on the first authed hit so the
   // in-memory `profile` object reflects the new code before downstream
   // callers read it, but errors never propagate.
   await backfillCountryFromIp(db, profile)
 
-  // Resolve email from Clerk if missing in the profiles row and backfill silently
+  // Resolve email from Clerk if missing in the profiles row and backfill
+  // synchronously. This MUST be awaited: a floating promise here would race the
+  // Worker's post-response freeze and the backfill could be dropped mid-flight.
   if (!profile.email) {
     try {
       const client = await clerkClient()
@@ -169,7 +175,7 @@ export async function requirePortalUser(request?: NextRequest): Promise<
         ''
       if (clerkEmail) {
         profile.email = clerkEmail
-        void db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)
+        await db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)
       }
     } catch { /* Clerk unavailable — proceed without email */ }
   }
@@ -187,8 +193,8 @@ export async function requirePortalUser(request?: NextRequest): Promise<
   return { db, profile, profileId: profile.id, role: normalisedRole }
 }
 
-export async function requireAdminUser() {
-  const ctx = await requirePortalUser()
+export async function requireAdminUser(request?: NextRequest) {
+  const ctx = await requirePortalUser(request)
   if ('error' in ctx) return ctx
   if (ctx.role !== 'admin') return { error: 'Forbidden', status: 403 as const }
   return ctx
@@ -203,7 +209,7 @@ export async function getOptionalPortalUser(): Promise<PortalUserContext | null>
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return null
 
-  const db = createSupabaseAdminClient()
+  const db = getSupabaseAdminClient()
   let profileRes = await db
     .from('profiles')
     .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')

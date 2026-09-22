@@ -20,6 +20,7 @@ jest.mock('@/lib/auth', () => ({
 }))
 
 jest.mock('@/lib/supabase', () => ({
+  getSupabaseAdminClient: jest.fn(() => db),
   createSupabaseAdminClient: jest.fn(() => db),
 }))
 

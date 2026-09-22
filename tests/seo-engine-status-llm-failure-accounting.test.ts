@@ -91,6 +91,7 @@ function makeSupabase() {
 }
 
 jest.mock('@/lib/supabase', () => ({
+  getSupabaseAdminClient: jest.fn(() => makeSupabase()),
   createSupabaseAdminClient: jest.fn(() => makeSupabase()),
   isServiceRoleAchieved: jest.fn(() => true),
 }))
@@ -101,7 +102,7 @@ describe('GET /api/seo-engine/status — failed prompt audit accounting', () => 
   beforeEach(() => { promptAttempts = 3 })
 
   it('reports unavailable when prompt attempts exist but none were measured, instead of substituting older fan-out share', async () => {
-    const res = await GET()
+    const res = await GET(new Request('https://portal.example/api/seo-engine/status') as any)
     const body = await res.json() as {
       llmVisibility: { total: number; cited: number; shareOfVoice: number | null; measurementState: string }
     }
@@ -116,7 +117,7 @@ describe('GET /api/seo-engine/status — failed prompt audit accounting', () => 
 
   it('does not fall back to legacy all-row history when no P11 prompt attempts exist', async () => {
     promptAttempts = 0
-    const res = await GET()
+    const res = await GET(new Request('https://portal.example/api/seo-engine/status') as any)
     const body = await res.json() as {
       llmVisibility: { total: number; cited: number; shareOfVoice: number | null; measurementState: string }
     }
