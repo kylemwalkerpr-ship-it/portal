@@ -4,9 +4,10 @@
  * the inbox badge in every navbar.
  */
 import { requirePortalUser } from '@/lib/portalAuth'
+import type { NextRequest } from 'next/server'
 
-export async function GET() {
-  const auth = await requirePortalUser()
+export async function GET(request: NextRequest) {
+  const auth = await requirePortalUser(request)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profileId } = auth
 

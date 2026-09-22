@@ -1,4 +1,5 @@
-import { auth } from '@clerk/nextjs/server'
+import { auth, getAuth } from '@clerk/nextjs/server'
+import type { NextRequest } from 'next/server'
 
 /**
  * Resolve the authenticated Clerk user from Clerk's verified request context.
@@ -7,8 +8,9 @@ import { auth } from '@clerk/nextjs/server'
  * can change between Clerk releases, and an incomplete decoder makes every
  * role look like a new client when the dashboard cannot find clerk_user_id.
  */
-export async function getClerkUserId(): Promise<string | null> {
+export async function getClerkUserId(request?: NextRequest): Promise<string | null> {
   try {
+    if (request) return getAuth(request).userId ?? null
     const { userId } = await auth()
     return userId ?? null
   } catch (error) {
