@@ -1,17 +1,13 @@
 /**
- * Turn a losing LLM-audit row into a studio fix: match the query to a live
- * estate URL (or flag it as a new page) and prefill the four citation actions
- * the audit already emits (capsule, FAQ schema, entities, llms.txt).
+ * P11 citation remediation is ownership-bound and fail-closed.
+ *
+ * A measured citation loss may open research or a refresh of the existing
+ * authoritative owner. It may never manufacture a sibling page, infer an owner
+ * from fuzzy coverage rows, or prescribe generic discovery files.
  */
+import { HOST_PUBLIC } from '@/lib/seoFactory/ownership'
 import type { CitationAction } from './llmVisibility'
 import { jaccard, usableQuery } from './auditQuerySelector'
-
-const DEFAULT_LOSS_ACTIONS: CitationAction[] = [
-  { priority: 4, action: 'Add a direct-answer "In 60 seconds" capsule above the fold', evidence: 'Answer engines had no quotable estate sentence for this query' },
-  { priority: 3, action: 'Add FAQPage JSON-LD (4–6 Q&As) matching the exact sub-queries engines ask', evidence: 'No structured answer surface' },
-  { priority: 2, action: 'Add 2–3 original statistics / named entities to raise quotability', evidence: 'No citable facts for this query' },
-  { priority: 1, action: 'Confirm the page is in llms.txt + sitemap so crawlers can discover it', evidence: 'Undiscovered content cannot be cited' },
-]
 
 export interface CoveragePage {
   url: string | null
@@ -20,6 +16,12 @@ export interface CoveragePage {
   jobId?: string | null
   clusterId?: string | null
   country?: string | null
+}
+
+export interface CitationClassificationEvidence {
+  classification: string
+  rawUrl: string
+  normalizedUrl: string | null
 }
 
 export interface AuditRemediationInput {
@@ -32,16 +34,21 @@ export interface AuditRemediationInput {
   stage?: string | null
   country?: string | null
   actions?: CitationAction[] | null
+  authoritativeOwnerUrl?: string | null
+  ownershipRowId?: number | null
+  competitorCitedUrls?: string[] | null
+  citationClassifications?: CitationClassificationEvidence[] | null
 }
 
 export interface CitationMatch {
-  mode: 'expand' | 'new'
+  mode: 'expand' | 'unresolved'
   overlap: 'exact' | 'high' | 'low' | null
   url: string | null
   title: string | null
   jobId: string | null
   clusterId: string | null
   primaryTerm: string | null
+  ownershipRowId: number | null
   score: number
 }
 
@@ -55,18 +62,18 @@ export interface CitationRemediationBrief {
   demandScore: number
   opportunityScore: number
   trend: 'flat'
-  play: 'refresh' | 'content_gap'
+  play: 'refresh'
   intent: 'informational'
   intentCategory: string
   profitability: 'high'
   reason: string
   signals: string[]
-  sourcePage?: string
+  sourcePage: string
   aeoRemediation: {
     query: string
-    url: string | null
-    jobId: string | null
-    mode: 'expand' | 'new'
+    url: string
+    jobId: null
+    mode: 'expand'
     actions: CitationAction[]
   }
 }
@@ -82,147 +89,181 @@ export interface CitationRemediation {
   brief: CitationRemediationBrief
 }
 
-const COUNTRY_IN_PATH: Array<[RegExp, string]> = [
-  [/\/uk\/|united-kingdom|britain/, 'UK'],
+const COUNTRY_IN_PATH: Array<[RegExp, string]> = [  [/\/uk\/|united-kingdom|britain/, 'UK'],
   [/\/ca\/|canada/, 'CA'],
   [/\/au\/|australia/, 'AU'],
   [/\/us\/|united-states|america/, 'US'],
 ]
 
+const CURRENT_OWNER_HOSTS = new Set(
+  Object.values(HOST_PUBLIC).map((base) => new URL(base).hostname.toLowerCase()),
+)
+
+function validAuthoritativeOwner(url: string | null | undefined, rowId: number | null | undefined): url is string {
+  if (!url || !Number.isInteger(rowId) || Number(rowId) <= 0) return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' && CURRENT_OWNER_HOSTS.has(parsed.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 export function needsCitationFix(row: AuditRemediationInput): boolean {
   if (!usableQuery(row.query) && String(row.query || '').trim().length < 8) return false
-  // `null`/missing share is unavailable evidence (provider/setup failure), not
-  // a 0% citation loss. Only measured rows are eligible for remediation.
   if (row.shareOfVoice == null) return false
   if (row.cited === false) return true
   const sov = Number(row.shareOfVoice)
   return Number.isFinite(sov) ? sov < 1 : false
 }
 
-export function actionHeadings(actions: CitationAction[]): string[] {
-  return actions.slice(0, 4).map((a) => {
-    const stripped = String(a.action || '')
-      .replace(/^(Add|Confirm)\s+(a\s+|the\s+)?/i, '')
+export function actionHeadings(actions: CitationAction[]): string[] {  return actions.slice(0, 4).map((action) => {
+    const stripped = String(action.action || '')
+      .replace(/^(Research|Review|Repair|Inspect|Sustain)\s+(a\s+|the\s+)?/i, '')
       .trim()
-    return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : 'Citation fix'
+    return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : 'Citation evidence review'
   })
 }
 
-function foldHyphens(s: string): string {
-  return String(s || '').replace(/([a-z0-9])-+(?=[a-z0-9])/gi, '$1')
+function foldHyphens(value: string): string {
+  return String(value || '').replace(/([a-z0-9])-+(?=[a-z0-9])/gi, '$1')
 }
 
-function matchTokens(s: string): Set<string> {
+function matchTokens(value: string): Set<string> {
   return new Set(
-    foldHyphens(s)
+    foldHyphens(value)
       .toLowerCase()
       .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= 2 && !['the', 'and', 'for', 'how', 'do', 'an', 'to', 'of', 'in', 'on', 'is', 'are', 'what', 'when', 'who', 'can', 'you', 'from', 'with', 'your'].includes(t)),
+      .filter((token) => token.length >= 2 && !['the', 'and', 'for', 'how', 'do', 'an', 'to', 'of', 'in', 'on', 'is', 'are', 'what', 'when', 'who', 'can', 'you', 'from', 'with', 'your'].includes(token)),
   )
 }
 
+export function countryFromUrl(url: string | null | undefined): string | null {
+  const value = String(url || '').toLowerCase()
+  if (!value) return null
+  for (const [pattern, country] of COUNTRY_IN_PATH) if (pattern.test(value)) return country
+  return null
+}
 export function scoreQueryAgainstPage(query: string, page: CoveragePage): { score: number; overlap: CitationMatch['overlap'] } {
   const q = String(query || '').trim()
-  const pk = String(page.primaryKeyword || '').trim()
+  const keyword = String(page.primaryKeyword || '').trim()
   const title = String(page.title || '').trim()
   if (!q) return { score: 0, overlap: null }
   const qn = foldHyphens(q).toLowerCase()
-  const pkn = foldHyphens(pk).toLowerCase()
+  const pkn = foldHyphens(keyword).toLowerCase()
   const tn = foldHyphens(title).toLowerCase()
-  const bonuses = (page.url ? 15 : 0) + (page.jobId ? 5 : 0) + (page.url && /yousafeconsultancy\.com/i.test(page.url) ? 4 : 0)
-  if (pkn.length >= 8 && (qn === pkn || qn.includes(pkn))) {
-    return { score: 100 + bonuses, overlap: 'exact' }
-  }
-  const qTokens = matchTokens(qn)
-  const pageTokens = matchTokens(`${pkn} ${tn}`)
-  const jac = jaccard(qTokens, pageTokens)
-  let score = jac * 80 + bonuses
-  const country = page.country || countryFromUrl(page.url)
-  if (country && qn.includes(country.toLowerCase())) score += 8
+  const bonuses = (page.url ? 15 : 0) + (page.jobId ? 5 : 0)
+  if (pkn.length >= 8 && (qn === pkn || qn.includes(pkn))) return { score: 100 + bonuses, overlap: 'exact' }
+  const jac = jaccard(matchTokens(qn), matchTokens(`${pkn} ${tn}`))
+  const score = jac * 80 + bonuses
   if (jac >= 0.45) return { score, overlap: 'high' }
-  if (jac >= 0.22 && qTokens.size >= 2) return { score, overlap: 'low' }
+  if (jac >= 0.22) return { score, overlap: 'low' }
   return { score: 0, overlap: null }
 }
 
-export function countryFromUrl(url: string | null | undefined): string | null {
-  const u = String(url || '').toLowerCase()
-  if (!u) return null
-  for (const [re, c] of COUNTRY_IN_PATH) if (re.test(u)) return c
-  return null
-}
-
+/** Diagnostic-only matcher. It never authorizes creation. */
 export function matchAuditQuery(query: string, pages: CoveragePage[]): CitationMatch {
-  const empty: CitationMatch = {
-    mode: 'new', overlap: null, url: null, title: null, jobId: null, clusterId: null, primaryTerm: null, score: 0,
+  const unresolved: CitationMatch = {
+    mode: 'unresolved', overlap: null, url: null, title: null,
+    jobId: null, clusterId: null, primaryTerm: null, ownershipRowId: null, score: 0,
   }
-  if (!String(query || '').trim() || !pages.length) return empty
   let best: { page: CoveragePage; score: number; overlap: CitationMatch['overlap'] } | null = null
-  for (const page of pages) {
+  for (const page of pages || []) {
+    if (!page.url) continue
     const hit = scoreQueryAgainstPage(query, page)
     if (!hit.overlap) continue
-    const preferUrl = Boolean(page.url) && !best?.page.url && hit.score + 0.01 >= (best?.score ?? 0)
-    if (!best || hit.score > best.score || preferUrl) best = { page, score: hit.score, overlap: hit.overlap }
+    if (!best || hit.score > best.score) best = { page, score: hit.score, overlap: hit.overlap }
   }
-  if (!best) return empty
-  const url = best.page.url ? String(best.page.url) : null
-  const jobId = best.page.jobId ? String(best.page.jobId) : null
+  if (!best?.page.url) return unresolved
   return {
-    mode: url || jobId ? 'expand' : 'new',
-    overlap: best.overlap,
-    url,
-    title: best.page.title,
-    jobId,
+    mode: 'expand', overlap: best.overlap, url: best.page.url,
+    title: best.page.title, jobId: best.page.jobId ? String(best.page.jobId) : null,
     clusterId: best.page.clusterId ? String(best.page.clusterId) : null,
     primaryTerm: best.page.primaryKeyword || best.page.title,
-    score: best.score,
+    ownershipRowId: null, score: best.score,
   }
+}
+
+function evidenceActions(row: AuditRemediationInput): CitationAction[] {
+  const actions: CitationAction[] = Array.isArray(row.actions) ? [...row.actions] : []
+  const classifications = row.citationClassifications || []
+  const estateProblem = classifications.some((item) =>
+    item.classification === 'wrong_current_owner' || item.classification === 'retired_estate_url'
+  )
+  if (estateProblem) {
+    actions.unshift({
+      priority: 4,
+      action: 'Repair estate canonical, redirect, and internal authority so the authoritative owner is the citation target',
+      evidence: 'Measured audit evidence cited a wrong current owner or retired estate URL',
+    })
+  }
+  if (!actions.some((action) => /research/i.test(action.action)) && row.topCompetitor) {
+    actions.push({
+      priority: 3,
+      action: `Research why ${row.topCompetitor} was cited before changing the authoritative owner`,
+      evidence: 'Competitor citation evidence is an observation; verify claims against primary sources before editing',
+    })
+  }  if (!actions.length) {
+    actions.push({
+      priority: 3,
+      action: 'Inspect successful audit evidence before changing the authoritative owner',
+      evidence: 'Citation absence alone does not identify an answer-structure, source-quality, or authority defect',
+    })
+  }
+  return actions
+    .filter((action, index, all) => all.findIndex((candidate) => candidate.action === action.action) === index)
+    .sort((a, b) => b.priority - a.priority)
 }
 
 export function buildRemediationBrief(row: AuditRemediationInput, match: CitationMatch): CitationRemediationBrief {
+  if (match.mode !== 'expand' || !match.url) throw new Error('P11 remediation requires an existing authoritative owner')
   const query = String(row.query || '').trim()
-  const actions = Array.isArray(row.actions) && row.actions.length ? row.actions : DEFAULT_LOSS_ACTIONS
-  const term = match.primaryTerm || query
-  const headings = actionHeadings(actions)
-  const expand = match.mode === 'expand'
+  const actions = evidenceActions(row)
+  const competitorUrls = (row.competitorCitedUrls || []).filter(Boolean)
   return {
     topic: query,
-    title: expand && match.title ? String(match.title) : query,
-    primaryKeyword: term,
-    keywords: [...new Set([term, query].filter(Boolean))].slice(0, 8),
+    title: query,
+    primaryKeyword: query,
+    keywords: [query],
     audience: 'international applicants researching this route',
     impressions: 0,
     demandScore: 50,
     opportunityScore: 70,
     trend: 'flat',
-    play: expand ? 'refresh' : 'content_gap',
+    play: 'refresh',
     intent: 'informational',
     intentCategory: row.stage ? String(row.stage) : 'visa',
-    profitability: 'high',
-    reason: expand
-      ? `LLM audit lost this query. Retrofit ${match.url || 'the matching page'} with the four citation actions — do not ship a sibling.`
-      : 'LLM audit lost this query and no live estate URL matched. Draft one canonical page that owns it.',
+    profitability: 'high',    reason: `Measured P11 citation loss is bound to authoritative owner ${match.url}; research the evidence before refreshing that owner only.`,
     signals: [
-      ...headings,
-      match.url ? `Live URL: ${match.url}` : 'No live URL yet — new canonical',
-      row.topCompetitor ? `Top competitor: ${row.topCompetitor}` : '',
-    ].filter(Boolean),
-    sourcePage: match.url || undefined,
-    aeoRemediation: {
-      query,
-      url: match.url,
-      jobId: match.jobId,
-      mode: match.mode,
-      actions,
-    },
+      ...actionHeadings(actions),
+      `Authoritative owner: ${match.url}`,
+      ...competitorUrls.map((url) => `Competitor cited URL: ${url}`),
+      ...(competitorUrls.length ? ['Primary source research required before adopting any competing claim'] : []),
+    ],
+    sourcePage: match.url,
+    aeoRemediation: { query, url: match.url, jobId: null, mode: 'expand', actions },
   }
 }
 
-export function buildCitationRemediation(row: AuditRemediationInput, pages: CoveragePage[]): CitationRemediation | null {
+export function buildCitationRemediation(
+  row: AuditRemediationInput,
+  _legacyPages: CoveragePage[] = [],
+): CitationRemediation | null {
   const query = String(row.query || '').trim()
-  if (!query) return null
-  if (!needsCitationFix(row)) return null
-  const match = matchAuditQuery(query, pages)
-  const actions = Array.isArray(row.actions) && row.actions.length ? row.actions : DEFAULT_LOSS_ACTIONS
+  if (!query || !needsCitationFix(row)) return null
+  if (!validAuthoritativeOwner(row.authoritativeOwnerUrl, row.ownershipRowId)) return null
+  const match: CitationMatch = {
+    mode: 'expand',
+    overlap: 'exact',
+    url: row.authoritativeOwnerUrl,
+    title: null,
+    jobId: null,
+    clusterId: null,
+    primaryTerm: query,
+    ownershipRowId: Number(row.ownershipRowId),
+    score: 100,
+  }
+  const actions = evidenceActions(row)
   return {
     id: row.id ? String(row.id) : null,
     query,
@@ -235,13 +276,16 @@ export function buildCitationRemediation(row: AuditRemediationInput, pages: Cove
   }
 }
 
-export function buildCitationRemediations(rows: AuditRemediationInput[], pages: CoveragePage[]): CitationRemediation[] {
+export function buildCitationRemediations(
+  rows: AuditRemediationInput[],
+  _legacyPages: CoveragePage[] = [],
+): CitationRemediation[] {
   const out: CitationRemediation[] = []
   const seen = new Set<string>()
   for (const row of rows) {
-    const item = buildCitationRemediation(row, pages)
+    const item = buildCitationRemediation(row)
     if (!item) continue
-    const key = item.query.toLowerCase()
+    const key = `${item.query.toLowerCase()}|${item.match.url}`
     if (seen.has(key)) continue
     seen.add(key)
     out.push(item)
@@ -249,53 +293,7 @@ export function buildCitationRemediations(rows: AuditRemediationInput[], pages: 
   return out
 }
 
-export async function loadCitationCoverage(): Promise<CoveragePage[]> {
-  try {
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    const supabase = createSupabaseAdminClient()
-    const pages: CoveragePage[] = []
-    const { data: jobs } = await supabase
-      .from('content_jobs')
-      .select('id,canonical_url,title,primary_keyword,status')
-      .in('status', ['merged', 'pr_created', 'publishing', 'drafting'])
-      .not('canonical_url', 'is', null)
-      .limit(400)
-    for (const row of (jobs || []) as Array<Record<string, unknown>>) {
-      const url = String(row.canonical_url || '').trim()
-      if (!url) continue
-      pages.push({
-        url,
-        title: row.title ? String(row.title) : null,
-        primaryKeyword: row.primary_keyword ? String(row.primary_keyword) : null,
-        jobId: row.id ? String(row.id) : null,
-        country: countryFromUrl(url),
-      })
-    }
-    const { data: plans } = await supabase
-      .from('seo_cluster_plans')
-      .select('cluster_id,primary_term,country')
-      .order('opportunity_score', { ascending: false })
-      .limit(40)
-    for (const row of (plans || []) as Array<Record<string, unknown>>) {
-      const term = String(row.primary_term || '').trim()
-      if (!term) continue
-      pages.push({
-        url: null,
-        title: term,
-        primaryKeyword: term,
-        clusterId: row.cluster_id ? String(row.cluster_id) : null,
-        country: row.country ? String(row.country) : null,
-      })
-    }
-    return pages
-  } catch {
-    return []
-  }
-}
-
+/** Runtime P11 remediation never loads fuzzy content-job/cluster coverage. */
 export async function remediateVisibilityAudits(rows: AuditRemediationInput[]): Promise<CitationRemediation[]> {
-  const losing = rows.filter(needsCitationFix)
-  if (!losing.length) return []
-  const pages = await loadCitationCoverage()
-  return buildCitationRemediations(losing, pages)
+  return buildCitationRemediations(rows.filter(needsCitationFix))
 }

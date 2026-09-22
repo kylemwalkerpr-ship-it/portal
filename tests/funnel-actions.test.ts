@@ -160,20 +160,17 @@ describe('forecast-reward — funnel actions always attribute to demand', () => 
   })
 })
 
-describe('buildCitationActions — actionKind + honesty rule (no fabricated impressions)', () => {
-  it('tags every loss action with a funnel kind and OMITS expectedRevenue when impressions are unknown', () => {
+describe('buildCitationActions — P11 evidence-driven safety', () => {
+  it('emits research/owner-review actions only — never CREATE or llms.txt prescriptions', () => {
     const actions = buildCitationActions({ shareOfVoice: 0, topCompetitorDomain: 'boundless.com', competitorShare: 0.8, cited: false })
-    expect(actions.length).toBeGreaterThanOrEqual(5)
-    for (const a of actions) {
-      expect(a.actionKind).toBeDefined()
-      expect(a.expectedRevenue).toBeUndefined() // never invent a USD number without impressions
-    }
-    // capsule/FAQ/stats/llms.txt are climbs; the new-page remediation is funnel_new.
-    expect(actions.filter((a) => a.actionKind === 'funnel_climb').length).toBeGreaterThanOrEqual(4)
-    expect(actions.some((a) => a.actionKind === 'funnel_new' && /service-enabled page/i.test(a.action))).toBe(true)
+    expect(actions.length).toBeGreaterThanOrEqual(2)
+    expect(actions.every((a) => a.actionKind !== 'funnel_new')).toBe(true)
+    expect(actions.every((a) => a.expectedRevenue == null)).toBe(true)
+    expect(actions.map((a) => a.action).join(' ')).not.toMatch(/llms\.txt|build .*page|new .*page/i)
+    expect(actions.some((a) => /research/i.test(a.action))).toBe(true)
   })
 
-  it('attaches conservative expectedRevenue only when impressions AND a stage/country cell are real', () => {
+  it('does not manufacture revenue estimates from citation evidence even when impressions are present', () => {
     const withData = buildCitationActions({
       shareOfVoice: 0,
       topCompetitorDomain: null,
@@ -183,15 +180,11 @@ describe('buildCitationActions — actionKind + honesty rule (no fabricated impr
       country: 'US',
       impressions: 1200,
     })
-    for (const a of withData) {
-      expect(a.expectedRevenue).toBeDefined()
-      expect(a.expectedRevenue!.usdPerMonth).toBeGreaterThan(0)
-      expect(a.expectedRevenue!.note).toMatch(/impressions at #11 → #3|impressions at #21 → #5/)
-      expect(a.expectedRevenue!.note).toMatch(/informational intent/)
-    }
+    expect(withData.length).toBeGreaterThan(0)
+    for (const action of withData) expect(action.expectedRevenue).toBeUndefined()
   })
 
-  it('still omits expectedRevenue when impressions exist but no cell is resolvable', () => {
+  it('keeps revenue unknown when no demand cell is resolvable', () => {
     const noCell = buildCitationActions({
       shareOfVoice: 0,
       topCompetitorDomain: null,
@@ -199,6 +192,6 @@ describe('buildCitationActions — actionKind + honesty rule (no fabricated impr
       cited: false,
       impressions: 5000,
     })
-    for (const a of noCell) expect(a.expectedRevenue).toBeUndefined()
+    for (const action of noCell) expect(action.expectedRevenue).toBeUndefined()
   })
 })
