@@ -31,6 +31,8 @@ import { assertQualityGate, assertRhythmWithinRepairRange } from './contentQuali
 import type { KeywordTerm } from '@/lib/seoEngine/keywordTerms'
 import { applyDeterministicRepairs } from './editorialScaffold'
 import { auditLinksLive, sanitizeDraftLinksLive } from './linkAudit'
+import { extractLinks, isExternalHttpUrl, type LinkAuditFinding } from './linkAuditCore'
+import type { CitationContext } from './officialSources'
 import {
   createBranchFrom,
   deleteRepoFile,
@@ -578,6 +580,67 @@ async function ensureCanonicalOnSitemap(opts: {
 }
 
 /**
+ * P8 source-freshness — post-render generated-source audit.
+ *
+ * `renderCaseworksPage` injects curated `SourceRef` URLs via
+ * `pickCaseworksSources()` AFTER the authored-markdown audit, so those
+ * renderer-generated citations never passed live/retrieval verification.
+ * This re-runs the SAME authoritative audit (`auditLinksLive` + the shared
+ * `extractLinks` rules) over exactly the external URLs the rendered artifact
+ * will publish, with the same citation context as the pre-render pass.
+ * Exported (pure apart from the live check) so the ship door is directly
+ * testable; the caller refuses on `severity: 'blocker'`.
+ *
+ * Nothing here rewrites or replaces a source URL: a dead generated citation
+ * refuses the ship instead of silently falling back to another curated entry.
+ */
+export async function auditRenderedExternalSources(opts: {
+  /** The exact rendered artifact (fileContent) that would be written to Git. */
+  artifact: string
+  /** Same known-live internal set the pre-render audit received. */
+  knownLiveUrls?: Set<string> | string[]
+  /** Same citation context the pre-render audit received. */
+  citationContext?: CitationContext
+}): Promise<LinkAuditFinding[]> {
+  const seen = new Set<string>()
+  const urls: string[] = []
+  for (const { url } of extractLinks(opts.artifact)) {
+    if (!isExternalHttpUrl(url) || seen.has(url)) continue
+    seen.add(url)
+    urls.push(url)
+  }
+  if (!urls.length) return []
+  // Feed the extracted hrefs straight back into the authoritative audit; the
+  // markdown form preserves each URL verbatim (no rewriting, no invention).
+  const auditDoc = urls.map((url) => `- [generated source](${url})`).join('\n')
+  return auditLinksLive(auditDoc, {
+    knownLiveUrls: opts.knownLiveUrls,
+    citationContext: opts.citationContext,
+  })
+}
+
+
+/**
+ * Fail closed on rendered external citations that the authoritative live audit
+ * classifies as blockers. Warnings remain visible to callers but cannot turn a
+ * dead/unreachable generated source into publishable evidence.
+ */
+export async function assertRenderedExternalSourcesLive(opts: {
+  artifact: string
+  knownLiveUrls?: Set<string> | string[]
+  citationContext?: CitationContext
+}): Promise<LinkAuditFinding[]> {
+  const findings = await auditRenderedExternalSources(opts)
+  const blockers = findings.filter((finding) => finding.severity === 'blocker')
+  if (blockers.length) {
+    throw new Error(
+      `Refusing ship: rendered caseworks page would publish ${blockers.length} generated source URL${blockers.length === 1 ? '' : 's'} that failed the authoritative live/retrieval audit — ${blockers.map((f) => `${f.code}:${f.url}`).join('; ')}. Regenerate from a currently-live verifiable source set; generated sources are never rewritten or silently replaced.`,
+    )
+  }
+  return findings
+}
+
+/**
  * Human-approved path: commit straight to main when possible.
  * `humanApproved` only chooses direct-main vs PR (used when mode !== 'pr');
  * it NEVER skips the automated audit gates — assertContentDepth,
@@ -719,6 +782,30 @@ export async function shipContent(opts: {
     canonicalUrl: opts.plan.canonicalUrl,
     author: opts.author ?? null,
   })
+
+  // ── P8 source-freshness: audit renderer-generated source URLs ────────────
+  // The authored-markdown audit above ran BEFORE renderTargetFile, but
+  // renderCaseworksPage injects curated `SourceRef` URLs (pickCaseworksSources)
+  // inside the renderer — those generated citations bypassed live/retrieval
+  // verification. Re-run the SAME authoritative audit over exactly the
+  // external URLs the artifact will publish and refuse on any
+  // `severity: 'blocker'` finding. This sits before the master gate stack, the
+  // dry-run return and every Git read/write/branch, so no ship path (PR,
+  // human-approved direct-main, merge or dry run) can publish a dead generated
+  // source — and a curated source is never silently rewritten or replaced with
+  // an unverified one.
+  if (repo === 'caseworks') {
+    await assertRenderedExternalSourcesLive({
+      artifact: fileContent,
+      knownLiveUrls: [opts.plan.canonicalUrl, opts.plan.filePath].filter(Boolean),
+      citationContext: {
+        region: opts.region,
+        topic: opts.primaryKeyword || opts.title,
+        keywords: [...(opts.requiredShortKeywords || []), ...(opts.requiredLongTailKeywords || [])],
+        body: shipContent_,
+      },
+    })
+  }
 
   // ── Master gate stack (approve / merge cannot skip any layer) ────────────
   // Provider-agnostic: DeepSeek, Cloudflare, or any fallback may draft the
