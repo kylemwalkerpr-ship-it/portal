@@ -2817,7 +2817,10 @@ function RecheckDuePanel() {
     const filteredTargets = backlinkLaneFilter === 'all'
       ? targets
       : targets.filter((t) => t.lane === backlinkLaneFilter)
-    const wonCount = targets.filter((t) => t.status === 'won').length
+    // P9: a win is the durable live-proof pointer pair from
+    // seo_backlink_verifications — never a status label on its own.
+    const wonCount = targets.filter((t) => Boolean(t.won_verified_at && t.won_verification_id)).length
+    const wonLabelOnly = targets.filter((t) => t.status === 'won' && !(t.won_verified_at && t.won_verification_id)).length
     const sentCount = targets.filter((t) => t.status === 'sent').length
     const govCount = targets.filter((t) => t.kind === 'gov').length
     const KINDS = [
@@ -2847,7 +2850,10 @@ function RecheckDuePanel() {
         </div>
 
         <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap', fontFamily: C.mono, fontSize: 10 }}>
-          <span style={{ padding: '4px 9px', borderRadius: 999, background: C.greenSoft, color: C.green, fontWeight: 700 }}>{wonCount} won</span>
+          <span style={{ padding: '4px 9px', borderRadius: 999, background: C.greenSoft, color: C.green, fontWeight: 700 }}>{wonCount} verified wins</span>
+          {wonLabelOnly > 0 && (
+            <span style={{ padding: '4px 9px', borderRadius: 999, background: C.surface2, color: C.textMuted, fontWeight: 700 }}>{wonLabelOnly} won label(s) without live proof</span>
+          )}
           <span style={{ padding: '4px 9px', borderRadius: 999, background: C.blueSoft, color: C.blue, fontWeight: 700 }}>{sentCount} sent</span>
           <span style={{ padding: '4px 9px', borderRadius: 999, background: C.goldSoft, color: C.gold, fontWeight: 700 }}>{govCount} govt</span>
           <span style={{ padding: '4px 9px', borderRadius: 999, background: C.surface, color: C.textMuted, border: '1px solid ' + C.border, fontWeight: 700 }}>{inboundGaps.length} inbound gaps</span>
@@ -2890,7 +2896,7 @@ function RecheckDuePanel() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div>
                       <a href={'https://' + t.domain} target="_blank" rel="noreferrer" style={{ color: C.text, fontFamily: C.mono, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>{t.domain}</a>
-                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{t.kind} \u00b7 lane {t.lane} \u00b7 authority {Math.round(t.authority_score || 0)}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{t.kind} \u00b7 lane {t.lane} \u00b7 internal priority {Math.round(t.authority_score || 0)} (not DR/DA)</div>
                     </div>
                     <span style={{ padding: '3px 8px', borderRadius: 999, background: t.status === 'won' ? C.greenSoft : t.status === 'sent' ? C.blueSoft : C.surface2, color: t.status === 'won' ? C.green : t.status === 'sent' ? C.blue : C.textMuted, fontFamily: C.mono, fontSize: 9, fontWeight: 700 }}>{t.status}</span>
                   </div>
@@ -2953,7 +2959,7 @@ function RecheckDuePanel() {
             <div>
               <div style={{ fontFamily: C.mono, fontSize: 10, color: C.gold, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 800 }}>Outreach draft</div>
               <h3 style={{ margin: '4px 0 4px', fontFamily: C.serif, fontSize: 20, color: C.text }}>{draftModalTarget.domain}</h3>
-              <div style={{ fontSize: 11, color: C.textMuted, fontFamily: C.mono }}>{draftModalTarget.kind} \u00b7 lane {draftModalTarget.lane} \u00b7 authority {Math.round(draftModalTarget.authority_score || 0)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, fontFamily: C.mono }}>{draftModalTarget.kind} \u00b7 lane {draftModalTarget.lane} \u00b7 internal priority {Math.round(draftModalTarget.authority_score || 0)} (not DR/DA)</div>
             </div>
             <button type="button" onClick={() => setDraftModalTarget(null)} disabled={draftModalBusy} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: C.surface, color: C.textMuted, fontSize: 11, fontFamily: C.mono, cursor: draftModalBusy ? 'not-allowed' : 'pointer' }}>\u2715 Close</button>
           </div>

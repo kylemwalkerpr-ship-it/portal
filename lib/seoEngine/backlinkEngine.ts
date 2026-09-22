@@ -9,16 +9,26 @@
  * voice in LLMs). This module:
  *
  *   1. Discovers external opportunities  → curated target list in seo_backlink_targets
- *   2. Tracks outreach attempts           → seo_backlink_outreach
+ *   2. Tracks outreach attempts           → seo_backlink_outreach (a sent-like
+ *                                            record carries the actual sent_at;
+ *                                            a `won` claim is refused here)
  *   3. Analyzes OUR content for gaps      → inbound + outbound gaps derived from
  *                                            anchor_ledger and seo_interlinks
  *   4. Drafts outreach messages          → best-effort via the AI cascade, with
  *                                            a deterministic 4-paragraph template
  *                                            fallback so the operator can ship
  *                                            without waiting on the model.
+ *   5. Reports wins from PROOF, not labels → a target counts as won only when
+ *      it holds the durable live-verification pointers (won_verified_at +
+ *      won_verification_id) written by lib/seoFactory/backlinkVerification.ts.
+ *      The `status` column is a label; it is never a win by itself.
  *
  * Every result is auditable: writes are CRUD against the dedicated
  * Backlink tables joined with seo_engine_runs for observability.
+ *
+ * `authority_score` is an INTERNAL 0-100 priority ordering for this curated
+ * prospect list (see `authority_score_basis`). It is NOT DR, DA, Ahrefs, Moz or
+ * any third-party metric and must never be presented as one.
  */
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -42,6 +52,20 @@ export type OutreachStatus =
   | 'follow_up_due' | 'follow_up_sent'
   | 'won' | 'lost' | 'withdrawn'
 
+/**
+ * Outreach states that assert a send actually happened. A new record in one of
+ * these states must carry `sent_at` at record time (the DB enforces the same
+ * future-write contract; legacy rows are preserved untouched).
+ */
+export const SENT_LIKE_OUTREACH_STATUSES = ['sent', 'follow_up_sent'] as const
+
+export function isSentLikeOutreachStatus(status: string | null | undefined): boolean {
+  return (SENT_LIKE_OUTREACH_STATUSES as readonly string[]).includes(String(status || ''))
+}
+
+/** Provenance for the internal priority weight stored in `authority_score`. */
+export type AuthorityScoreBasis = 'legacy_internal' | 'internal_priority'
+
 export interface BacklinkTarget {
   id: string
   domain: string
@@ -49,7 +73,9 @@ export interface BacklinkTarget {
   title: string | null
   kind: BacklinkKind
   lane: BacklinkLane
+  /** Internal 0-100 priority ordering for this curated list — never DR/DA. */
   authority_score: number
+  authority_score_basis: AuthorityScoreBasis
   traffic_estimate: number | null
   contact_name: string | null
   contact_email: string | null
@@ -64,7 +90,23 @@ export interface BacklinkTarget {
   won_at: string | null
   lost_at: string | null
   won_backlink_url: string | null
+  /** When the live proof behind this win was observed (P9). */
+  won_verified_at: string | null
+  /** The seo_backlink_verifications row that proved this win (P9). */
+  won_verification_id: string | null
   notes: string | null
+}
+
+/**
+ * A win is the durable live-proof pointer pair, nothing else. A `status = 'won'`
+ * label without the pointers is not a win (the DB truth constraint refuses to
+ * store that combination anyway).
+ */
+export function isVerifiedWin(target: {
+  won_verified_at?: string | null
+  won_verification_id?: string | null
+}): boolean {
+  return Boolean(target?.won_verified_at && target?.won_verification_id)
 }
 
 export interface OutreachTouch {
@@ -299,6 +341,10 @@ function rowToTarget(r: Record<string, unknown>): BacklinkTarget {
     kind: (r.kind as BacklinkKind) || 'media',
     lane: (r.lane as BacklinkLane) || 'editorial',
     authority_score: Number(r.authority_score || 0),
+    // Pre-P9 rows (or a pre-migration estate) default to the legacy internal
+    // label: a seeded value is never attributed to a third-party metric.
+    authority_score_basis:
+      (r.authority_score_basis as AuthorityScoreBasis) || 'legacy_internal',
     traffic_estimate: r.traffic_estimate != null ? Number(r.traffic_estimate) : null,
     contact_name: (r.contact_name as string) || null,
     contact_email: (r.contact_email as string) || null,
@@ -313,11 +359,35 @@ function rowToTarget(r: Record<string, unknown>): BacklinkTarget {
     won_at: (r.won_at as string) || null,
     lost_at: (r.lost_at as string) || null,
     won_backlink_url: (r.won_backlink_url as string) || null,
+    won_verified_at: (r.won_verified_at as string) || null,
+    won_verification_id: (r.won_verification_id as string) || null,
     notes: (r.notes as string) || null,
   }
 }
 
 // ── 4. Outreach timeline + persistence ─────────────────────────────────────
+/**
+ * Outcome of an outreach write. `ok: false` always carries a machine-readable
+ * code and an operator-facing error; `outreach` is present only on success.
+ */
+export interface RecordOutreachOutcome {
+  ok: boolean
+  outreach?: OutreachTouch
+  code?: 'won_requires_live_verification' | 'persistence_failed'
+  error?: string
+}
+
+/**
+ * Persist one outreach touch.
+ *
+ * Two truth rules are enforced here (and again by DB constraints for future
+ * writes):
+ *   · a sent-like status is stamped with `sent_at` at the ACTUAL record time —
+ *     a "sent" row without a send time is not a record of a send;
+ *   · `won` is refused outright. A win is a live backlink verification result
+ *     (fetched third-party page + exact anchor href + durable evidence), not
+ *     something an operator or a backfill can type into an outreach row.
+ */
 export async function recordOutreach(input: {
   target_id: string
   channel?: OutreachTouch['channel']
@@ -327,7 +397,18 @@ export async function recordOutreach(input: {
   status?: OutreachStatus
   operator_id?: string
   source_brief?: Record<string, unknown>
-}): Promise<OutreachTouch | null> {
+}): Promise<RecordOutreachOutcome> {
+  const status = input.status || 'drafted'
+  if (status === 'won') {
+    return {
+      ok: false,
+      code: 'won_requires_live_verification',
+      error:
+        'outreach rows cannot be marked won. A win requires live backlink verification ' +
+        '(POST /api/seo-engine/backlink/verify), which fetches the third-party page and proves ' +
+        'a real anchor href to the exact YouSafe target URL.',
+    }
+  }
   try {
     const supabase = createSupabaseAdminClient()
     const now = new Date().toISOString()
@@ -337,8 +418,11 @@ export async function recordOutreach(input: {
       direction: input.direction || 'outbound',
       subject: input.subject || null,
       message_body: input.message_body,
-      status: input.status || 'drafted',
+      status,
       drafted_at: now,
+      // A sent-like state records the send at the moment it is recorded; the
+      // timestamp is never taken from the caller and never backdated.
+      sent_at: isSentLikeOutreachStatus(status) ? now : null,
       operator_id: input.operator_id || null,
       source_brief: input.source_brief || {},
     }
@@ -349,16 +433,24 @@ export async function recordOutreach(input: {
       .single()
     if (error || !data) {
       console.warn('[seoEngine] recordOutreach', error?.message || 'no row')
-      return null
+      return {
+        ok: false,
+        code: 'persistence_failed',
+        error: String(error?.message || 'outreach insert returned no row').slice(0, 300),
+      }
     }
     // Bump the parent target's last_touched_at so dashboards stay fresh.
     await supabase
       .from('seo_backlink_targets')
       .update({ last_touched_at: now })
       .eq('id', input.target_id)
-    return rowToOutreach(data as Record<string, unknown>)
-  } catch {
-    return null
+    return { ok: true, outreach: rowToOutreach(data as Record<string, unknown>) }
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'persistence_failed',
+      error: error instanceof Error ? error.message.slice(0, 300) : 'outreach persistence failed',
+    }
   }
 }
 
@@ -505,7 +597,14 @@ export async function runBacklinkReport(opts: {
     inbound_avg: number
     outbound_avg: number
     target_total: number
-    target_won: number
+    /** Wins proven by durable live verification (won_verified_at + pointer). */
+    verified_wins: number
+    /**
+     * Targets whose status column says `won`. Exposed so a label/proof
+     * divergence is visible rather than hidden; the DB truth constraint keeps
+     * this equal to `verified_wins` for anything written since P9.
+     */
+    status_won_labels: number
   }
 }> {
   const [inboundGaps, outboundGaps, targets] = await Promise.all([
@@ -513,7 +612,8 @@ export async function runBacklinkReport(opts: {
     listOutboundGaps({ minOutbound: 3, limit: 50 }),
     listTargetOpportunities({ country: opts.country, stage: opts.stage, limit: 100 }),
   ])
-  const target_won = targets.filter((t) => t.status === 'won').length
+  const verified_wins = targets.filter(isVerifiedWin).length
+  const status_won_labels = targets.filter((t) => t.status === 'won').length
   const inbound_avg = inboundGaps.length ? inboundGaps.reduce((s, g) => s + g.inbound_links, 0) / inboundGaps.length : 0
   const outbound_avg = outboundGaps.length ? outboundGaps.reduce((s, g) => s + g.outbound_links, 0) / outboundGaps.length : 0
   return {
@@ -524,7 +624,8 @@ export async function runBacklinkReport(opts: {
       inbound_avg: Number(inbound_avg.toFixed(1)),
       outbound_avg: Number(outbound_avg.toFixed(1)),
       target_total: targets.length,
-      target_won,
+      verified_wins,
+      status_won_labels,
     },
   }
 }

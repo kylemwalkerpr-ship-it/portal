@@ -22,6 +22,10 @@ import type { Country, LifecycleStageDef } from '@/lib/seoEngine/ontology'
  *   { action: 'record', target_id, channel?, direction?, subject?, message_body,
  *     status?, operator_id?, source_brief? }
  *   → returns { ok: true, outreach } persisted row.
+ *   A sent-like status (sent / follow_up_sent) is stamped with sent_at at the
+ *   actual record time. `status: 'won'` is REFUSED with 409: a win requires
+ *   live backlink verification (POST /api/seo-engine/backlink/verify), never a
+ *   hand-written outreach state.
  *
  * GET /api/seo-engine/backlink/outreach?target_id=...
  *   → returns the timeline of touches for one target.
@@ -51,7 +55,7 @@ export async function POST(req: NextRequest) {
       if (!target_id || !message_body) {
         return NextResponse.json({ ok: false, error: 'target_id and message_body required' }, { status: 400 })
       }
-      const outreach = await recordOutreach({
+      const outcome = await recordOutreach({
         target_id,
         channel: (body.channel as any) || 'email',
         direction: (body.direction as any) || 'outbound',
@@ -61,8 +65,21 @@ export async function POST(req: NextRequest) {
         operator_id: body.operator_id ? String(body.operator_id) : undefined,
         source_brief: (body.source_brief as Record<string, unknown>) || {},
       })
-      if (!outreach) return NextResponse.json({ ok: false, error: 'persistence failed' }, { status: 500 })
-      return NextResponse.json({ ok: true, outreach })
+      if (!outcome.ok || !outcome.outreach) {
+        // `won` is refused as a truth violation (409); a persistence failure is
+        // a 500. Neither path can create a win — wins come from live
+        // verification via POST /api/seo-engine/backlink/verify.
+        const status = outcome.code === 'won_requires_live_verification' ? 409 : 500
+        return NextResponse.json(
+          {
+            ok: false,
+            code: outcome.code || 'persistence_failed',
+            error: outcome.error || 'outreach persistence failed',
+          },
+          { status },
+        )
+      }
+      return NextResponse.json({ ok: true, outreach: outcome.outreach })
     }
 
     return NextResponse.json({ ok: false, error: `Unknown action '${action}'` }, { status: 400 })

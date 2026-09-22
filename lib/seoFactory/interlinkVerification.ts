@@ -101,7 +101,14 @@ const SOURCE_FETCH_TIMEOUT_MS = 12_000
 const CONTEXT_WINDOW = 120
 const CONTEXT_MAX = 360
 
-function decodeHtmlEntities(value: string): string {
+/**
+ * Decode the entity forms that can appear inside an attribute value.
+ *
+ * Exported for the P9 external-backlink verifier, which records the observed
+ * anchor/context of a third-party page with the same decoding rules this
+ * proof path uses. Pure function — no behavior change for interlinks.
+ */
+export function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
@@ -180,10 +187,13 @@ function forEachOpenTag(html: string, visit: (name: string, tag: string) => void
 
 /**
  * Remove non-rendered payloads (comments, CDATA, raw-text element bodies) from
- * a string, leaving everything a reader could actually see. Used only for the
- * draft-locator markdown scan; proof paths use the tokenizer directly.
+ * a string, leaving everything a reader could actually see. Used for the
+ * draft-locator markdown scan and, since P9, exported so the external-backlink
+ * verifier can observe page-level facts (canonical, robots meta, anchor
+ * rel/text) in exactly the same rendered view of the document. Proof paths
+ * still use the tokenizer directly; this helper never decides a verdict.
  */
-function stripNonRenderedPayloads(source: string): string {
+export function stripNonRenderedPayloads(source: string): string {
   const src = String(source || '')
   if (!src) return ''
   const lower = src.toLowerCase()
