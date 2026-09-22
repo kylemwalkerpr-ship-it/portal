@@ -1,893 +1,1232 @@
-# Content Studio — Evidence-led SEO Architecture
-Version CS-2026.09.22.4 · Master design specification · Implementation not started
-Owner: Kyle · Architecture/release: GPT Sol · Executor: DeepSeek through the existing ds bridge.
+# Content Studio Revamp — Master Architecture (Strangler Migration)
 
-## 1. Objective and authority
-Build an intelligence-led editorial operating system that improves qualified audience outcomes, maintains the existing estate, earns trust and measures business value. Writing is one possible intervention; research, refresh, consolidation, technical repair, internal linking, authority work, observation and deliberate NO_ACTION are equally valid outcomes. Article volume is never the objective.
+**Version CS-2026.09.22.5** · Normative master design · **Implementation has NOT started**
+Owner: Kyle · Architecture and release authority: GPT Sol · Default heavy executor: DeepSeek through the existing ds bridge
+Supersedes for this subject: CS-2026.09.22.4, whose two competing §27–§35 semantic blocks are normalized into the single monotonic sequence below. Earlier revisions (.1–.3) remain the historical record; their still-valid content is incorporated here and is not repeated.
 
-This specification is the requested design, not a claim of implementation, production acceptance or guaranteed rankings. “Never violate a gate” means every protected operation is mediated by enforceable, fail-closed controls and tested bypass resistance. No architecture can promise 100% correct model judgments, future uptime or Google outcomes.
+Changing this document is **not** implementation. Nothing here connects providers, creates accounts, provisions Modal, applies migrations, seeds data, installs MCPs, schedules jobs, publishes content, unlocks CREATE, performs outreach, merges code or deploys production. Implementation starts only through bounded Sol packets after the required A0 exits in §24.
 
-Authority order: current human authorization; repository AGENTS.md and approved design; Supervisor Arc v2026.09.21.1; SEO Brief and current repository parity matrix; this design. Conflicts block the affected action. This design does not amend phase thresholds or authorize broad CREATE, outreach, destructive actions, merges or deployments by itself.
+## How to read this document
 
-Baseline read on 2026-09-22: Portal main snapshot 3d248afd09290a97250cb472152afaa57b2a0292; Hjarni SEO Brief records P0–P8 closed and P9–P13 pending; repository matrix confirms P9–P13 pending. The existing Notion grade-5 roadmap still describes P8 as NEXT and is historical for this specification. Reconcile live main, current jobs and all scoped rules before implementation. Any later P9 progress supersedes this snapshot only with evidence. Do not touch MARKET-PORTAL-AUTH-HANDOFF-1102 or sibling jobs.
+### Evidence classes
+Every material statement is one of three kinds, and the distinction is binding on reviewers:
 
-## 2. Existing structure and redesign boundary
-Inspected repository sources establish:
-- components/design/admin-content-studio.tsx coordinates Discover, Plan, Brief, Write, Check, Approve and Track, with many intelligence/editor/queue panels.
-- app/api/content-studio/generate/route.ts awaits the contracted pipeline within the request and returns draft/audit/ship results. This creates request-lifecycle coupling; inspection does not establish that this particular route caused a production 1102.
-- WritingContractV2 already binds evidence, source health, jurisdiction-aware identity, ownership, sealed brief and model selection with hashes.
-- contentStudioPipeline/Core and writingContractStore preserve recovery claims, leases, heartbeat and JSON/SSE execution context; renderTarget protects approved content and publication digests.
-- P1 deliberately removed browser access to content_jobs in favor of authenticated API polling. Do not restore anonymous table subscriptions.
-- P8 binds review to unchanged content and audits renderer-added sources before Git writes. Preserve this protection.
+| Label | Meaning | Rule |
+|---|---|---|
+| **VERIFIED_REPO_FACT** | Observed directly in this repository at the revision base (§4.1). Dated evidence, not a permanent truth. | Re-verify at implementation start; if it has changed, the dependent design statement must be re-derived, not assumed. |
+| **PROPOSED_CONTROL** | A design requirement of this architecture. It is a mandate for implementation and testing. | Not evidence that it exists today. Acceptance requires recorded test/canary proof (§25). |
+| **A0_UNVERIFIED** | External account, provider, live-database, live-deployment or cost fact that this authoring environment could not verify. | Nothing may depend on it before A0 records the probe evidence (§24). |
 
-Preserve these semantics, ownership.ts as the estate authority, existing evidence/history and current publication proofs. Replace the request-bound runner with durable execution, the large coordinating UI with route-level workspaces, and fragmented action checks with a common policy boundary. Do not transplant AsyncLocalStorage across processes: persist explicit execution identity and fence every write.
+Numeric budgets, thresholds, calibration sizes and freshness windows are proposed acceptance controls unless marked VERIFIED_REPO_FACT or A0-verified. They are never vendor guarantees and never Google metrics.
 
-Existing UI comments exclude Marketplace publishing. Marketplace demand and commercial destinations remain intelligence inputs. Marketplace content publication is a separate explicitly commissioned adapter; do not silently enable it during this redesign.
+### Non-negotiables that recur throughout
+1. **One authority per decision domain.** There is never a second simultaneously authoritative owner graph, policy kernel, scorer, opportunity queue or release authority — not during migration, not in shadow mode, not "temporarily".
+2. **Similarity discovers; it never authorizes.** No embedding distance, model label, provider score or Jev probability ever substitutes for ownership, policy, evidence or human review.
+3. **Fail closed.** Missing strict identity, missing evidence, missing reviewer, unavailable provider, schema skew or lease uncertainty blocks the dependent action instead of guessing.
+4. **No ranking guarantee and no invented Google metric.** This architecture pursues measurable qualified outcomes; it never promises rankings and never renders a fabricated "Google score".
 
-Alternatives assessed:
-1. Optimize the current Worker pipeline: least migration effort, but keeps CPU/import and request-lifetime coupling.
-2. Thin edge + durable state + Modal compute + common policy: recommended; preserves current TypeScript semantics while separating heavy work.
-3. Full Python rewrite/event-platform replacement: largest parity risk and operational burden; unnecessary initially.
+## 1. Objective, authority and status
 
-## 3. Target topology
+### 1.1 Objective
+Build an intelligence-led editorial operating system that improves qualified audience outcomes, maintains the existing estate, earns trust and measures business value. Writing is only one possible intervention: research, refresh, consolidation, technical repair, internal linking, authority work, observation and deliberate `NO_ACTION` are equally valid outcomes. Article volume is never the objective.
+
+The end-state architecture is a **strangler migration**: a thin Cloudflare/OpenNext control and read plane, authoritative durable Supabase/Postgres control state, a Modal durable compute plane, a single Semantic Fabric, a bounded Jev decision plane, an independent release/merge authority, and selective replacement or retirement of legacy subsystems after demonstrated parity. The current system is the **migration source and safety baseline, not a permanent dependency** — and not something to be discarded in a clean-sheet rewrite (§3).
+
+### 1.2 Authority order
+Current human authorization → repository `AGENTS.md` and approved design → Supervisor Arc v2026.09.21.1 → SEO Brief and the current repository parity matrix → this document. Conflicts block the affected action. This document does not amend phase thresholds and does not authorize broad CREATE, outreach, destructive action, merges or deployments by itself.
+
+### 1.3 Current-state honesty (binding)
+- The program baseline read of `main` was snapshot `3d248afd09290a97250cb472152afaa57b2a0292` on 2026-09-22; the revision base for this document is worktree head `52f63a86cc01fb574f790321b2eb751a34ff0ff7`. Both are **dated evidence**. Re-pin `main`, the parity matrix and the P0–P13 state at implementation start, and treat any later change as superseding this text where it conflicts.
+- Program-state records are **dated evidence**, not standing truth. The earlier Hjarni SEO Brief snapshot recorded P0–P8 closed and P9–P13 pending; the independent repository audit of the frozen v4 branch later observed P9 as `IN_PROGRESS` with the P9 truth infrastructure present. Neither snapshot is promoted here. A0.2 MUST re-pin `main` and the canonical parity matrix before implementation, and any P9 statement is cited with its evidence date and state (`PENDING`/`IN_PROGRESS`/`PASS`) rather than silently normalized.
+- **Live Supabase project state, applied migration ledger, table sizes, extension versions, effective grants, Cloudflare account plan/limits/bindings, live Worker telemetry, Modal workspace state, Jev account access and all provider entitlements are A0_UNVERIFIED** until A0 records probe evidence (§24).
+- The Notion grade-5 roadmap describing P8 as NEXT is historical for this specification.
+
+### 1.4 Scope boundaries
+- Do not touch `MARKET-PORTAL-AUTH-HANDOFF-1102` or sibling jobs/worktrees; other lanes own them.
+- Marketplace **publishing** is not enabled by this document. Marketplace demand, catalog identity and commercial destinations remain intelligence/funnel inputs (existing code comments explicitly exclude Marketplace publishing from Studio).
+- Product phase advancement, provider commissioning, subscription purchase and account connection are outside this writing task.
+
+## 2. Normative Interface Registry (single definition)
+
+**Rule N1 — one definition.** Every interface below is defined exactly once, in this section. Other sections may reference these objects, constrain their use, or define *additional* interfaces at a single named section, but **no section may restate an interface with different field names, different enumerations or different semantics**. The duplicated v4 §27–§35 blocks violated this rule and are replaced by this registry.
+
+**Rule N2 — monotonic sequence.** The document has one monotonic section sequence (§1–§28). New material is added by versioned amendment to the correct existing section, never by appending a second block with a re-used number.
+
+**Rule N3 — canonical hashing.** Every hash in these interfaces is a lowercase 64-hex SHA-256 over the **same** canonical serialization used by the existing contract code. One serializer, one golden-fixture corpus. Node/TypeScript owns validation and canonical hashing until shared fixtures prove another implementation byte-identical; Python (Modal) transports opaque JSON and never invents its own canon. Cross-language hash drift is a release-blocking defect (test in §25).
+
+**Rule N4 — unknown discipline.** Every optional field may be `null` and every enumeration includes an explicit unknown/unavailable member. `null` is never coerced to `false`, `0`, "low risk" or "no action". A schema-valid object never carries permission; permission lives only in the policy kernel (§8) and release authority (§10).
+
+### 2.1 Registry index
+
+| Interface | Defined | Purpose |
+|---|---|---|
+| `SemanticIdentity` | §2.2 | Versioned resolved meaning of a query family, page purpose or proposed content unit. |
+| `SemanticFact` | §2.3 | Entity–predicate–value with qualifiers, evidence and verification state. |
+| `SemanticRelation` | §2.4 | Typed, directed, scoped edge between semantic objects; carries authority class. |
+| `SemanticOpportunity` | §2.5 | The Studio's primary work unit (an evidence-backed opportunity, not a keyword). |
+| `DecisionState` | §2.6 | The compact, already-reconciled input state handed to the bounded decision plane. |
+| `DecisionRecord` | §2.7 | Immutable record of a bounded decision, its distribution and its mode. |
+| `InformationGainAssessment` | §2.8 | Predicate/answer-unit-level gain measurement against the current owner. |
+| `ComputeClass` | §2.9 | The measured execution class vocabulary used to route all compute. |
+| `GateEvaluation` | §2.10 | Immutable result of one gate rule under one rule version. |
+| `ReleasePermit` | §2.11 | Short-lived, single-use authorization consumed by the release service. |
+| `PublicationProof` | §2.12 | End-to-end candidate→PR→merge→deploy→live lineage record. |
+| `Observation` | §2.13 | Scoped, maturity-labelled measurement attached to evidence. |
+| `Reward` | §2.14 | Multi-dimensional outcome record; never a single hidden score. |
+
+Dependent interfaces are defined once at the location below and never redefined elsewhere:
+
+| Interface | Defined | Interface | Defined |
+|---|---|---|---|
+| `Run`, `Stage`, `Attempt`, fence | §7.2 | `ComputeBudget` | §12.4 |
+| `OutboxEvent`, `ArtifactRef`, `IntentReservation` | §7.2 | `ContractV3` (envelope semantics) | §14.2 |
+| `GateEvaluation` lifecycle | §8.4 | `ReviewerCredential`, `ReviewApproval` | §14.4 |
+| Estate registry entities (`estate_routes`, reservations, etc.) | §17.1 | `IntegrationBinding` | §16.5 |
+| `PublicationTarget` | §17.2 | `MetricObservation`-envelope, `SeoMetricSnapshot` | §26.4 |
+
+### 2.2 `SemanticIdentity`
+```typescript
+interface SemanticIdentity {
+  schemaVersion: "studio.semantic-identity/1";
+  semanticId: string;
+  ontologyVersion: string;
+  resolverVersion: string;
+  jurisdiction: string | null;              // country/state scope; registry-backed
+  legalSystem: string | null;
+  entityIds: string[];                      // program, visa class, institution, service, product
+  programOrPathwayId: string | null;
+  audienceId: string | null;                // audienceIds[] when composite
+  readerJobId: string | null;               // the reader's task, not the site's keyword
+  journeyStage: "understand" | "assess" | "prepare" | "act" |
+                "apply" | "maintain" | "transition" | "settle" | "unknown";
+  searchIntent: "informational" | "commercial_investigation" |
+                "transactional" | "navigational" | "mixed" | "unknown";
+  language: string;
+  countryContext: string | null;
+  temporalContext: { effectiveAt: string | null; validFrom: string | null; validTo: string | null };
+  serviceContextIds: string[];
+  evidenceIds: string[];
+  status: "resolved" | "partial" | "ambiguous" | "conflicted" | "unknown" | "unavailable";
+}
+```
+Resolution is conservative: a numeric or acronym token (for example `485`, `I-485`) cannot resolve an identity without jurisdiction/entity evidence; US I-485 and Australian subclass 485 are permanent collision fixtures. Audience and reader job are independent dimensions. Renaming a label never silently changes identity.
+
+### 2.3 `SemanticFact`
+```typescript
+interface SemanticFact {
+  factId: string;
+  subjectEntityId: string;
+  predicate: string;                        // controlled vocabulary; versioned
+  objectEntityId: string | null;
+  scalarValue: string | number | boolean | null;
+  unit: string | null;
+  qualifiers: {
+    jurisdiction: string | null;
+    legalSystem: string | null;
+    audienceIds: string[];
+    programOrPathwayId: string | null;
+    validFrom: string | null;
+    validTo: string | null;
+    effectiveAt: string | null;
+  };
+  evidenceIds: string[];
+  contradictionEvidenceIds: string[];
+  supportState: "supported" | "contradicted" | "partial" | "historical" | "unverified";
+  sourceHealth: "current" | "stale" | "conflicted" | "unavailable";
+  sourceAuthorityClass: string;
+  verification: "observed" | "reviewed" | "derived" | "model_candidate";
+  extractorVersion: string | null;
+  reviewerId: string | null;
+  factHash: string;
+}
+```
+Absence of a fact is never evidence of its opposite. For YMYL claims, `model_candidate` cannot become usable claim support without §14 reviewer rules. A source URL alone is not a fact.
+
+### 2.4 `SemanticRelation`
+```typescript
+interface SemanticRelation {
+  relationId: string;
+  relationType: string;                     // controlled vocabulary per §11.4
+  subjectId: string;
+  objectId: string;
+  scope: { jurisdiction: string | null; language: string | null; audienceId: string | null };
+  evidenceIds: string[];
+  derivation: { method: string; methodVersion: string; modelVersion: string | null };
+  authorityClass: "AUTHORITATIVE" | "OBSERVED" | "DERIVED_DETERMINISTIC" |
+                  "MODEL_INFERRED" | "REVIEWED_INFERENCE" | "CANDIDATE";
+  confidence: number | null;                // null when not a model output; never a probability of truth
+  validFrom: string | null;
+  validTo: string | null;
+  status: "active" | "superseded" | "invalidated" | "conflicted";
+  invalidationReason: string | null;
+}
+```
+`CANDIDATE_*`, overlap and suggested-link relations are structurally non-authoritative: no policy rule may read them as owner, gate or release input.
+
+### 2.5 `SemanticOpportunity`
+```typescript
+interface SemanticOpportunity {
+  opportunityId: string;
+  version: number;
+  semanticIdentityId: string;
+  queryFamilyIds: string[];
+  readerJobId: string | null;
+  ownerRouteId: string | null;              // authoritative owner, or null when unresolved
+  clusterId: string | null;
+  jurisdiction: string | null;
+  metricSnapshotId: string | null;
+  evidenceIds: string[];
+  problemType: string;
+  semanticGapIds: string[];
+  competitorGapIds: string[];
+  informationGainAssessmentId: string | null;
+  collisionBundleId: string | null;
+  cannibalizationRiskState: "none" | "candidate" | "confirmed" | "unknown";
+  authorityGapState: string;
+  commercialPathState: string;              // includes BLOCKED_NO_RELEVANT_SUPPLY
+  eligibleActions: string[];                // policy-supplied only
+  blockedActions: { action: string; reasonCodes: string[] }[];
+  policyVersion: string;
+  featureSetId: string | null;              // Modal-produced bounded features
+  decisionRecordId: string | null;
+  recommendedAction: string | null;
+  recommendationState: "pending" | "advisory" | "accepted" | "dismissed" | "abstained";
+  predictedOutcome: { metric: string; direction: "up" | "down" | "stable"; horizon: string }[];
+  interventionCostClass: ComputeClass;
+  expectedOutcomeContractId: string | null;
+  observationPlanId: string;
+  status: "detected" | "investigating" | "eligible" | "blocked" |
+          "executing" | "observing" | "mature" | "dismissed";
+  createdAt: string;
+  supersededBy: string | null;
+}
+```
+There is **one** opportunity queue. Legacy `opportunityEngine`/`opportunityScore` outputs become candidates or read-only history under §24; they never run as a parallel queue.
+
+### 2.6 `DecisionState`
+```typescript
+interface DecisionState {
+  schemaVersion: string;
+  decisionTask: string;
+  subjectId: string;
+  semanticIdentityHash: string;
+  ownerId: string | null;
+  ownerVersion: string | null;
+  policyVersion: string;
+  featureSetVersion: string;
+  rubricVersion: string;
+  ontologyVersion: string;
+  eligibility: { action: string; eligible: boolean; reasonCodes: string[] }[];
+  semanticFeatures: {
+    lexicalOverlap: number | null; vectorSimilarity: number | null; rerankerScore: number | null;
+    entityOverlap: number | null; readerJobOverlap: number | null; claimOverlap: number | null;
+    informationGain: number | null; jurisdictionMatch: boolean | null; temporalMatch: boolean | null;
+  };
+  evidenceState: { completeness: string; freshness: string; contradictions: number; requiredReviewer: boolean };
+  outcomeFeatures: Record<string, number | string | null>;
+  allowedChoices: string[];                 // policy-derived; forbidden actions are absent, not down-weighted
+  inputArtifactHashes: string[];
+}
+```
+Precondition: Modal has already compressed raw estate state into this bounded, reconciled form. Raw crawled pages are never sent when this state is sufficient.
+
+### 2.7 `DecisionRecord`
+```typescript
+interface DecisionRecord {
+  decisionId: string;
+  decisionTask: string;
+  decisionStateHash: string;
+  inputArtifactHashes: string[];
+  provider: string;                         // e.g. typesafe
+  modelVersion: string;                     // actual returned version, not requested alias
+  rubricVersion: string;
+  ontologyVersion: string;
+  calibrationVersion: string;
+  distribution: { choice: string; probability: number }[];
+  nativeConfidence: number | null;          // never reinterpreted as accuracy
+  selectedOption: string | null;
+  abstained: boolean;
+  abstentionReasonCode: string | null;
+  policyResult: { eligible: boolean; reasonCodes: string[] };  // computed independently of the model
+  mode: "shadow" | "advisory" | "bounded_assist" | "expanded_bounded";
+  createdAt: string;
+  supersededBy: string | null;
+}
+```
+No synthesized natural-language rationale is ever attributed to the model; explanations are generated from recorded reason codes and facts (§21).
+
+### 2.8 `InformationGainAssessment`
+```typescript
+interface InformationGainAssessment {
+  assessmentId: string;
+  ownerRouteId: string | null;
+  ownerVersion: string | null;
+  proposedAnswerUnits: string[];            // predicate/question-level, not word counts
+  alreadySatisfiedUnits: string[];
+  genuinelyNewUnits: string[];
+  unsupportedUnits: string[];
+  uniqueReaderJob: boolean;
+  estimatedGainState: "high" | "medium" | "low" | "none" | "unknown";
+  evidenceIds: string[];
+  analyzerVersion: string;
+}
+```
+Internal anti-duplication aid, not a Google metric. Low/none gain normally favors `REFRESH`/`CONSOLIDATE`/`NO_ACTION` over `CREATE`. Lexical novelty with the same reader job and answer set is low gain.
+
+### 2.9 `ComputeClass`
+```typescript
+type ComputeClass =
+  | "S0_DETERMINISTIC_CPU"   // parsing, hashing, AST, counts, joins, graph traversal, diffs
+  | "S1_EMBEDDING"           // batched embeddings
+  | "S2_RERANKER"            // cross-encoder/reranker on bounded candidate sets
+  | "S3_SMALL_MODEL"         // extraction/classification that rules and Jev cannot do
+  | "S4_LARGER_LOCAL"        // difficult competitor decomposition / semantic synthesis (escalation)
+  | "S5_FRONTIER_OR_HUMAN";  // hard research, architecture, ambiguous legal/editorial cases
+```
+Escalation requires a recorded failed/insufficient lower tier and an expected-value justification (§12). A workload never escalates because hardware happens to be available.
+
+### 2.10 `GateEvaluation`
+```typescript
+interface GateEvaluation {
+  gateId: string;                           // program gate P0–P13 or action/release gate
+  ruleVersion: string;
+  scope: string;                            // estate, host, cluster, route, contract, action
+  status: "PENDING" | "IN_PROGRESS" | "PASS" | "ACCEPTED_EXCEPTION" |
+          "BLOCKED_EXTERNAL" | "FAIL" | "INVALIDATED";
+  evaluatedAt: string;
+  expiresAt: string | null;
+  evidenceIds: string[];
+  evidenceHash: string;
+  inputHash: string;
+  reasonCodes: string[];
+  evaluatorVersion: string;
+  affectedAction: string;
+  invalidatedBy: string | null;
+}
+```
+`NEXT` is a scheduling pointer, never a status. Missing, partial, stale, failed or unavailable evidence never becomes PASS. `ACCEPTED_EXCEPTION` requires a named authorizer, reason, expiry and compensating checks, and can never silently clear CREATE freeze, ownership ambiguity, fabricated credentials or a missing YMYL review.
+
+### 2.11 `ReleasePermit`
+```typescript
+interface ReleasePermit {
+  permitId: string;
+  action: string;
+  actorId: string;
+  runId: string;
+  targetAdapterId: string;
+  contractHash: string;
+  bodyHash: string;
+  renderHash: string;
+  ownershipVersion: string;
+  policyVersion: string;
+  expectedRepositoryBase: string;           // expected main/head SHA the PR must be based on
+  issuedAt: string;
+  expiresAt: string;                        // short TTL
+  state: "issued" | "consumed" | "expired" | "revoked";
+  consumedAt: string | null;
+  consumeTransactionId: string | null;
+  externalOperationIntentId: string | null; // recorded before dispatch
+}
+```
+Single-use and transactional. A hash detects change; it is not itself authorization.
+
+### 2.12 `PublicationProof`
+```typescript
+interface PublicationProof {
+  proofId: string;
+  targetAdapterId: string; repositoryId: string; hostId: string; routeId: string;
+  candidateSha: string;                     // exact head that was reviewed and verified
+  pullRequest: { number: number; url: string; baseSha: string } | null;
+  requiredChecks: { checkId: string; result: string; headSha: string }[];
+  mergeSha: string | null;
+  deployment: { targetId: string; versionId: string; deployedAt: string } | null;
+  live: {
+    url: string; verifiedAt: string; verifier: string; httpStatus: number;
+    bodyDigest: string; canonical: string; robotsState: string;
+    authorship: string; sourcesPresent: boolean; ctaTarget: string | null;
+  } | null;
+  lineage: { jobId: string; contractHash: string; renderHash: string } | null;
+  rollbackRef: string | null;
+  uncertainExternalWriteState: "none" | "possible" | "reconciled_absent" | "reconciled_present";
+  reconciledAt: string | null;
+}
+```
+PR created ≠ merged ≠ deployed ≠ live verified. Every one is a separate recorded state.
+
+### 2.13 `Observation`
+```typescript
+interface Observation {
+  observationId: string;
+  subjectKind: "intent" | "page" | "revision" | "opportunity" | "intervention";
+  subjectId: string;
+  metricKey: string;
+  scope: {
+    projectId: string; canonicalUrl: string | null; language: string; country: string | null;
+    device: string | null; channel: string | null; searchType: string | null;
+    propertyId: string | null; cohortId: string | null; timezone: string; currency: string | null;
+  };
+  window: { start: string | null; end: string | null };
+  value: unknown | null;                    // registry-typed; null when unavailable
+  status: "available" | "stale" | "unavailable" | "not_applicable" | "pending" | "failed";
+  completeness: "complete" | "partial" | "unknown";
+  coverage: number | null;
+  sourceRunId: string;
+  definitionVersion: string;
+  maturity: "provisional" | "mature" | "confounded" | "insufficient_data" | "invalidated";
+  confounders: string[];
+  attribution: { method: string; confidence: number | null } | null;
+  observedAt: string;
+  ingestedAt: string;
+  validUntil: string | null;
+  evidenceHash: string;
+}
+```
+Provider unavailable/stale/partial is **not zero**. Zero denominator is null, not 0%.
+
+### 2.14 `Reward`
+```typescript
+interface Reward {
+  rewardId: string;
+  interventionId: string;
+  observationIds: string[];
+  dimensions: {
+    searchVisibility: number | null;
+    packaging: number | null;
+    qualifiedTraffic: number | null;
+    taskEngagement: number | null;
+    internalAuthority: number | null;
+    externalAuthority: number | null;
+    geoCitation: number | null;
+    commercialOutcome: number | null;
+    trustAndFreshness: number | null;
+    executionCost: number | null;
+    regressions: string[];                  // cannibalization/technical/trust regressions observed
+  };
+  maturity: "provisional" | "mature" | "confounded" | "insufficient_data" | "invalidated";
+  attribution: { method: string; confidence: number | null; limitations: string[] };
+  policyVersion: string;
+  computedAt: string;
+}
+```
+There is no scalar collapse. Revenue never compensates for a trust/legal gate failure, and a forecast is not an outcome.
+
+## 3. Binding architecture decision: Alternative 2 as a strangler migration
+
+### 3.1 Alternatives assessed
+| # | Alternative | Verdict |
+|---|---|---|
+| 1 | Optimize the current Worker pipeline in place | Rejected: keeps CPU/import coupling and request-lifetime execution that caused the 1102 class of failure (§4, §6). |
+| 2 | **Thin edge + durable Postgres control state + Modal compute + Semantic Fabric + bounded decision plane + separate release authority, delivered as a strangler migration** | **Approved and binding.** Preserves current TypeScript domain semantics while moving heavy work off the request path and giving every decision domain exactly one authority. |
+| 3 | Clean-sheet rewrite / full Python event-platform replacement | Rejected as the default: largest parity risk, discards tested safety invariants and the estate knowledge embedded in the current code. Individual subsystems may still be REPLACE_AND_RETIRE under §3.4. |
+
+### 3.2 What "strangler" means here (binding)
+- The existing system is the **migration source and safety baseline**. Its business and safety invariants are preserved regardless of whether its implementation survives.
+- New capability is introduced **beside** existing capability, then given authority only through an explicit parity → migration → rollback → authority-cutover record (§3.5). Until cutover, the legacy subsystem remains the single authority for its domain and the new subsystem runs read-only or in shadow.
+- **There must never be two simultaneously authoritative owner graphs, policy kernels, scorers, opportunity queues or release authorities.** Shadow computation is allowed; shadow *authority* is not.
+- No indefinite dual-write and no split-brain. Every dual-run period has a named exit condition and an owner; an unclosed dual-run is a release-blocking defect.
+- Selective or eventual full replacement is allowed, and replacement is expected where measured parity and value justify it.
+
+### 3.3 A0 disposition vocabulary (mandatory for every subsystem)
+A0 classifies each legacy subsystem and its tables as exactly one of:
+
+| Disposition | Meaning | Required evidence before use |
+|---|---|---|
+| `REUSE` | Existing implementation remains authoritative inside the new architecture (possibly wrapped by new interfaces). | Interface compatibility map, grant/RLS review, schema stability evidence, tests still passing. |
+| `WRAP_TEMPORARILY` | Kept unchanged behind a new adapter with a named retirement-window exit condition. | Adapter contract tests, explicit exit criterion, deadline owner in A0.4. |
+| `MIGRATE_STATE` | State moves to the new authoritative store under a reversible migration. | Reconciliation counts, idempotent backfill/roll-forward + rollback plan, cutover record. |
+| `REPLACE_AND_RETIRE` | New component becomes authoritative; legacy becomes read-only/archive, then retires. | Parity evidence, deterministic reconciliation, rollback drill, authority-cutover record. |
+
+A module with no disposition may not be depended on by new code. New implementations must not silently duplicate a legacy module's authority.
+
+### 3.4 Single-authority invariants (never violated)
+1. **Owner graph:** exactly one owner authority (initially `lib/seoFactory/ownership.ts` semantics via the estate registry, §17). No semantic or model-derived path may mint owners.
+2. **Policy kernel:** exactly one evaluator and one database transition API; every legacy sink either routes through it or is retired (§8, §10).
+3. **Scorers/queues:** exactly one authoritative opportunity queue and one priority mechanism (§15). Ranking/reward engines under §24 are migration inputs, not parallel scorers.
+4. **Release authority:** exactly one merge/deploy path (§10). Writers, research runners and Modal containers hold no merge credentials.
+5. **Semantic identity:** exactly one authoritative semantic model space per decision use; mixed-space comparison is prohibited (§11.7).
+6. **Key management:** one canonical serializer/hash regime (§2 Rule N3).
+7. **Truth stores:** Postgres is the only transactional authority; Modal Volume is artifact storage, never a database (§9).
+
+### 3.5 Authority cutover sequence (mandatory shape)
+```
+shadow read/compute        (no authority; outputs compared offline)
+  → deterministic reconciliation  (counts, hashes, deltas, disagreement report)
+  → single authority switch        (transactional, versioned, reversible)
+  → legacy read-only / archive     (no writes; history preserved)
+  → retirement                     (code path removed, migration ledger updated)
+```
+Each arrow requires recorded evidence, a rollback path and an explicit named owner. The switch itself is a policy-versioned operation, not a deploy side effect.
+
+## 4. Verified current-state baseline (what the migration source actually is)
+
+### 4.1 Revision base and verified repository facts
+Base: worktree head `52f63a86cc01fb574f790321b2eb751a34ff0ff7`. Program baseline read of `main`: `3d248afd09290a97250cb472152afaa57b2a0292` (2026-09-22).
+
+| # | VERIFIED_REPO_FACT (at revision base) | Architectural consequence |
+|---|---|---|
+| F1 | `components/design/admin-content-studio.tsx` is a single 9,348-line coordinating component. | Measured migration surface. Route/workspace replacement by journey is required (§21); the monolith is not a long-term home. |
+| F2 | 22 route files declare `export const runtime = 'nodejs'`, and `middleware.ts` declares `export const runtime = 'experimental-edge'`. | Confirms the audit finding: under OpenNext/Cloudflare these route handlers execute **inside the single Worker**, not on a Node server. Switching a runtime label moves nothing (§6). |
+| F3 | `middleware.ts` is the only explicit edge-runtime declaration; `open-next.config.ts` uses the static-assets incremental cache and serves prerendered output from Worker static assets. | The Worker hosts route execution and middleware; there is no separate Node tier to offload to. CPU safety must come from import/call topology and tiny handlers. |
+| F4 | `npm run deploy` → `scripts/deploy-production.mjs`, which hard-requires `GITHUB_ACTIONS=true`, `GITHUB_REF=refs/heads/main` and a prepared `WORKER_SECRETS_FILE`, exiting 78 otherwise; `.github/workflows/deploy.yml` runs on push to `main`, on PRs to `main` and on `workflow_dispatch`, with `concurrency: cancel-in-progress: true`. | A guarded official deploy path exists. The cancel-in-progress behavior must be reconciled with release lineage (§10.6). |
+| F5 | `supabase/migrations/` holds 76 SQL files; `.github/workflows/apply-seo-factory-migrations.yml` triggers on **push to `main`** when `supabase/migrations/**`, `supabase/migration-baseline.json` or `scripts/migration-order.mjs` change; `adopt-migration-ledger.yml` is a manual `workflow_dispatch` pinned to an expected `main` SHA. | Merging a migration file can auto-apply it to the live database. Migration mechanics are a release-authority concern, not a side activity (§9.6). |
+| F6 | `scripts/migration-order.mjs` defines a three-tier order (pinned BASE list, self-registering timestamped files, pinned INDEXES last) and hard-errors on any file that matches no tier. | A frozen baseline plus append-only timestamped files is already the repository convention; it must be preserved and never edited retroactively (§9.6). |
+| F7 | Nine `using (true)`-style permissive policies exist across migrations, and least-privilege work exists in at least `20260917173300_base_table_least_privilege.sql` and `20260806_hardening.sql`. | Privilege state is **partially hardened and unverified in aggregate**. Current public SEO tables are not all least-privilege; A0.5 must inventory effective grants before any authoritative reuse (§9.7). |
+| F8 | Git/merge write sinks exist in code: `lib/githubContentsCore.ts` (`/pulls/{n}/merge`), `lib/seoFactory/ship.ts` (`mergePullRequest`), called inline from `app/api/content-studio/jobs/strictManualPublication.ts` and `app/api/content-studio/jobs/legacyCore.ts`; `scripts/refresh-gsc-token.sh` performs `git commit --allow-empty` and `git push origin main` on the operator machine. | Multiple Git write/merge paths exist today, including a direct-main operator script. Every sink must be inventoried, dispositioned and disabled-by-default per §10. |
+| F9 | Scheduled/reconciliation routes exist: `content-studio-retry`, `reconcile-content-jobs`, `reconcile-incidents`, `forecast-reward-weekly`, `seo-engine-daily`, `rhythm-scan-weekly`, `war-room-daily`, `weekly-payouts`, `worker-secrets-health`, `daily-digest`. | Existing retry/reconcile crons must be reconciled with the durable runtime (§7.7) rather than duplicated. |
+| F10 | Legacy subsystems named by the program audit exist as modules: `lib/seoEngine/{rankingModel,forecastTracker,forecastReward,planner,planEconomics,coverageIntent,ontology,knowledge,gate,scoring}.ts` and `lib/seoFactory/{topicGraph,opportunityScore,opportunityEngine,currentGate,executionStages,publicationProof,broadCreateFreeze,ownership}.ts`. | These are the A0.4 disposition targets. Their business/safety invariants are preserved; their implementations may be retired. |
+| F11 | `package.json` exposes `test: jest`, `lint: next lint`, `build: next build --webpack && opennextjs-cloudflare build --skipNextBuild`; stack is Next 16.2.11, `@opennextjs/cloudflare` ^1.19.4, `wrangler` 4.132.0. | Verification commands come from the repository, not from guesses in this document (§25). |
+
+### 4.2 The 1102 class of failure — stated honestly
+- The record includes Cloudflare `1102` (Worker exceeded CPU/resource limits) incidents. In an OpenNext deployment the request path shares one Worker bundle: heavy SSR, middleware imports, large JSON assembly, DOM/PDF parsing, embedding or LLM orchestration pulled transitively into a route all execute as request CPU.
+- **Changing `runtime` labels does not fix this.** `runtime = 'nodejs'` in a Next route does not move compute to a Node server under OpenNext; the code still runs in the Worker isolate. The fix is topology: heavy capabilities must be *unreachable* from any request-scoped module, verified by import-graph tests (§6.3, §25).
+- This document does not claim that any particular route caused a specific historical incident. A0 records the actual telemetry source and the real incident evidence before any acceptance claim (§6.6).
+
+### 4.3 What remains A0_UNVERIFIED (do not assume)
+Live Supabase project/plan/applied ledger/table sizes/extension availability; Cloudflare account plan, CPU limits, bindings, real 1102/503 telemetry; Modal workspace identity, plan, billing telemetry, Volume behavior; Jev/TypeSafe account and model access; Modal↔Cloudflare credentials; GitHub App installation scope; provider entitlements (GSC/GA4/Google Ads/Ahrefs/DataForSEO/Bing/Ubersuggest/TinyFish); reviewer availability; and the current contents of the frozen migration baseline's live counterpart.
+
+## 5. Target topology and layered responsibility model
+
 ```mermaid
 flowchart TD
-  U["Content Studio UI"] --> E["Authenticated thin API"]
-  E --> D["Postgres authoritative control state + outbox"]
+  U["Content Studio UI (route-level workspaces)"] --> E["Thin authenticated command/read API (Worker)"]
+  E --> D["T1 Postgres: authoritative control state + outbox"]
   S["Approved APIs / exports / repo manifests / authorities"] --> I["Modal ingestion + normalization"]
   I --> D
-  D --> F["Semantic Fabric: identity, facts, graph, embeddings, query families"]
+  I --> V["T2 Modal Volume: immutable derived artifacts"]
+  D --> F["Semantic Fabric: identity, facts, relations, vectors, query families"]
   F --> M["Modal semantic compute + durable runners"]
+  M --> V
   M --> J["Jev bounded decision adapter"]
   D --> K["Deterministic policy kernel"]
-  J --> O["Eligible Opportunity Queue"]
+  J --> O["Single eligible Opportunity Queue"]
   K --> O
-  O --> W["Research, writer, audit and repair adapters"]
-  W --> A["Immutable artifact storage"]
+  O --> W["Research / writer / audit / repair adapters"]
+  W --> V
   W --> D
-  E --> P["Policy and release service"]
+  E --> P["Release service (separate credential boundary)"]
   P --> D
-  P --> G["PR and official CI"]
-  G --> L["Live verification"]
+  P --> G["PR + official CI + protected-main merge"]
+  G --> L["Official deployment + independent live verification (T3)"]
   L --> D
   L --> R["Mature search / engagement / conversion / authority outcomes"]
   R --> D
   R --> F
 ```
 
-The diagram shows logical responsibilities, not permission for every runner to write every table.
+The diagram shows logical responsibility, not permission for every runner to write every table. Layers mutate state only through the transition APIs of their owning layer.
 
-- **Browser:** navigation, editor, bounded lists, previews and authenticated progress reads. No provider secrets, policy decisions or release authority.
-- **Cloudflare edge:** authenticate, authorize scope, validate small input, transact command/outbox creation, read bounded projections and return. No crawling, LLM generation, embeddings, full-document audit or synchronous release orchestration.
-- **Postgres/Supabase:** authoritative run state, immutable contracts, lease/fencing counters, gate evidence, intent reservations, approval records, outbox and publication manifests. Large bodies stay outside list rows.
-- **Modal:** bounded durable research, generation, Jev calls, audits, rendering, live verification and scheduled reconciliation. Container images pin dependencies and source revision.
-- **Artifact store:** private immutable objects, content-addressed with checksums, restricted download capabilities and retention policy. Use existing approved storage unless a measured requirement justifies another store.
-- **Release service:** separate credential boundary; creates PRs only after authorization. No writer/research container has Git merge or deployment credentials. Sol retains merge authority.
-- **Official CI:** exact-head checks, protected-main merge and repository deployment. Modal code deployment also uses a reviewed official workflow; no local production deploy shortcut.
+| Layer | Responsibility | Authority / prohibition |
+|---|---|---|
+| L0 Governance | Human authorization, `AGENTS.md`, Supervisor Arc, SEO Brief, P0–P13, policy versions. | Defines what may happen. No runtime path may modify this layer. |
+| L1 Observation | GSC, GA4, Bing, Ads, Ahrefs, DataForSEO, Ubersuggest exports, TinyFish, repo/deploy/catalog/authority observations. | Immutable source runs with scope, completeness and failure state; raw interpretation is never promoted to fact. |
+| L2 Normalization/evidence | Identity normalization, dedup, locators, metric definitions, privacy handling, connector bindings. | Versioned evidence and observations; unknown stays unknown; unavailable ≠ zero. |
+| L3 Estate truth | Repos/hosts/routes, canonical history, intent owners, catalog IDs, contracts, revisions, gate state, publication proofs. | T1 Postgres is authoritative. Nothing derived may overwrite it. |
+| L4 Semantic Fabric | Entities, aliases, reader jobs, query families, facts, answer units, typed relations, vectors. | Derivative/reconciled meaning with provenance; candidate relations are explicitly non-authoritative. |
+| L5 Compute | Modal deterministic transforms, embeddings, reranking, extraction, competitor decomposition. | Durable derived artifacts; resource class, version, cost and failure recorded. |
+| L6 Decision | Deterministic eligibility, then Jev bounded choices, then executor routing. | `DecisionRecord` + abstention; never grants permission outside policy. |
+| L7 Research/editorial | Primary-source research, ContractV3, answer-first writing, claim-linked revisions, reviewer workflow. | Immutable contract/revision/review artifacts; rewrites invalidate dependent approvals. |
+| L8 Release | Permit, PR, exact-head CI, merge, official deployment, live proof. | Separate credential boundary. PR creation is not publication. |
+| L9 Outcome | Search, authority, engagement, Marketplace and business observations with maturity/coverage. | `Observation`/`Reward` records; no forced attribution, no causal claims from deltas. |
+| L10 Learning | Retrieval thresholds, Jev calibration, priority bands, compute routing, playbook evidence. | Versioned proposals and approved configuration only; cannot rewrite governance. |
+| L11 Operations/security | Budgets, provider health, leases/fencing, secrets, RLS, audit, recovery, rollback, kill switches. | Enforces reliability and least privilege across every other layer. |
 
-Initially run the extracted, tested TypeScript domain code inside a Node-equipped Modal container, with a small Python Modal entrypoint invoking a bounded Node process. Build this shared domain package once from the same commit for edge-compatible policy helpers and Node runners. Keep Node-only compute imports out of edge bundles. Port individual workloads to Python only when measured value and contract-equivalence tests justify it.
+Data flows upward only through validated contracts. Invalidation flows downward from authority/source/owner changes to dependent derived state. The UI may project any layer but can never bypass its write boundary.
 
-### Layered responsibility model added in CS-2026.09.22.4
-The target topology is interpreted as seven cooperating layers rather than one AI pipeline: **source/evidence → estate truth → semantic understanding → deterministic eligibility → bounded decision → execution/release → outcome learning**. Sections 27–42 define the semantic/decision/learning layers in detail. They are additive to this topology: Postgres remains authoritative, Modal remains bounded compute, Jev remains advisory/bounded decision intelligence, and release authority remains separate.
+### 5.1 Plane responsibilities (single sentence each)
+- **Browser:** navigation, editing, bounded lists, previews, authenticated progress reads. No provider secrets, policy decisions or release authority.
+- **Cloudflare edge (thin):** authenticate, authorize scope, validate small input, transact command + outbox row, read bounded projections, return. No crawling, generation, embedding, full-document audit or synchronous release orchestration (§6).
+- **Supabase/Postgres (T1):** authoritative run state, immutable contracts, lease/fence counters, gate evidence, intent reservations, approvals, outbox, publication manifests, semantic IDs/metadata, decision/review/release state, observation/reward ledgers.
+- **Modal:** bounded durable research, generation, semantic compilation, audits, rendering, live-verification assistance and scheduled reconciliation; large artifacts to T2.
+- **Artifact store (T2):** private immutable content-addressed objects with checksums, lineage and retention class (§9.3).
+- **Release service:** separate credential boundary; creates PRs only after consuming a permit. No writer/research container holds merge or deploy credentials (§10).
+- **Official CI + repository deployment:** exact-head checks, protected-main merge, official workflow deployment, independent live verification (§10).
 
-## 4. Policy kernel and phase model
-Use one versioned policy evaluator and one authoritative database transition API. Models may recommend; policy decides permission. UI controls are explanatory projections of server capability decisions.
+### 5.2 Domain-code placement rule
+Run the extracted, tested TypeScript domain code inside a Node-equipped Modal container for heavy work (small Python Modal entrypoint invoking a bounded Node process), and build the shared domain package once from the same commit for both edge-compatible policy helpers and Node runners. Node-only compute imports must never enter edge bundles. Port an individual workload to Python only when measured value and contract-equivalence tests justify it; until then, Python transports opaque JSON (§2 Rule N3).
 
-Separate:
-- **Program gates:** canonical phase closures and explicit exceptions, with source evidence. Imported historical PASS is not invented fresh proof.
-- **Action gates:** requirements applicable to RESEARCH, REFRESH, CONSOLIDATE, REPAIR, LINK, AUTHORITY, CONVERSION, GEO, OBSERVE and CREATE.
-- **Release gates:** current contract/body/artifact/owner/source validity, review, CI, deployment and live proof.
+## 6. Cloudflare/OpenNext request-plane contract ("stay-free tiny edge" or explicit re-baseline)
 
-A refresh does not require pretending P9–P13 are complete. P13 CREATE requires predecessor closure under the canonical matrix, P12 expansion evidence and a cluster-scoped unlock. Regressions in an applicable earlier gate invalidate pending dependent permissions.
+### 6.1 Verified semantics that drive this contract
+- The Portal runs on the Cloudflare **Workers Free plan** today (current operational baseline; **A0.2 confirms account evidence**).
+- Under OpenNext for Cloudflare, Next route `runtime = 'nodejs'` does **not** move execution off the Worker: the route runs in the Worker isolate and its CPU/memory is charged there (F2/F3).
+- `middleware.ts` is the only explicit edge-runtime module today, and the OpenNext Worker hosts route execution.
+- Therefore request CPU safety comes from **import and call topology plus tiny handlers**, never from runtime labels.
 
-Every gate result contains gateId, ruleVersion, scope, status, evaluatedAt, expiresAt, evidenceIds, evidenceHash, inputHash, reasonCodes, evaluatorVersion and affectedAction. Statuses retain PENDING, IN_PROGRESS, PASS, ACCEPTED_EXCEPTION, BLOCKED_EXTERNAL and FAIL; NEXT remains a scheduling pointer. Missing, partial, stale, failed or unavailable evidence does not become PASS.
+### 6.2 The decision gate: tiny-edge contract or paid re-baseline
+A0.2 produces one of two recorded outcomes, and the architecture must not proceed on an implicit third:
+1. **Stay-Free tiny-edge contract (default):** every request-scoped module satisfies §6.3–§6.5 within free-plan limits, proven by measurement and canary. This is the target state.
+2. **Explicit paid-plan re-baseline:** only if measurement proves a required user-facing read cannot meet the contract. It requires recorded evidence, cost approval, named owner and a revised acceptance budget. A paid plan is never adopted to make a heavy request path "fit".
 
-ACCEPTED_EXCEPTION is not equivalent to PASS automatically: only canonical policy may permit a scoped exception, with named authorizer, reason, expiry and compensating checks. No exception may silently clear CREATE freeze, ownership ambiguity, fabricated credentials or missing YMYL review. A policy change requires its own review and explicit authority.
+### 6.3 Import/call topology rules (enforced, not aspirational)
+1. Request-scoped modules (route handlers, middleware, server components used by authenticated reads) must not transitively import writer, crawler, fetcher/parser (DOM/HTML/PDF), embedding, vector, LLM/Jev, Modal-orchestration or full-document-audit packages.
+2. CI runs an import-graph check over the request plane and fails on forbidden transitive edges, with an explicit allowlist that requires review to change.
+3. Heavy capabilities are reachable only from (a) Modal runners, (b) scheduled jobs outside the request path, or (c) the release service. If a request handler needs their result, it reads a **persisted projection**.
+4. No request handler performs a synchronous call to Modal, GitHub, provider APIs requiring multi-second work, or CI. The edge never waits for CI (§6.5).
+5. Route handlers are tiny: authenticate → validate → transact → return 202/projection. Business orchestration lives behind the runtime boundary.
 
-### P0–P13 traceability
+### 6.4 Budgets, payload projections and cache rules
+| Control | Proposed value | Notes |
+|---|---|---|
+| Command payload cap | 64 KiB enforced on actual bytes (not `Content-Length`) | 413 on violation with a stable reason code. |
+| List projection cap | 128 KiB with cursor pagination (default 25, max 100 rows) | Selected columns only; no raw bodies, no semantic matrices. |
+| Event batch cap | 100 events per page | Event pages are append-only reads by `after=sequence`. |
+| Large documents | Direct upload via scoped storage capability → processed in Modal | Never posted through the Worker. |
+| DB calls per request | Bounded, declared per route and asserted in tests | Aggregate only when the plan supports it; otherwise bounded fan-out with explicit cap. |
+| Subrequests | Declared per-route budget with admission control | Bound parallel provider/DB work; cancel redundant reads. |
+| Private responses | `private, no-store` by default | Static assets may be public-cacheable; never cross-user shared caches. |
+| Signed previews/downloads | Short expiry + authorization still enforced server-side | Capability never replaces authorization. |
+| Provider failure behavior | Queue admission limits; slow provider never triggers browser retry storms | Backpressure returns 429 with reason codes. |
+
+### 6.5 Polling, streaming and no-request-bound-CI
+- **One poll coordinator per view** (a single scheduler component) owns all polling for that view. Individual widgets subscribe to it; widgets never poll independently.
+- Polling defaults to 5 s only for visible active runs, backs off on inactivity and error, and **pauses in hidden tabs** (visibility API). Requests are de-duplicated across components and coalesced.
+- Optional bounded SSE may project persisted events only; it never owns compute lifetime and never becomes the source of truth.
+- **No request-bound CI waiting.** PR check status is read from persisted webhook/reconciliation state. If the state is stale, the UI says "waiting for check evidence" instead of blocking a request.
+- Run cards show last real event, stage, attempt, elapsed time, heartbeat age and retry state. A stale heartbeat shows "execution status needs reconciliation" — never a fabricated percentage or an endless "Working".
+- Admission control: per-user and global concurrency caps on commands; excess returns 429 with retry guidance instead of degrading reads.
+
+### 6.6 Telemetry and acceptance (real signals only)
+- A0.2 identifies the **actual Cloudflare telemetry source** (analytics dataset or equivalent) for CPU time, exceeded-CPU/memory events, 1102, 503, isolate startup and request counts. **No acceptance claim about 1102/503 is permitted before that source is identified and used.**
+- Track CPU separately from wall latency, aggregated by route and by build SHA. Aggregate CPU per route/build is a first-class release metric.
+- Acceptance budgets (PROPOSED_CONTROL; measured, never asserted):
+  - Edge p95 CPU ≤ min(10 ms, 25% of configured CPU cap); p99 ≤ 50% of the configured cap. If existing auth alone fails this, profile/redesign before enabling the route.
+  - Worst supported isolate load stays below 80 MiB measured allocation (not an average).
+  - Warm command acceptance p95 ≤ 750 ms and cold p95 ≤ 1.5 s excluding measured external latency; a returned 202 never waits for research.
+  - Initial Studio route ≤ 200 KiB gzip JS excluding separately reported shared auth/runtime; incremental lazy route chunk ≤ 150 KiB; total transfer is recorded too, so exclusions cannot hide bloat.
+  - Field targets p75 LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1 on defined mobile tests and then field data; lab success never claims field success.
+- Load test: 30 minutes at 2× observed peak, minimum 50 concurrent active sessions, including cold starts, list pagination, editor saves and status polling. **Zero `1102`/`exceededCPU`/`exceededMemory` events**; error rate < 0.5 % excluding intentional 4xx denials.
+- Canary: ≥ 24 hours and ≥ 10,000 representative API requests (supplement in staging where production volume is low, labelled separately), with **zero resource-limit incidents**; any incident holds promotion and triggers diagnosis.
+- Targets may be revised only with measured evidence and Sol approval. Raising plan limits is never the primary remedy.
+- **Independent kill switches** (separate flags, separately owned, tested) stop: new dispatch/enqueue, Modal runners, release-permit issuance, and outbound notifications. Stopping one never requires stopping the others. Kill switch state is visible in Operations and in every run's audit trail.
+
+## 7. Durable execution runtime
+
+### 7.1 Command path (the only accepted write shape)
+```
+authenticated request
+  → validate small input + idempotency key + expected versions
+  → single Postgres transaction: run + stage + outbox row (+ reservation/gate snapshot)
+  → commit
+  → return 202 with run id
+  → request ends  (no Modal call, no provider call, no CI wait)
+```
+A scheduled Modal dispatcher claims bounded outbox batches using short database locks, commits the claim, then spawns work outside the transaction. A periodic reconciler recovers expired dispatch claims. A best-effort wakeup may reduce latency but is never the sole delivery guarantee. A database outage cannot acknowledge an unpersisted job (503 with a stable reason code).
+
+### 7.2 Runtime identity interfaces (defined once)
+```typescript
+interface Run {
+  runId: string; projectId: string; action: string; subjectId: string;
+  policyVersion: string; contractSchemaVersion: string; workerImageDigest: string | null;
+  state: "PROPOSED" | "RESEARCHING" | "CONTRACT_READY" | "DRAFTING" | "AUDITING" |
+         "REVIEW_REQUIRED" | "APPROVED" | "PR_CREATED" | "MERGED" | "DEPLOYED" |
+         "LIVE_VERIFIED" | "OBSERVING" | "CLOSED" |
+         "BLOCKED" | "FAILED" | "CANCELLED" | "SUPERSEDED";
+  idempotencyKey: string; createdAt: string; supersededBy: string | null;
+}
+interface Stage {
+  stageId: string; runId: string; stageName: string;
+  attemptCount: number; currentFence: number; leaseOwner: string | null; leaseExpiresAt: string | null;
+  inputHash: string; checkpointRef: string | null; outputArtifactRef: string | null;
+  state: "pending" | "claimed" | "running" | "checkpointed" | "done" | "failed" | "cancelled";
+}
+interface Attempt {
+  attemptId: string; stageId: string; fence: number; workerVersion: string;
+  startedAt: string; endedAt: string | null;
+  outcome: "running" | "ok" | "retryable_error" | "permanent_error" | "abandoned" | "cancelled";
+  errorClass: string | null; resourceClass: ComputeClass | null; costTag: string | null;
+}
+interface OutboxEvent {
+  eventId: string; runId: string; stageId: string | null;
+  eventType: string; sequence: number; payloadRef: string;
+  idempotencyKey: string; deliveryState: "pending" | "claimed" | "delivered" | "dead";
+  producerVersion: string; createdAt: string;
+}
+interface ArtifactRef {
+  artifactKey: string;                      // content hash (lowercase 64-hex)
+  tier: "T2_VOLUME" | "T1_ROW_REF" | "T3_GIT";
+  bytes: number; mediaType: string; retentionClass: string;
+  sourceRunId: string; producerVersion: string; createdAt: string;
+  verifiedChecksum: boolean;
+}
+interface IntentReservation {
+  reservationId: string; normalizedIntentKey: string; ownerRouteId: string;
+  state: "held" | "converted" | "expired" | "released";
+  heldByRunId: string; expectedOwnerVersion: string; expiresAt: string;
+}
+```
+Every stage uses `(runId, stageName, inputHash, policyVersion)` idempotency plus a **monotonic fencing token**. A worker must present the current token and an unexpired lease for **every** state change. Duplicate spawns may compute redundantly but can never commit stale results or release twice.
+
+### 7.3 Execution identity across processes (AsyncLocalStorage replacement)
+- Process-local `AsyncLocalStorage` (used by the current pipeline context) is **derived convenience state, not authority**. It cannot be transplanted across request → dispatcher → Modal container boundaries.
+- Crossing a process boundary requires an explicit, persisted execution identity: `runId`, `stageId`, `attemptId`, `fence`, `policyVersion`, `contractHash`, `inputHash`, plus the actor/service identity.
+- **Missing or ambiguous strict identity fails closed:** the worker refuses the write and records `IDENTITY_MISSING` rather than inferring context from ambient state.
+- Any code path that mutates authoritative state must accept identity as an explicit parameter (or an authenticated envelope), never read it from a module-level global.
+
+### 7.4 Failure matrix (required test coverage in §25)
+| Failure | Required behavior |
+|---|---|
+| Double dispatch (same stage spawned twice) | Both may run; only the current fence can commit; second commit is rejected and recorded as `STALE_FENCE`. |
+| ABA / lease loss (worker pauses, lease expires, another claims) | Old worker's writes rejected by fence; its artifacts are orphaned and reclaimed after retention grace. |
+| Crash before artifact durable | No checkpoint, no event; stage remains recoverable; no partial result is ever referenced. |
+| Crash after artifact durable, before checkpoint | Artifact is discovered by content hash during recovery; checkpoint is written idempotently; no duplicate publication. |
+| Cancellation | Lease revoked first; delayed workers cannot publish; UI distinguishes "compute stopped" from "cancellation requested". |
+| Stale completion (late result after supersession) | Rejected for projection and reward use; retained as history with `supersededBy`. |
+| Uncertain external write (PR create/merge/notify timed out) | Reconcile by inspecting the operation marker/idempotency key and repository state before any retry; never blindly retry (§7.5). |
+| Schema skew (worker image older/newer than contract) | Worker cannot claim the run; run stays queued/blocked with a reason code; versions are pinned per run. |
+| Budget exhaustion | Optional work parks with an explicit reason; reserved critical budgets (§12.4) remain for source invalidation/release/trust work. |
+| Modal outage | Browsing/editing saved drafts still works; runs visibly queued/blocked; nothing is silently dropped. |
+| Cross-language hash drift | Detected by golden fixtures; release blocked until the serializer is fixed. |
+| Reconciliation cron overlap | Crons are idempotent, use advisory locks or a lease, and record a reconciliation watermark. |
+
+### 7.5 External-write discipline
+1. Record the external operation **intent** (provider, target, idempotency/marker, expected base SHA) before dispatch.
+2. On success, store the returned identifiers; on timeout/uncertainty, mark `possible` and reconcile against the provider/repository before retrying.
+3. Never claim exactly-once network delivery. Webhooks/dispatch hooks are signature-verified, replay-deduplicated and checked against the expected repository, branch and SHA.
+4. **Artifact durable bytes + checksum are written before the database checkpoint/event that references them.** A checkpoint referencing an unverified artifact is a defect.
+5. Orphan uploads are reclaimed only after the retention grace; a reclaimed artifact can never be referenced by a live run.
+
+### 7.6 Limits and configuration (proposed defaults, pinned in versioned config)
+60 s lease with 20 s renewal; three transient retries with jittered backoff; per-stage wall/resource budgets; two editorial revision loops; bounded global and per-project concurrency; separate CPU-research and GPU-inference pools. Pin and load-test actual values; never provision GPUs for API-only tasks.
+
+### 7.7 Interaction with existing scheduled routes
+The existing routes (F9: `content-studio-retry`, `reconcile-content-jobs`, `reconcile-incidents`, and the engine crons) must be mapped in A0.2/A0.6 to one of: absorbed by the durable dispatcher/reconciler, retained as read-only status surfaces, or retired. Two retry/reconcile mechanisms acting on the same run state is forbidden; until reconciliation is complete the legacy cron keeps authority and the new runtime must not enqueue the same work class.
+
+## 8. Policy kernel, gates and phase model
+
+### 8.1 One evaluator, one transition API
+There is exactly one versioned policy evaluator and one authoritative database transition API. Models may recommend; policy decides permission. UI controls are explanatory projections of server capability decisions. Legacy action checks (`currentGate`, `broadCreateFreeze`, per-route guard code) are migration inputs to A0.4: they are wrapped or replaced, never run as a second kernel.
+
+Three gate families:
+- **Program gates:** canonical P0–P13 closures and explicit exceptions with source evidence. Imported historical PASS is not fresh proof.
+- **Action gates:** requirements for `RESEARCH`, `REFRESH`, `CONSOLIDATE`, `REPAIR`, `LINK`, `AUTHORITY`, `CONVERSION`, `GEO`, `OBSERVE`, `CREATE` (plus the precise action vocabulary of §15.2).
+- **Release gates:** contract/body/artifact/owner/source validity, review, CI, deployment and live proof.
+
+A refresh does not require pretending P9–P13 are complete. P13 CREATE requires predecessor closure under the canonical matrix, P12 expansion evidence and a cluster-scoped unlock. A regression in an applicable earlier gate invalidates pending dependent permissions.
+
+### 8.2 P0–P13 traceability
 | Phase | Preserved gate | Studio enforcement and acceptance |
 |---|---|---|
-| P0 Estate truth | No retired Marketplace URL emission; exact-tip branch hygiene; retain unique/active work | Resolve host/repo/path/canonical via ownership.ts for every contract and render. Scan runtime emissions and test old aliases. Branch cleanup belongs to the supervisor lane and requires exact-tip evidence; Studio cannot delete branches. |
-| P1 Measurement | Reproducible current GSC; priority index evidence; failed audits excluded; unavailable is not zero | Version complete source snapshots, query windows, coverage and freshness. Raw/qualified/off-mission/junk remain separate. Expired or incomplete required inputs block decisions. Test provider failure and paginated/truncated data. |
-| P2 Technical | Zero invalid sitemap URLs or meaningful canonical conflicts; priority orphans resolved/justified | Validate proposed and rendered URLs, indexability, redirects, schema and links; recheck deployed output. Zero known invalid sitemap URLs in complete verification scope; incomplete estate coverage cannot claim whole-estate PASS. |
-| P3 Ownership | 100% strategic and at least 95% active priority intent mapping; owner resolution before CREATE | Reserve normalized jurisdiction + entity + reader intent/query family transactionally; one primary owner. Supporting pages require distinct sub-intent and parent relationship. Concurrent owner collision test must block. |
-| P4 Consolidation | No unresolved major collision in priority clusters; evidence/review/rollback for destructive actions | Recommend-first decision record using current qualified GSC and authoritative owner. No deletion/redirect/noindex mutation from model recommendation alone. Regression and rollback proof mandatory. |
-| P5 Mission fit | Raw and qualified data available; off-mission cannot generate missions; explicit high-impression dispositions | Mission eligibility uses qualified evidence only. Keep off-mission visibility inspectable. Ingestion, opportunity creation and regeneration all apply the same predicate. |
-| P6 Internal authority | At least 80% approved useful backlog verified applied OR explicitly rejected/stale; multiple relevant inbound links for strategic canonicals | Track planned, staged, deployed, live-verified, rejected/stale separately. Denominator, unknown and truncated flags visible. Test zero applied + valid stale dispositions without falsely labelling them applied. |
-| P7 Winners | Selected near-wins have before/after evidence and observation schedule | Refresh contract binds query×page baseline, proposed difference, source-backed information gain, CTA and owned +7/+14/+28-day observations or approved alternatives. |
-| P8 Trust | Truthful authorship/review/source evidence on priority YMYL; no fabricated credentials | Claim-source ledger and real reviewer sign-off bound to exact revision. No manufactured self-review, unknown dates or inherited shipReady. Audit rendered additions before Git writes. |
-| P9 Authority | Verified won backlinks | Won requires live referring URL, actual href/target, retrieval time and retained proof. Outreach/sent/accepted/lost remain distinct; internal score is never third-party DR/DA. |
-| P10 Attribution | At least one strategic cluster traced to meaningful business event | Consent-aware landing→CTA→service→lead/order pipeline; deduplicate event IDs and verified webhooks. Synthetic tests prove wiring only; real observed events are required for program PASS. |
-| P11 GEO | Current estate recognized; failed audits excluded; ownership-led remediation | Record provider/model/prompt/date, success coverage, exact cited URLs and competitor citations. Report denominator and failures. No generic llms.txt task without evidence. |
-| P12 Validation | Technical gates green, measured progress OR documented failure diagnosis; authority works; fresh measurement; no duplicate owners | Mature observations distinguish data absence, negative result and positive result. Outcome review gates expansion; diagnostic failure is recorded, not converted into success. |
-| P13 Expansion | Cluster unlock and immutable writing contract per new page | Broad CREATE stays frozen until signed cluster authorization and all required predecessor/action gates. Preserve evidence-led waves and 40/20/20/10/10 portfolio default; changes require real reward evidence. |
-
-### Enforcement points
-Enforce at command acceptance, job claim, contract sealing, post-rewrite audit, review approval, PR creation, final merge check and live acceptance. Re-evaluate changes to owner, sources, policy or content; do not reuse stale badges. Every historical route—including SEO Factory, manual editor, regeneration, scheduled engine, admin repair and legacy ship helpers—must reach the same boundary or reject the mutation. Enumerate the route/call graph before cutover and test each sink.
-
-The publisher consumes a short-lived, single-use release permit bound to action, actor, job, contract hash, body hash, rendered artifact hash, ownership version, policy version and expected repository base. Consume transactionally and record the external operation intent before dispatch. A hash detects change; it is not itself authorization.
-
-## 5. Intelligence and editorial pipeline
-1. **Observe:** ingest GSC query×page, index/crawl facts, live internal links, qualified Marketplace/service demand, attribution, backlinks, first-party questions and successful AI-citation audits. Preserve source, window, completeness, authorization, freshness and failure status.
-2. **Normalize:** use canonical estate/intent identity; redact personal data; deduplicate evidence; partition jurisdiction, effective dates and audience stages.
-3. **Resolve semantics:** bind query/page/section/claim/service observations to versioned entities, reader jobs, intents, journey stages and temporal/jurisdictional qualifiers. Build typed candidate relations and multi-grain embeddings as derivative evidence only. A semantic match cannot create ownership, verify a claim or clear a gate.
-4. **Diagnose:** distinguish lack of demand, technical exclusion, ownership collision, weak or missing answer units, stale semantic facts, missing evidence, weak internal/external authority, competitor information advantage and conversion failure. A competitor SERP is a demand/format signal, never proof of a legal claim.
-5. **Choose:** evaluate eligible interventions only. Deterministic policy removes forbidden actions first; Jev then supplies bounded classifications/scores over the reconciled semantic and metric state. Ineligible high-volume topics cannot outrank safe eligible work.
-6. **Research:** fetch primary authorities and relevant first-party experience; build claim-level supporting and contradicting evidence with locators, retrieval time, effective dates and hashes. Research gaps block affected claims.
-7. **Seal:** compile immutable contract, semantic information-gain plan and observation plan. Authoritative sources must substantively support the planned assertions, not merely have prestigious domains.
-8. **Write:** pinned commissioned text model creates answer-first copy using the sealed brief. It may not invent evidence, credentials, experience, dates, fees, eligibility rules or success rates.
-9. **Audit and revise:** deterministic structure/links/ownership/source checks, independent semantic claim review, editorial review and required human expertise. Rewrites produce new revisions and invalidate dependent approvals.
-10. **Release:** render target artifact; audit additions; create reviewed PR; exact-head CI; Sol merge; official deployment; independently verify live canonical, body marker/digest, authorship, sources, links and CTA.
-11. **Learn:** collect mature outcomes at query-family, page, semantic-answer-unit and commercial-path grain; decide defend, repair, consolidate, expand or stop. Do not optimize on draft count, a single synthetic SEO score or model confidence.
-
-Human-like means specific, useful, coherent prose with varied natural rhythm, contextual examples and honest limits. It never means defeating AI detection or disguising fabricated personal experience. Remove generic filler, repetitive templates and forced keyword floors; word budgets reflect reader need. Harper/grammar/readability tools remain diagnostics, not proof of factual quality. Preserve meaningful query coverage without keyword stuffing.
-
-### Trust and YMYL publication rules
-These are proposed YouSafe controls, not a Google certification:
-- Each externally checkable consequential claim maps to evidence and jurisdiction/effective date. Unsupported or contradictory critical claims block release.
-- Immigration eligibility, legal rights, deadlines, fees and consequential recommendations require an identified qualified human reviewer with verified remit. AI cannot sign as a human reviewer; missing reviewer means BLOCKED.
-- Real experience uses consented first-party material, with provenance and appropriate anonymization. Illustrative scenarios are labelled; no invented testimonial or case outcome.
-- Author, reviewer, methodology, sources, correction route and genuinely known published/modified dates must render truthfully.
-- Freshness policy is field-specific: proposed maximum retrieval age at release is 24 hours for mutable fees/deadlines/rules, seven days for procedural guidance and 30 days for stable background. Primary authority changes or unresolved contradictions invalidate immediately. Sol/domain reviewer may tighten these; widening requires recorded rationale.
-- Clear scope and service boundaries; disclaimer does not cure unsupported advice. Commercial CTAs must reflect actual services and avoid outcome guarantees.
-- Evaluate original usefulness: a verified decision aid, first-party insight, clarified exception, practical comparison or genuinely better answer. Rewording competitors is insufficient.
-
-Google emphasizes people-first reliability and truthful Who/How/Why; E-E-A-T is not a single numerical ranking factor. Scaled production without user value risks spam-policy violations. No “Google E-E-A-T score” or ranking guarantee is displayed. [G1][G2]
-
-## 6. Jev decision plane
-Verified TypeSafe API: POST https://api.typesafe.ai/v1/systemone with state, model and typed questions. Choice returns choice/probabilities/confidence; Score returns score/legend/probabilities/confidence; Noul returns a 0–1 value without a separate confidence field. Pin an available version; docs currently list jev-1.13.0. Verify access and limits before enabling. [J1][J2][J3]
-
-Jev runs server-side in Modal, not in the browser. It does not write prose and has no release credentials. Its structured output can still be substantively wrong.
-
-Atomic tasks: classify mission fit and intent ambiguity; choose among already eligible REFRESH/RESEARCH/LINK/etc.; triage claim-support uncertainty and YMYL risk; score information-gain candidates; route to expertise or further research. A new source or candidate cannot become verified merely through a Jev answer.
-
-DecisionRecord stores input artifact hashes, question/rubric version, actual model version, full returned distribution, selected option, calibration version, independent policy result and reason codes computed from recorded facts. No invented textual rationale attributed to Jev.
-
-For semantic tasks, Jev receives a compact `DecisionState` assembled from **recorded facts and derived semantic features**, not raw uncontrolled web pages. Required fields identify the semantic identity, authoritative owner/version, candidate relation types, hard eligibility result, evidence freshness/completeness and the exact alternatives Jev is allowed to choose. Section 29 defines the decision hierarchy, abstention and calibration contract; it does not broaden Jev's authority.
-
-Start in shadow mode. Proposed promotion test: independently labelled 500-case holdout covering jurisdictions, off-mission demand, same-number collisions, stale sources, prompt injection and critical YMYL claims; at least 100 critical cases. Compare task error, false-safe rate, Brier score/reliability and abstention coverage against a rule-only baseline. Zero critical false-safe cases in this set is a release criterion, not a population guarantee. Sol approves task-specific thresholds; until then all decisions remain advisory. Never interpret confidence=0.9 as proven 90% domain accuracy.
-
-Timeout/malformed response/rate limit/overload → bounded retry with jitter and provider guidance, then abstain. Missing Jev does not silently substitute an unapproved model or clear a gate. Read-only deterministic work may continue; dependent decision work waits or enters explicit human review. Cache by model + rubric + evidence + policy version, never by topic alone.
-
-## 7. Modal execution and failure semantics
-Use asynchronous submitted jobs; no Cloudflare request waits for completion. Modal supports spawned functions and retries, but its result retention is not the product ledger. Persist durable stage outputs externally before acknowledgement. [M1][M2]
-
-Command transaction creates run + stage + outbox row together. A scheduled Modal dispatcher claims bounded outbox batches using short database locks, commits the claim, then spawns work outside the transaction. A periodic reconciler recovers expired dispatch claims. A best-effort wakeup can reduce latency; it is never the sole delivery guarantee.
-
-Assume at-least-once dispatch and completion. Every stage uses (jobId, stage, inputHash, policyVersion) idempotency plus monotonic fencing token. A worker must present current token and unexpired lease for every state change. Duplicate spawns can compute redundantly but cannot commit stale results or release twice.
-
-Proposed initial limits: 60-second lease, renewal every 20 seconds, three transient retries with backoff, per-stage wall and resource budgets, two editorial revision loops, bounded global and per-project concurrency. Pin actual limits in versioned configuration and load-test; CPU research and GPU inference are separate pools. Do not provision GPUs for API-only tasks.
-
-Crashes: immutable output written → checksum checked → database checkpoint committed → event recorded. Orphan uploads are reclaimed only after retention grace. Cancellation revokes the lease first; delayed workers cannot publish. Timeouts do not erase saved output. Provider budget exhaustion parks work with an explicit reason.
-
-External writes require intent/outbox record and reconciliation. For uncertain PR creation, inspect the operation marker and repository before retrying. Never claim exactly-once network delivery. GitHub dispatch/merge/deploy hooks are signed, replay-deduplicated and checked against expected repository and SHA.
-
-Schema-incompatible worker versions cannot claim a run. Each run pins policy, contract schema, worker image digest and evaluator versions. Modal outage leaves jobs visibly queued/blocked while browsing and editing saved drafts remain available.
-
-Modal is also the **semantic compiler and cost-governed compute plane** described in section 28. Deterministic parsing/graph work stays on CPU where practical; embeddings/reranking use the smallest measured accelerator that meets the acceptance target; larger local LLM inference is an escalation tier, not the default. Every semantic stage records resource class, wall time, billable-resource telemetry when available and cache/reuse status so the $30 monthly credit is managed from measured cost rather than assumed article counts or GPU hours.
-
-## 8. Data and API contracts
-Extend current content_jobs, writing-contract and evidence tables where semantics match; do not create a competing truth store. New names below are logical entities; A0 maps exact existing schema before migrations.
-
-| Entity | Minimum invariant |
-|---|---|
-| EvidenceSnapshot / SourceClaim | Immutable substantive payload hash, source URL/locator, jurisdiction, observed/effective dates, health, scope and completeness; claim support separate from source reputation. |
-| IntentOwner / Reservation | Versioned authoritative owner; unique normalized intent key; atomic reservation for CREATE; supporting sub-intent explicitly distinct. |
-| ContractV3 | V2 identity/evidence/ownership retained plus action, policy version, program snapshot, information gain, trust requirements, baseline, commercial path, link plan, publication rules and observation owner/window. |
-| Job / Stage / Attempt | Durable state, expected version, fence, lease, input/output refs, deadline, retry budget and error classification. |
-| GateEvaluation | Immutable rule/version/scope/evidence/result; expiry and invalidation links; not a mutable green checkbox. |
-| DecisionRecord | Jev schema/model/rubric/input hash, distribution and calibration; deterministic eligibility result separate. |
-| Revision / Review | Immutable body and render hashes; reviewer identity/role; verdict and timestamp; approval invalidated by substantive or renderer changes. |
-| Release / PublicationProof | Expected base, candidate SHA, CI checks, merge SHA, deployed version, live artifact marker/digest, verification timestamp and rollback reference. |
-| Observation / Reward | Baseline and actual window, mature status, source completeness, qualified metrics, confounders and attributed outcome; unknown values nullable. |
-| Outbox / AuditEvent | Unique event ID, operation key, sequence, actor, reason, attempted state, delivery state and durable reconciliation evidence. |
-
-Contract hashes use the existing canonical serialization specification and shared golden fixtures; no Python/JavaScript hashing discrepancy. V2 remains readable and immutable. New V3 envelopes link to V2 history; do not “upgrade” historical contracts by inventing evidence.
-
-API proposal, under /api/content-studio/v3:
-- GET /overview and /opportunities: bounded projections with freshness/coverage and cursor pagination.
-- POST /jobs: accepts action, opportunity ID, expected owner/policy version and idempotency key; returns 202 only after durable transaction.
-- GET /jobs/:id and /jobs/:id/events?after=sequence: authorized state and bounded event pages.
-- POST /jobs/:id/contract: seal server-resolved evidence; clients cannot supply trusted hashes as authority.
-- POST /jobs/:id/revisions: optimistic concurrency via expected version; reject conflicts with 409.
-- POST /jobs/:id/review: role-checked approval of exact revision/render hashes.
-- POST /jobs/:id/release: creates release intent only; never returns “published” on PR creation.
-- POST /jobs/:id/cancel or /retry: fence prior attempt and reuse identity; retry requires fresh eligibility.
-- GET /jobs/:id/artifacts/:artifactId: scope-checked short-lived download capability.
-
-Errors: 401/403 auth; 409 version/contract conflict; 413 oversized payload; 422 invalid contract; 429 explicit backpressure; 503 temporarily unavailable persistence. Include stable reason codes and recovery action. No raw credentials or provider internals in client errors.
-
-Internal job progression: PROPOSED → RESEARCHING → CONTRACT_READY → DRAFTING → AUDITING → REVIEW_REQUIRED → APPROVED → PR_CREATED → MERGED → DEPLOYED → LIVE_VERIFIED → OBSERVING → CLOSED. BLOCKED, FAILED, CANCELLED and SUPERSEDED are explicit. Non-writing actions use declared subsets; they do not manufacture drafts or publication proof. Every transition has one allowed actor, precondition, atomic update and event.
-
-## 9. Complete UI redesign
-Replace stage tabs as the application's primary navigation with an evidence-first workspace. Retain familiar editorial typography using existing studio tokens; introduce consistent status, spacing and interaction primitives. No full application rewrite in a single component.
-
-Global shell: project/estate selector, current program phase, CREATE lock, source freshness, running/blocked jobs and role-appropriate actions. Status always includes reason, evidence and next permitted step.
-
-| Workspace | Layout and primary interaction | Required states |
-|---|---|---|
-| Command Centre | Qualified progress, trust debt, opportunities, blocked decisions and due observations; raw metrics one click away. Default action “Investigate opportunity”. | Current/partial/stale/unavailable; no article quota or vanity output counter. |
-| Intelligence | Query×page and cluster table with jurisdiction/intent filters, source drawer, measured windows and owner view. Compare refresh vs new page vs no action. | Raw/qualified/off-mission/junk toggles; clear denominators and estimated labels. |
-| Opportunity Detail | Left: evidence and diagnosed problem. Centre: eligible interventions and expected reader benefit. Right: gate reasons and Jev uncertainty. | Recommendation, abstention, blocked and explicitly dismissed with reason. |
-| Research & Contract | Claim/source matrix, contradictions, research gaps, information-gain plan, owner, link/CTA plan and observation owner. | Sealed contract read-only; edit creates new version. Sources preview with locator. |
-| Editorial Desk | Desktop three panes: outline/claims, document editor, source/trust checks. Inline claim anchors and revision diff. | Saved/unsaved/conflict, queued/running/stalled, changed-after-review. Human edits invalidate relevant checks. |
-| Trust Review | Exact rendered preview with critical claims, reviewer remit, changes since last approval and correction details. | Approve/return with evidence; incapable role cannot approve. No AI-as-human badge. |
-| Release Desk | PR diff, exact-head checks, policy permit, deployment timeline and live proof in separate cards. | PR created ≠ merged ≠ deployed ≠ live verified. Wrong/stale SHA disables release. |
-| Authority & Outcomes | Internal-link lifecycle, backlink proof, privacy-aware funnel, GEO success coverage and mature experiments. | Planned/applied/live verified; outreach/won/lost; unknown/no effect/negative/positive. |
-| Operations & Policy | Queues, provider health, CPU/memory/error trends, budgets, gate versions and audit history. | Read-only policy for ordinary editors; changes require reviewed release. |
-
-Interaction requirements:
-- Nested routes under existing /dashboard/admin/content preserve deep links and allow incremental migration.
-- Server-filtered pagination defaults to 25, max 100; select-all refers only to explicit scope. No giant loaded job bodies.
-- Authenticated polling defaults to five seconds for visible active jobs, backs off on inactivity/error and pauses in hidden tabs. Deduplicate requests. Optional bounded SSE only projects persisted events, never owns the compute lifetime.
-- Run cards show last real event, stage, elapsed time, heartbeat age and retry state. A stale heartbeat says “connection/execution status needs reconciliation”; no fabricated percentage or endless “Working”.
-- Editor autosaves revision checkpoints with conflict detection; reconnect restores durable state. Cancellation explains whether compute stopped or only cancellation was requested.
-- Full keyboard access, visible focus, screen-reader labels, non-color status cues and WCAG 2.2 AA target. Reduced motion. Destructive commands require explicit scoped review.
-- At narrow widths, three panes become Evidence / Draft / Checks tabs with a persistent blocker summary; no horizontal page overflow. Long tables have deliberate bounded scroll.
-- Proposed visual tokens: warm neutral document canvas, high-contrast ink, restrained teal for valid actions, amber for incomplete evidence and red for failures; test actual combinations for contrast. Use serif headings sparingly and sans-serif controls/body for dense workflows.
-- Model/provider controls belong in task configuration and operations, not the main editorial flow. The main UI explains evidence and decisions in plain language.
-
-Acceptance journeys: qualified refresh from evidence to live proof; frozen CREATE refusal with reason; contradictory YMYL source requiring research; draft edit invalidating approval; two users editing with conflict; provider outage and browser reconnect; small-screen reviewer completion; screen-reader blocked-action explanation.
-
-## 10. Cloudflare 1102 prevention and performance contract
-Cloudflare documents separate CPU and memory limits; waiting for network I/O is not CPU execution. Memory is 128 MB per isolate, shared across concurrent requests. Actual account limits/configuration must be read before rollout. Modal relocation alone does not fix heavy SSR, middleware imports or unbounded JSON. [C1][C2]
-
-Engineering controls:
-- Separate thin command/read dependency graph from compute. CI forbids transitive imports of writer, crawler, DOM/PDF parsers, embedding or full audit packages into edge routes.
-- Serve the shell/assets efficiently; lazy-load editor, charts and evidence tools by route. Preserve existing public/static auth bypass behavior; authenticate all protected API/data requests.
-- Precompute summaries in Modal. Bounded indexed reads, cursor pagination and projection-only rows; no estate scans on page load.
-- Proposed command payload cap 64 KiB; list response cap 128 KiB; event batch cap 100. Large documents upload directly via scoped storage capability and are processed in Modal. Enforce actual bytes, not only Content-Length.
-- Static assets may be public-cacheable. Private API/content responses default to private/no-store; never cross-user shared caches. Signed preview/download expiry and authorization remain enforced.
-- Limit parallel backend calls, cancel redundant reads and apply queue admission limits. Slow/failing provider does not trigger browser retry storms.
-- Track CPU separately from wall latency; aggregate by route/build. Track exceededCpu, exceededMemory, 1102, 503, isolate startup, payload size, queue age and database latency.
-
-Proposed acceptance budgets, to be measured rather than claimed:
-- Edge p95 CPU ≤ min(10 ms, 25% of configured CPU cap); p99 ≤ 50% of that cap. If existing auth alone fails the budget, redesign/profile it before enabling the route.
-- Worst supported isolate load remains below 80 MiB measured allocation; do not rely on average per-request memory.
-- Warm command acceptance p95 ≤ 750 ms, cold p95 ≤ 1.5 s, excluding explicitly measured external network latency; returned 202 never waits for research.
-- Initial Studio route ≤ 200 KiB gzip JavaScript excluding separately reported shared authentication/runtime; incremental lazy route chunk ≤ 150 KiB. Record total transfer too, so exclusions cannot hide bloat.
-- Target p75 LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1 on defined mobile test and then field data; lab success does not claim field success.
-- Run 30-minute load test at 2× observed peak, minimum 50 concurrent active sessions, including cold starts, list pagination, editor saves and job status polling. Zero 1102/exceededCPU/exceededMemory; error rate below 0.5%, excluding intentional 4xx denials.
-- Canary observation must cover 24 hours and at least 10,000 representative API requests (supplement in staging where production volume is low; label separately). Any resource-limit incident holds promotion and triggers diagnosis.
-
-Targets may be revised only with measured evidence and Sol approval, never silently relaxed to pass. Raising CPU limits is not the primary remedy. Browser shell remains usable during Modal outage; a database outage cannot acknowledge an unpersisted job.
-
-## 11. Security, truth and release integrity
-Keep current privileged-table grants; no public content_jobs or decision/evidence reads. Use authenticated server APIs and resource-level project/role checks. Enable RLS in exposed schemas and apply least-privilege service roles; server credentials can bypass RLS, so service code/RPC authorization and restricted grants are mandatory. [S1]
-
-Research inputs are untrusted data. Strip executable markup, isolate parsing, prevent SSRF/private-network access, bound redirects/download size, and never let retrieved instructions alter prompts, policy, capabilities or tool selection. Do not send client case files or personal identifiers to Jev/providers by default.
-
-Compute workers receive only required read/stage-write permissions. Release credentials are separate. Audit actor, source version, decision, approval, intent and external result. Scope and expire callback credentials; deduplicate replayed events. No secrets in logs, artifacts or prompts.
-
-Pre-release freeze owner reservation and contract; resolve repository base drift and rerun changed-source checks. Final GitHub check must match the actual candidate SHA. Cross-repo interfaces/releases serialize where dependent; one writer per conflict domain. Unchanged green evidence may be reused only when still applicable.
-
-Rollback is a reviewed Git revert/official redeploy plus data compatibility path. Kill switches stop new dispatch/release independently. Rollback must preserve gate enforcement: if the legacy runner lacks required policy, disable affected actions rather than reopen a bypass. Never rewrite historical proofs or discard in-flight jobs to make migration appear complete.
-
-## 12. Migration and Sol/DeepSeek execution map
-These are architecture work packages and exit conditions. Sol must turn the approved specification into bounded implementation packets after current-state inspection; exact file/test commands come from the repository, not guesses in this document.
-
-| Package | Scope | Required exit evidence |
-|---|---|---|
-| A0 Reconcile | ds health once; current repos/main/jobs; route and write-sink inventory; schema/migrations; provider/account capabilities; latency/import baseline; active conflicts | Evidence-linked compatibility map, actual existing policy sinks, performance baseline and explicit blockers. Jev/Modal access unverified until tested. |
-| A1 Policy | Common evaluator, applicability matrix, gate evidence, intent reservation, permits and bypass closure | P0–P13 fixture coverage; every sink mapped; concurrent/expired/unknown/exception cases denied correctly. No phase advancement. |
-| A2 Durable runtime | Atomic outbox, Modal dispatcher/runners, fencing, checkpoints, artifacts, cancellation and reconciliation | Crash-before/after-dispatch, duplicate completion, lease loss and uncertain-write recovery tests. No edge heavy imports. |
-| A3 Intelligence/Jev | Evidence normalization, claims, semantic identity, bounded decisions and shadow evaluation | Qualified demand parity; holdout/calibration report; wrong-jurisdiction/off-mission/injection tests; abstention works. |
-| A4 Editorial/trust | ContractV3, claim-linked writing, independent review, rendered artifact validation and reviewer workflow | V2 readability; rewritten bytes invalidate approval; unsupported critical claims and fabricated reviewer blocked. |
-| A5 New UI | Route-level workspaces, editor, gates, progress, release and outcomes | All acceptance journeys, mobile/keyboard/a11y checks and bundle/performance measurements. |
-| A6 Release/observe | GitHub adapter, official Modal/Cloudflare workflows, source-bound live checks, real observation scheduling | Exact-SHA release test; P6/P9/P10/P11 truth distinctions; scheduler execution and owner proof; rollback drill. |
-| A7 Cutover | Shadow → internal read-only → refresh canary → staged adoption; retire alternate writers only after parity | Exact-head repository gates, production source/live evidence, resource canary and recovery sign-off. CREATE remains frozen unless actual P13 authorization exists. |
-
-No big-bang deletion. Additive migrations first; verify role grants and ledger after official application. Backfill only observed facts; missing legacy evidence remains missing. Drain or explicitly resume in-flight V2 jobs with pinned compatible runtime; never switch runners mid-attempt. Shadow execution has no publication or outreach authority. Old endpoints become compatibility adapters or explicit safe failures once all callers migrate.
-
-Sol packet must state task ID/revision, absolute worktree, verified base, objective, scope/exclusions, dependencies, interfaces, acceptance, source references, capabilities, checkpoint conditions and recovery record. DeepSeek owns heavy investigation/build/test work through Sol→RDC→ds; Sol reviews design, first representative change and final candidate. No replacement harness. Optional Astra acceptance applies only when explicitly enabled; absence follows the recorded fallback. Do not create duplicate jobs after timeouts.
-
-Release path remains branch → PR → required checks → Sol approval → main → official deployment → source-proven live acceptance. CI green, deployed, live verified and objective achieved are different states. Checkpoints are continuity records, not instructions to stop.
-
-## 13. Verification contract and definition of done
-Mandatory adversarial/regression cases:
-1. All P0–P13 predicates map to executable tests and evidence artifacts; canonical thresholds unchanged.
-2. Same-number jurisdiction collision, duplicate intent race, off-mission demand and retired host never authorize a mission.
-3. Stale/missing/partial provider data stays unavailable; failed GEO audits do not lower successful citation share.
-4. High Jev score cannot override deterministic failure; malformed/absent Jev abstains.
-5. Failed lease, cancelled worker, duplicate dispatch and replayed callback cannot change terminal state or publish.
-6. Rewrite, source change, ownership change, policy change or renderer addition invalidates appropriate approvals.
-7. Every legacy/manual/scheduled route meets the same release boundary; direct raw pipeline invocation cannot bypass it.
-8. P6 rejection never becomes applied proof; P9 outreach never becomes won; unknown conversion never becomes revenue.
-9. Auth/IDOR/CSRF/replay/SSRF tests, least-privilege SQL role probes and secret scanning pass.
-10. Required focused suites, TypeScript, full repository suite, Next/OpenNext build, SEO audit guard and Content Studio Review pass on the exact candidate; honour scoped AGENTS.md.
-11. Contract-to-render-to-live hashes/markers, canonical/indexability, source/trust surfaces and cache freshness verified after official deploy.
-12. Performance/load/canary, worker crash/recovery and rollback checks meet section 10; record the actual workload and limitations.
-
-Done means A0–A7 evidence complete, no critical bypass, approved canary, user journeys verified, source/operations runbook delivered and owner-backed observation scheduling proven. SEO outcome maturity remains a separate measurement state. No unresolved provider/reviewer/schema prerequisite is hidden behind “complete”.
-
-Preimplementation dependencies owned by Sol: verify TypeSafe account/model access and Modal workspace/secrets; confirm worker plan/resource budgets; identify qualified domain reviewers; reconcile later P9 progress; inventory approved data rights and retention; confirm cross-repo adapter support. Failure blocks only dependent work and is recorded with the next recovery action. This document creates no actual scheduled jobs.
-
-## 14. Source register and maintenance
-Primary project evidence:
-- [Supervisor Arc](https://hjarni.com/notes/33465), contract v2026.09.21.1.
-- [SEO Brief](https://hjarni.com/notes/34332), current checkpoint and P0–P13 gates.
-- [Repository parity matrix](https://github.com/kylemwalkerpr-ship-it/portal/blob/3d248afd09290a97250cb472152afaa57b2a0292/docs/superpowers/seo-parity-matrix.md).
-- [Repository AGENTS.md](https://github.com/kylemwalkerpr-ship-it/portal/blob/3d248afd09290a97250cb472152afaa57b2a0292/AGENTS.md).
-- Current-structure inspection at that SHA: components/design/admin-content-studio.tsx (header/imports only), app/api/content-studio/generate/route.ts, lib/seoFactory/writingContract.ts, contentStudioPipeline.ts, contentStudioPipelineCore.ts, writingContractStore.ts, renderTarget.ts and ownership.ts. This is architectural grounding, not a complete repository or live-runtime audit.
-- [Notion roadmap](https://app.notion.com/p/3e21a73ccb008116bf7ecd8e9142f329), historical phase description; phase status superseded by the baseline above.
-
-Official vendor references, read 2026-09-22:
-- [J1 TypeSafe API](https://docs.typesafe.ai/api).
-- [J2 TypeSafe models](https://docs.typesafe.ai/models).
-- [J3 Confidence semantics](https://docs.typesafe.ai/confidence).
-- [M1 Modal job processing](https://modal.com/docs/guide/job-queue).
-- [M2 Modal failures and retries](https://modal.com/docs/guide/retries).
-- [C1 Cloudflare limits](https://developers.cloudflare.com/workers/platform/limits/).
-- [C2 Error 1102](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1102/).
-- [G1 Google helpful content](https://developers.google.com/search/docs/fundamentals/creating-helpful-content).
-- [G2 Google spam policies](https://developers.google.com/search/docs/essentials/spam-policies).
-- [S1 Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
-
-All numeric engineering budgets, calibration corpus sizes and editorial freshness windows are proposed acceptance controls, not verified current performance or vendor guarantees. Revalidate provider APIs and account limits during A0.
-
-Keep this version identical in Notion, Hjarni and its Markdown handoff. Amend by explicit version increment and recorded reason; never silently overwrite Supervisor Arc or SEO Brief gates. On implementation approval, commit the approved spec under the repository's design convention and link all execution packets to its version/hash. Product changes or automatic phase promotion are outside this writing task.
-
-## 15. Fifty-variable intelligence contract — mandatory revision
-Added by Kyle's explicit revision request. Version CS-2026.09.22.2 supersedes .1 as the design handoff. Sections 15–20 integrate all 50 requested keys; earlier gates, freeze, authority and unimplemented status remain unchanged. “All variables supported” means every key has a defined type, source strategy and honest availability state, not that every provider supplies a number.
-
-### Corrections that are part of the contract
-- Search volume is a scoped estimate; organic difficulty is a provider model. Google Ads competition is advertising competition, not organic difficulty.
-- lsiKeyword is retained only as a compatibility alias for related semantic concepts; do not claim an LSI metric or Google requirement.
-- Keyword density, power words, heading/list counts and transition counts are editorial diagnostics, never independent ranking guarantees or production quotas.
-- Google does not prescribe fixed 60/160-character hard limits for title/meta descriptions. Keep those as optional preview warnings, including device-width simulation.
-- GA4 bounce rate is non-engaged-session rate. timeOnPageAverage is explicitly relabelled active engagement per page view. Exact dwellTime remains unavailable.
-- searchResultCount is not the total Google index or a dependable competition metric. Its default decision weight is zero.
-- Informative image alt text, link anchors and image filenames are collections, not one string for the entire page. Preserve the requested keys with correctly typed values.
-- Organic sessions, organic users and GSC clicks are distinct. Shares are not share-button clicks; truth signals are not a numerical E-E-A-T score.
-- None of these 50 fields replaces claim support, jurisdiction, ownership, trust review, canonical health, source freshness, verified authority, privacy or business-outcome evidence.
-
-### Source procurement and execution ownership
-Sol commissions each source and confirms account entitlement; DeepSeek implements and verifies adapters through the existing bridge. The specification does not purchase subscriptions, connect accounts or assume credentials already work.
-- **GSC:** existing approved integration, read-only authorized property. Modal imports query×page/date/country/device/search-type snapshots; record provider timezone/data-state, privacy omissions and row limits. Paginating every returned row does not establish full query-universe coverage.
-- **Google Ads:** optional authorized account and developer-token access to historical keyword metrics. Modal performs bounded batch requests. Store geo, language, network, currency, historical months and provider grouping. Missing access blocks this adapter, not safe refresh work with adequate first-party evidence.
-- **Ahrefs:** optional commissioned Keywords Explorer API for organic difficulty; no subscription assumption. Keep Google Ads and Ahrefs series separate, select source explicitly and expose disagreements. Do not fill missing values with invented Jev scores.
-- **GA4:** authorized read-only Data API for compatible aggregate dimensions/metrics; check metadata/compatibility and response sampling/thresholding notices. BigQuery export is optional for event-level session reconstruction. Property access and export activation are dependencies, not inferred from GSC access.
-- **First-party events:** consent-aware collector plus verified lead/order webhooks. Only defined event names and allowlisted fields; no raw client case descriptions. Deduplicate immutable event IDs. Never fingerprint or reconstruct denied-consent identities.
-- **CMS/assets/editor:** approved database reads, rendered artifacts and real editorial records. Immutable revisions and primary-source/claim evidence are reused.
-- **Social/SERP APIs:** individually approved, licensed sources only; rate/permission limits and platform coverage visible. No automated scraping added to manufacture absent metrics.
-- **Modal analyzer:** parses Markdown/HTML once per artifact hash, then computes all deterministic metrics from the shared AST/tokenization. Model calls only for ambiguous semantics; Jev is not used for simple counts.
-- **Jev/editor:** bounded intent and editorial recommendations; model probability is not observed evidence. Human approval and consequential-claim review remain independent.
-
-### Registry: definition, acquisition and role for every key
-Refresh values below are proposed policy defaults. “Revision” invalidates immediately on changed input bytes or analyzer version. “Render” means the actual target artifact, not only editor text. TTL is age of retrieval, not permission to treat an old measurement window as current.
-
-| Key | Value type | Source and calculation | Grain and units | Refresh/invalidation | Pipeline, UI and phases | Decision rule / missing-data behavior |
-|---|---|---|---|---|---|---|---|
-| targetKeyword | string | Approved P3 owner/query-family record, informed by qualified GSC query×page; editor confirms canonical primary phrase. | Per intent + contract; nonempty normalized phrase. | Contract change | Intelligence → sealed brief; P3/P5/P13 | Required for keyword-led editorial action; cannot transfer ownership by editing text. |
-| searchVolume | number | Google Ads KeywordPlanIdeaService.GenerateKeywordHistoricalMetrics; authorized account/developer token. Approved Ahrefs Keywords Explorer alternative kept as a separate series. | Approximate monthly searches; country/language/network/month range and match grouping recorded; ≥0. | 30 days | Opportunity context; P1/P7/P13 | Optional estimate; GSC impressions are NOT search volume; null without licensed access. |
-| keywordDifficulty | number | Commissioned Ahrefs Keywords Explorer overview difficulty; provider/version pinned. No assumed account access. | Provider organic difficulty, 0–100; country/query/snapshot. | 30 days | Opportunity effort estimate; P1/P7 | Optional; never substitute Google Ads advertising competition or compare mixed providers. |
-| searchIntentType | string | Qualified query evidence + authorized SERP sample + Jev Choice; editor validates ambiguity. | informational, commercial_investigation, transactional, navigational, mixed or unknown. | 7 days or evidence change | Diagnosis and owner fit; P3/P5/P13 | Required resolved intent for contract; unknown/mixed unresolved blocks owner-dependent work. |
-| keywordDensity | number | Modal deterministic main-content tokenizer; non-overlapping case-folded exact-phrase occurrences / wordCount ×100. | Percent 0–100; primary phrase, tokenizer and language pinned. | Revision | Editorial diagnostics; P7 | No target density and no minimum repetition; repetition flags prompt human review. |
-| costPerClick | number | Same authorized Google Ads historical metrics request; average_cpc_micros / 1,000,000, with account currency. Distinct provider alternative allowed. | Currency units per click, ≥0; currency mandatory. | 30 days | Commercial context; P1/P10 | Optional estimate, not willingness to buy or expected SEO revenue; no silent currency conversion. |
-| primaryKeywordPlacement | object | Modal AST/rendered HTML checks title, H1, intro and meta; retain exact/variant/absent matches and locators. | Map of title/H1/intro/meta to exact, variant, absent or not_applicable. | Revision + render | Editorial Desk; P7 | Natural placement advice; exact phrase in every location is not required for release. |
-| longTailKeyword | array | Qualified GSC questions, consented first-party questions, approved keyword provider and reviewed brief. | Unique string array of specific phrases; no fixed word-count definition. | 7 days or contract change | Research/outline/query coverage; P3/P7/P13 | Candidates not observed in a source must be labelled hypotheses; no separate competing page automatically. |
-| lsiKeyword | array | Compatibility key mapped to semanticTerms: primary-source entities, related concepts, qualified queries and reviewed research. | Unique string array; provenance per concept in evidence ledger. | Contract change | Research and answer completeness; P7/P11 | Deprecated label: not a Google LSI ranking input. UI says Related concepts; never a stuffing quota. |
-| searchResultCount | number | No default acquisition. Optional licensed SERP-provider reported estimate or explicitly sourced manual observation only. | Approximate result count ≥0; exact query/location/device/time. | 24 hours if supplied | Advanced diagnostics only; P1 | Default unavailable: not a reliable count of Google's indexed pages. Excluded from opportunity score and every gate. |
-| wordCount | number | Modal visible main-content text extraction; exclude nav/footer/scripts, count headings/list text once. | Integer words ≥0; language/tokenizer pinned. | Revision + render | Editor and scope planning; P7 | Reader-led budget warning; never length-for-ranking or automatic filler generation. |
-| headingCount | number | Modal Markdown/HTML AST counts H2/H3/H4; persist per-level breakdown and nesting findings. | Integer total ≥0. | Revision + render | Structure checks; P2/P7 | Count diagnostic; malformed hierarchy or missing required sections assessed separately. |
-| readabilityScore | number | Modal English Flesch–Kincaid grade: 0.39×words/sentences + 11.8×syllables/words −15.59; pinned syllable implementation. | Grade value, may be negative; algorithm/language mandatory. | Revision | Editor guidance; P7/P8 | Unsupported language or zero denominators = unavailable/not_applicable; never simplify away legal accuracy. |
-| sentenceLengthAverage | number | Modal sentence segmentation and tokenizer: words / nonempty sentences. | Words per sentence ≥0. | Revision | Editor clarity; P7 | Diagnostic; language-specific segmentation, abbreviations and bullets covered by fixtures. |
-| paragraphLengthMax | number | Modal AST: maximum prose-paragraph word count; list items measured separately. | Integer observed maximum ≥0; configured warning limit stored in policy, not this value. | Revision | Editor/mobile readability; P7 | Words rather than rendered lines; default English warning >120 words, reviewable and not a hard SEO gate. |
-| passiveVoicePercentage | number | Modal pinned language parser detects passive candidates / eligible sentences ×100; retain spans. | Estimated percent 0–100. | Revision | Editor clarity; P7 | Advisory heuristic; unsupported language unavailable. Passive voice can be appropriate. |
-| callToActionCount | number | Modal counts explicit unique CTA placements from structured CTA nodes plus editor-confirmed unstructured candidates. | Integer placements ≥0; shared CTA identity and each location retained. | Revision + render | Conversion design; P7/P10 | Every new/rewritten article requires the verified contextual Marketplace path in section 25; never maximize CTA count. |
-| introHookLength | number | Modal counts main-content words after title and before first H2; if no H2, intro ends at editor-marked boundary. | Integer words ≥0. | Revision | Editor answer-first check; P7 | No boundary = unavailable; no mandatory teaser delaying a useful answer. |
-| altTextString | array | Author provides image descriptions; Modal parses rendered img attributes; reviewer checks purpose and context. | Per-image records: id, alt string, decorative flag, missing flag; empty alt valid for decorative images. | Revision + render | Asset inspector/accessibility; P2/P8 | Missing meaningful alternative on informative image blocks that asset's release under project accessibility policy. |
-| bulletPointCount | number | Modal AST counts unordered list items in main content; store unordered-list count separately. | Integer items ≥0. | Revision + render | Editor scannability; P7 | No list quota. Definition corrects ambiguity between lists and items. |
-| titleTagLength | number | Modal rendered title extraction and Unicode grapheme count; preview width computed separately. | Integer characters ≥0. | Render | SERP preview; P2/P7 | 60-character soft warning only; descriptive unique title required, count itself not a ranking gate. |
-| metaDescriptionLength | number | Modal rendered meta description grapheme count; retain description and simulated device preview. | Integer characters ≥0. | Render | SERP preview; P2/P7 | 160-character soft warning only; snippet may differ. Absence triggers editorial review, not automatic ranking failure. |
-| urlSlug | string | P3 ownership resolver + repository route adapter; parse planned and deployed canonical path. | Validated path segment(s); host/path mapping version. | Contract + deploy | Ownership/release; P0/P2/P3 | Do not rename existing ranking URLs for keywords; change needs P4 evidence, redirect plan, review and rollback. |
-| schemaMarkupType | array | Modal extracts JSON-LD/microdata types; renderer selects approved adapter for actual page content. | Unique supported schema type strings; separate structured-data validation report. | Render + deploy | Technical preview; P2/P8/P11 | Invalid/misleading markup blocks release; no guarantee of rich results or invented review/product data. |
-| canonicalUrl | string | ownership.ts planned canonical; rendered rel=canonical + redirect chain live check; Google-selected canonical separately from GSC inspection when available. | Absolute approved HTTPS URL. | Contract + pre-release + deploy | Estate authority; P0/P2/P3 | Owner mismatch blocks. Declared canonical is a signal, not proof Google selected it. |
-| internalLinkCount | number | Modal extracts main-content anchor occurrences whose resolved host belongs to versioned YouSafe estate; stores same-host/cross-estate breakdown. | Integer occurrences ≥0; also store unique destinations and inbound edges separately. | Render + deploy | Authority inspector; P2/P6 | Outbound count does not establish inbound authority. Only live-verified edges close P6. |
-| externalLinkCount | number | Modal extracts main-content links outside estate, resolves destinations and joins source ledger. | Integer occurrences ≥0; distinct destinations and rel flags separate. | Render + deploy | Sources/trust; P2/P8 | More links is not more trust; relevance, support and health matter. |
-| imageFileNames | array | Asset manifest + uploaded storage metadata + rendered src reconciliation. | Per-asset id, basename and content digest. | Asset/revision change | Assets; P2/P7 | Descriptive names without stuffing; no breaking existing URLs purely for naming. |
-| anchorText | array | Modal AST + live DOM per-link extraction; normalize visible text, retain accessible name separately. | Per-link id, text, accessibleName, target URL and location. | Render + deploy | Link relevance; P2/P6/P8 | Descriptive truthful destination labels; empty or deceptive functional links require repair, not exact-match quota. |
-| robotsTagState | object | Modal reads meta robots, bot-specific directives and HTTP X-Robots-Tag; robots.txt crawl state recorded separately. | Object with raw directives, bot scope, index/follow interpretation and conflict findings. | Render + pre-release + deploy | Indexability; P0/P2/P4 | Unintended noindex/conflict blocks intended-indexable release. robots.txt disallow is not noindex; changes need authority. |
-| clickThroughRate | number | GSC Search Analytics clicks / impressions ×100 for the same page/query/country/device/search-type/window. | Percent 0–100; numerator and denominator retained. | Daily, 72h sync TTL | Winner packaging and outcome; P1/P7/P12 | Zero impressions = null. Sum counts before division; never average row CTRs or infer conversions. |
-| bounceRate | number | GA4 Data API bounceRate, or 100×(sessions−engagedSessions)/sessions with property engagement settings saved. | Percent 0–100 at landing-page/session cohort grain. | Daily, 72h sync TTL | Outcomes; P10/P12 | GA4 non-engaged sessions, not single-page visits. Untracked/consent-denied cohort excluded and coverage disclosed. |
-| dwellTime | number | No supported exact search→site→return-to-SERP measurement from normal site analytics. | Seconds; unavailable by default. | Not collected | Advanced explanatory field only; P1 | Never substitute GA4 engagement or tab-open duration under this name; separate labelled proxy if later commissioned. |
-| scrollDepth | number | Consented first-party events at 25/50/75/90/100% article progress; Modal aggregates session-page maximums. | Mean maximum percent 0–100; eligible session-page count and depth distribution retained. | Daily, 72h sync TTL | Reading UX; P10/P12 | Use article container and versioned viewport formula; no event != zero. GA4 default scroll alone is not a full depth distribution. |
-| conversionRate | number | Verified first-party lead/order events + consented eligible organic landing sessions; server webhook deduplication; GA4 key events as separate attribution source. | 100×unique converting eligible sessions / eligible sessions; 0–100. | Daily; settle window configured | Business outcomes; P10/P12 | Specify event set and 30-day attribution window as proposed default. Unattributed orders remain separate; event/session ratios with repeated conversions are not this rate. |
-| exitPageRate | number | Authorized GA4 BigQuery event export or first-party session ledger; explicit completed-session ordering with deterministic tie-breaks. | 100×completed tracked sessions ending on page / tracked pageviews of page, same cohort/window. | Daily after session closure | UX diagnostics; P10/P12 | Derived partial-observation estimate; browser-close unknown is not observed exit. No export/ledger → unavailable. |
-| organicTrafficVolume | number | GA4 Data API sessions filtered by sessionDefaultChannelGroup=Organic Search and landing page; users separately if requested. | Integer sessions ≥0, not users and not GSC clicks. | Daily, 72h sync TTL | Qualified traffic/outcomes; P1/P10/P12 | Direct is a different channel. Record channel-definition version and consent/reporting limits. |
-| socialShareCount | number | Only commissioned platform APIs that expose actual share counts; per-platform URL/time series and permissions. | Integer verified shares ≥0; platform subset mandatory. | Daily, 72h sync TTL | Distribution context; P9/P12 | No universal complete total. Share-button clicks are separate events, not confirmed shares; no API = unavailable. |
-| timeOnPageAverage | number | Compatibility display for measured active engagement: consented engagement_time_msec or first-party focused-visible intervals, deduplicated by page instance. | Total measured engagement seconds / eligible observed page instances; unit seconds. | Daily, 72h sync TTL | Reading UX; P10/P12 | UI label Average active engagement per page view; not exact time, dwell or unlabelled GA4 avg-per-user metric. |
-| commentCount | number | First-party CMS/comment database aggregate for approved, public, non-spam comments attached to canonical content ID. | Integer ≥0; moderation-state snapshot. | Daily or moderation event | Community context; P8/P12 | Disabled comments = not_applicable; query failure = unavailable; no requirement to add comments for SEO. |
-| urgencyFactor | object | Contract/evidence-led review of each urgency statement; Jev may flag unsupported pressure; human validates deadline/scarcity source. | Object: none, factual_deadline, verified_scarcity or unsupported; claim/source IDs and expiry. | Revision + deadline/source change | Trust Review; P8/P10 | Unsupported urgency or expired scarcity blocks affected copy. No numeric persuasion target for YMYL. |
-| powerWordCount | number | Modal matches pinned language-specific editorial lexicon, preserves spans and dictionary version. | Integer matched occurrences ≥0. | Revision | Optional editorial diagnostics; P7/P8 | Not a ranking input or objective; do not force emotionally manipulative language. |
-| readTimeMinutes | number | Modal derived ceil(wordCount / 225) with minimum 1 for nonempty English text; configurable language/format rate pinned. | Integer minutes ≥0; empty content = 0. | Revision | Reader-facing estimate; P7 | Label estimate; exclude this and wordCount from independent scoring to avoid double counting. |
-| fleschReadingEase | number | Modal English formula 206.835 −1.015×words/sentences −84.6×syllables/words. | Unclamped score; values can fall outside 0–100. | Revision | Editor readability; P7/P8 | Shares counts with FK grade but different scale; unsupported language/empty denominator unavailable. |
-| transitionWordDensity | number | Modal pinned phrase lexicon: non-overlapping transition spans / sentences ×100; retain matching method. | Occurrences per 100 sentences, may exceed 100. | Revision | Optional flow diagnostics; P7 | No target quota; transitional meaning assessed editorially. UI must show this denominator. |
-| problemStatement | string | Consented first-party question + qualified search/intent evidence; editor seals the reader's actual problem. | Nonempty proposition and supporting evidence IDs. | Contract change | Research/brief/intro; P3/P5/P7 | Required reader-problem articulation for explanatory copy; no fabricated fear or assumed personal situation. |
-| solutionStatement | string | Reviewed outline tied to primary-source claims and actual service capabilities; human approves scope. | Nonempty proposed answer/next step with evidence IDs. | Contract/source change | Brief/draft/CTA; P7/P8/P10 | No guaranteed outcome; contradiction or unsupported consequential solution blocks release. |
-| benefitCount | number | Structured benefit claims selected by editor; Modal counts distinct supported reader outcomes; deduplicate paraphrases. | Integer verified benefits ≥0; claim IDs retained. | Revision + evidence change | Editorial/CTA review; P7/P8/P10 | Quality not quantity; unsupported benefit is an issue even if excluded from verified count. |
-| trustSignalCount | number | Truth ledger + rendered page: count distinct verified visible source/reviewer/credential/review/award/statistic/quote records. | Integer verified signals ≥0; evidence and type breakdown required. | Revision/render + source expiry | Trust Review; P8 | Never EEAT score. One fabricated credential blocks despite many valid signals; no badge stacking. |
-| headlineType | string | Editor selects contract form; Jev Choice suggests; Modal/editor checks actual title and body. | how_to, listicle, question, explainer, comparison, service or other. | Revision | Packaging experiments; P7/P12 | Fit intent and delivered answer; list title count must match. No clickbait or unproven superlatives. |
-
-## 16. Pipeline, gate and UI integration for these variables
-### Evidence acquisition and joins
-Create a metric subject for intent, page or immutable revision. Historical analytics attach to a published page/window, never directly to an unpublished draft. Each observation retains its own scope; one snapshot may reference multiple grains and must not pretend they share a denominator.
-
-Join through stable content ID + versioned canonical history + query-family ownership, with jurisdiction, language, country, device, channel and window explicitly matched. URL redirects are not permission to combine unrelated audiences or intents. Preserve raw provider rows or permitted hashed evidence plus retrieval parameters; provider licensing governs retention.
-
-Daily GSC/GA4 pulls use idempotent partitions and bounded overlap for late data: default re-fetch previous seven days, with weekly 28-day reconciliation; store restatements as revisions. No query-row sum is labelled property total when privacy or top-row limits omit data. Present raw and qualified views side by side.
-
-Sessions close after the configured inactivity timeout (record the actual setting; proposed default 30 minutes) plus a 72-hour late-event grace for derived exit metrics. Conversion cohorts remain provisional until the attribution window plus grace matures. Store attribution method, consent coverage and unresolved joins. Dates alone do not prove scheduled observation ran.
-
-### How the numbers influence work
-- **Discover/diagnose:** targetKeyword, intent, long tails, related concepts and actual qualified GSC guide the problem. Volume/KD/CPC add optional context. Missing estimates do not erase demonstrated demand.
-- **Contract:** seal approved target/intent/problem/solution, owner, expected answer, source and link/CTA plans. Store metric snapshot ID + definitionSetHash + evidence IDs. Do not seal a global SEO score.
-- **Draft/check:** compute content structure, placements, readability, links/assets and metadata from immutable bytes. Use warnings with exact spans and rationale. Unsupported claims, manipulative urgency, false trust and technical conflicts are substantive blockers regardless of good counts.
-- **Release:** re-extract from target rendering and re-evaluate applicable P0/P2/P3/P4/P8/P13 checks. Record proposed vs rendered vs live values separately.
-- **Observe:** CTR, qualified organic sessions, confirmed conversions and supported authority outcomes inform P7/P10/P12. Engagement and distribution metrics diagnose problems; they are not asserted Google ranking inputs.
-- **Learn:** only mature, scope-compatible observations enter reward attribution. Control for device/country/query mix, seasonality, position change, simultaneous interventions and reporting changes. Observational deltas do not establish causality.
-
-There is no “50/50 green” release badge. The UI shows coverage (available / applicable keys), mandatory gate blockers and optional diagnostics separately. Unavailable optional providers do not fabricate failure or success. Missing mandatory ownership, claim or release evidence blocks only the dependent action.
-
-### UI additions
-- Intelligence has Search demand and Measured search performance tabs; estimates show provider/date/geo and never use the same visual label as observed GSC.
-- Editorial Desk has Clarity, Structure, Coverage and Assets panels; selecting a finding highlights the exact draft/render span. Separate prose requirements from soft suggestions.
-- Technical Review compares planned/rendered/live canonical, robots, schema, links and metadata. Show declaration versus Google-selected canonical separately.
-- Outcomes shows search, sessions, engagement and conversions as separate funnels. Every rate opens its numerator, denominator, cohort, window, coverage and maturity.
-- Evidence drawer on every metric: source run, method/version, original evidence, missing/stale reason, expiry, scope and permitted uses. Show conflicts and historical values, not just the latest.
-- Advanced diagnostics hides deprecated/unsupported fields by default while retaining their named status in exports.
-- No forced zero cards, keyword-density traffic lights, fabricated urgency slider or E-E-A-T gauge.
-- Paginated APIs return selected projection fields; opening a detail fetches one metric group. Full 50-field provenance export is an asynchronous artifact, not a Worker response assembled from raw data.
-
-### Default analysis conventions
-Main-content AST excludes repeated navigation/footer and hidden boilerplate; preserve lists/headings/image captions as distinct nodes. Decode HTML entities, normalize Unicode NFC and whitespace, segment using pinned locale-aware rules. Keep exact substring locators against the original artifact. Heading text is counted once.
-
-Ranges default to UTC internally but retain each source's reporting timezone; never shift provider daily buckets without documenting transformation. Percentages in the product are 0–100; adapters convert provider fractions explicitly. Currency uses ISO currency code and provider-native precision; no silent FX. Zero numerator with positive denominator can be zero; zero denominator is null. Round only display values, not stored source counts.
-
-Freshness: daily metrics expire 72 hours after successful retrieval, while their window remains explicit. Keyword estimates expire after 30 days. Retain stale values for history but exclude from mandatory current-evidence decisions. Critical-source freshness remains governed by section 5 even if metrics are fresh.
-
-Telemetry proposal: raw consented events retained 90 days, non-identifying daily aggregates 25 months, metric evidence/release references according to approved audit and provider retention. Sol must validate these against actual consent, business and provider requirements before enabling collection; shorter mandatory restrictions win. No scheduled collector exists until deployment and observed run evidence.
-
-## 17. Typed object schema and class template
-The following is a design template for the existing TypeScript domain, not shipped code. It replaces untyped “number-or-zero” metric bags. All 50 keys are required as envelopes; unsupported fields still exist with null value, state and reason.
-
-```typescript
-// Design template: shared TypeScript domain contract; no provider I/O here.
-type ISOTime = string;
-type Hash = string;
-type Placement = Record<"title" | "H1" | "intro" | "meta",
-  "exact" | "variant" | "absent" | "not_applicable">;
-type ImageAlt = { id: string; alt: string; decorative: boolean; missing: boolean };
-type ImageFile = { id: string; basename: string; digest: Hash };
-type LinkText = { id: string; text: string; accessibleName: string; target: string; location: string };
-type RobotsState = {
-  raw: string[]; bot: string; index: boolean | null; follow: boolean | null;
-  conflicts: string[]; crawlAllowed: boolean | null
-};
-type Urgency = {
-  kind: "none" | "factual_deadline" | "verified_scarcity" | "unsupported";
-  claimIds: string[]; evidenceIds: string[]; expiresAt: ISOTime | null
-};
-export interface MetricValues {
-  targetKeyword: string;
-  searchVolume: number;
-  keywordDifficulty: number;
-  searchIntentType: "informational" | "commercial_investigation" | "transactional" | "navigational" | "mixed" | "unknown";
-  keywordDensity: number;
-  costPerClick: number;
-  primaryKeywordPlacement: Placement;
-  longTailKeyword: string[];
-  lsiKeyword: string[];
-  searchResultCount: number;
-  wordCount: number;
-  headingCount: number;
-  readabilityScore: number;
-  sentenceLengthAverage: number;
-  paragraphLengthMax: number;
-  passiveVoicePercentage: number;
-  callToActionCount: number;
-  introHookLength: number;
-  altTextString: ImageAlt[];
-  bulletPointCount: number;
-  titleTagLength: number;
-  metaDescriptionLength: number;
-  urlSlug: string;
-  schemaMarkupType: string[];
-  canonicalUrl: string;
-  internalLinkCount: number;
-  externalLinkCount: number;
-  imageFileNames: ImageFile[];
-  anchorText: LinkText[];
-  robotsTagState: RobotsState;
-  clickThroughRate: number;
-  bounceRate: number;
-  dwellTime: number;
-  scrollDepth: number;
-  conversionRate: number;
-  exitPageRate: number;
-  organicTrafficVolume: number;
-  socialShareCount: number;
-  timeOnPageAverage: number;
-  commentCount: number;
-  urgencyFactor: Urgency;
-  powerWordCount: number;
-  readTimeMinutes: number;
-  fleschReadingEase: number;
-  transitionWordDensity: number;
-  problemStatement: string;
-  solutionStatement: string;
-  benefitCount: number;
-  trustSignalCount: number;
-  headlineType: "how_to" | "listicle" | "question" | "explainer" | "comparison" | "service" | "other";
-}
-export type MetricKey = keyof MetricValues;
-export interface MetricScope {
-  projectId: string; subjectId: string; subjectKind: "intent" | "page" | "revision";
-  canonicalUrl: string | null; contractHash: Hash | null; artifactHash: Hash | null;
-  language: string; country: string | null; device: string | null;
-  channel: string | null; searchType: string | null; propertyId: string | null;
-  windowStart: ISOTime | null; windowEnd: ISOTime | null;
-  timezone: string; currency: string | null; cohortId: string | null;
-}
-interface Provenance {
-  observationId: string; definitionVersion: string; sourceRunId: string;
-  sourceKind: "gsc" | "google_ads" | "ahrefs" | "ga4" | "event_ledger" |
-    "cms" | "artifact_analyzer" | "editor" | "jev" | "social_api" | "serp_provider" |
-    "ubersuggest_export" | "dataforseo" | "bing_webmaster" | "tinyfish" |
-    "github" | "cloudflare" | "marketplace_catalog" | "indexnow_receipt";
-  method: string; methodVersion: string; modelVersion: string | null;
-  evidenceIds: string[]; inputHashes: Hash[]; scope: MetricScope;
-  observedAt: ISOTime; ingestedAt: ISOTime; validUntil: ISOTime | null;
-  quality: "observed" | "derived" | "estimated" | "editorial" | "model_judgment";
-  completeness: "complete" | "partial" | "unknown";
-  numerator: number | null; denominator: number | null; sampleSize: number | null;
-  coverage: number | null; confidence: number | null; unit: string;
-  warnings: string[];
-}
-type Present<T> = Provenance & {
-  status: "available" | "stale"; value: T; reason: string | null
-};
-type Absent = Provenance & {
-  status: "unavailable" | "not_applicable" | "pending" | "failed";
-  value: null; reason: string
-};
-export type MetricObservation<T> = Present<T> | Absent;
-export type SeoMetricSnapshot = {
-  schemaVersion: "seo.metrics/1";
-  definitionSetHash: Hash;
-  observations: { [K in MetricKey]: MetricObservation<MetricValues[K]> };
-};
-type Validator = (input: unknown) => asserts input is SeoMetricSnapshot;
-export class SeoMetrics {
-  private readonly snapshot: SeoMetricSnapshot;
-  constructor(input: unknown, validate: Validator) {
-    validate(input); // compiled strict JSON Schema + contextual invariants
-    this.snapshot = structuredClone(input);
-  }
-  observation<K extends MetricKey>(key: K): MetricObservation<MetricValues[K]> {
-    return structuredClone(this.snapshot.observations[key]);
-  }
-  valueForDecision<K extends MetricKey>(
-    key: K, now: Date, expectedArtifactHash?: Hash
-  ): MetricValues[K] | null {
-    const x = this.snapshot.observations[key];
-    if (x.status !== "available") return null;
-    if (x.validUntil && Date.parse(x.validUntil) <= now.getTime()) return null;
-    if (expectedArtifactHash && x.scope.artifactHash !== expectedArtifactHash) return null;
-    return structuredClone(x.value);
-  }
-  export(): SeoMetricSnapshot { return structuredClone(this.snapshot); }
-}
-// This class returns values, NOT eligibility or publication approval.
-// Only the policy kernel may decide whether completeness/source/quality is sufficient.
-// Never coerce null to zero, and never expose this whole snapshot in list APIs.
-
-```
-
-### Runtime object schema contract
-Generate a strict JSON Schema from MetricValues + the versioned registry as one build artifact, then generate TypeScript declarations and SQL definition seeds from that same source. No independently hand-maintained browser, Python and SQL definitions. Modal Python transports opaque JSON; Node owns validation/canonical hashing until shared fixtures prove another implementation identical.
-
-Schema rules:
-- Root has exactly schemaVersion, definitionSetHash and observations; observations has exactly the 50 registry keys, all required, additionalProperties=false.
-- Every envelope includes all Provenance fields; each nested object disallows unknown properties. Array items use the types above, with unique IDs; string arrays are deduplicated.
-- available/stale requires the registry value type; unavailable/not_applicable/pending/failed requires JSON null and nonempty reason. No numeric strings, NaN, Infinity or implicit casts.
-- Counts are integers ≥0; rates declared as percent range 0–100; CPC/volume are ≥0; keywordDifficulty 0–100. FK and Flesch are unclamped finite numbers. transitionWordDensity is ≥0 with no 100 ceiling.
-- Placement and other enumerations exactly match the TypeScript contract. URLs must pass the project's canonical/safe URL parser in addition to schema format checks.
-- ISOTime is a validated RFC3339 instant; Hash is lowercase 64-hex SHA-256. Currency and country codes use their versioned supported registries.
-- available/stale evidenceIds and inputHashes must be nonempty; unavailable observations link to the failed/unconfigured source run but may have empty evidence. Ratio rows require numerator ≥0 and denominator >0; conversion numerator cannot exceed eligible sessions.
-- provenance confidence and coverage are null or 0–1 with distinct meanings. Unit is constrained per key. Method/model/definition changes create new versions.
-- Artifact-derived observations require artifactHash; keyword metrics require query subject/country scope; currency-bearing CPC requires currency; outcome rates require cohort/window/timezone. Contextual validation enforces these cross-field rules.
-- Budget: max 100 array records per synchronous observation object and 256-character scalar labels except reviewed problem/solution text (max 4,000). Overflow collections live in paginated child records/artifacts; observation points to their complete evidence. Never silently truncate and claim complete.
-- A schema-valid metric cannot grant publication permission. Policy checks eligibility, source authority, completeness, expiry and evidence independently.
-
-Example missing field:
-```json
-{
-  "key": "dwellTime",
-  "status": "unavailable",
-  "value": null,
-  "reason": "EXACT_SERP_RETURN_NOT_OBSERVABLE",
-  "allowedUse": "display_only"
-}
-```
-This short example illustrates the state, not the full required provenance envelope.
-
-## 18. Database design and persistence boundaries
-Keep existing contracts/jobs/evidence as their source of truth. Add the following **private schema**, outside public Data API exposure; actual foreign keys to current project/content/contract tables are mapped in A0. Do not create a parallel content or ownership catalogue.
-
-| Table | Purpose / keys | Required constraints and indexes |
-|---|---|---|
-| metric_definitions | (metric_key, definition_version); value/envelope JSON Schema; source policy, unit, TTL, allowed uses and deprecation alias | Immutable definitions; exactly 50 seeded keys for seo.metrics/1; schema checksum; only reviewed migration role writes. |
-| metric_subjects | (project_id, subject_id); subject_kind + reference to existing intent/page/revision and canonical-history version | Unique (project_id, kind, existing_object_id); composite tenant keys; existing-object existence/ownership validated transactionally. |
-| metric_source_runs | (project_id, run_id); adapter/version, provider account reference (not secret), request hash, query scope, window/timezone, source health, retrieved time, coverage and raw artifact ref | Unique project + adapter + idempotency key; failed runs retained; index project/status/retrieved_at; no privileged token fields. |
-| metric_observations | Immutable observation ID; project/subject/key/definition/source-run, scope hash, envelope, artifact hash and supersedes ID | Composite tenant foreign keys; JSON Schema validation; unique project/subject/key/definition/run/scope/artifact identity; index project/subject/key/observed_at descending. |
-| metric_evidence_links | Observation→existing evidence; role=input/support/contradiction and locator | Composite tenant foreign keys; unique observation/evidence/role/locator. Revocation invalidates dependent use, never deletes historical proof. |
-| metric_snapshots / metric_snapshot_items | Snapshot hash, definition-set hash, contract/revision refs; 50 key→observation bindings | Unique snapshot/key; all same project; finalize only when exactly one of each registry key is present and valid for declared scope. Immutable once sealed. |
-| metric_current_projection | Small latest-eligible views per subject, metric and normalized scope | Never overwrite history; compare-and-swap ordering by source effective window + retrieval + sequence; rejected/stale late completion cannot replace fresh data. |
-| page_assets / page_links / editorial_claims | Reuse existing normalized equivalents; otherwise revision-bound child facts for images, anchors, CTAs, benefits and urgency/trust records | Stable node IDs, artifact/claim/evidence foreign keys; avoid giant JSON arrays; paginated reads. |
-| consented_events / daily_outcomes | Reuse first-party event ledger; event_id, consent/purpose/version, pseudonymous session/page IDs, safe event payload and occurred/received time | Unique project/event_id; indexed project/date/page; retention partitioning only when volume justifies it; aggregate metric observations reference derivation runs. |
-
-Minimal Postgres template for the core invariant (design only; no migration applied):
+| P0 Estate truth | No retired Marketplace URL emission; exact-tip branch hygiene; retain unique/active work | Resolve host/repo/path/canonical via the estate registry/`ownership.ts` for every contract and render. Scan runtime emissions; test old aliases. Branch cleanup belongs to the supervisor lane with exact-tip evidence; Studio cannot delete branches. |
+| P1 Measurement | Reproducible current GSC; priority index evidence; failed audits excluded; unavailable is not zero | Version complete source snapshots, windows, coverage and freshness. Raw/qualified/off-mission/junk stay separate. Expired/incomplete required inputs block decisions. Test provider failure and truncated pagination. |
+| P2 Technical | Zero invalid sitemap URLs or meaningful canonical conflicts; priority orphans resolved/justified | Validate proposed and rendered URLs, indexability, redirects, schema, links; recheck deployed output. Zero known invalid sitemap URLs in complete scope; incomplete coverage cannot claim whole-estate PASS. |
+| P3 Ownership | 100 % strategic and ≥ 95 % active priority intent mapping; owner resolution before CREATE | Reserve normalized jurisdiction + entity + reader intent/query family transactionally; one primary owner. Supporting pages need a distinct sub-intent and parent relationship. Concurrent owner collision test must block. |
+| P4 Consolidation | No unresolved major collision in priority clusters; evidence/review/rollback for destructive actions | Recommend-first decision record on current qualified GSC + authoritative owner. No deletion/redirect/noindex from model recommendation alone. Regression and rollback proof mandatory. |
+| P5 Mission fit | Raw and qualified data available; off-mission cannot generate missions; explicit high-impression dispositions | Mission eligibility uses qualified evidence only; the same predicate applies at ingestion, opportunity creation and regeneration. |
+| P6 Internal authority | ≥ 80 % approved useful backlog verified applied OR explicitly rejected/stale; multiple relevant inbound links for strategic canonicals | Track planned/staged/deployed/live-verified/rejected-stale separately with visible denominator and truncation flags. Test zero-applied + valid stale dispositions. |
+| P7 Winners | Selected near-wins have before/after evidence and an observation schedule | Refresh contract binds query×page baseline, proposed difference, source-backed information gain, CTA and owned +7/+14/+28-day observations (or approved alternatives). |
+| P8 Trust | Truthful authorship/review/source evidence on priority YMYL; no fabricated credentials | Claim-source ledger and real reviewer sign-off bound to the exact revision; no manufactured self-review, unknown dates or inherited `shipReady`; audit rendered additions before Git writes. |
+| P9 Authority | Verified won backlinks | Won requires live referring URL, actual href/target, retrieval time and retained proof. Outreach/sent/accepted/lost remain distinct. Internal score is never third-party DR/DA. Current status is dated evidence only (§1.3). |
+| P10 Attribution | ≥ 1 strategic cluster traced to a meaningful business event | Consent-aware landing → CTA → service → lead/order pipeline; deduplicated event IDs and verified webhooks. Synthetic tests prove wiring only; PASS needs real observed events. |
+| P11 GEO | Current estate recognized; failed audits excluded; ownership-led remediation | Record provider/model/prompt/date, success coverage, cited URLs and competitor citations with visible denominators. No generic `llms.txt` task without evidence. |
+| P12 Validation | Technical gates green, measured progress OR documented failure diagnosis; authority works; fresh measurement; no duplicate owners | Mature observations distinguish data absence, negative result and positive result. Diagnostic failure is recorded, never converted into success. |
+| P13 Expansion | Cluster unlock and immutable writing contract per new page | Broad CREATE stays frozen until signed cluster authorization and all required predecessor/action gates. Preserve evidence-led waves and the 40/20/20/10/10 portfolio default; changes require real reward evidence. |
+
+### 8.3 Enforcement points and permit consumption
+Enforce at: command acceptance, job claim, contract sealing, post-rewrite audit, review approval, PR creation, final merge check and live acceptance. Re-evaluate on any change to owner, sources, policy or content; never reuse stale badges. Every historical route — SEO Factory, manual editor, regeneration, scheduled engine, admin repair, legacy ship helpers, direct API callers — must reach the same boundary or be rejected; A0 enumerates the route/call graph and A1 proves each sink is closed.
+
+The publisher consumes a **short-lived, single-use `ReleasePermit`** bound to action, actor, run, contract hash, body hash, rendered artifact hash, ownership version, policy version and expected repository base. Consumption is transactional, and the external operation intent is recorded before dispatch (§7.5).
+
+### 8.4 Gate lifecycle
+- A gate evaluation is immutable; a change produces a new evaluation linked by `invalidatedBy`.
+- `expiresAt` is enforced at read time: an expired evaluation cannot authorize.
+- `ACCEPTED_EXCEPTION` is never equivalent to PASS; it is scoped, named, expiring and compensating-checked, and cannot clear CREATE freeze, ownership ambiguity, fabricated credentials or missing YMYL review.
+- A policy change requires its own review and explicit authority; no runtime path may rewrite policy.
+
+## 9. Persistence, storage tiers and data platform
+
+### 9.1 Three-tier persistence model (binding)
+| Tier | Store | What lives here | What must never live here |
+|---|---|---|---|
+| **T1** | Supabase/Postgres (transactional authority) | Owners, gates, contracts, runs/stages/attempts, leases/fences, decision/review/release state, semantic IDs and metadata, evidence metadata, reservation/outbox state, observation/reward ledgers, integration bindings. | — (this is the authority) |
+| **T2** | Modal Volume (large immutable/derived artifacts) | Raw provider/competitor captures, normalized page text, embeddings, reranker caches, corpora, research bundles, rendered intermediates, evaluation fixtures, model/semantic-space snapshots, large source exports. | Primary transactional state, lease/fencing records, CREATE reservations, policy decisions, release permits. |
+| **T3** | GitHub + live estate | Version-controlled publication truth and independently verified deployed state (PRs, merges, workflows, deployed bytes, live HTTP/canonical/robots/body evidence). | Draft workflow state, private analytics, personal data, secrets. |
+
+**Modal Volume is not a database substitute.** It is object/file storage with no transactions, no row-level authorization and no lease semantics; using it for control state would create the second-authority failure this architecture forbids.
+
+**Cost basis (official pricing verified 2026-09-22; A0.7 must revalidate before anything depends on it):** Modal Starter includes **$30/month free compute credits**; Modal Volumes are billed at **$0.09/GiB/month with 1 TiB/month included free**. These are **A0_UNVERIFIED for our workspace**: A0.7 records actual plan, billing telemetry, allowance behavior and current published pricing/limits. Do not assume the 1 TiB free allowance persists; model both compute credit and storage/egress/retention cost, and re-check on every planning cycle.
+
+### 9.2 T1 object discipline
+- Every durable row carries `project_id`, created/superseded timestamps, schema version and provenance.
+- Immutable by default: corrections insert a new version with a supersession link; only explicit projection tables are mutable, and they are compare-and-swap.
+- Large bodies (rendered HTML, raw provider payloads, corpora) never live in list-read rows; they live in T2 with a `ArtifactRef` row in T1.
+- Tenant/project scoping is enforced by composite keys and RLS; no query retrieves across projects and then filters in application memory.
+
+### 9.3 T2 artifact discipline
+Every durable object records: content hash (verified checksum), byte size, media type, producer version, source run, retention class, license constraints and creation time. Rules:
+- Write bytes → verify checksum → then write the referencing T1 checkpoint/event (§7.5).
+- Content-addressed deduplication is mandatory; identical bytes are stored once.
+- Retention classes: `transient` (rebuildable caches; short TTL), `derived` (recomputable; medium TTL), `evidence` (license/retention-governed), `proof` (release/live verification evidence; retained per audit policy), `snapshot` (model/semantic-space snapshots).
+- Automatic cleanup follows the retention class; cleanup never deletes an object referenced by an open run, an active release proof, or an unreconciled decision.
+- A missing T2 object degrades to `unavailable` for its dependent computation; it never silently becomes empty/zero.
+
+### 9.4 Capacity and budget controls (compute **and** storage)
+- Budget/capacity tracking covers: Modal compute credit consumption, Volume bytes by retention class, egress, DB size/index growth, provider quotas and Cloudflare-plan resource limits.
+- Proposed Postgres thresholds for the current free-first posture: warn and forecast at 60 % of quota; stop optional bulk research at 75 %; reject new bulk jobs at 85 % while reserving capacity for release/audit writes. Never silently delete required evidence, truncate the estate or call missing data complete.
+- Daily encrypted database backup plus independent artifact manifests/objects to an approved separate destination; the only backup is never in the same project. Proposed recovery objective ≤ 24 h data loss and ≤ 4 h restore, proven by drills; a missing destination or failed restore blocks production activation.
+- If capacity is insufficient, Sol presents measured retention or hosting alternatives; **no automatic paid upgrade and no silently reduced fidelity**.
+
+### 9.5 Growth and projection rules
+History is never overwritten: `metric_current_projection`-style tables select the latest eligible value by (source effective window, retrieved at, sequence) and reject late stale completions. Current projections are small, indexed and list-safe. Full-fidelity exports are asynchronous artifacts, not request-time joins.
+
+### 9.6 Migration mechanics (repository-verified conventions, binding)
+1. **Auto-apply is real:** pushing to `main` changes under `supabase/migrations/**`, `supabase/migration-baseline.json` or `scripts/migration-order.mjs` can apply migrations automatically (F5). Treat a migration merge as a production change.
+2. **Frozen migration baseline is append-only.** Never edit an already-applied migration file or the baseline list retroactively; **new timestamped files only** (F6). An unclassifiable file is a hard error by design.
+3. **DDL is separate from behavior enablement.** Ship schema in one reviewed change; enable behavior/policy in a later, separately reversible change. New columns are nullable/backfilled before constraints are enforced.
+4. **Reconcile before design freeze:** the live applied-migration ledger, applied/unapplied execution-lease and provider-parity migrations, extension availability/version and table sizes must be reconciled against the repository baseline (A0.3). Any divergence is fixed by a new forward migration, never by editing history.
+5. **Long locks/backfills/index creation** follow repository policy and a measured plan: statement/lock budgets, `create index concurrently` where appropriate, batched backfills with resumable checkpoints, and no unbounded blocking DDL during business hours.
+6. Every migration records: intent, expected lock profile, rollback/forward-fix plan, estimated duration, and the verification query proving the post-state.
+
+### 9.7 Privilege and RLS boundary (A0.5)
+- Current public SEO tables are **not all least-privilege** (F7). A0.5 produces an effective-grant and policy inventory: for each table/function, actual roles, grants, RLS enablement, policies, `security definer` usage and `search_path` settings.
+- New authoritative semantic/decision/reviewer/release state is **private by default**: dedicated schemas, no `anon`/`authenticated` grants, no public Data API exposure, explicit service roles.
+- A legacy table must be hardened (grants + RLS + access path review) **before** it is reused for authoritative state. Where a legacy table cannot be hardened safely, it is migrated to a private table and the legacy surface is revoked.
+- Service credentials can bypass RLS; therefore service-code/RPC authorization and restricted grants are mandatory, and every service call is scope-checked server-side.
+- **Browser Realtime is not an authoritative control plane.** It may be used for bounded cosmetic hints only, never for run state, gates, approvals or release status. The existing authenticated API polling model (P1 removed browser access to `content_jobs`) is preserved; do not restore anonymous subscriptions.
+
+### 9.8 Private schema template (design only; no migration applied by this document)
 ```sql
-create schema if not exists studio_metrics;
-revoke all on schema studio_metrics from public, anon, authenticated;
--- Verify extension availability/version in A0; no fallback that skips validation.
-create extension if not exists pg_jsonschema with schema extensions;
+create schema if not exists studio_core;
+revoke all on schema studio_core from public, anon, authenticated;
+-- Extension availability/version is verified in A0.3; no fallback that silently skips validation.
 
-create table studio_metrics.metric_definitions (
-  metric_key text not null,
-  definition_version text not null,
-  schema_json json not null,
-  schema_hash text not null check (schema_hash ~ '^[0-9a-f]{64}$'),
-  primary key (metric_key, definition_version)
-);
-create table studio_metrics.metric_subjects (
-  project_id uuid not null,
-  subject_id uuid not null,
-  subject_kind text not null check (subject_kind in ('intent','page','revision')),
-  existing_object_id text not null,
-  primary key (project_id, subject_id),
-  unique (project_id, subject_kind, existing_object_id)
-);
-create table studio_metrics.metric_source_runs (
-  project_id uuid not null,
-  run_id uuid not null,
-  adapter text not null,
-  idempotency_key text not null,
-  request_hash text not null check (request_hash ~ '^[0-9a-f]{64}$'),
-  health text not null check (health in ('pending','ok','empty','unavailable','failed')),
-  retrieved_at timestamptz,
-  scope jsonb not null,
-  primary key (project_id, run_id),
-  unique (project_id, adapter, idempotency_key)
-);
-create table studio_metrics.metric_observations (
+create table studio_core.metric_observations (
   project_id uuid not null,
   observation_id uuid not null,
   subject_id uuid not null,
   metric_key text not null,
   definition_version text not null,
-  run_id uuid not null,
+  source_run_id uuid not null,
   scope_hash text not null check (scope_hash ~ '^[0-9a-f]{64}$'),
-  artifact_key text not null, -- 'none' or verified 64-hex artifact hash
+  artifact_key text not null,               -- 'none' or verified 64-hex hash
   observed_at timestamptz not null,
   envelope jsonb not null,
   primary key (project_id, observation_id),
-  foreign key (project_id, subject_id)
-    references studio_metrics.metric_subjects(project_id, subject_id),
-  foreign key (project_id, run_id)
-    references studio_metrics.metric_source_runs(project_id, run_id),
-  foreign key (metric_key, definition_version)
-    references studio_metrics.metric_definitions(metric_key, definition_version),
-  check (artifact_key = 'none' or artifact_key ~ '^[0-9a-f]{64}$'),
-  unique (project_id, subject_id, metric_key, definition_version,
-          run_id, scope_hash, artifact_key)
+  check (artifact_key = 'none' or artifact_key ~ '^[0-9a-f]{64}$')
 );
 create index metric_observation_read
-  on studio_metrics.metric_observations
-  (project_id, subject_id, metric_key, observed_at desc);
+  on studio_core.metric_observations (project_id, subject_id, metric_key, observed_at desc);
 
-create function studio_metrics.validate_observation()
-returns trigger language plpgsql security invoker
-set search_path = pg_catalog, studio_metrics, extensions as $$
-declare s json;
-begin
-  select schema_json into strict s
-    from studio_metrics.metric_definitions
-    where metric_key = new.metric_key
-      and definition_version = new.definition_version;
-  if not extensions.jsonb_matches_schema(s, new.envelope) then
-    raise exception 'METRIC_SCHEMA_INVALID';
-  end if;
-  if new.envelope #>> '{scope,projectId}' is distinct from new.project_id::text
-     or new.envelope #>> '{scope,subjectId}' is distinct from new.subject_id::text
-     or new.envelope ->> 'sourceRunId' is distinct from new.run_id::text
-     or new.envelope ->> 'definitionVersion' is distinct from new.definition_version
-     or new.envelope ->> 'observationId' is distinct from new.observation_id::text then
-    raise exception 'METRIC_IDENTITY_MISMATCH';
-  end if;
-  if (new.envelope ->> 'observedAt')::timestamptz
-       is distinct from new.observed_at then
-    raise exception 'METRIC_TIME_MISMATCH';
-  end if;
-  if coalesce(new.envelope #>> '{scope,artifactHash}', 'none')
-       is distinct from new.artifact_key then
-    raise exception 'METRIC_ARTIFACT_MISMATCH';
-  end if;
-  return new;
-end $$;
-create trigger metric_observation_validate
-before insert on studio_metrics.metric_observations
-for each row execute function studio_metrics.validate_observation();
-
-alter table studio_metrics.metric_definitions enable row level security;
-alter table studio_metrics.metric_subjects enable row level security;
-alter table studio_metrics.metric_source_runs enable row level security;
-alter table studio_metrics.metric_observations enable row level security;
-revoke all on all tables in schema studio_metrics from public, anon, authenticated;
-revoke all on all functions in schema studio_metrics from public, anon, authenticated;
+-- Append-only to application roles; corrections insert a new observation with provenance.
+-- Validate: JSON-schema shape, identity fields matching the row, unit/scope consistency,
+-- and evidence FKs. A schema-valid observation still grants no permission.
+alter table studio_core.metric_observations enable row level security;
+revoke all on all tables in schema studio_core from public, anon, authenticated;
 ```
+Additional required seeds from A0.4/A1: semantic identity/ontology registries, relation authority classes, gate applicability matrix, reviewer registry, release-permit and publication-proof tables, integration bindings, outbox/dispatch state. The dedicated worker role receives definition/subject/run reads and validated observation INSERT only — no UPDATE/DELETE on observations/definitions. Only the outbox coordinator updates run state; only the trusted policy role seals snapshots. RLS policies follow actual project/service identity, never a client-supplied project id.
 
-This deliberately grants no application access yet. A0/A1 must add scoped existing-object foreign keys, schema seeds and approved database roles before activation. Dedicated worker role gets definition/subject/run reads and validated observation INSERT only; no UPDATE/DELETE on observations/definitions. Outbox coordinator alone updates run state; trusted policy role seals snapshots. RLS policies follow actual project/service identity, not client-supplied project IDs. Do not assume service_role is restricted by RLS.
+### 9.9 API surface (proposed, versioned)
+Under `/api/content-studio/v3`:
+- `GET /overview`, `GET /opportunities` — bounded projections with freshness/coverage and cursor pagination.
+- `POST /runs` — accepts action, opportunity id, expected owner/policy version and idempotency key; returns 202 only after the durable transaction.
+- `GET /runs/:id`, `GET /runs/:id/events?after=sequence` — authorized bounded state/event pages.
+- `POST /runs/:id/contract` — seal server-resolved evidence; clients cannot supply trusted hashes as authority.
+- `POST /runs/:id/revisions` — optimistic concurrency (`expectedVersion`); 409 on conflict.
+- `POST /runs/:id/review` — role-checked approval of exact revision/render hashes.
+- `POST /runs/:id/release` — creates a release intent only; never returns "published" on PR creation.
+- `POST /runs/:id/cancel|retry` — fence the prior attempt and reuse identity; retry requires fresh eligibility.
+- `GET /runs/:id/artifacts/:artifactId` — scope-checked short-lived download capability.
 
-Recompute scope_hash using the shared canonical serializer inside the trusted ingest transaction; verify source run belongs to the same scope/adapter and source authority is permitted for the key. Caller-supplied hashes are checked, not trusted. Untrusted clients cannot INSERT observations directly. SQL schema checks enforce shape; a role-bound ingest function/service enforces evidence FKs, units, scope consistency and complete snapshot rules. Gate evaluation only reads sealed snapshots from that boundary.
+Errors: 401/403 auth; 409 version/contract conflict; 413 oversized payload; 422 invalid contract; 429 explicit backpressure; 503 temporarily unavailable persistence. Stable reason codes and a recovery action are mandatory; client errors never leak raw credentials or provider internals.
 
-Definitions and observations are append-only to application roles; corrections insert a new observation/definition with provenance. Privacy deletion, if required, uses a separately authorized retention process and retains non-personal tombstones sufficient to invalidate dependent evidence. Migration owner access is audited; no runtime self-granting.
+## 10. Release authority and the merge boundary
 
-Postgres pg_jsonschema supports schema validation; verify supported JSON Schema dialect/features against the deployed extension and run the same accept/reject fixture corpus in Node and SQL. If an extension is unavailable, implement a reviewed equivalent validator before ingestion; never silently disable the constraint.
+### 10.1 Principle
+Writing, research, semantic and Modal compute planes produce **candidates**. Exactly one release authority turns a candidate into a published change, and it lives behind its own credential boundary. Writers, research runners, semantic workers and Modal containers hold **no merge credentials and no direct-main write credentials**.
 
-## 19. Acceptance tests and delivery additions
-Extend existing A0–A7 packages; these are not a second independent project or permission to advance SEO phases.
-- A0: source-entitlement inventory, existing GA4/Ads/GSC/CRM/CMS schema, retention/consent review, raw extraction fixtures and all 50 definitions.
-- A1: registry/versioned schema and contextual validators; SQL grants/RLS and ingest-boundary tests; gates cannot consume unsupported proxies.
-- A2: Modal extraction cache, bounded provider batches, durable evidence, projection refresh and event deduplication. Instrument resource use.
-- A3: provider adapters, proper grains, null/estimate/provenance handling and Jev advisory routing.
-- A4: editor claim/asset/benefit/trust records; stale metrics invalidated on rewrite, new render, model or analyzer changes.
-- A5: panels, per-field evidence drawers, truthful labels, missing/stale UI and accessible explanations.
-- A6: verified analytics events, attributed outcomes and live metadata/link reconciliation.
-- A7: parity, load and migration tests before production activation.
+### 10.2 Sink inventory and disposition (A0.6)
+A0.6 enumerates **every** existing path that can write to a repository, merge a PR, deploy, or publish a live artifact, then dispositions each one as exactly `pr_only`, `merge_via_release_service`, or `retired`. Until A0.6 completes, the inventory below is the known starting set (VERIFIED_REPO_FACT) plus candidates to confirm:
 
-Required fixtures:
-1. Exactly 50 unique registry keys; each appears in typed values, schema, database seed, source policy, UI mapping and acceptance matrix.
-2. Missing key, extra key, wrong scalar/array, numeric string, bad enum, NaN, wrong unit, negative count and ratio beyond valid domain rejected.
-3. Null with unavailable accepted; unavailable=0 rejected; measured zero with evidence accepted; empty denominator unavailable.
-4. Unicode titles, Markdown tables, nested lists, abbreviations, legal citations, image-only pages, decorative/informative images and unsupported languages produce defined results.
-5. GSC omitted queries/partial pages, provider 429, revoked token, no Ads/Ahrefs license, GA4 thresholding and no social API produce honest states without synthetic replacements.
-6. GA4 bounce fraction conversion, exact numerator/denominator aggregation, multiple conversions per session, bot/test-event exclusion, duplicate webhook and late event corrections.
-7. Unknown dwellTime never becomes engagement time; share clicks never become actual shares; Ads competition never becomes organic KD.
-8. Different geo/currency/device/windows cannot merge without explicit compatible transformation; provisional cohorts cannot enter mature reward.
-9. Changed artifact/source/policy/analyzer invalidates corresponding metric snapshots and approvals. Concurrent obsolete run cannot replace current projection.
-10. SQL schema parity and cross-project ID mismatch fail; anon/authenticated cannot read private observations; workers cannot change definitions or overwrite evidence.
-11. Full 50-key exports are asynchronous; list APIs stay within section 10 budgets. A large page with 1,000 links uses complete child records, not giant edge JSON or silent truncation.
-12. Excellent soft metrics cannot override CREATE freeze, owner collision, unsupported YMYL claims, fabricated trust, false urgency or a failed release gate.
-
-No new provider is “connected”, event “tracked”, schema “applied”, or gate “passed” until its actual acceptance evidence is recorded. The code and SQL here are templates for Sol's review and DeepSeek's implementation, not tested production modules.
-
-## 20. Additional primary references and revision record
-Official documentation checked for this revision:
-- [Google Ads historical keyword metrics](https://developers.google.com/google-ads/api/docs/keyword-planning/generate-historical-metrics).
-- [Ahrefs Keywords Explorer overview](https://docs.ahrefs.com/en/api/reference/keywords-explorer/get-overview).
-- [GSC Search Analytics limitations](https://developers.google.com/webmaster-tools/v1/searchanalytics/query).
-- [GA4 engagement and bounce rate](https://support.google.com/analytics/answer/12195621?hl=en).
-- [GA4 active engagement](https://support.google.com/analytics/answer/11109416?hl=en).
-- [GA4 Data API metric/dimension schema](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema).
-- [Google title links](https://developers.google.com/search/docs/appearance/title-link).
-- [Google snippets/meta descriptions](https://developers.google.com/search/docs/appearance/snippet).
-- [Structured-data policies](https://developers.google.com/search/docs/appearance/structured-data/sd-policies).
-- [Supabase pg_jsonschema](https://supabase.com/docs/guides/database/extensions/pg_jsonschema).
-
-CS-2026.09.22.2: incorporates all 50 requested variables, corrects misleading measurement definitions, specifies acquisition and unavailability, extends UI/pipeline/gates, adds typed object/class and private Postgres design, and defines acceptance coverage. Original phase statuses are a dated baseline, not newly reverified progress. No production changes or new subscriptions authorized by this documentation revision.
-
-CS-2026.09.22.3: added binding estate-wide connector/data-fabric, reconciled estate state, publication-target/slug safety, topical-map and Marketplace-funnel contracts.
-
-CS-2026.09.22.4: adds the Semantic Fabric, ontology/identity model, multi-grain semantic compiler, hybrid retrieval/reranking, competitive territory and information-gain model, SemanticOpportunity/decision passports, Modal budget scheduler, Jev calibration/promotion, temporal change propagation, outcome learning, War Room UI and expanded adversarial acceptance. Earlier gates and authority are preserved.
-
-## 21. Estate data fabric and connector wiring — binding extension
-CS-2026.09.22.4 retains and deepens the estate-wide integration and Marketplace-funnel requirements introduced in .3. This extension governs source acquisition, cross-repository reconciliation, topical ownership and publication routing. Existing P0–P13 gates and CREATE freeze remain unchanged. DataForSEO is the provider intended by “Data4SEO”; “Bingmasters” means Bing Webmaster Tools.
-
-### Two integration planes, one evidence boundary
-**Production plane:** scheduled/event-triggered Modal adapters call approved provider APIs or ingest authenticated exports; they persist evidence through the same validated ingestion service. Production must function without an open chat, Mac, interactive OAuth prompt or Sol/DeepSeek session.
-
-**Agent plane:** Sol and DeepSeek use explicitly granted MCP tools for bounded investigation and implementation. MCP output becomes usable product evidence only after an ingest job validates, versions and stores it. A tool result in chat is not a durable production data feed. This ChatGPT connection does not automatically connect the ds harness or deployed application.
-
-**Shared contract:** provider response → immutable raw artifact within license limits → schema/identity/completeness validation → normalized observations → reconciled estate snapshot → eligible opportunities → sealed writing contract → reviewed publication → live verification → outcome measurement. No external text writes ownership or gate PASS directly.
-
-Use direct APIs for repeatable production batches. Use MCP for task-driven research and diagnostics; a production MCP client is allowed only when its noninteractive auth, transport, tool schema and lifecycle are explicitly commissioned. Do not route every scheduled import through an LLM.
-
-```mermaid
-flowchart TD
-  S["Provider APIs and exports"] --> I["Modal ingestion"]
-  T["Sol and DeepSeek MCP research"] --> I
-  R["Repo manifests and deploy events"] --> E["Estate reconciliation"]
-  I --> D["Versioned evidence and observations"]
-  D --> E
-  E --> Q["Intent and topical graph"]
-  Q --> C["Contract and publication gates"]
-  C --> P["Exact target PR and deploy"]
-  P --> V["Live page and Marketplace path checks"]
-  V --> E
-  V --> O["Attribution and observations"]
-  O --> D
-```
-
-### Source-to-consumer integration matrix
-All schedules are proposed configuration to deploy and verify, not currently running automation. Costs/quotas are checked before dispatch; paid adapters default disabled until budget authority exists.
-
-| Source | Production wiring and authentication | Agent/MCP wiring | Persisted data and consumers | Proposed cadence / failure |
-|---|---|---|---|---|
-| Google Search Console | Official Search Analytics and URL Inspection APIs, scoped OAuth or authorized service identity with actual property access | Existing verified GSC tool if available; otherwise internal read-only adapter MCP, not an invented official server | Query/page clicks, impressions, CTR, position; inspection coverage and selected canonical → P1/P2/P3/P7/P12 | Daily metrics with late-data reconciliation; priority URL inspection within quota after releases/weekly. Quota exhaustion = partial coverage. |
-| Google Analytics 4 | Official Data API plus consented first-party events; optional authorized BigQuery export | Verified GA4 MCP if commissioned; otherwise internal adapter exposing named read methods | Organic landing sessions, engagement, attribution cohorts → P10/P12, funnel diagnostics | Daily aggregates; event ingestion asynchronous. Thresholding/consent loss retained; never reconcile clicks to sessions by force. |
-| Google Ads keyword data | Authorized historical keyword API; credentials and developer-token entitlement verified | Optional scoped adapter reads only | Geo/language/month-specific volume and CPC → opportunity context | Monthly refresh, explicit budget and scope. Failure leaves estimates unavailable. |
-| Ahrefs | Official API endpoints for entitled Keywords/Site Explorer datasets; separate API secret | Use official/approved MCP only after live discovery; otherwise internal read adapter | Organic KD, estimates, backlinks and provider-labelled DR → P7/P9 context | Keywords monthly; backlinks weekly; priority refresh on demand. Counts/DR never become Google authority or live-win proof. |
-| Ubersuggest | Validated user/authorized report exports; upload to private storage → Modal parser. Official help currently says no API/webhooks | No assumed API/MCP. A future adapter needs provider-supported access; no reverse-engineered private endpoints | Exported keyword/topic/competitor/backlink estimates with export timestamp, country and report type | Import-driven, stale after configured TTL; UI says Manual import required. No invented scheduled live sync. |
-| DataForSEO | Official v3 SERP, keyword/Labs/backlink datasets as entitled; API login/password in secret manager; bounded asynchronous tasks where supported | Official DataForSEO MCP, remote https://mcp.dataforseo.com/mcp or pinned official local package; client-specific documented auth | SERP result URLs/features/ranks; related topics and provider estimates → opportunities, competitor cohorts, P7/P9/P11 | Weekly sampled priority SERPs, monthly keyword expansion, on-demand selected queries; paid tasks budgeted. HTTP success alone insufficient—validate task status/result/errors. |
-| Bing Webmaster Tools | Official APIs, OAuth 2.0 preferred or authorized API key; enumerate verified sites | Internal read adapter unless an independently verified supported MCP is commissioned | Page/query traffic, crawl/index diagnostics exposed by actual API → separate Bing measurements and P2/P11 context | Daily traffic, weekly diagnostics. UI-only features such as AI reports require supported export/API evidence before automation claims. |
-| IndexNow | Outbound post-deploy notifier, verified per-host key/keyLocation; queued URL batches | No model decides URLs; internal submit tool unavailable to research roles | Submission receipt/error/retry state → discovery ledger only | Changed/new/deleted URLs after the intended live state is verified. Receipt never means indexed, ranked or Google submission. |
-| TinyFish | Official Search/Fetch APIs, X-API-Key server-side; Agent/Browser only when interaction is needed and authorized | Official OAuth MCP https://agent.tinyfish.ai/mcp; use discovered search/fetch tools first | Competitor page observations, sources, topics, headings, answer gaps, CTA patterns and timestamped locators → research graph | Weekly priority cohort, selected pre-brief refresh. Search is discovery, not authoritative geo rank measurement; SERP provider supplies that. |
-| GitHub, all estate repos | GitHub App installation scoped read; signed push/PR/workflow webhooks; tree/manifest retrieval pinned to SHA | Existing GitHub MCP with per-packet rights; no generic direct-main write grant | Code manifests, route ownership, open/in-flight PR targets, required checks and merge/deploy source → publication and conflict guards | Webhooks plus hourly missed-event reconciliation; nightly full inventory. Incomplete tree/pagination blocks affected release. |
-| Cloudflare | Least-privilege API and official workflow receipts; read deployment/config/analytics; public HTTP verification | Existing Cloudflare MCP for assigned task only | Worker/Pages version and source association, 1102/503/resource signals, cache state → release proof/operations | Deployment event + daily health; pre/post-release checks. API unavailable does not imply deploy succeeded. |
-| Supabase/CMS/Marketplace | Restricted database roles and service APIs; read real catalog/category/provider/product IDs and publication state | Existing Supabase MCP read-only by default; migrations only through approved workflow | Inventory, stable slugs, supply, service scope, reviewed editorial records, leads/orders → targets, funnel, P8/P10 | Catalog events + hourly reconciliation; target recheck before release. Unknown supply cannot authorize a link to an empty subcategory. |
-| Primary authorities and first-party expertise | Allowlisted official sources + consented reviewer/client-question records | TinyFish fetch or approved browser where required | Claim-level support, jurisdiction/effective dates, expertise and corrections → P8 and sealed briefs | Section 5 freshness rules; changed critical source invalidates pending approvals. |
-
-Do not duplicate the same underlying Google Ads dataset through multiple vendors and call it independent corroboration. Keep provider lineage and definitions separate. Unknown integrations remain REGISTERED_UNCONFIGURED, never falsely ONLINE.
-
-### MCP commissioning contract
-For every approved MCP binding record: server ID, official source/repository, pinned package/image or verified remote URL, transport, client location, auth secret reference, account/project scope, discovered tool names and schemas, schema hash, allowed operations, timeout, quotas, cost ceiling, retention and last successful probe. Record these in a private integration registry; commit only nonsecret configuration and schema fixtures.
-
-Commission in this order:
-1. Verify official endpoint/package and license; pin a reviewed release rather than runtime @latest.
-2. Configure the existing ds bridge client for the specific run and load only needed tools. Do not replace the harness or expose every connector.
-3. Perform MCP initialize/version negotiation and tools/list. Persist schemas and map stable internal operations to actual tool names. Unsupported operations remain disabled.
-4. Perform one bounded read probe against an authorized known property/repo; verify account identity, resource scope and response fields.
-5. Route result through the ingest contract; compare normalized output with the direct API/export fixture.
-6. Test token expiry, schema change, pagination, timeout and unauthorized write denial. Tool annotations alone do not enforce security.
-7. Activate only after Sol reviews the mapping/probe artifacts. Version changes require replay against fixtures before promotion.
-
-Existing GitHub/Supabase/Cloudflare tool availability here is not proof of the executor's access. Verify required model-facing access in the actual ds run. The production service uses its own credentials; never copy human chat tokens into Modal. Remote OAuth is stored/refreshed by the authorized client; expired credentials block that adapter. Read-only research roles cannot access merge, SQL mutation, account administration or outreach-send operations.
-
-## 22. Reconciled estate state and free-first database
-### Database decision
-Use **Supabase Postgres**, reusing the current authoritative project when capacity and access permit. It already fits the application's relational contracts and migration model; adding a second free database would create a second source of truth. Do not migrate/downgrade an existing paid project or create a new project during this writing task.
-
-Supabase's published Free tier currently includes a 500 MB database and 1 GB object storage, can pause after a week of inactivity, and does not include automatic backups. These limits do not support a promise of unlimited full-fidelity SEO history or always-on production service. A genuinely free deployment is conditional on measured estate size and workloads fitting those limits. Provider APIs and Modal compute have separate costs.
-
-**Free-first controls proposed for A0:** record current database/index/object/egress usage and projected 90-day growth; retain complete normalized current estate and non-personal decision/release ledger in Postgres; place compressed raw evidence in private object storage within rights and capacity. Do not duplicate page bodies in metric rows. At 60% quota warn and forecast; at 75% stop optional bulk research; at 85% reject new bulk jobs and reserve capacity for release/audit writes. Never silently delete required evidence, truncate the estate or call missing data complete. If capacity is insufficient, Sol presents measured retention or hosting alternatives; no automatic paid upgrade.
-
-Export encrypted database backups daily and after approved critical migrations, plus independent artifact manifests/objects, to an approved separate durable destination; do not keep the only backup in the same project. Proposed recovery objective: ≤24-hour data loss and ≤4-hour restore, proven by monthly restore drills; these are targets, not Free-plan guarantees. Missing backup destination or failed restore blocks production activation. Git stores schemas/manifests, not secrets, private analytics or full personal datasets. If strictly zero hosting spend is nonnegotiable and quotas fail, production acceptance remains blocked rather than claimed.
-
-### One registry, multiple truthful states
-Extend the existing ownership catalogue with typed references, not a parallel competing host map:
-- estate_repositories: actual repo ID/full name, protected branch, source head, integration installation, instruction/manifest hashes and approved workflow IDs.
-- estate_hosts: host ID, public/operational/transaction role, owning repository/application, canonical policy, property IDs and deployment target IDs.
-- estate_routes: route ID/content ID, target adapter, stored slug/path, intent/cluster IDs, intended indexability, current published revision, canonical history and source object.
-- repo_route_snapshots: complete build manifest at exact SHA, including static routes, dynamic route patterns, content/data lookup IDs, redirects, sitemaps and robots outputs.
-- live_route_observations: timestamped HTTP/redirect/canonical/robots/body/source/CTA proof, verifier and coverage.
-- estate_snapshots: per-repo source and deploy watermarks, catalog version, crawl IDs, observation windows, completeness and explicit drift findings.
-- intent_owners, topical_nodes, topical_edges, route_reservations, marketplace_targets and article_funnels as detailed below.
-- connector_bindings, source_runs and index_submission_receipts reuse source/metric provenance; do not collapse discovery notifications into index status.
-
-Preserve separately: planned, source-merged, deployed, live-verified, crawl-discovered, search-index-observed and outcome-observed. Repo HEAD is not deployed state; a 200 response is not proof of current body; a declared canonical is not Google's chosen canonical.
-
-Each official build exports a route manifest from its actual renderer/content loader. Dynamic gigs/products/providers are discovered through the real catalog, not inferred from filesystem names. Inventory is union(repo manifests, catalog, sitemaps, crawl observations, known GSC/Bing URLs, redirect/tombstone ledger). Reconcile every difference; use NOT_IN_SOURCE, NOT_DEPLOYED, UNVERIFIED_LIVE, UNEXPECTED_INDEXABLE, MISSING_OWNER and CATALOG_DRIFT reason codes.
-
-Daily estate reconciliation and pre-release delta validation must cover all registered hosts/repositories with no unknown pages in the target conflict domain. New repositories/hosts are quarantined until registered, ownership-scoped and tested. An inaccessible or unknown host cannot be ignored when claiming estate-wide coverage. A decision snapshot records each watermark; no false claim of a single atomic instant across providers.
-
-## 23. Source targets, route manifests and publication contract
-Current Portal ownership.ts and Marketplace URL contract were read for this revision. The following is a verified **routing baseline**, not proof all targets are currently deployed or publishable. Resolve actual workflow IDs, branch protections and runtime manifests in A0; do not infer them from a filename pattern.
-
-| Host / role | Repository | Current resolver conventions / publication rule |
+| Sink (known or candidate) | Evidence | Required disposition |
 |---|---|---|
-| yousafeconsultancy.com — apex | kylemwalkerpr-ship-it/yousafe-consultancy | landing-page; apex /blog/<slug> maps to landing-page/app/blog/<slug>/page.tsx, with actual blog index updates checked by adapter. |
-| usa.yousafeconsultancy.com | Same repo | usa/content/universities/<slug>.md, usa/content/from/<slug>.md, usa/content/blog/<slug>.md where actual route manifest supports them. |
-| ca.yousafeconsultancy.com, uk.yousafeconsultancy.com, au.yousafeconsultancy.com | Same repo | Corresponding ca/uk/au application paths from resolver; route existence and official deployment target must be proven, not assumed. |
-| legal.yousafeconsultancy.com | kylemwalkerpr-ship-it/caseworks | Resolver currently proposes app/<path>/page.tsx; dynamic guide routes need actual loader/source mapping. Never invent static files solely from URL syntax. |
-| market.yousafeconsultancy.com | kylemwalkerpr-ship-it/portal | Live canonical categories, gigs, providers and shop routes backed by real catalog. Editorial Studio links to these; it does not create supplier gigs. |
-| portal.yousafeconsultancy.com | Portal | Authenticated operations; not a competing public Marketplace landing or article target. |
-| checkout/payment destinations and any other discovered host | Register from verified deployment/catalog evidence | Transactional destinations only by approved offer mapping; not guessed editorial hosts. Unknown mapping blocks affected funnel/release. |
+| `lib/githubContentsCore.ts` PR merge helper (`/pulls/{n}/merge`) | F8 | `merge_via_release_service` (the only permitted merge implementation) or `retired` — never callable from job/writer code. |
+| `lib/seoFactory/ship.ts` `mergePullRequest` + its callers in `app/api/content-studio/jobs/{strictManualPublication,legacyCore}.ts` | F8 | `retired` for inline merging; content shipping becomes PR-only. |
+| `scripts/refresh-gsc-token.sh` (`git commit --allow-empty` + `git push origin main`) | F8 | `retired`; replace with a PR-based, audited maintenance path. This is a direct-main write and is disabled by default. |
+| `scripts/deploy-production.mjs` (guarded `wrangler deploy`, requires `GITHUB_ACTIONS=true` + `GITHUB_REF=refs/heads/main`) | F4 | `merge_via_release_service` — official-workflow-only; the guard stays, and local invocation remains refused. |
+| `.github/workflows/deploy.yml` autodeploy on push to `main` | F4 | `merge_via_release_service` — deployment follows merge, never an independent publishing path. |
+| `.github/workflows/apply-seo-factory-migrations.yml` (push-to-main path filter) | F5 | Kept, but gated by §9.6 review requirements; a migration merge is a production change. |
+| Content/writer workflows (`marketplace-copy-rewrite*.yml`, `payhip-batch1-artifacts.yml`, `seo-engine-daily.yml`, `war-room-daily.yml`, `rhythm-scan-weekly.yml`) | workflow list at revision base | Enumerate actual writes in A0.6; each becomes `pr_only` or `retired`. Any direct-main/autodeploy behavior is disabled by default. |
+| Anything discovered later (new script, new workflow, dashboard action, cron route, MCP tool) | A0.6 + continuous audit | Default deny; must be dispositioned before use. |
 
-The existing resolver's market catalogue file candidates are **not publication authorization**. The same code says Marketplace pages are provider-fed. No new Studio writer may ship catalogue MDX merely because a resolver returns such a path. Preserve this distinction until a separate approved publication adapter exists.
+**Direct-main and autodeploy are disabled by default.** A writer that needs a change creates a branch + PR. `merge_via_release_service` is the only merge path, and it is reachable only after a valid `ReleasePermit` is consumed.
 
-Every target implements a checked adapter contract:
+### 10.3 Permit consumption and lineage
+The release service:
+1. validates the permit (unexpired, unconsumed, hashes match the current candidate artifacts, ownership/policy versions current, expected base matches the repository state);
+2. records the external operation intent;
+3. creates the PR (`pr_only`) with the exact candidate SHA;
+4. records **exact candidate SHA + body/artifact marker + PR + CI results at that exact head + merge SHA + deployment id + live verification** in a single `PublicationProof` lineage (the chain in §2.12);
+5. consumes the permit transactionally; a second consumption attempt is a hard failure, not a retry.
+
+No step may be skipped because a previous step "looked green": exact-head CI is checked against the actual candidate SHA; if the head moved, the permit is invalidated and a new review is required.
+
+### 10.4 Release sequence (unchanged semantics, wrapped in the new boundary)
+`reserve intent/route → seal snapshot/contract/target → render and audit → recheck repository base and reservations → create scoped PR → required exact-head checks → authorized merge → official workflow deployment → independent live verification → queue discovery notifications → observe`.
+
+A source/ownership/route change that invalidates the contract blocks merge until reconciled. Cross-repository targets deploy in dependency order; no article may assume an unshipped service page exists.
+
+### 10.5 Independent live verification
+Live verification is performed by a verifier that does not trust the deployment system: fetch the live URL through public HTTP, record status, canonical, robots state, body digest/marker, authorship/reviewer surfaces, source presence, links and CTA target, and store the evidence as T2/T1 proof. Only then does a run reach `LIVE_VERIFIED`.
+
+### 10.6 Deployment concurrency and cancel-in-progress (must be reconciled)
+The deploy workflow currently uses `concurrency.cancel-in-progress: true` (F4). A cancelled in-flight deployment must be reconciled, never assumed:
+- A cancelled run's partial deployment state is recorded as `uncertain`.
+- Verification queries the actual deployed version/bytes and reconciles against the intended candidate before any "deployed" claim.
+- If the deployed bundle does not match the intended candidate SHA, the release is blocked and the correct version is re-deployed through the official workflow.
+- `PublicationProof` records which deployment run satisfied the candidate, independent of any cancelled sibling run.
+
+### 10.7 Rollback and kill switches
+Rollback is a reviewed Git revert / official redeploy plus a data-compatibility path. Rollback **must preserve gate enforcement**: if the legacy runner lacks required policy, the affected actions are disabled rather than reopened as a bypass. Kill switches (§6.6) are independent and tested; never rewrite historical proofs and never discard in-flight jobs to make a migration look complete.
+
+## 11. Semantic Fabric
+
+### 11.1 Role and single-authority rule
+The Semantic Fabric is the single authoritative *future* semantic model: identities, ontology, facts, relations, query families, coverage, vectors and semantic opportunities. It does **not** create a second truth store or a second owner map. The legacy ontology/topic-graph/opportunity modules (F10) remain the current authority until A0.4 dispositions them; the Fabric may replace them only through recorded parity, migration and `authority cutover` evidence (§3.5). Until cutover, Fabric outputs are shadow/derived inputs.
+
+Core invariant:
+> **Similarity discovers. Semantics describes. Evidence substantiates. Ownership governs. Jev recommends. Policy authorizes. Qualified humans review consequential content. Outcomes teach.**
+
+### 11.2 Identity resolution
+Resolution follows §2.2 and is conservative: unknown stays unknown; numbers/acronyms require jurisdiction and entity evidence; audience and reader job are independent; aliases never mint entities. Same-number collisions (US `I-485` vs Australian subclass `485`, etc.) are permanent fixtures.
+
+### 11.3 Ontology node classes and semantic state
+Versioned node classes: `entity`, `reader_job`, `intent`, `query_family`, `route`, `revision`, `claim`, `answer_unit`, `source`, `offer`, `competitor_document`, `topic_cluster`. New classes require a reviewed schema migration and fixtures, never free-form labels.
+
+Every node, edge and fact carries a state class that determines permitted use:
+`AUTHORITATIVE` · `OBSERVED` · `DERIVED_DETERMINISTIC` · `MODEL_INFERRED` · `REVIEWED_INFERENCE` · `CONFLICTED` · `STALE` · `UNAVAILABLE`.
+A `MODEL_INFERRED` legal fact never satisfies a consequential claim-support requirement by itself.
+
+### 11.4 Relation vocabulary (one list, controlled types)
+- **Knowledge/legal:** `IS_A`, `PART_OF`, `REQUIRES`, `PERMITS`, `HAS_REQUIREMENT`, `HAS_EXCEPTION`, `EXCLUDES`, `APPLIES_TO`, `HAS_DEADLINE`, `HAS_FEE`, `HAS_DURATION`, `CHANGES_TO`, `SUPERSEDES`, `PRECEDES`, `FOLLOWS`, `COMPARES_WITH`, `EVIDENCED_BY`, `CONTRADICTED_BY`.
+- **Reader/answer:** `ANSWERS`, `PARTIALLY_ANSWERS`, `PREREQUISITE_FOR`, `SUPPORTING_ANSWER_FOR`, `NEXT_READER_JOB`, `DISTINCT_SUBINTENT_OF`, `SAME_READER_JOB_AS`, `RESOLVES_EXCEPTION_FOR`.
+- **Estate/editorial:** `PRIMARY_OWNER_OF`, `SUPPORTS_OWNER`, `SEMANTICALLY_OVERLAPS`, `CANDIDATE_COLLISION_WITH`, `LINKS_TO`, `SHOULD_LINK_TO`, `RECEIVES_AUTHORITY_FROM`, `NEAR_WIN_FOR`, `GAP_FOR`, `REFRESH_CANDIDATE_FOR`, `CONSOLIDATION_CANDIDATE_WITH`.
+- **Commercial:** `SERVED_BY`, `NEXT_COMMERCIAL_STEP`, `HAS_ACTIVE_SUPPLY`, `HAS_NO_VERIFIED_SUPPLY`, `CONVERTS_TO`, `FALLBACK_OFFER_FOR`.
+
+No untyped `related_to` edge when a stronger type is known. `CANDIDATE_*`/`SHOULD_*` edges are non-authoritative by construction and can never be read as owner, gate or release input.
+
+### 11.5 Query meaning graph and family operations
+```
+raw query → normalized query → entity candidates → jurisdiction/audience →
+reader job → search intent → journey stage → query family → authoritative owner or unresolved
+```
+Membership edges record `CORE_EXPRESSION`, `PARAPHRASE`, `QUESTION`, `EXCEPTION`, `PREREQUISITE`, `FOLLOW_ON`, `COMPARISON`, `BRANDED_NAVIGATIONAL`, `AMBIGUOUS`. A query may belong to more than one candidate family until evidence resolves ambiguity; the system never forces a single cluster to simplify reporting. Raw query×page observations remain attached to the raw query. Family merge/split is a versioned operation with before/after members, reason, owner-impact analysis and replay of affected projections.
+
+Relationships between a candidate page/query and an owner use one controlled vocabulary: `SAME_ANSWER`, `SUPPORTING_SUBINTENT`, `PREREQUISITE`, `FOLLOW_ON`, `COMPARISON`, `EXCEPTION`, `DISTINCT_INTENT`, `AMBIGUOUS`. These are evidence for the owner/policy process, not authorization for a new URL.
+
+### 11.6 Grains, meaning profiles and temporal scoping
+Representations are multi-grain: query/query-family, page purpose/title/meta, section/answer unit, atomic claim, entity/reader-job/intent, Marketplace offer, competitor answer unit, and (license permitting) source passage. **Never one whole-page vector as the universal representation.**
+
+A `PageMeaningProfile` binds primary/secondary entities, reader job, audience, intent, journey stage, questions answered, claim/answer-unit IDs, explicit exclusions, unique information, overlaps, parent/child relations, internal-link role and commercial next step to an **artifact hash**. Substantive revision invalidates derived fields.
+
+Legal meaning is time- and scope-dependent: `effectiveAt`/`validFrom`/`validTo`, jurisdiction, program and audience filters are applied **before** semantic ranking where known. A semantically similar but wrong-jurisdiction or wrong-period fact is a retrieval candidate, never usable evidence. Historical values stay queryable but never satisfy current-release evidence. Publication dates never imply effective dates.
+
+### 11.7 Vector and semantic-space discipline
+Every vector row stores embedding model, exact revision/digest, dimensionality, pooling/normalization, truncation/chunking policy, source text hash, ontology/language scope, `semanticSpaceVersion` and generation time. Rules:
+- **Mixed-space prohibition:** vectors from incompatible model spaces are never directly compared; a comparison across spaces is a defect, not a low-confidence result.
+- **Upgrade path:** `shadow new space → backfill representative corpus → exact labelled retrieval benchmark → compare recall/precision/latency/cost → approve → staged re-embed → switch read alias → retain rollback window`. Old vectors are never overwritten in place.
+- **Stale vectors:** a vector whose source hash or model space is not current cannot be used for a current decision; it is marked `STALE` and either rebuilt or excluded.
+- **Deleted/moved canonical documents:** deletion or relocation produces a tombstone; relations pointing at removed objects resolve to the tombstone state instead of silently disappearing or rebinding to a different document with a similar URL.
+- **Bounded retrieval:** no unbounded pgvector scan. Queries use hard scope filters + an index with a bounded candidate budget (`k`, oversampling and iterative-scan policy pinned and benchmarked). **Collision-critical paths (ownership, cannibalization, CREATE) require an exact-KNN fallback set** — approximated retrieval may never be the sole basis for a critical collision conclusion. Exact KNN remains the recall reference corpus.
+- Vectors are deletable/rebuildable derivative state: deleting a vector never deletes evidence, claims or an owner; a missing vector never turns an existing owner into unknown.
+
+### 11.8 Hybrid retrieval and reranking
+Candidate discovery = hard filters (project/estate, language, host, jurisdiction, temporal, route/catalog state) → lexical retrieval (full-text/trigram/exact entity/alias) → vector retrieval → graph neighbors (owner, parent, supporting, prerequisite, same entity) → union with a pinned fusion method (for example reciprocal-rank fusion; never average incomparable scores) → bounded rerank (cross-encoder or measured equivalent) → candidates with component evidence.
+
+Reranking is applied only to bounded candidate sets and never writes owner/gate state. Retrieval results are candidates; policy and evidence decide.
+
+### 11.9 Information gain at predicate/answer-unit level
+Information gain is measured at the predicate/reader-question/answer-unit level, never by word counts or lexical novelty:
+`proposed answer units / predicates − adequately satisfied current owner coverage = candidate distinct information gain` (§2.8).
+A new page with high lexical novelty but the same reader job and answer set has low useful gain; a narrow exception with modest volume can have high value when it solves a distinct evidenced problem. Information gain can justify research; it can never independently unlock CREATE (P13 and owner reservation remain mandatory).
+
+### 11.10 Persistence (T1 metadata + T2 vectors/artifacts)
+Logical tables (A0.3 maps exact names; nothing here is applied by this document): `semantic_ontology_versions`, `semantic_entities`, `semantic_aliases`, `semantic_reader_jobs`, `semantic_identities`, `semantic_facts`, `semantic_documents`, `semantic_segments`, `semantic_claims`, `semantic_vectors`, `semantic_relations`, `semantic_query_families`, `semantic_clusters`/`_members`, `semantic_coverage`, `semantic_collision_cases`, `semantic_information_gain`, `semantic_features`, `semantic_opportunities`, `semantic_decision_links`, `semantic_outcomes`, `decision_passports`.
+Rules: tenant/project columns everywhere; append-only with supersession instead of mutation; vectors stored at segment grain only where retrieval value is demonstrated; Postgres keeps canonical object IDs and versions even if a secondary vector index is ever added (it would be a derivative cache, never authority).
+
+### 11.11 Events and reconciliation
+Outbox event vocabulary (schema fixed before implementation; names illustrative): `semantic.document.changed`, `semantic.segment.ready`, `semantic.embedding.requested|ready|failed`, `semantic.identity.changed`, `semantic.fact.changed|conflicted|stale`, `semantic.collision.candidate`, `semantic.opportunity.opened|blocked|superseded`, `semantic.decision.recorded`, `semantic.gate.invalidated`, `semantic.outcome.matured`.
+Every event carries event id, project, subject, source sequence, input hash, producer version and idempotency key; consumers use fencing/version checks; events report state transitions and never command publication.
+
+Bounded nightly reconciliation verifies: every active strategic route has a current profile or an explicit pending reason; every primary owner maps to exactly the intended identity under the current owner version; no relation points at a deleted object without tombstone state; vectors use approved model spaces and current source hashes; decisions reference existing feature snapshots and policy versions; opportunities whose evidence/owner changed are superseded or re-evaluated; and no blocked/failed semantic job is silently excluded from coverage denominators.
+
+## 12. Modal compute plane: classes, budget and degradation
+
+### 12.1 Compute classes (single vocabulary; see §2.9)
+| Class | Typical work | Default resource principle |
+|---|---|---|
+| `S0_DETERMINISTIC_CPU` | Parsing, hashing, AST, URL/route checks, counts, joins, graph traversal, diffs, statistics | CPU only. No GPU. |
+| `S1_EMBEDDING` | Query/section/claim/entity/offer embeddings | Smallest accelerator/CPU that meets the benchmark; batched, offline-first. |
+| `S2_RERANKER` | Cross-encoder relevance, claim↔passage, query↔answer-unit reranking | GPU only when measured benefit over CPU/embedding ranking justifies cost. |
+| `S3_SMALL_MODEL` | Extraction/classification rules and Jev cannot do | Quantized small model; batch/offline first. |
+| `S4_LARGER_LOCAL` | Difficult competitor decomposition / semantic synthesis | Explicit escalation budget; never default. |
+| `S5_FRONTIER_OR_HUMAN` | Hard research, architecture, ambiguous legal/editorial cases | DeepSeek/Grok/Sol/qualified human under existing authority. |
+
+Escalation records the failed/insufficient lower tier and the expected value of the higher tier. **CPU-first / delta-first**: incremental hashing and dependency reuse mean unchanged artifacts/models/ontology never recompute.
+
+### 12.2 Compute pipeline (semantic compilation)
+```
+bytes/rows → canonical parse + boundary detection → deterministic normalization →
+entity/alias candidates → claim + answer-unit segmentation → reader-job/intent features →
+multi-grain embeddings → hybrid candidate retrieval → optional bounded rerank →
+relation/gap proposals → reconciled semantic snapshot → DecisionState or escalation
+```
+Every stage persists its output before acknowledgment (§7). Derived semantics are keyed by `(artifactHash, stage, modelOrRuleVersion, ontologyVersion)`, which makes caching and invalidation mechanical:
+unchanged artifact+model+ontology → reuse; metadata-only change → dependent profile/route features only; changed section → that answer unit plus dependent page aggregates; changed source fact → dependent claim support and pages, not unrelated cluster vectors; changed embedding model → a new space, never an in-place rewrite; changed owner/policy → re-evaluate decisions/gates without regenerating embeddings unless their inputs changed.
+
+### 12.3 Batching, caching and warm containers
+Group work by model/version and compatible sequence length; bounded concurrency and backpressure so one large import cannot starve source freshness or release verification. Cache keys include object hash + model/image version + ontology/analyzer version + rubric version where relevant; **a cache hit from an old ontology/model policy is a miss for current decisions.** Warm containers are an optimization only; correctness never depends on them. Modal's result retention is never the ledger.
+
+### 12.4 Budget governance (compute + storage + egress + retention)
+```typescript
+interface ComputeBudget {
+  month: string;
+  creditCeilingUsd: number;        // observed account entitlement (A0.7), not a constant
+  hardReserveUsd: number;
+  spentUsd: number | null;
+  estimatedCommittedUsd: number;
+  perWorkloadCaps: Record<string, number>;
+  volumeBytesByRetentionClass: Record<string, number>;
+  egressBytes: number | null;
+  optionalWorkPaused: boolean;
+}
+```
+Rules:
+- The **$30/month Starter credit is a budget envelope, not a content quota and not a presumed number of GPU hours** (official pricing verified 2026-09-22; A0.7 revalidates plan, allowance behavior and current prices).
+- Reserve a protected share for **freshness, source invalidation, release verification and trust work**. Optional competitor expansion, speculative long-form generation and broad keyword expansion consume residual budget and never displace mandatory truth work.
+- Track **storage, egress and retention** alongside compute: Volume bytes by retention class, growth forecast, cleanup cadence and license-driven retention. Do not assume the 1 TiB/month free allowance persists.
+- Every stage records resource class, cold/warm state where observable, batch size, cache hit, duration, retries, and billing allocation/tag when available. Compute `cost_per_semantic_unit`, `cost_per_decision_state`, `cost_per_accepted_intervention` and `cost_per_mature_positive_outcome`; a cheaper model that causes more escalations may be the more expensive one in accepted-work terms.
+- Pressure response order: throttle optional competitor refresh → delay low-priority embeddings → narrow exploration cohorts → park non-urgent generation. Never skip release evidence, owner checks or trust invalidation to save compute.
+
+### 12.5 Failure degradation
+If capacity/GPU is unavailable: deterministic ingest and reconciliation continue where safe; stale semantic artifacts remain visible but cannot masquerade as current; decisions depending on unavailable semantic work become `BLOCKED`/`RESEARCH_REQUIRED`; **no silent substitution of a different model/provider**; saved drafts and editor state remain accessible through the thin control plane.
+
+### 12.6 Compute acceptance
+Before promotion: labelled retrieval set covering same-number cross-jurisdiction collisions, close paraphrases, distinct reader jobs on the same entity, historical/current variants and offer matching; approximate-vs-exact KNN recall comparison plus lexical baseline; recorded Recall@k / Precision@k / nDCG / MRR as appropriate, wrong-jurisdiction rate, owner-collision recall, latency p50/p95, cost per 1k units; no labelled critical collision may disappear due to ANN filtering; adversarial retrieved text cannot modify instructions or become evidence unvalidated; resource/timeout behavior tested at 2× expected batch size.
+
+## 13. Jev bounded decision plane
+
+### 13.1 Role and interface facts
+Verified TypeSafe API shape (J1–J3, §27): `POST https://api.typesafe.ai/v1/systemone` with `state`, `model` and typed questions; `Choice` returns choice/probabilities/confidence, `Score` returns score/legend/probabilities/confidence, and `Noul` returns a 0–1 value. Pin an available model version (docs listed `jev-1.13.0`); **A0.7 verifies access, limits and current model list before enabling anything.**
+
+Jev runs server-side in Modal, never in the browser; it writes no prose and holds no release credentials. It consumes **typed derived state only** (`DecisionState`, §2.6), never raw uncontrolled web pages when a bounded feature state is sufficient.
+
+**Noul has no separate confidence field. Never invent one, derive one, or present one.** Noul output is a bare 0–1 value in shadow/advisory contexts; treating it as a calibrated probability is a defect.
+
+### 13.2 Decision tasks (each calibrated independently)
+**D0 semantic ambiguity:** `SAME_READER_JOB`, `SUPPORTING_SUBINTENT`, `DISTINCT_INTENT`, `WRONG_SCOPE`, `AMBIGUOUS`.
+**D1 diagnosis:** `MISSING_ANSWER`, `STALE_FACT`, `TECHNICAL_EXCLUSION`, `OWNER_COLLISION`, `WEAK_INTERNAL_AUTHORITY`, `WEAK_EXTERNAL_AUTHORITY`, `CTR_PACKAGING`, `COMMERCIAL_PATH`, `INSUFFICIENT_EVIDENCE`, `OTHER/ESCALATE`.
+**D2 intervention:** only from policy-supplied eligible actions (`RESEARCH`, `REFRESH`, `EXPAND_OWNER`, `LINK`, `REPAIR`, `CONSOLIDATE_RECOMMENDATION`, `CONVERSION`, `OBSERVE`, `NO_ACTION`, and `CREATE` only when P13 makes it eligible).
+**D3 priority band:** within the already-eligible queue, with inspectable components.
+**D4 executor route:** minimum sufficient route from `RULE_ENGINE`, `MODAL_CPU`, `MODAL_EMBEDDING`, `MODAL_RERANKER`, `MODAL_LOCAL_MODEL`, `DEEPSEEK`, `GROK`, `SOL`, `QUALIFIED_HUMAN`.
+**D5 abstention/escalation:** explicit when distributions are close, required fields are unavailable, out-of-distribution markers fire, or policy requires human expertise.
+
+Routing never grants tools, credentials or authority; the harness/policy boundary does that.
+
+### 13.3 Confidence, distributions and abstention
+- Store the **full returned distribution** and native confidence semantics. Never rewrite `0.90` as "90 % accurate".
+- A high Jev probability **never** clears a deterministic failure, a P0–P13 gate, CREATE freeze, ownership ambiguity, missing evidence or a YMYL/release requirement.
+- Timeout, 429, 5xx, malformed output, missing required fields or overload → bounded retry with jitter and provider guidance, then **ABSTAIN**. Deterministic policy is unchanged by an abstention.
+- Missing Jev never silently substitutes another model and never clears a gate: read-only deterministic work may continue; dependent decision work waits, abstains, or enters explicit human review.
+- Cache by model + rubric + evidence + policy version; never by topic alone. A cache entry from another policy/rubric/evidence state is a miss.
+- Margin/entropy/coverage features may be used alongside top probability, but no composite confidence is invented without a calibrated definition.
+
+### 13.4 Calibration corpus and promotion ladder
+Start in **shadow** mode. The living corpus extends the initial holdout with stratified slices: jurisdiction number/name collisions; near-duplicate reader jobs vs truly distinct sub-intents; stale vs current facts; off-mission high-volume topics; competitor text containing prompt injection; incomplete GSC/provider coverage; Marketplace supply mismatch; attractive-but-ineligible CREATE cases; critical YMYL claim-support uncertainty. Proposed seed size: 500 labelled cases including ≥ 100 critical, with zero critical false-safe cases as a release criterion (not a population guarantee).
+
+Ladder, promoted **separately per** `(decisionTask, modelVersion, rubricVersion, ontologyVersion, domainSlice)`:
+1. `shadow` — recorded, no workflow effect.
+2. `advisory` — visible recommendation; human/policy selects.
+3. `bounded_assist` — may reorder/prioritize low-risk eligible work and perform read-only triage; no release authority.
+4. `expanded_bounded` — only after mature production error evidence and a **separate explicit authorization** (Sol policy approval). Automatic regression demotes.
+
+**No tier may** publish, merge, delete, redirect/noindex, fabricate a reviewer, clear CREATE freeze, alter a legal claim, or make destructive/YMYL/release decisions. Those remain human/policy governed absent a separate future authorization that names the decision class.
+
+Track per task and material subgroup: accuracy/error where labelled truth exists; false-safe and false-action rates; Brier/reliability where the schema is probabilistic; abstention/coverage tradeoff; disagreement with the rule baseline and expert review; drift over model version; downstream reversal rate.
+
+### 13.5 Decision passport
+Every opportunity carries a reconstructable chain, never a synthesized retrospective rationale:
+`observation IDs → reconciled semantic snapshot → eligibility result → DecisionRecord → executor route → contract/revision → review → release proof → mature outcome`.
+
+## 14. Editorial pipeline, contracts, trust and the YMYL reviewer registry
+
+### 14.1 Pipeline
+1. **Observe:** ingest GSC query×page, index/crawl facts, live internal links, qualified Marketplace/service demand, attribution, backlinks, first-party questions and successful AI-citation audits — each with source, window, completeness, authorization, freshness and failure status.
+2. **Normalize:** canonical estate/intent identity; redact personal data; dedupe evidence; partition by jurisdiction, effective dates and audience stage.
+3. **Resolve semantics:** bind query/page/section/claim/service observations to versioned entities, reader jobs, intents and temporal/jurisdictional qualifiers (§11). A semantic match cannot create ownership, verify a claim or clear a gate.
+4. **Diagnose:** distinguish lack of demand, technical exclusion, ownership collision, weak/missing answer units, stale facts, missing evidence, weak internal/external authority, competitor information advantage and conversion failure. A competitor SERP is a demand/format signal, never proof of a claim.
+5. **Choose:** evaluate eligible interventions only; deterministic policy removes forbidden actions first, then Jev supplies bounded classifications over the reconciled state.
+6. **Research:** fetch primary authorities and relevant first-party experience; build claim-level supporting and contradicting evidence with locators, retrieval time, effective dates and hashes. Research gaps block affected claims.
+7. **Seal:** compile the immutable contract, semantic information-gain plan and observation plan (§2.5, §2.8). Authoritative sources must substantively support the planned assertions — prestige alone is insufficient.
+8. **Write:** a pinned commissioned text model produces answer-first copy from the sealed brief. It may not invent evidence, credentials, experience, dates, fees, eligibility rules or success rates.
+9. **Audit and revise:** deterministic structure/link/ownership/source checks, independent semantic claim review, editorial review and required human expertise. Rewrites create new revisions and invalidate dependent approvals.
+10. **Release:** render the target artifact, audit renderer additions, create a reviewed PR, exact-head CI, authorized merge, official deployment, independent live verification (§10).
+11. **Learn:** collect mature outcomes at query-family, page, answer-unit and commercial-path grain; decide defend, repair, consolidate, expand or stop. Never optimize on draft count, a single synthetic score or model confidence.
+
+Human-like means specific, useful, coherent prose with varied rhythm, contextual examples and honest limits. It never means defeating AI detection or disguising fabricated experience. Diagnostics (Harper/grammar/readability) never substitute for factual quality, and word budgets reflect reader need.
+
+### 14.2 Contract versions
+`ContractV3` extends the live V2 identity/evidence/ownership semantics with: action, policy version, program snapshot, information-gain record, trust requirements, baseline, commercial path, link plan, publication rules and observation owner/window. V2 remains readable and immutable; V3 envelopes link to V2 history. Historical contracts are never "upgraded" by inventing evidence. Sealing records the semantic snapshot hash; clients cannot supply trusted hashes as authority.
+
+### 14.3 Trust and YMYL publication rules (proposed YouSafe controls, not a Google certification)
+- Every externally checkable consequential claim maps to evidence plus jurisdiction/effective date. Unsupported or contradictory critical claims block release.
+- Immigration eligibility, legal rights, deadlines, fees and consequential recommendations require an identified qualified human reviewer with verified remit. **AI can never sign as a human reviewer**; a missing reviewer means `BLOCKED`.
+- Real experience uses consented first-party material with provenance and appropriate anonymization; illustrative scenarios are labelled; no invented testimonial or case outcome.
+- Author, reviewer, methodology, sources, correction route and genuinely known published/modified dates render truthfully.
+- Freshness at release (proposed maxima, tightened by Sol/domain reviewer, widening requires recorded rationale): mutable fees/deadlines/rules **24 h**; procedural guidance **7 days**; stable background **30 days**. A primary-authority change or unresolved contradiction invalidates immediately regardless of age.
+- Clear scope and service boundaries; a disclaimer never cures unsupported advice; commercial CTAs reflect real services and avoid outcome guarantees.
+- Original usefulness is evaluated (decision aid, first-party insight, clarified exception, practical comparison, genuinely better answer). Rewording competitors is insufficient.
+
+Google emphasizes people-first reliability and truthful Who/How/Why; E-E-A-T is not a single numerical ranking factor, and scaled production without user value risks spam-policy violations. No "Google E-E-A-T score" is displayed and no ranking outcome is promised.
+
+### 14.4 YMYL Reviewer Registry (`ReviewerCredential`, defined once)
+```typescript
+interface ReviewerCredential {
+  reviewerId: string;
+  legalName: string;                        // real identity; never a model, alias or shared account
+  jurisdiction: string;
+  remit: string[];                          // programs/topics the reviewer is qualified to approve
+  credentialEvidenceRefs: string[];         // licensure/registration/experience evidence artifacts
+  credentialState: "verified" | "expired" | "unverified" | "revoked";
+  validFrom: string; validTo: string | null;
+  conflictsOfInterest: string | null;
+  status: "active" | "suspended" | "retired";
+}
+interface ReviewApproval {
+  approvalId: string;
+  reviewerId: string;
+  runId: string;
+  claimIds: string[];
+  bodyHash: string;
+  renderHash: string;
+  sourceSnapshotHash: string;
+  claimRevisionVersion: string;
+  decision: "approved" | "returned" | "escalated";
+  reasonCodes: string[];
+  approvedAt: string;
+  expiresAt: string | null;
+}
+```
+Binding rules:
+- **Exact binding:** an approval binds to the exact claim set, body hash, source snapshot hash and render hash it reviewed.
+- **Structural model ineligibility:** a model, service account, integration identity or agent can never occupy a reviewer slot, be listed as a reviewer, or generate an approval event. The data model makes model review structurally impossible (no model reviewer ids exist in the registry), not merely policy-forbidden.
+- **Invalidation:** any change to the source set, the claim, the body or the rendered artifact invalidates dependent approvals. Approvals never survive a substantive edit or a renderer change.
+- **Remit and validity:** an approval from a reviewer whose remit does not cover the claim's jurisdiction/program is `BLOCKED`; an expired credential cannot approve.
+- **No inherited trust:** `shipReady`-style flags are never inherited across revisions; P8's protection (audit renderer-added sources before Git writes) is preserved.
+- Reviewer workload and approvals are audited; the registry is private (never exposed through public APIs).
+
+### 14.5 Invalidation matrix (any change → dependent state)
+| Change | Invalidates |
+|---|---|
+| Body edit | Claim approvals, render-based checks, release permit candidates. |
+| Renderer/source addition | P8 render audit evidence, approvals, live-proof expectations. |
+| Source change/expiry | Dependent claim support, approvals, pending releases for affected claims. |
+| Owner/policy version change | Gate evaluations, permits, opportunity eligibility. |
+| Reviewer credential expiry/remit change | Approvals by that reviewer for affected claims. |
+| Embedding/ontology version change | Derived candidates and DecisionRecords only (never owner/gate state). |
+
+## 15. Opportunity engine, territory model and Marketplace routing
+
+### 15.1 Work unit and eligibility-before-ranking
+The primary work unit is `SemanticOpportunity` (§2.5), not an article quota or raw keyword. Evaluation order is fixed:
+```
+facts/evidence → deterministic mission/owner/gate checks → eligible action set →
+Jev prioritization among eligible actions only → confidence/abstention policy →
+human/policy acceptance where required
+```
+**Forbidden actions are absent from the Jev choice set, not merely down-weighted.** If CREATE is frozen, CREATE is removed before the request; a high model probability can never resurrect it.
+
+### 15.2 Action vocabulary
+`RESEARCH`, `REFRESH`, `EXPAND_OWNER`, `CONSOLIDATE`, `REPAIR_TECHNICAL`, `RELINK_INTERNAL`, `AUTHORITY_WORK`, `CTR_OPTIMIZE`, `CONVERSION_PATH_REPAIR`, `GEO_REMEDIATION`, `CREATE_SUPPORTING`, `CREATE_PRIMARY`, `OBSERVE`, `NO_ACTION`, `ESCALATE`.
+`CREATE_SUPPORTING`/`CREATE_PRIMARY` remain subject to P13 and every gate; adding them to a vocabulary grants no authority. `NO_ACTION` is a first-class outcome that quota pressure may not override.
+
+### 15.3 Territory and coverage states
+Per strategic query family/reader job, maintain an observed management state (explicit windows/populations, never a ranking prediction): `OWNED_STRONG`, `OWNED_FRAGILE`, `WINNING`, `NEAR_WIN`, `CONTESTED`, `DECLINING`, `LOST`, `UNCLAIMED`, `GAP_SUPPORTED`, `GAP_UNSUPPORTED`, `OFF_MISSION`, `UNKNOWN`. Coverage cells use `STRONG`, `PARTIAL`, `WEAK`, `MISSING`, `CONFLICTED`, `STALE`, `NOT_APPLICABLE`, `UNKNOWN` with the underlying answer-unit IDs stored.
+
+### 15.4 Priority without a magic score
+Never collapse the estate into one opaque `SEO_SCORE`. The queue stores a **priority vector** with inspectable components: observed qualified demand; current position/CTR trend where available; semantic information deficit; owner confidence/collision risk; source/evidence readiness; internal/external authority gap; commercial relevance and verified supply; user-risk/trust burden; estimated execution cost; maturity/observation debt; competitive change pressure. Deterministic rules remove ineligible work before Jev maps the remaining vector to a bounded band. The UI exposes components and uncertainty.
+
+### 15.5 Competitive decomposition and response hierarchy
+Competitor pages are untrusted observations: decompose a timestamped cohort into answer units, entities, predicates, questions, evidence patterns, decision aids, format/structured-data observations, internal-link roles and commercial journey. Classify differences as `ALREADY_COVERED`, `WEAKER_ANSWER`, `MISSING_ANSWER`, `MISSING_EXCEPTION`, `MISSING_EVIDENCE`, `MISSING_DECISION_AID`, `FORMAT_ONLY`, `OFF_MISSION`, `UNVERIFIED_COMPETITOR_CLAIM`, `NOT_REPRODUCIBLE`. Competitor copy is never imported/paraphrased as authority; the gap opens primary-source research. Greater word/heading/keyword counts are not information gaps.
+
+When a competitor gains ground, diagnose in this order: technical/indexability → ownership/cannibalization → answer mismatch/missing reader job → stale or unsupported claim → weak information architecture/internal authority → weak external authority → SERP packaging → commercial/reader-task mismatch → **genuinely distinct missing content (last)**.
+
+### 15.6 Intervention selection principles
+- Existing adequate owner + missing answer unit → `EXPAND_OWNER`/`REFRESH`, not CREATE.
+- Existing winner + weak internal support → `LINK`.
+- Strong impressions/position with packaging mismatch but adequate answer → diagnostic then packaging experiment/`REFRESH`.
+- Two pages with the same reader job → collision/consolidation review before new content.
+- Distinct evidenced reader job + no owner + P13 unlock → CREATE candidate.
+- Competitor advantage unsupported by primary research → `RESEARCH`, never mimicry.
+- No meaningful demand/mission fit → `NO_ACTION` even if generation is cheap.
+- High conversion potential with weak/missing verified supply → supply-gap/commercial-path task, never a misleading CTA.
+
+### 15.7 Marketplace routing integrity
+Map article reader job → next reader job → service capability → jurisdiction/audience eligibility → **active verified offer**. Only after deterministic filtering may Jev rank multiple valid targets. Rules:
+- Offer embeddings are discovery aids; catalog IDs, provider status, slug/path and availability remain authoritative — **never invent a slug, provider, price, license or availability**.
+- A category subpage requires positively confirmed supply; unknown supply cannot authorize a link.
+- A funnel mismatch opens a `CONVERSION` opportunity without changing the editorial owner, and commercial relevance never grants permission to create redundant search pages.
+- Missing match → hold the dependent publication/funnel revision, open a supply-gap task, keep useful existing articles live. Never route every reader to a generic shelf.
+
+### 15.8 Ranking War Room (view contract)
+A strategic cluster view showing, with explicit source windows: query families by territory state; owner pages and conflicts; entity/predicate coverage and missing answer units; near-win cohorts; declining-owner alerts; semantic internal-link gaps; competitor-only answer candidates pending primary research; evidence/trust debt; verified Marketplace path coverage; mature intervention outcomes and observation debt. Default ordering is by evidence-backed opportunity, never draft count. `NO_ACTION`/dismiss with reason is always available.
+
+## 16. Source and data fabric
+
+### 16.1 Two integration planes, one evidence boundary
+- **Production plane:** scheduled/event-triggered Modal adapters call approved provider APIs or ingest authenticated exports; they persist evidence through the same validated ingestion boundary. Production must function without an open chat, a Mac, an interactive OAuth prompt or a Sol/DeepSeek session.
+- **Agent plane:** Sol/DeepSeek use explicitly granted MCP tools for bounded investigation and implementation. MCP output becomes product evidence only after an ingest job validates, versions and stores it. A chat tool result is not a durable production feed.
+- **Shared contract:** provider response → immutable raw artifact within license limits → schema/identity/completeness validation → normalized observations → reconciled estate snapshot → eligible opportunities → sealed contract → reviewed publication → live verification → outcome measurement. No external text writes ownership or gate PASS directly.
+
+Use direct APIs for repeatable production batches; use MCP for task-driven research and diagnostics. A production MCP client is allowed only when non-interactive auth, transport, tool schema and lifecycle are explicitly commissioned. Never route every scheduled import through an LLM.
+
+### 16.2 Source-to-consumer matrix
+All schedules are proposed configuration to deploy and verify, not running automation. Costs/quotas are checked before dispatch; paid adapters default disabled until budget authority exists.
+
+| Source | Production wiring | Persisted data and consumers | Cadence / failure |
+|---|---|---|---|
+| Google Search Console | Official Search Analytics + URL Inspection APIs with real property access | Query×page clicks/impressions/CTR/position, inspection coverage, selected canonical → P1/P2/P3/P7/P12 | Daily with late-data reconciliation; priority inspection within quota. Quota exhaustion = partial coverage. |
+| Google Analytics 4 | Official Data API + consented first-party events; optional authorized BigQuery export | Organic landing sessions, engagement, attribution cohorts → P10/P12, funnel diagnostics | Daily aggregates; thresholding/consent loss retained; never force-reconcile clicks to sessions. |
+| Google Ads keyword data | Authorized historical keyword API; entitlement verified | Geo/language/month volume and CPC → opportunity context | Monthly with explicit budget; failure leaves estimates unavailable. |
+| Ahrefs | Entitled Keywords/Site Explorer endpoints, separate secret | Organic KD, estimates, backlinks, provider DR → P7/P9 context | Keywords monthly, backlinks weekly; DR is never Google authority or live-win proof. |
+| Ubersuggest | Validated user/authorized **export** upload → private storage → Modal parser (no assumed API/MCP) | Exported keyword/topic/competitor estimates with export timestamp, country, report type | Import-driven; stale after configured TTL; UI says "manual import required". No invented live sync. |
+| DataForSEO | Official v3 SERP/keyword/backlink datasets; bounded async tasks; budgeted | SERP URLs/features/ranks, related topics, provider estimates → opportunities, competitor cohorts, P7/P9/P11 | Weekly sampled priority SERPs, monthly expansion, on-demand queries. HTTP 200 alone is insufficient — validate task status/result/errors. |
+| Bing Webmaster Tools | Official APIs, OAuth preferred or authorized key; enumerate verified sites | Page/query traffic, crawl/index diagnostics → separate Bing measurements, P2/P11 context | Daily traffic, weekly diagnostics; UI-only features require supported export/API evidence. |
+| IndexNow | Outbound post-deploy notifier with verified per-host key; queued URL batches | Submission receipt/error/retry state → discovery ledger only | After intended live state verified. Receipt never means indexed, ranked or Google-submitted. |
+| TinyFish | Official Search/Fetch APIs (server-side key); Agent/Browser only when interaction is needed and authorized | Competitor page observations, sources, topics, headings, gap evidence with locators → research graph | Weekly priority cohort + pre-brief refresh. Search is discovery, not authoritative rank measurement. |
+| GitHub (all estate repos) | GitHub App scoped read; signed webhooks; manifests pinned to SHA | Code/route ownership, PR targets, required checks, merge/deploy source → publication/conflict guards | Webhooks + hourly missed-event reconciliation + nightly inventory. Incomplete tree/pagination blocks the affected release. |
+| Cloudflare | Least-privilege API + official workflow receipts; read deployment/config/analytics | Worker version/source association, resource signals, cache state → release proof/operations | Deployment event + daily health. API unavailable never implies a successful deploy. |
+| Supabase/CMS/Marketplace | Restricted roles/service APIs; real catalog/category/provider/product IDs | Inventory, stable slugs, supply, service scope, reviewed editorial records, leads/orders → targets, funnel, P8/P10 | Catalog events + hourly reconciliation; re-check targets before release. |
+| Primary authorities + first-party expertise | Allowlisted official sources + consented reviewer/client-question records | Claim-level support, jurisdiction/effective dates, expertise, corrections → P8 and sealed briefs | §14.3 freshness rules; changed critical source invalidates pending approvals. |
+
+### 16.3 Honest availability rules
+- **Provider unavailable, stale or partial is never zero.** Each source run records health (`pending`/`ok`/`empty`/`unavailable`/`failed`), coverage and completeness; affected metrics are `unavailable`/`partial`, and decisions that require them are blocked rather than filled with zeros or estimates.
+- Do not duplicate the same underlying dataset through multiple vendors and call it independent corroboration; keep provider lineage and definitions separate. Two SEO vendors exposing the same Google Ads estimate remain one lineage.
+- Unknown integrations stay `REGISTERED_UNCONFIGURED`, never falsely `ONLINE`.
+- Raw provider rows (or permitted hashed evidence) are retained within license limits and governed by the retention classes in §9.3.
+
+### 16.4 Untrusted content defenses (normative)
+All retrieved web/competitor/user content is **data only**:
+- Strip or neutralize executable markup and embedded instructions before any model stage; retrieval text can never request tools, credentials, policy changes, model routing or publication.
+- Defend against SSRF (deny private/link-local/metadata ranges, DNS-rebinding-aware resolution), redirect chains (bounded hops, re-validate each host), MIME sniffing (declared vs actual type enforcement), decompression/size bombs (byte, expansion-ratio and time caps) and encoding attacks.
+- Isolate parsing in the worker; never execute retrieved scripts; never fetch with ambient user credentials.
+- The worker capability set is fixed **before** retrieved content is processed; retrieved text cannot expand it.
+
+### 16.5 MCP commissioning contract (`IntegrationBinding`, define once)
+For each approved binding record: server id, official source/repository, pinned package/image or verified remote URL, transport, client location, auth secret reference, account/project scope, discovered tool names and schemas, schema hash, allowed operations, timeout, quotas, cost ceiling, retention and last successful probe. Commit only non-secret configuration and schema fixtures.
+
+Commission in order: verify official endpoint/package/license and pin a reviewed release → configure the existing ds bridge client for the specific run with only needed tools → `initialize`/version negotiation + `tools/list`, persist schemas → one bounded read probe against an authorized known property/repo, verifying identity and scope → route results through the ingest contract and compare with the direct API/export fixture → test token expiry, schema change, pagination, timeout and unauthorized-write denial → activate only after Sol reviews mapping/probe artifacts. Version changes replay fixtures before promotion.
+
+Existing tool availability in any environment is **not** proof of executor access; the production service uses its own credentials and never copies human chat tokens into Modal.
+
+## 17. Estate truth, routes, slugs, canonicals and cannibalization safety
+
+### 17.1 Registry of record
+Extend the existing ownership catalogue with typed references (never a parallel competing host map): `estate_repositories`, `estate_hosts`, `estate_routes`, `repo_route_snapshots`, `live_route_observations`, `estate_snapshots`, `intent_owners`, `topical_nodes`/`topical_edges`, `route_reservations`, `marketplace_targets`, `article_funnels`, `connector_bindings`, `source_runs`, `index_submission_receipts`.
+
+Preserve separately and never conflate: planned, source-merged, deployed, live-verified, crawl-discovered, search-index-observed and outcome-observed. Repo HEAD is not deployed state; a 200 response is not proof of current body; a declared canonical is not Google's chosen canonical.
+
+### 17.2 Route manifests and publication targets
+Each official build exports a route manifest from its actual renderer/content loader; dynamic gigs/products/providers are discovered through the real catalog, never inferred from filesystem names. Inventory = union(repo manifests, catalog, sitemaps, crawl observations, known GSC/Bing URLs, redirect/tombstone ledger); differences use explicit reason codes (`NOT_IN_SOURCE`, `NOT_DEPLOYED`, `UNVERIFIED_LIVE`, `UNEXPECTED_INDEXABLE`, `MISSING_OWNER`, `CATALOG_DRIFT`).
+
 ```typescript
 interface PublicationTarget {
   adapterId: string; adapterVersion: string;
@@ -903,1469 +1242,92 @@ interface PublicationTarget {
   expectedDeploymentTargetId: string;
 }
 ```
-These fields must come from registry/manifest/catalog/approved contract, not writer text. No placeholder workflow ID, guessed file or generated market slug is accepted. Adapter validates parse/render round trip, route + content-loader existence, index registration, safe repository-relative paths and target ownership. Dynamic parameter names such as [slug] and [student] require explicit route-manifest conflict checks.
+Every field comes from the registry/manifest/catalog/contract, never from writer text. No placeholder workflow id, guessed file or generated market slug is accepted. The adapter validates parse/render round trip, route + content-loader existence, index registration, safe repository-relative paths and target ownership. Dynamic parameters (`[slug]`, `[student]`, …) require explicit route-manifest conflict checks.
 
-Release sequence: reserve intent/route → seal snapshot/contract/target → render and audit → recheck current repository base and reservations → create scoped PR → required exact-head CI/Sol review → protected-main merge → official deployment → verify canonical content and Marketplace path → queue discovery notifications → observe. A source change invalidating ownership/route/funnel blocks merge until reconciled. Cross-repo targets deploy in dependency order; no article may assume an unshipped service page exists.
+### 17.3 Slug safety
+**URL identity and search intent are separate constraints.** A clean slug never proves ownership or distinct value.
+- Reuse the current marketplace slug helpers and URL contract rules; never normalize published gig slugs at read time or regenerate them from new titles.
+- New editorial slugs follow the target adapter's approved policy: consistent Unicode normalization, case/separator rules, route-specific length/reserved-word rules; reject traversal, encoded slash/backslash ambiguity, control characters, query/fragment injection, invalid percent encodings and path escapes. Normalize once under one explicit decoding rule so repeated decoding cannot create traversal.
+- Validate canonical HTTPS host allowlist and parser output; query tracking is never part of route identity; preserve legitimate host-specific slash/case conventions (never globally lower-case existing paths).
+- DB unique constraints on `(host_id, canonical_path_key)` cover drafts/reservations and active routes; historic aliases/tombstones stay reserved; locks are acquired in stable order; expiry never releases a route while an unresolved PR/external write owns it.
+- A collision is investigated before suffixing; deterministic `-2/-3` suffixes preserve distinct provider offers only and never justify duplicate editorial intent.
+- All emitters (page route, sitemap, canonical, hreflang, JSON-LD, breadcrumbs, internal links, feeds, API lookups, checkout references) consume the same stored route id/URL; URL strings are never rebuilt independently.
+- Retired marketplace URLs/`/templates` canonicals must not reappear; `/templates` aliases redirect once to `/shop`. Live URL changes need P4 evidence, exact affected refs, approved one-hop redirects, collision/cycle tests and rollback.
 
-IndexNow batches are grouped by verified host/key scope, idempotent on route + change version + engine, and record retries/receipts separately. Added/updated pages require canonical live verification; deletions require intended removal/redirect verification. Notify participating engines only. Do not invoke Google's restricted Indexing API for ordinary articles. Sitemaps and verified GSC/Bing observations retain their separate roles.
-
-## 24. Slug safety and cannibalization prevention
-**URL identity and search intent are separate constraints.** Different slugs can still cannibalize; a clean slug alone proves neither ownership nor distinct value.
-
-- Reuse current lib/fiverr.ts buildSlug/buildUniqueSlug for new/draft gig slugs and lib/marketplaceSeo.ts URL rules. Do not normalize published gig slugs at read time or regenerate them from new titles.
-- New editorial slugs use the target adapter's approved policy. Normalize Unicode consistently, case and separators as required, strip unsafe input, and enforce route-specific length/reserved-word rules. Reject traversal, encoded slash/backslash ambiguity, control characters, query/fragment injection, invalid percent encodings and path escapes. Normalize once under an explicit decoding rule; repeated decoding cannot turn a safe path into traversal.
-- Validate canonical HTTPS host allowlist and URL parser output. Query tracking is never part of route identity. Preserve legitimate path semantics and host-specific slash/case conventions; do not globally lowercase existing paths.
-- Database unique constraints on (host_id, canonical_path_key) cover drafts/reservations and active routes; historic aliases/tombstones remain reserved. Acquire locks in stable order and serialize competing reservations. Expiry cannot release a route while an unresolved PR/external write owns it.
-- A collision is investigated before suffixing. Marketplace's deterministic -2/-3 rule preserves distinct provider offers only; suffixes never justify duplicate editorial intent.
-- All emitters—page route, sitemap, canonical, hreflang where applicable, JSON-LD, breadcrumbs, internal links, feeds, API lookups and checkout references—consume the same stored route ID/URL. Do not rebuild URL strings independently.
-- Retired /marketplace public URLs and /templates canonicals must not reappear; /templates aliases redirect once to /shop. Validate real taxonomy IDs; for Studio funnels reject an unknown category instead of relying on a helper's generic fallback.
-- Live URL changes need P4 evidence, exact affected refs, approved one-hop redirects, collision/cycle tests and rollback. No automatic mass cosmetic rewrite.
-
-Cannibalization preflight runs across **all** hosts, repo source, pending jobs/PRs, historical URLs and qualified query×page observations:
+### 17.4 Cannibalization preflight (all hosts)
 1. Deterministic jurisdiction + legal entity/program + reader job + audience stage + language intent identity.
 2. Existing authoritative owner resolution, including approved supporting sub-intent distinctions.
-3. Similarity/entity/answer-overlap retrieval as candidate detection only; Jev triages uncertainty, never invents ownership.
+3. Similarity/entity/answer-overlap retrieval as **candidate detection only** (with the exact-KNN fallback of §11.7 for critical conclusions); Jev triages uncertainty, never invents ownership.
 4. Qualified competing-page evidence and reviewer diagnosis; two pages receiving a query is not by itself harmful cannibalization.
 5. One primary owner transactionally enforced per approved intent; unresolved major collisions block new drafts/release in that conflict domain.
 6. Existing winner → refresh; truly distinct evidenced sub-intent → supporting page only under P13 unlock; overlap → consolidate recommendation; unknown → research.
-7. Post-deploy query-owner drift is monitored and opens a diagnosis task, never autonomous deletion/noindex.
+7. Post-deploy query-owner drift opens a diagnosis task (`STABLE_OWNER`, `NEW_SUPPORTING_VISIBILITY`, `OWNER_WEAKENING`, `SPLIT_VISIBILITY_REVIEW`, `POSSIBLE_COLLISION`, `DATA_INSUFFICIENT`) and never autonomously deletes, redirects or noindexes.
 
-Tests include US I-485 versus Australia 485, F-1/OPT/STEM OPT, UK Student/Graduate/Skilled Worker, parent vs child category, case/trailing slash/encoded separator collisions, identical intent on different hosts, simultaneous draft reservations, live gig title changes, and static/dynamic route conflicts.
+Fixtures include US I-485 vs Australia 485, F-1/OPT/STEM OPT, UK Student/Graduate/Skilled Worker, parent vs child categories, case/trailing-slash/encoded-separator collisions, identical intent on different hosts, simultaneous draft reservations, live gig title changes and static/dynamic route conflicts.
 
-## 25. Topical map and mandatory Marketplace funnel
-### Editorial north star
-Build demonstrable subject expertise around the supported immigration, study, work and settlement pathways, linked to real matching services. Do not chase off-mission traffic or write doorway pages to move users between domains. Every article must answer its own question well and offer a relevant, truthful next step to Marketplace.
+### 17.5 Drift and quarantine
+Daily estate reconciliation and pre-release delta validation cover all registered hosts/repositories with no unknown pages in the target conflict domain. New repositories/hosts are quarantined until registered, ownership-scoped and tested. An inaccessible or unknown host cannot be ignored when claiming estate-wide coverage, and a decision snapshot records each watermark instead of pretending to one atomic instant.
 
-“Domain authority” is an external provider-specific estimate when labelled DR/DA; topical authority is a strategic objective evidenced by depth, accurate coverage, useful relationships, verified links and measured qualified outcomes. Do not create an internal metric and label it Google's authority score. No arbitrary DA threshold overrides user value.
+## 18. Topical map, commercial path and conversion measurement
 
-### Typed topical graph
-A topical node records topic_id, jurisdiction, program/entity, audience, journey_stage, language, intent_id, primary_owner_route_id, parent_id, required_claims, distinct_information_gain, approved_marketplace_target_id, evidence IDs and status. Edges have explicit types: prerequisite, parent, supporting_answer, comparison, next_step, evidence_source and commercial_path. A parent has a primary owner; a child must solve a distinct reader job.
+### 18.1 Editorial north star
+Build demonstrable subject expertise around the supported immigration, study, work and settlement pathways, linked to real matching services. Do not chase off-mission traffic and never build doorway pages to move users between domains. Every article answers its own question well **and** offers a relevant, truthful next step.
 
-Initial program families follow the existing evidence-led waves: Australia subclass 485; Canada family; US F-1/OPT/STEM OPT; UK student/dependant/work; Express Entry. These are planning cohorts, not authority to create pages. Populate exact existing nodes/routes from the estate snapshot first. Broad CREATE stays locked until P13.
+"Domain authority" is a provider-labelled external estimate (DR/DA) when labelled as such. Topical authority is a strategic objective evidenced by depth, accurate coverage, useful relationships, verified links and measured qualified outcomes. No internal metric is presented as Google's authority score, and no arbitrary DA threshold overrides user value.
 
-For each cluster, map reader progression: understand options → assess relevant requirements → prepare → act → maintain status/settle, including only stages supported by the actual jurisdiction and services. Avoid generic duplicate pages for every country/city. Local/regional variants need real distinct evidence and audience need.
+### 18.2 Typed topical graph
+A topical node records `topic_id`, jurisdiction, program/entity, audience, journey stage, language, `intent_id`, `primary_owner_route_id`, `parent_id`, required claims, distinct information gain, approved `marketplace_target_id`, evidence IDs and status. Edge types are explicit: `prerequisite`, `parent`, `supporting_answer`, `comparison`, `next_step`, `evidence_source`, `commercial_path`. A parent has one primary owner; a child must solve a distinct reader job.
 
-### Every-article commercial path contract
-Add a required ArticleFunnel record to ContractV3 for every new/rewritten article:
-- article route/content ID, cluster/intent, audience/jurisdiction, reader next step;
-- target type category, active gig, qualified provider or published shop product;
-- exact stored target ID and canonical URL, catalog revision, source of fit evidence;
-- approved CTA text/placement, offer scope and availability checks;
-- attribution event IDs, consent behavior, primary goal and observation owner;
-- permitted verified fallback target ID and conditions, or explicit BLOCKED_NO_RELEVANT_SUPPLY.
+Initial program families follow the existing evidence-led waves (AU subclass 485; Canada family; US F-1/OPT/STEM OPT; UK student/dependant/work; Express Entry). These are **planning cohorts, not permission to create pages**. Populate exact existing nodes/routes from the estate snapshot first; broad CREATE stays locked until P13. Per cluster, map reader progression (understand options → assess requirements → prepare → act → maintain/settle), including only stages supported by the actual jurisdiction and services, and avoid generic duplicate pages per country/city.
 
-Choose **one primary contextual Marketplace destination**. Secondary links are allowed when they serve distinct reader needs. Source citations remain external primary authorities; commercial CTAs do not replace them. Target language must be transparent about advice, paid service and eligibility limits.
+### 18.3 Every-article commercial path contract (`ArticleFunnel`)
+Required in `ContractV3` for every new/rewritten article:
+- article route/content id, cluster/intent, audience/jurisdiction, reader next step;
+- target type (category, active gig, qualified provider, published product);
+- exact stored target id and canonical URL, catalog revision, fit evidence source;
+- approved CTA text/placement, offer scope, availability checks;
+- attribution event ids, consent behavior, primary goal, observation owner;
+- permitted verified fallback target id and conditions, or explicit `BLOCKED_NO_RELEVANT_SUPPLY`.
 
-Target selection is rule-first: matching jurisdiction + service scope + reader stage + active supply + canonical/indexability policy. Jev can rank eligible candidates; it cannot fabricate providers, slugs, prices, licensing or availability. Existing confirmed editorial owner remains unchanged just because another host has a stronger offer.
+Choose **one primary contextual Marketplace destination**; secondary links are allowed only for distinct reader needs. Source citations remain external primary authorities and never get replaced by commercial CTAs. Target language is transparent about advice, paid service and eligibility limits. Selection is rule-first (jurisdiction + service scope + reader stage + active supply + canonical/indexability policy); Jev may rank eligible candidates only.
 
-Before release, validate target catalog identity, provider status where applicable, target response/canonical, substantive supply, correct CTA and working navigation. Category subpages require positively confirmed supply. No match means hold the dependent publication/funnel revision and open a supply-gap task; do not redirect everyone to a generic immigration shelf. Existing useful articles remain live while remediating gaps—do not delete them solely because supply is missing.
+Before release: validate target catalog identity, provider status where applicable, target response/canonical, substantive supply, CTA correctness and working navigation (§15.7). Existing useful articles remain live while supply gaps are remediated — never delete them solely because supply is missing.
 
-Apply the required funnel to new/rewritten articles prospectively. Audit all existing articles for missing/mismatched funnels and remediate in qualified, reviewed batches; this request does not authorize destructive retroactive enforcement. Static “all articles have a funnel” acceptance requires the full registered cohort audited with no unknowns.
+Apply the funnel to new/rewritten articles prospectively. Audit existing articles and remediate in qualified, reviewed batches; nothing in this document authorizes destructive retroactive enforcement. A "all articles have a funnel" acceptance claim requires the full registered cohort audited with no unknowns.
 
-Suggested placements: one contextual next step after useful guidance, plus a restrained closing CTA if appropriate. Never obstruct the answer, invent urgency, imply government affiliation or promise immigration outcomes.
+### 18.4 Conversion measurement
+Track `article_cta_view → article_cta_click → market_landing → service_view → lead_submitted/order_created → verified_payment/refund`. Each event carries a non-personal content/route/cluster/CTA/target/release id; event names are proposed internal schema, not claimed existing implementation. Keep the same approved GA4 property/tag and cross-domain configuration; never introduce internal UTMs that overwrite acquisition attribution. First-party consented journey ids are short-lived, canonical URLs stay clean, and unattributable events are retained honestly rather than fingerprinted or reconstructed. Optimize qualified lead/order value and helpful task completion under trust, accuracy and service-fit constraints; CTR/scroll/CTA counts and vendor KD are explanatory only.
 
-### Conversion measurement
-Track article_cta_view → article_cta_click → market_landing → service_view → lead_submitted/order_created → verified_payment/refund state. Each event carries a non-personal content/route/cluster/CTA/target/release ID; event names are proposed internal schema, not claimed existing implementation.
+## 19. Semantic change propagation and legal trust graph
 
-Keep the same approved GA4 property/tag and cross-domain configuration where applicable. Do not use internal UTM links that overwrite acquisition attribution. First-party consented journey IDs are short-lived; canonical URLs remain clean. When cross-domain identity cannot be linked, retain unattributed events honestly and compare aggregate cohorts. No fingerprinting, PII in URLs, or inferred sales.
+### 19.1 Claim dependency graph
+Maintain `source passage → semantic fact → claim → answer unit → revision/render → route → contract/review/release/observation`. A source or fact change traverses **only dependent objects**; the graph records why each dependency exists, so unrelated content is never invalidated merely because it mentions the same broad topic.
 
-Optimize qualified lead/order value and helpful task completion, constrained by trust, accuracy and service fit. CTR, scroll, CTA counts and vendor KD are explanatory signals. Before adding pages, fix broken commercial paths and improve existing supported clusters.
+### 19.2 Change classes (single vocabulary)
+`SOURCE_UNAVAILABLE`, `SOURCE_CONTENT_CHANGED`, `FACT_VALUE_CHANGED`, `FACT_CONTRADICTED`, `SCOPE_CHANGED`, `EFFECTIVE_DATE_REACHED`, `REVIEWER_REMIT_CHANGED`, `SOURCE_CHANGED_NO_SEMANTIC_IMPACT`, `NONCRITICAL_WORDING_CHANGE`, `AUTHORITY_SUPERSEDED`.
 
-## 26. Delivery controls, explicit unknowns and acceptance
-Extend A0–A7 with the following concrete artifacts:
-1. **estate-registry manifest:** every repo/host/application/source path convention, real workflow/deployment IDs, verified property IDs, route adapter/version and scope.
-2. **connector capability manifest:** each matrix row's transport/auth reference, actual endpoint/tool schema, permission probe, quotas, costs, fallback and deployment health.
-3. **source mapping fixtures:** raw API/export → normalized evidence/metric/estate rows, including all provider errors and unavailable modes.
-4. **topical-map snapshot:** every strategic intent and existing route, gaps/collisions, primary owner and Marketplace target/supply evidence.
-5. **publication-target manifest:** exact adapter round trip, route reservation and all URL emitters plus canonical/funnel checks.
-6. **database capacity/restore report:** actual existing usage, forecast, free-tier fit, backup destination and successful restore.
-7. **release/ingestion runbook:** checkpoint recovery, stale data, provider schema changes, token expiry, manual Ubersuggest imports, uncertain PR writes and post-deploy notification reconciliation.
-
-No speculative production config is accepted. A0 discovers concrete values from authoritative APIs/repository manifests; unresolved required values receive BLOCKED_CONFIGURATION with owner and next proof. This is the defined failure behavior, not permission for DeepSeek to choose a plausible value.
-
-Release acceptance additionally requires:
-- Disconnect each optional vendor: truthful availability and qualified-first-party operation survive; disconnect required estate/ownership/catalog proof: affected release blocks.
-- API and MCP fixtures normalize to the same semantics; compromised/prompt-injected page cannot invoke tools or mutate policy.
-- Ubersuggest export has schema/version/source/time validation; IndexNow receipts never turn into indexed status.
-- Miss a GitHub/catalog webhook: scheduled reconciliation detects the drift; stale source/live/catalog versions cannot approve a conflicting publication.
-- Two concurrent cross-repo jobs cannot own the same intent or canonical path.
-- Published gig slug immutability and every Marketplace URL contract regression pass; no accidental catalogue writer is enabled.
-- Every new/rewritten article has a verified relevant Marketplace path; wrong jurisdiction, inactive offer, invented slug and empty supply block.
-- Entire topical graph and estate inventory expose incomplete coverage; no estimate is labelled verified authority.
-- Resource/capacity pressure throttles optional jobs while preserving mandatory audit records; backup/restore and section 10 performance gates pass.
-- Exact-head CI, official deployment, live content, canonical/slug, contextual CTA target and real observation mechanism all have separate proof.
-
-### Additional primary sources read for .3
-- [Portal ownership resolver](https://github.com/kylemwalkerpr-ship-it/portal/blob/main/lib/seoFactory/ownership.ts) and [Marketplace SEO URL contract](https://github.com/kylemwalkerpr-ship-it/portal/blob/main/docs/MARKETPLACE_SEO_URL_CONTRACT.md). Re-pin current SHA during implementation.
-- [Ubersuggest API/webhook limitations](https://ubersuggest.zendesk.com/hc/en-us/articles/4405444620059-Ubersuggest-API-and-Webhooks-What-Users-Need-to-Know).- [Official DataForSEO MCP setup](https://dataforseo.com/help-center/setting-up-the-official-dataforseo-mcp-server-simple-guide).
-- [TinyFish MCP](https://docs.tinyfish.ai/mcp-integration) and [authentication](https://docs.tinyfish.ai/authentication).
-- [Bing Webmaster API access](https://learn.microsoft.com/en-us/bingwebmaster/getting-access) and [API method reference](https://learn.microsoft.com/en-us/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi?view=bing-webmaster-dotnet).
-- [IndexNow protocol](https://www.indexnow.org/documentation).
-- [Supabase pricing](https://supabase.com/pricing) and [database limits](https://supabase.com/docs/guides/platform/database-size).
-
-CS-2026.09.22.3 was the prior documentation revision. It commissioned no providers, database, MCP installation, scheduled tasks, outreach or production mutation. Its contracts remain incorporated into .4 unless explicitly superseded below.
-
-## 27. Semantic Fabric and knowledge ontology — binding extension
-CS-2026.09.22.4 formalizes the semantic layer implied by sections 21–25. It does **not** create a second truth store, a new phase system, a generic SEO score or new authority to publish. The existing estate registry, `ownership.ts`, evidence ledger, policy kernel, contracts and P0–P13 gates remain authoritative. Semantic objects are versioned derived/reconciled representations that help the system understand *what the estate means*, find candidate relationships and prepare bounded decisions.
-
-### Layered operating model
-The architecture is intentionally layered so a lower-trust inference cannot silently become higher-trust state:
-
-| Layer | Responsibility | Authoritative outputs / prohibition |
-|---|---|---|
-| L0 Governance and authority | Human authorization, AGENTS.md, Supervisor Arc, SEO Brief, P0–P13, policy versions | Defines what may happen. Models cannot modify this layer at runtime. |
-| L1 Observation | GSC, GA4, Bing, DataForSEO, Ahrefs, Ubersuggest exports, TinyFish, repo/deploy/catalog/authority observations | Immutable source runs with scope/completeness/failure; no interpretation promoted as fact. |
-| L2 Normalization and evidence | Identity normalization, deduplication, source/claim locators, metric definitions, privacy handling | Versioned evidence/observations; unknown remains unknown. |
-| L3 Estate truth | Repos/hosts/routes, canonical history, intent owners, catalog IDs, contracts, revisions, gate state, publication proof | Postgres/Supabase authoritative state. No embeddings or Jev outputs can overwrite it. |
-| L4 Semantic Fabric | Entities, aliases, reader jobs, query families, facts, answer units, typed relations, embeddings | Derived/reconciled meaning with provenance; candidate relations are clearly marked non-authoritative. |
-| L5 Compute | Modal deterministic transforms, embeddings, reranking, semantic extraction, competitor decomposition | Durable derived artifacts and feature snapshots; cost/failure/version recorded. |
-| L6 Decision | Deterministic eligibility followed by Jev bounded decisions and executor routing | DecisionRecord + abstention; never grants permission outside policy. |
-| L7 Research/editorial | Primary-source research, ContractV3, answer-first writing, claim-linked revisions, reviewer workflow | Immutable contract/revision/review artifacts. |
-| L8 Release | Release permit, PR, exact-head CI, merge, official deployment and live proof | Release/publication proof; PR creation is not publication. |
-| L9 Outcome | Search, authority, engagement, Marketplace and business observations with maturity/coverage | Observation/Reward records; no forced attribution. |
-| L10 Learning | Retrieval thresholds, Jev calibration, opportunity priority, compute routing and playbook updates | Versioned proposals/approved configuration only; cannot auto-rewrite governance. |
-| L11 Operations/security | Budgets, provider health, leases/fencing, secrets, RLS, audit, recovery, rollback | Enforces reliability and least privilege across every layer. |
-
-Data flows upward only through validated contracts; invalidation can flow downward from authority/source/owner changes to dependent derived state. UI may project any layer but cannot bypass its write boundary.
-
-### Core invariant
-Use the following sentence as a design and review invariant:
-
-> **Similarity discovers. Semantics describes. Evidence substantiates. Ownership governs. Jev recommends. Policy authorizes. Qualified humans review consequential legal content. Outcomes teach.**
-
-No embedding distance, cluster assignment, model label, provider keyword score, Jev probability or competitor observation may substitute for a verified owner, primary-source claim support, gate evidence or human review where required.
-
-### Semantic identity
-Every strategic query family, page purpose and proposed content unit resolves—when evidence permits—to a versioned `SemanticIdentity` rather than a keyword string alone. Minimum dimensions:
-
-```typescript
-interface SemanticIdentity {
-  schemaVersion: "studio.semantic-identity/1";
-  semanticId: string;
-  jurisdiction: string | null;
-  legalSystem: string | null;
-  entityIds: string[];              // e.g. program, visa class, institution, service
-  programOrPathwayId: string | null;
-  audienceId: string | null;
-  readerJobId: string | null;       // what the reader is trying to accomplish
-  journeyStage: "understand" | "assess" | "prepare" | "apply" |
-                "maintain" | "transition" | "settle" | "unknown";
-  searchIntent: "informational" | "commercial_investigation" |
-                "transactional" | "navigational" | "mixed" | "unknown";
-  language: string;
-  temporalContext: {
-    effectiveAt: string | null;
-    validFrom: string | null;
-    validTo: string | null;
-  };
-  serviceContextIds: string[];
-  evidenceIds: string[];
-  resolverVersion: string;
-  status: "resolved" | "ambiguous" | "partial" | "unknown";
-}
-```
-
-Identity resolution is conservative. Unknown remains unknown. A numerical token such as `485` cannot resolve an intent without jurisdiction/entity evidence: US I-485 and Australian subclass 485 are explicit collision fixtures. Audience and reader job are independent: two readers can discuss the same entity while seeking materially different answers.
-
-### Ontology node types
-The first ontology supports these versioned node classes. New classes require a reviewed schema migration and fixtures rather than free-form labels:
-
-| Node | Meaning | Truth boundary |
-|---|---|---|
-| `entity` | Real program, visa/status, institution, authority, service, product or recognized concept | Reconciled from authoritative records/evidence; aliases do not create new entities. |
-| `reader_job` | Concrete task the reader is trying to complete | Derived/reviewed editorial identity; must be specific enough to distinguish supporting sub-intents. |
-| `intent` | Search/business intent at a scoped query-family grain | Observed + model-assisted classification; owner remains external authoritative record. |
-| `query_family` | Group of observed/hypothesized queries expressing one resolved/ambiguous job | Membership is derived and versioned; raw queries retained. |
-| `route` | Registered estate URL/content target | Existing estate registry is authoritative. |
-| `revision` | Immutable draft/render/live bytes | Existing revision/render hashes authoritative. |
-| `claim` | Externally checkable proposition in content | Claim ledger + evidence authoritative. |
-| `answer_unit` | Section/paragraph/list/table/tool that answers a defined reader question | Derived from immutable artifact and editor confirmation. |
-| `source` | Primary authority, first-party evidence, approved provider or competitor observation | Evidence registry authoritative; source reputation is separate from claim support. |
-| `offer` | Verified Marketplace category/gig/provider/product destination | Marketplace/catalog registry authoritative. |
-| `competitor_document` | Timestamped observed public competitor artifact | Observation only; never authority for legal facts. |
-| `topic_cluster` | Reviewed grouping used to manage subject coverage | Derived/reviewed planning construct, not a Google property. |
-
-### Typed semantic relations
-Relations are directed, versioned and carry provenance. Do not store an untyped generic `related_to` edge when a stronger type is known.
-
-**Knowledge / legal relations:** `IS_A`, `PART_OF`, `REQUIRES`, `HAS_REQUIREMENT`, `HAS_EXCEPTION`, `APPLIES_TO`, `EXCLUDES`, `HAS_DEADLINE`, `HAS_FEE`, `HAS_DURATION`, `CHANGES_TO`, `PRECEDES`, `FOLLOWS`, `COMPARES_WITH`, `EVIDENCED_BY`, `CONTRADICTED_BY`.
-
-**Reader / answer relations:** `ANSWERS`, `PARTIALLY_ANSWERS`, `PREREQUISITE_FOR`, `SUPPORTING_ANSWER_FOR`, `NEXT_READER_JOB`, `DISTINCT_SUBINTENT_OF`, `SAME_READER_JOB_AS`.
-
-**SEO / estate relations:** `PRIMARY_OWNER_OF`, `SUPPORTS_OWNER`, `SEMANTICALLY_OVERLAPS`, `CANDIDATE_COLLISION_WITH`, `LINKS_TO`, `SHOULD_LINK_TO`, `RECEIVES_AUTHORITY_FROM`, `NEAR_WIN_FOR`, `GAP_FOR`, `REFRESH_CANDIDATE_FOR`, `CONSOLIDATION_CANDIDATE_WITH`.
-
-**Commercial relations:** `SERVED_BY`, `NEXT_COMMERCIAL_STEP`, `HAS_ACTIVE_SUPPLY`, `HAS_NO_VERIFIED_SUPPLY`, `CONVERTS_TO`, `FALLBACK_OFFER_FOR`.
-
-Every edge stores `relationType`, subject/object IDs, scope, jurisdiction/language, evidence IDs, derivation method/version, confidence where model-derived, valid/effective dates, status and invalidation reason. `CANDIDATE_*`, overlap and suggested-link edges are explicitly non-authoritative.
-
-### Semantic fact contract
-Consequential knowledge uses an Entity–Predicate–Value–Qualifier–Evidence shape, not a prose blob:
-
-```typescript
-interface SemanticFact {
-  factId: string;
-  entityId: string;
-  predicate: string;
-  value: unknown;
-  qualifiers: {
-    jurisdiction: string | null;
-    audienceId: string | null;
-    programOrPathwayId: string | null;
-    validFrom: string | null;
-    validTo: string | null;
-    effectiveAt: string | null;
-  };
-  evidenceIds: string[];
-  contradictionEvidenceIds: string[];
-  sourceHealth: "current" | "stale" | "conflicted" | "unavailable";
-  verification: "observed" | "reviewed" | "derived" | "model_candidate";
-  extractorVersion: string | null;
-  reviewerId: string | null;
-  factHash: string;
-}
-```
-
-For YMYL claims, `model_candidate` cannot be promoted to usable claim support without the section 5 evidence/reviewer rules. A primary authority may support one predicate and not another. A source URL alone is not a fact.
-
-### Query meaning graph
-Every observed or hypothesized query retains its raw text and source, then maps through a versioned interpretation path:
-
-`raw query → normalized query → entity candidates → jurisdiction/audience → reader job → search intent → journey stage → query family → authoritative owner or unresolved state`.
-
-Membership edges record whether a query is `CORE_EXPRESSION`, `PARAPHRASE`, `QUESTION`, `EXCEPTION`, `PREREQUISITE`, `FOLLOW_ON`, `COMPARISON`, `BRANDED/NAVIGATIONAL` or `AMBIGUOUS`. A query can participate in more than one candidate family until evidence/review resolves ambiguity; the system does not force a single cluster merely to simplify reporting. Raw GSC query×page observations remain attached to the original query, so semantic regrouping never destroys the measurement history.
-
-A query-family merge/split is a versioned operation with before/after members, reason, owner impact analysis and replay of affected opportunity/observation projections. Historical reports remain interpretable under the definition version that produced them.
-
-### Semantic grains and meaning profiles
-Generate semantic representations at multiple grains; do not use one whole-page vector as the universal representation:
-
-1. query and query-family;
-2. page purpose/title/meta;
-3. section/answer unit;
-4. atomic claim;
-5. entity/reader job/intent description;
-6. Marketplace offer/service capability;
-7. competitor answer unit;
-8. source passage where licensing/retention permits.
-
-Each published/proposed page has a `PageMeaningProfile` containing primary/secondary entities, reader job, audience, intent, journey stage, questions answered, claim IDs, answer-unit IDs, explicit exclusions, unique information, overlaps, parent/child relationships, internal-link role and commercial next step. Profile fields are bound to an artifact hash; substantive revision invalidates derived fields.
-
-### Temporal and jurisdictional semantics
-Legal/immigration meaning is time- and scope-dependent. A fact must be able to represent a rule that was true during one effective period and not another. Historical values remain queryable but cannot silently satisfy current-release evidence. The resolver must not merge facts across jurisdictions because the names or numbers are similar.
-
-`effectiveAt`, `validFrom`, `validTo`, jurisdiction, program and audience filters are applied **before** semantic ranking where known. A vector search that returns a semantically similar but wrong-jurisdiction fact is a retrieval candidate, not usable evidence.
-
-### Semantic information gain
-Before CREATE or a major expansion, compute a reviewed information-gain record:
-
-`proposed answer units / predicates – adequately satisfied current owner coverage = candidate distinct information gain`.
-
-Record the actual missing reader question/predicate and evidence. Do not reduce this to a universal threshold. A new page with high lexical novelty but the same reader job and answer set has low useful information gain. A narrow exception with modest search volume can have high information value when it solves a distinct, evidenced reader problem.
-
-Semantic information gain can justify further research; it cannot independently unlock CREATE. P13 and owner reservation remain mandatory.
-
-## 28. Modal semantic compute plane, hybrid retrieval and cost governance
-Modal becomes the durable **semantic compiler and compute scheduler**, not merely an article generator. The goal is to spend compute on transformations that improve the quality and speed of estate decisions, while escalating only genuinely difficult cases to larger models.
-
-### Semantic compilation pipeline
-For each new/changed immutable artifact or imported source batch:
-
-```text
-bytes / rows
-  → canonical parse + content boundary detection
-  → deterministic normalization
-  → entity/alias candidate extraction
-  → claim + answer-unit segmentation
-  → reader-job / intent candidate features
-  → multi-grain embeddings
-  → lexical + vector + graph candidate retrieval
-  → optional cross-encoder/reranker
-  → relation proposals / gap features
-  → reconciled semantic snapshot
-  → Jev DecisionState or human/research escalation
-```
-
-Persist each stage output before acknowledgement under section 7 failure semantics. Derived semantics are keyed by `(artifactHash, semanticStage, modelOrRuleVersion, ontologyVersion)`, making them naturally reusable and invalidatable.
-
-### Compute classes
-Use measured execution classes rather than one always-on 27B model:
-
-| Class | Typical work | Default resource principle |
-|---|---|---|
-| S0 deterministic CPU | parsing, hashing, AST, URL/route checks, counts, joins, graph traversal, diffs | CPU only; no GPU. |
-| S1 embedding | query/section/claim/entity/offer embeddings | Smallest accelerator/CPU implementation that meets throughput and quality benchmark; batched. |
-| S2 reranker | cross-encoder relevance, claim↔passage or query↔answer-unit reranking | GPU only when measured benefit over CPU/embedding rank justifies cost. |
-| S3 small semantic model | extraction/classification that deterministic parser/Jev cannot perform | Quantized small model; batch/offline first. |
-| S4 larger local model | difficult competitor decomposition or semantic synthesis | Explicit escalation budget; not default. |
-| S5 frontier/external reasoning | hard research, architecture, ambiguous legal/editorial cases | DeepSeek/Grok/Sol/human under existing authority model. |
-
-A workload cannot escalate solely because a GPU is available. Each escalation records the failed/insufficient lower tier and expected value of the higher tier.
-
-### Hybrid retrieval
-Candidate discovery uses **hard scope filters + lexical retrieval + vector retrieval + graph context**, followed by reranking when needed.
-
-1. Apply project/estate, language, allowed host, jurisdiction and temporal filters that are already known.
-2. Retrieve lexical candidates with Postgres full-text search/trigram/exact entity/alias matching.
-3. Retrieve semantic candidates using pgvector in the same Postgres estate where capacity permits.
-4. Union candidates with existing graph neighbors (owner, parent, supporting, prerequisite, same entity).
-5. Combine rankings using a pinned fusion method such as reciprocal-rank fusion; do not average incomparable provider/model scores without calibration.
-6. Rerank a bounded candidate set with a cross-encoder or measured alternative.
-7. Return candidate relations with component evidence; never write owner or gate status from retrieval.
-
-Supabase/Postgres `pgvector` + full-text search is the preferred initial implementation because it keeps relational scope, provenance and vectors close to the existing truth store. Verify the deployed pgvector version and benchmark index behavior before choosing parameters. HNSW is the default candidate index for read-heavy evolving data, but exact KNN remains the reference set for recall evaluation. Do not assume approximate retrieval returns every eligible row under selective filters; test iterative scans/oversampling where supported.
-
-### Embedding model registry and semantic spaces
-Every vector row stores `embeddingModel`, exact revision/digest, dimensionality, pooling/normalization, truncation/chunking policy, source text hash, ontology/language scope and generated timestamp. Vectors from incompatible model spaces are never directly compared.
-
-An embedding upgrade follows:
-
-`shadow new space → backfill representative corpus → exact labelled retrieval benchmark → compare recall/precision/latency/cost → approve → staged re-embed → switch read alias → retain rollback window`.
-
-Do not overwrite old vectors in place. A model upgrade cannot silently change ownership/cannibalization decisions; affected derived candidates/DecisionRecords are superseded and re-evaluated.
-
-### Incremental recomputation
-Use dependency hashes to avoid wasting Modal credits:
-
-- unchanged artifact + unchanged model/ontology → reuse all semantic products;
-- metadata-only change → recompute only dependent profile/route features;
-- changed section → reparse/re-embed that answer unit and dependent page aggregate;
-- changed source fact → invalidate dependent claim support and pages, not unrelated cluster vectors;
-- changed embedding model → create a new model space rather than rewriting facts;
-- changed owner/policy → re-evaluate decisions/gates without regenerating embeddings unless their inputs changed.
-
-### $30 monthly Modal credit governance
-The $30 Starter credit is a **budget envelope**, not an article target and not a presumed number of GPU hours. Modal pricing/resource mix can change; read actual workspace/environment billing telemetry. The production scheduler maintains:
-
-```typescript
-interface ComputeBudget {
-  month: string;
-  creditCeilingUsd: number;
-  hardReserveUsd: number;
-  spentUsd: number | null;
-  estimatedCommittedUsd: number;
-  perWorkloadCaps: Record<string, number>;
-  optionalWorkPaused: boolean;
-}
-```
-
-Proposed operating rule: reserve a protected share for freshness/recovery and never let optional competitor expansion consume the final budget needed for owner/source invalidation work. Exact percentages are tuned from measured cost; do not hard-code the earlier 180–250 article assumption.
-
-Every Modal stage records CPU/memory/GPU class, cold/warm state where observable, inputs, batch size, cache hit, duration and billing allocation/tag if available. Compute `cost_per_semantic_unit`, `cost_per_decision_state`, `cost_per_accepted_intervention` and `cost_per_mature_positive_outcome` over time. A cheaper model that causes more retries/escalations may be more expensive in accepted-work terms.
-
-### Batch and concurrency policy
-Prefer offline batches for embeddings/reranking/competitor corpora. Group by model/version and compatible sequence length. Use bounded concurrency and backpressure so one large import cannot starve source freshness or release verification. Warm containers are an optimization only; correctness cannot depend on them.
-
-Modal's result retention is never the ledger; Postgres/artifact checkpoints remain authoritative. Billing reports/usage telemetry are ingested as operations evidence, not inferred from invocation count.
-
-### Semantic compute acceptance
-Before promotion:
-
-- labelled retrieval set includes same-number cross-jurisdiction collisions, close paraphrases, distinct reader jobs on the same entity, historical/current fact variants and Marketplace offer matching;
-- compare approximate index results against exact KNN reference and lexical-only baseline;
-- record Recall@k, Precision@k/nDCG or MRR where appropriate, wrong-jurisdiction retrieval rate, owner-collision candidate recall, latency p50/p95 and cost per 1k units;
-- no critical expected collision may disappear solely because an ANN index/filter returns too few rows;
-- adversarial retrieved text cannot modify system/tool instructions or become evidence without validation;
-- resource budgets and timeout behavior are tested at 2× expected semantic batch size.
-
-## 29. Jev semantic decision hierarchy, calibration and routing
-Jev is most valuable after Modal has compressed raw estate state into bounded, auditable features. It is not asked to browse the web, invent rationale, establish legal facts or choose from actions the policy kernel already forbids.
-
-### Decision hierarchy
-Split decisions into atomic tasks; calibrate each independently.
-
-**D0 — semantic ambiguity:** choose `SAME_READER_JOB`, `SUPPORTING_SUBINTENT`, `DISTINCT_INTENT`, `WRONG_SCOPE`, `AMBIGUOUS`.
-
-**D1 — diagnosis:** among eligible diagnoses choose `MISSING_ANSWER`, `STALE_FACT`, `TECHNICAL_EXCLUSION`, `OWNER_COLLISION`, `WEAK_INTERNAL_AUTHORITY`, `WEAK_EXTERNAL_AUTHORITY`, `CTR_PACKAGING`, `COMMERCIAL_PATH`, `INSUFFICIENT_EVIDENCE`, `OTHER/ESCALATE`.
-
-**D2 — intervention:** choose only from policy-supplied eligible actions such as `RESEARCH`, `REFRESH`, `EXPAND_OWNER`, `LINK`, `REPAIR`, `CONSOLIDATE_RECOMMENDATION`, `CONVERSION`, `OBSERVE`, `NO_ACTION`, and `CREATE` only when P13 supplies CREATE as eligible.
-
-**D3 — priority band:** score urgency/value within the already eligible queue; input components remain inspectable. Jev priority cannot override a blocked gate.
-
-**D4 — executor route:** choose the minimum sufficient route from `RULE_ENGINE`, `MODAL_CPU`, `MODAL_EMBEDDING`, `MODAL_RERANKER`, `MODAL_LOCAL_MODEL`, `DEEPSEEK`, `GROK`, `SOL`, `QUALIFIED_HUMAN`.
-
-**D5 — abstention/escalation:** explicit when distributions are close, required fields unavailable, out-of-distribution markers fire, or a critical policy requires human expertise.
-
-### DecisionState
-The Jev adapter accepts a compact schema similar to:
-
-```typescript
-interface SemanticDecisionState {
-  decisionTask: string;
-  subjectId: string;
-  semanticIdentityHash: string;
-  ownerId: string | null;
-  ownerVersion: string | null;
-  policyVersion: string;
-  eligibility: { action: string; eligible: boolean; reasonCodes: string[] }[];
-  semanticFeatures: {
-    lexicalOverlap: number | null;
-    vectorSimilarity: number | null;
-    rerankerScore: number | null;
-    entityOverlap: number | null;
-    readerJobOverlap: number | null;
-    claimOverlap: number | null;
-    informationGain: number | null;
-    jurisdictionMatch: boolean | null;
-    temporalMatch: boolean | null;
-  };
-  evidenceState: {
-    completeness: string;
-    freshness: string;
-    contradictions: number;
-    requiredReviewer: boolean;
-  };
-  outcomeFeatures: Record<string, number | string | null>;
-  allowedChoices: string[];
-  inputArtifactHashes: string[];
-}
-```
-
-A feature may be null. Null is never coerced to low risk. The question/rubric instructs Jev only on interpretation of the provided state; policy facts are not re-litigated by the model.
-
-### Confidence, distributions and abstention
-Store the full returned distribution and native confidence semantics. Never rewrite `0.90` as “90% accurate.” Promotion thresholds are empirical per task and risk class. For critical YMYL routing, false-safe errors carry a much higher cost than abstentions.
-
-Use margin/entropy/coverage features in addition to top probability if useful, but do not invent a composite confidence without a calibrated definition. Close alternatives trigger escalation rather than forced certainty.
-
-### Calibration ladder
-Promotion occurs separately for each `(decisionTask, modelVersion, rubricVersion, ontologyVersion, domainSlice)`:
-
-1. **shadow** — no workflow authority; compare to labelled/reference decisions;
-2. **advisory** — visible recommendation requiring human/approved model confirmation;
-3. **bounded automation** — only low-risk actions such as queue ordering or read-only semantic triage under threshold;
-4. **expanded bounded automation** — only after mature production error evidence and explicit Sol policy approval.
-
-No Jev tier may autonomously publish, merge, delete, redirect/noindex, fabricate a reviewer, clear CREATE freeze or alter a legal claim.
-
-### Calibration dataset
-Extend the section 6 holdout into a living corpus with stratified slices:
-
-- jurisdiction-number/name collisions;
-- near-duplicate reader jobs and truly distinct sub-intents;
-- stale vs current source facts;
-- off-mission high-volume topics;
-- competitor text containing prompt injection/instructions;
-- incomplete GSC/provider coverage;
-- Marketplace supply mismatch;
-- CREATE cases deliberately designed to look attractive but fail ownership/information-gain gates;
-- critical YMYL claim-support uncertainty.
-
-Track confusion matrices, task error, false-safe/false-block rates, Brier/reliability, abstention rate, coverage and downstream reversal rate. A threshold change is versioned policy evidence, not a UI setting.
-
-### Decision passport
-Every opportunity carries a reconstructable chain:
-
-`observation IDs → reconciled semantic snapshot → eligibility result → Jev DecisionRecord → executor route → contract/revision → review → release proof → mature outcome`.
-
-This is the explanation surface. Do not generate retrospective natural-language “reasoning” that was not actually recorded.
-
-## 30. Semantic Opportunity Engine and competitive territory model
-Content Studio's primary work unit becomes a **SemanticOpportunity**, not an article quota or raw keyword.
-
-```typescript
-interface SemanticOpportunity {
-  opportunityId: string;
-  subjectIdentityId: string;
-  readerJobId: string | null;
-  queryFamilyIds: string[];
-  ownerRouteId: string | null;
-  problemType: string;
-  semanticGapIds: string[];
-  competitorGapIds: string[];
-  metricSnapshotId: string;
-  evidenceIds: string[];
-  informationGainRecordId: string | null;
-  cannibalizationRiskState: "none" | "candidate" | "confirmed" | "unknown";
-  authorityGapState: string;
-  commercialPathState: string;
-  eligibleActions: string[];
-  policyVersion: string;
-  jevDecisionId: string | null;
-  predictedOutcome: { metric: string; direction: string; horizon: string }[];
-  interventionCostClass: string;
-  observationPlanId: string;
-  status: "detected" | "investigating" | "eligible" | "blocked" |
-          "executing" | "observing" | "mature" | "dismissed";
-}
-```
-
-### Territory states
-For each strategic query family/reader job, maintain an observed management state—not an election-style prediction or guaranteed ranking outcome:
-
-- `OWNED`: currently strong verified search presence for the defined cohort/window;
-- `WINNING`: materially positive current movement/coverage under explicit thresholds;
-- `NEAR_WIN`: observed positions/impressions indicate a bounded existing-owner improvement opportunity;
-- `CONTESTED`: multiple strong pages/domains or unstable ownership signal; diagnose rather than create reflexively;
-- `DECLINING`: mature negative movement requiring diagnosis;
-- `LOST`: previously strong cohort materially weakened under defined window;
-- `UNCLAIMED`: evidenced relevant demand without a resolved adequate owner;
-- `UNKNOWN`: source coverage or maturity insufficient.
-
-These labels are internal operational states derived from explicit windows/populations. They are not guarantees of future ranking and do not replace raw measurements.
-
-### Competitive semantic gap analysis
-Competitor analysis decomposes a timestamped page/SERP cohort into answer units, entities, predicates, questions, evidence patterns, tools/decision aids, structured data/format observations, internal-link roles and commercial journey. Compare those features against the authoritative YouSafe owner.
-
-Classify differences as:
-
-`ALREADY_COVERED`, `WEAKER_ANSWER`, `MISSING_ANSWER`, `MISSING_EXCEPTION`, `MISSING_EVIDENCE`, `MISSING_DECISION_AID`, `FORMAT_ONLY`, `OFF_MISSION`, `UNVERIFIED_COMPETITOR_CLAIM`, `NOT_REPRODUCIBLE`.
-
-Competitor copy is never imported or paraphrased as authority. The system uses the gap to open research against primary sources. A competitor's greater word count, heading count or keyword usage is not itself an information gap.
-
-### Entity–attribute coverage matrix
-For strategic entities maintain coverage at predicate/reader-question grain:
-
-| Entity | Predicate / reader question | Current owner | Evidence health | Answer strength | Demand evidence | Action state |
-|---|---|---|---|---|---|---|
-| Example program | eligibility | route A | current | strong | observed | defend/observe |
-| Example program | exception X | route A | current | partial | observed | expand owner |
-| Example program | document rule | route B | stale | unknown | observed | research/refresh |
-
-`answer strength` is a reviewed/defined rubric outcome, not a Google score. Store the underlying reasons/answer-unit IDs.
-
-### Priority without a magic SEO score
-Do not collapse the estate into one opaque `SEO_SCORE`. The queue stores a **priority vector**:
-
-- observed qualified demand;
-- current search position/CTR trend where available;
-- semantic information deficit;
-- owner confidence/collision risk;
-- source/evidence readiness;
-- internal/external authority gap;
-- commercial relevance and verified supply;
-- user-risk/trust burden;
-- estimated execution cost;
-- maturity/observation debt;
-- competitive change pressure.
-
-Deterministic rules remove ineligible work. Jev may map the remaining vector to a bounded priority band. UI exposes the components and uncertainty.
-
-### Intervention selection principles
-- Existing adequate owner + missing answer unit → `EXPAND_OWNER` or `REFRESH`, not CREATE.
-- Existing winner + weak internal support → `LINK`.
-- Strong impressions/position with snippet mismatch but adequate answer → packaging experiment/`REFRESH` after diagnosis.
-- Two pages same reader job → collision/consolidation review before new content.
-- Distinct evidenced reader job + no owner + P13 unlock → CREATE candidate.
-- Competitor advantage unsupported by primary research → `RESEARCH`, not mimicry.
-- No meaningful demand/mission fit → `NO_ACTION` even if content is cheap to generate.
-- High conversion potential with weak/missing verified supply → supply-gap/commercial-path task, not misleading CTA.
-
-### Semantic Marketplace routing
-Map article reader job → next reader job → service capability → jurisdiction/audience eligibility → active verified offer. Only after deterministic filtering may Jev rank multiple valid targets. Offer embeddings are discovery aids; catalog IDs, scope and availability remain authoritative.
-
-A funnel mismatch can open a `CONVERSION` opportunity without changing the editorial owner. Commercial relevance never grants permission to create redundant search pages.
-
-### Ranking War Room
-Add a strategic cluster view showing, with explicit source windows:
-
-- query families by territory state;
-- owner pages and owner conflicts;
-- entity/predicate coverage and missing answer units;
-- near-win cohorts;
-- declining owner alerts;
-- semantic internal-link gaps;
-- competitor-only useful answer candidates pending primary research;
-- evidence/trust debt;
-- verified Marketplace path coverage;
-- mature intervention outcomes and observation debt.
-
-Default ordering is by evidence-backed opportunity, not draft count. The interface must always permit `NO_ACTION`/dismiss with reason.
-
-## 31. Knowledge-change propagation, freshness and legal trust graph
-The semantic layer becomes especially valuable when authoritative facts change. Treat source/claim changes as dependency events rather than expecting editors to remember every affected page.
-
-### Claim dependency graph
-Maintain:
-
-`source passage → semantic fact → claim → answer unit → revision/render → route → contract/review/release/observation`.
-
-A source health or fact change traverses only dependent objects. The graph records why each dependency exists; do not invalidate unrelated content merely because it mentions the same broad topic.
-
-### Change classes
-- `SOURCE_UNAVAILABLE`: retrieval/health failure; existing evidence may become stale/unverifiable according to policy.
-- `SOURCE_CONTENT_CHANGED`: bytes/locator changed; re-extract dependent facts.
-- `FACT_VALUE_CHANGED`: verified predicate/value/effective-date changed.
-- `FACT_CONTRADICTED`: current authoritative sources disagree beyond accepted scope.
-- `SCOPE_CHANGED`: jurisdiction/audience/program applicability changed.
-- `EFFECTIVE_DATE_REACHED`: scheduled known future rule becomes current only after re-verification.
-- `REVIEWER_REMIT_CHANGED`: reviewer no longer satisfies required remit.
-
-### Propagation behavior
-1. Ingest new source revision as immutable evidence.
-2. Re-run only affected source passage/fact extraction.
+### 19.3 Propagation behavior
+1. Ingest the new source revision as immutable evidence.
+2. Re-run only affected passage/fact extraction (dependency-hash driven).
 3. Compare fact hashes and qualifiers.
-4. Mark dependent claim support `needs_revalidation`; do not rewrite historical proof.
-5. Invalidate pending approvals/contracts/releases whose policy requires current fact support.
+4. Mark dependent claim support `needs_revalidation`; never rewrite historical proof.
+5. Invalidate pending approvals/contracts/permits whose policy requires current fact support.
 6. Open a bounded `RESEARCH`/`REFRESH` opportunity for affected live owners.
-7. Prioritize by consequentiality + traffic/user exposure + effective date, not by generic freshness score.
-8. After reviewed update and deployment, close with new live proof and observation schedule.
+7. Prioritize by consequentiality + traffic/user exposure + effective date — not a generic freshness score.
+8. Close only after reviewed update, deployment and new live proof plus an observation schedule.
 
-A fact change never triggers an autonomous legal-content rewrite-and-publish loop.
+A fact change never triggers an autonomous legal-content rewrite-and-publish loop. Known future rules/deadlines are stored with future effective qualifiers plus a verification checkpoint; a future value is never represented as current before its effective date and fresh confirmation.
 
-### Scheduled future changes
-Known future rules/deadlines are stored as facts with future effective qualifiers and a verification checkpoint. The system may prepare research/draft work in advance but cannot represent a future value as current before its effective date and fresh source confirmation.
+### 19.4 Contradiction and independence handling
+If two authoritative sources materially conflict, preserve both evidence objects, classify the contradiction and block affected consequential claims until an appropriate reviewer reconciles. Jev may triage the state; it cannot decide which legal authority is correct from confidence alone. Normalize canonical source identity so mirrored/repackaged copies of the same authority do not count as independent corroboration.
 
-### Contradiction handling
-If two authoritative sources materially conflict, preserve both evidence objects, classify the contradiction and block affected consequential claims until reconciled by an appropriate reviewer. Jev may triage the contradiction state; it cannot decide which legal authority is correct from confidence alone.
+## 20. Outcome learning, reward attribution and safe experimentation
 
-### Source deduplication and independence
-Normalize canonical source identity so mirrored/repackaged copies of the same underlying authority do not count as independent corroboration. Similarly, two SEO vendors exposing the same underlying Google Ads estimate remain one lineage where known.
+### 20.1 Current scoring/learning systems are migration inputs
+The current `rankingModel`, `forecastTracker`, `forecastReward`, `planner`, `planEconomics`, `topicGraph`, `opportunityScore` and `opportunityEngine` modules (F10) are **migration inputs**, classified by A0.4. A new scorer, ontology or opportunity engine becomes authoritative **only** after explicit parity and authority-cutover evidence (§3.5). There is **no permanent second scorer**: after cutover the legacy scorer is read-only/archived and then retired. Forecasts are projections, never outcomes, and never enter reward as measured results.
 
-## 32. Semantic persistence, vector boundaries and event contracts
-Add one private logical schema, tentatively `studio_semantics`, mapped in A0 to existing objects. It stores derivative/reconciled semantic state while the existing content, owner, evidence, contract and publication tables remain authoritative.
-
-### Logical tables
-| Table | Purpose / invariant |
-|---|---|
-| `semantic_entities` | Canonical reviewed entity IDs and type; external aliases separated. No duplicate entity because two models used different names. |
-| `semantic_aliases` | Alias text/language/scope → candidate canonical entity with provenance and review status. |
-| `semantic_reader_jobs` | Versioned concrete reader tasks with jurisdiction/audience scope. |
-| `semantic_identities` | Resolved/ambiguous identity tuple bound to evidence and resolver version. |
-| `semantic_facts` | Entity–predicate–value–qualifier–evidence records; consequential facts preserve verification state. |
-| `semantic_documents` | Pointer to existing route/revision/source/competitor object + immutable bytes hash; not a second CMS. |
-| `semantic_segments` | Section/answer-unit/source-passage spans with stable local IDs and locators. |
-| `semantic_embeddings` | Model-space/version/dimension/source-hash keyed vector; derivative and replaceable. |
-| `semantic_relations` | Typed edge with scope, provenance, validity and authoritative/candidate status. |
-| `semantic_clusters` / `semantic_cluster_members` | Reviewed/query-family/topic planning groups; membership versioned. |
-| `semantic_features` | Bounded numerical/categorical features used by Jev; always traceable to input observations/relations. |
-| `semantic_opportunities` | Work-object projection referencing authoritative owner/policy/evidence. |
-| `semantic_decision_links` | Opportunity ↔ existing DecisionRecord and calibration slice. |
-| `semantic_outcomes` | Mature outcome references; does not duplicate raw GSC/GA4 observations. |
-
-Every row has `project_id`, created/superseded timestamps, schema/version and provenance. Tenant/project constraints prevent cross-estate semantic leakage.
-
-### Vector storage
-Use `vector`/`halfvec` only after A0 confirms deployed extension/version, dimensions and storage budget. Store embeddings at segment grain only where retrieval value is demonstrated; avoid embedding every trivial field. Use HNSW as an initial ANN candidate only after benchmark; preserve exact-search test corpus.
-
-A vector row is deletable/rebuildable derivative state. Deleting a vector cannot delete the underlying evidence/claim/owner. Conversely, missing vectors cannot turn an owner into unknown if the authoritative owner exists.
-
-### Event vocabulary
-Add durable outbox events (names illustrative but schema fixed before implementation):
-
-- `semantic.document.changed`
-- `semantic.segment.ready`
-- `semantic.embedding.requested|ready|failed`
-- `semantic.identity.changed`
-- `semantic.fact.changed|conflicted|stale`
-- `semantic.collision.candidate`
-- `semantic.opportunity.opened|blocked|superseded`
-- `semantic.decision.recorded`
-- `semantic.gate.invalidated`
-- `semantic.outcome.matured`
-
-Each event carries event ID, project, subject, source sequence, input hash, producer version and idempotency key. Consumers use fencing/version checks; events are facts about state transitions, not commands to publish.
-
-### Reconciliation jobs
-Nightly/bounded reconciliation verifies:
-
-- every active strategic route has a current PageMeaningProfile or explicit pending reason;
-- every primary owner maps to exactly the intended identity under current owner version;
-- no semantic relation points to deleted/unresolvable objects without tombstone status;
-- vector rows use approved model spaces and current source hashes;
-- Jev decisions reference existing feature snapshots and policy versions;
-- open opportunities whose evidence/owner changed are superseded/re-evaluated;
-- no blocked/failed semantic job is silently excluded from coverage denominators.
-
-## 33. Semantic UX, territory explorer and decision transparency
-The UI remains evidence-first. Semantic features are exposed as navigable explanations, not colorful pseudo-science.
-
-### New/extended workspaces
-**Command Centre:** add Semantic Coverage, Territory Changes, Source/Fact Changes, Owner Conflicts, Decision Abstentions, Modal budget health and Observation Debt cards. Counts open the scoped records; no vanity “AI score.”
-
-**Intelligence → Query Family Explorer:** query variants, resolved identity, reader job, country/device/window, owner, SERP cohort, semantic/lexical candidates and raw GSC evidence. Users can see why two similar phrases are one family or remain ambiguous.
-
-**Intelligence → Semantic Territory:** entity/topic tree + typed graph, strategic reader jobs, owner coverage, missing answer units, internal-link edges, evidence freshness and Marketplace path. Default graph is bounded around selected node; never render the whole estate graph into the browser.
-
-**Opportunity Detail:** show Problem, Evidence, Meaning, Eligible Actions, Jev Distribution, Policy Blockers, Expected Outcome, Cost Class and Observation Plan as separate cards. A Jev recommendation cannot visually resemble an approved gate.
-
-**Research & Contract:** show entity/predicate/claim matrix, temporal/jurisdiction qualifiers, contradictions, answer units and information-gain delta against the current owner. Sealing records the semantic snapshot hash.
-
-**Editorial Desk:** highlight which reader question each section answers, claim anchors, duplicate answer units, source changes and proposed internal-link semantics. Suggestions remain dismissible unless backed by an actual gate.
-
-**Trust Review:** render changed consequential facts since last approval and exact affected claims/sections first. Reviewer sees current source/effective-date evidence, not a generic freshness badge.
-
-**Authority & Outcomes:** add typed internal-link graph, semantic coverage changes and query-family outcomes alongside existing P6/P9/P10/P11 proof.
-
-**Operations & Policy:** add model-space versions, ontology/resolver versions, Jev calibration status, semantic queue/backlog, retrieval benchmark health and Modal spend/forecast by class.
-
-### Decision transparency rules
-For any recommendation the user can inspect:
-
-- authoritative owner + version;
-- hard eligibility result/reasons;
-- metric/source windows and completeness;
-- semantic identity and ambiguity;
-- candidate relation/features used;
-- Jev model/rubric/version and returned distribution;
-- whether the decision is shadow/advisory/automated;
-- previous reversals/outcome maturity where available.
-
-Do not show chain-of-thought. Show recorded evidence, features, rules and decisions.
-
-### Mobile and accessibility
-Graph views collapse to ordered relation lists and node detail on small screens. Every edge has a text label; no meaning conveyed by color alone. Keyboard navigation supports graph/list traversal, evidence opening and action review. Large similarity matrices are server-paginated/exported, not client-loaded.
-
-## 34. Outcome learning, reward attribution and safe experimentation
-The system learns from **mature intervention outcomes**, not draft volume, model preference or immediate ranking noise.
-
-### Prediction record before execution
-Before an eligible intervention begins, persist:
-
-```typescript
-interface InterventionPrediction {
-  opportunityId: string;
-  action: string;
-  baselineSnapshotIds: string[];
-  predictedMetrics: { metric: string; direction: "up" | "down" | "stable"; horizon: string }[];
-  targetQueryFamilies: string[];
-  expectedReaderBenefit: string;
-  confoundersKnown: string[];
-  observationWindows: string[];
-  predictionAuthor: "rule" | "jev" | "model" | "human";
-  createdAt: string;
-}
-```
-
-The prediction is not rewritten after results arrive.
-
-### Outcome maturity
-Observation compares compatible populations/windows and retains raw inputs. At minimum account for query/device/country mix, seasonality, SERP/algorithm volatility where observable, concurrent page changes, redirects, measurement definition changes and source coverage. `unknown`/`insufficient_data` is a valid mature conclusion.
-
-Do not claim causality from a simple before/after delta. Store attribution confidence/method separately from the observed change.
-
-### Reward dimensions
-Maintain separate outcome dimensions rather than one scalar reward:
-
-- qualified impressions/clicks/position/CTR;
-- query-family coverage/owner stability;
-- live internal authority changes;
-- verified external authority outcomes;
-- engagement/task-completion diagnostics;
-- verified lead/order/refund outcomes;
-- trust/evidence freshness and correction burden;
-- compute/editor/reviewer cost;
-- cannibalization/technical regressions.
-
-Policy can define which dimensions matter for a particular experiment. Revenue cannot compensate for a trust/legal gate failure.
-
-### Safe experimentation boundary
-Permitted experiments after applicable gates may include truthful title/meta packaging, internal-link placement/anchor variants, non-misleading CTA presentation, answer ordering/format and helpful decision aids. Do **not** A/B test contradictory legal facts, eligibility rules, deadlines, fabricated urgency, reviewer identity, disclaimers intended to cure unsupported advice or intentionally incomplete YMYL answers.
-
-Search-visible URL/canonical/noindex/consolidation experiments require their existing technical/ownership gates and rollback plan.
-
-### Learning updates
-Use outcome history to tune:
-
-- opportunity priority bands;
-- intervention selection rubrics;
-- retrieval/reranking thresholds;
-- Jev abstention/promotion thresholds;
-- semantic gap patterns worth researching;
-- Modal routing/cost policy;
-- content/format patterns that repeatedly help the defined readers.
-
-A learning update is versioned and evaluated against held-out history before activation. Do not let online outcomes automatically rewrite policy or ontology.
-
-## 35. CS-2026.09.22.4 implementation map, adversarial suite and completion contract
-This section deepens A0–A7; it is not a separate program and does not advance P9–P13.
-
-### Package extensions
-| Package | Semantic/Modal/Jev extension | Required additional exit evidence |
-|---|---|---|
-| A0 Reconcile | Inventory current route/owner/evidence schemas; Supabase pgvector/extension/version/capacity; Modal workspace billing/resource limits; TypeSafe live model access; representative GSC/query/page/competitor corpus | Signed semantic compatibility map, exact extension versions, labelled benchmark seed set, real provider capability probes and monthly cost baseline. |
-| A1 Policy | Define semantic identity/ontology registries, relation authority classes, CREATE/information-gain invariants and decision-task applicability | Golden fixtures for US I-485/AU 485 and other collisions; no semantic/model path can mutate owner/gate directly. |
-| A2 Durable runtime | Add semantic stage/outbox/idempotency/fencing, dependency invalidation, vector generation queues and billing tags | Crash/duplicate/stale-worker tests across embedding/reranking/fact-change jobs; budget exhaustion parks optional work without losing critical invalidations. |
-| A3 Intelligence/Jev | Hybrid retrieval, multi-grain embeddings, entity/reader-job resolver, competitor semantic diff, Jev DecisionState and calibration harness | Retrieval benchmark, wrong-jurisdiction rate, Jev per-task calibration report, abstention/holdout results and model-space migration drill. |
-| A4 Editorial/trust | PageMeaningProfile, answer-unit/claim/fact links, semantic information gain and source-change propagation into ContractV3/review | Changed consequential fact invalidates exact dependent approvals; low-info duplicate CREATE blocked; distinct sub-intent preserved. |
-| A5 New UI | Territory Explorer, Query Family Explorer, semantic opportunity/decision views, cost/calibration operations surfaces | Mobile/a11y journeys; evidence/rule/Jev states visually distinct; graph bounded and performant. |
-| A6 Release/observe | Semantic live-profile verification, query-family observation, intervention prediction/outcome ledger and knowledge-change scheduler | Exact live artifact maps to expected semantic/owner/funnel profile; mature outcome job actually runs; no release claim from IndexNow/PR creation. |
-| A7 Cutover | Shadow semantics → read-only analyst → opportunity advisory → low-risk bounded automation; maintain old pathway until parity | Canary demonstrates no critical owner/gate bypass, acceptable retrieval/calibration, bounded Modal spend, recovery/rollback and audited human-review path. |
-
-### Agent execution and cross-family review
-The product architecture must not depend on one interactive model session, but implementation work follows the supervised harness discipline already used across the program:
-
-- **Sol** remains architecture/review supervisor and final merge/release authority under the standing contract.
-- **DeepSeek through the existing ds bridge** remains the default heavy executor unless the current standing order authorizes another route.
-- **Grok** may be used as a parallel executor/auditor when explicitly authorized for the packet and proven healthy in the same managed harness; its availability never creates merge authority or permission to bypass packet scope.
-- Jev's `D4 executor route` is a product/runtime routing concept. It does not independently alter the human/agent standing orders governing repository implementation.
-- Parallel executors use separate non-competing worktrees/jobs with a verified common base, explicit file/conflict domains and durable checkpoints. Two agents do not edit the same conflict domain merely for speed.
-- Where two model families participate, prefer cross-family review: a model should not be the sole auditor of its own substantive implementation. Sol still performs architecture and final-candidate review.
-- Timeouts, serialization failures or lost final prose do not justify duplicate dispatch. Reconcile the existing job/checkpoint first; preserve useful worker outputs independently of final-response formatting.
-- Harness/provider OAuth, MCP initialization and worker maintenance failures are operational faults. They must surface as explicit blocked/retryable states and cannot be "fixed" by bypassing the supervisor contract or using unapproved credentials.
-- Git commits, pushes and PR creation remain packet-scoped actions with audited repository identity; merge/deploy remain under the release boundary.
-
-The executor matrix is an implementation acceleration mechanism, not a source of product truth. All product evidence still enters through the validated ingestion/policy contracts in this specification.
-
-### Mandatory adversarial semantic cases
-Add to section 13:
-
-1. Same number/name across jurisdictions returns candidate similarity but cannot merge identities.
-2. Same entity + different reader job remains distinct when evidence supports it.
-3. Different wording + same reader job is detected as candidate overlap.
-4. Historical fact and current fact are never mixed into one current answer.
-5. Wrong-country high vector similarity is filtered/rejected before evidence use.
-6. Competitor prompt injection becomes inert content and cannot modify tools/policy/ontology.
-7. Duplicate mirrored source does not count as independent corroboration.
-8. HNSW/ANN filtering cannot hide a labelled critical collision; benchmark catches recall loss.
-9. Embedding model change cannot compare new/old vectors or silently alter owner decisions.
-10. Jev high confidence with deterministic gate FAIL remains blocked.
-11. Jev unavailable/timeout leaves dependent decision pending/abstained; no substitute model clears it.
-12. Optional Modal budget exhausted: freshness/release/security jobs retain reserved capacity or enter explicit blocked state; no hidden drop.
-13. One changed authority predicate opens only dependent refreshes and invalidates affected reviews, not the whole cluster.
-14. Marketplace semantic similarity cannot route to wrong jurisdiction/inactive supply.
-15. Proposed page with high search volume but negligible distinct information gain remains blocked from CREATE.
-16. `NO_ACTION` survives as a first-class outcome and is not overridden by article quota pressure.
-17. Observation with missing/partial provider rows cannot train a false positive reward.
-18. Concurrent semantic reconciliation and owner change uses fencing/version checks; stale decision cannot release.
-
-### Performance and scale benchmarks
-Before canary, measure with representative data rather than synthetic empty tables:
-
-- semantic parse/embedding/rerank throughput and p95 latency;
-- Postgres exact KNN vs HNSW recall/latency at expected row counts;
-- hybrid retrieval query latency with jurisdiction/tenant filters;
-- graph neighborhood and opportunity list response sizes;
-- incremental recomputation ratio after single-section/source changes;
-- Modal cold/warm batch cost and monthly forecast under realistic cadence;
-- Jev decision latency/error/retry/abstention behavior;
-- browser route bundle/CPU remains within section 10 because semantic matrices never execute in Cloudflare request path.
-
-### Operational SLO proposals
-These are initial engineering targets to validate, not vendor guarantees:
-
-- 100% of semantic derived rows trace to source object/hash + producer version;
-- 0 critical owner or gate mutations from embedding/Jev-only evidence;
-- 0 cross-project semantic/vector leakage in authorization probes;
-- 100% consequential live claims either current-supported or explicitly blocked for review under policy;
-- ≥99% semantic job terminal states reconciled within the defined repair window; exact window set from A0 operational baseline;
-- monthly optional compute automatically throttles before the configured hard reserve is consumed;
-- retrieval benchmark and Jev calibration status visible before enabling any bounded automation.
-
-### Source additions for .4
-Primary/current vendor references to revalidate during A0:
-
-- Modal documentation: https://modal.com/docs
-- Modal batch processing: https://modal.com/blog/batch-processing
-- Modal LLM workload/batching guidance: https://modal.com/llm-almanac/workloads
-- Modal billing/usage reporting: https://modal.com/docs/cli/latest/billing
-- Supabase pgvector: https://supabase.com/docs/guides/database/extensions/pgvector
-- Supabase hybrid search: https://supabase.com/docs/guides/ai/hybrid-search
-- Supabase HNSW/vector indexes: https://supabase.com/docs/guides/ai/vector-indexes/hnsw-indexes
-- Existing TypeSafe J1/J2/J3 references in section 14 remain the Jev API/model/confidence authority and must be live-probed before enablement.
-
-### Revision record
-**CS-2026.09.22.4** integrates the Modal + Jev strategic work and the specific-semantics design into the existing evidence-led architecture. It adds a versioned Semantic Fabric, ontology/fact model, multi-grain embeddings and hybrid retrieval, cost-governed Modal compute cascade, atomic Jev decision hierarchy, SemanticOpportunity/competitive-territory engine, knowledge-change propagation, semantic persistence/events/UI, mature outcome learning and a semantic adversarial/canary contract.
-
-This revision deliberately preserves the existing program constraints: no ranking guarantee, no broad CREATE authorization, no model-as-source-of-truth, no fabricated evidence/reviewer, no automatic destructive consolidation, no production/provider commissioning by documentation alone, and no weakening of P0–P13 or exact-head release controls. Implementation remains Sol-led with DeepSeek through the existing bridge unless the standing contract is explicitly amended.
-## 27. Semantic Fabric and knowledge graph — binding architecture
-This section makes semantics a first-class subsystem. It does not create a second truth store, second ownership map or model-controlled ontology. The existing estate registry, ownership resolver, evidence ledger, topical graph, contracts and policy kernel remain authoritative. Semantic outputs are versioned derived intelligence that help discover relationships, gaps and conflicts; policy and reviewed evidence still decide what may happen.
-
-### 27.1 Semantic north star
-The system must answer six distinct questions without collapsing them into one score:
-1. **What is this thing?** Resolve jurisdiction, legal/program entity, audience, reader job, journey stage, language and time context.
-2. **What does this page/query/claim mean?** Represent the subject and intended answer at the correct grain.
-3. **How is it related to the estate?** Resolve owner, parent/supporting relationships, prerequisites, comparisons, next steps and commercial paths.
-4. **What is missing or weak?** Compare required semantic coverage with current verified coverage and competitor/demand evidence.
-5. **What action is eligible?** Apply deterministic policy and gate constraints before recommendation.
-6. **What action is most worthwhile now?** Let Jev prioritize only among eligible bounded actions, with abstention when state is incomplete or ambiguous.
-
-The invariant is:
-
-> **Similarity discovers. Semantics describes. Evidence substantiates. Ownership governs. Jev recommends. Policy authorizes. Human expertise reviews consequential legal content. Outcomes teach.**
-
-No vector distance, cluster, model confidence or semantic score is publication permission.
-
-### 27.2 Canonical semantic identity
-Every strategic query family, topical node, page and proposed content action resolves—where evidence permits—to a versioned `SemanticIdentity`. The identity is not inferred from keywords alone.
-
-```typescript
-interface SemanticIdentity {
-  semanticIdentityId: string;
-  ontologyVersion: string;
-  jurisdictionId: string | null;
-  legalSystemId: string | null;
-  entityIds: string[];
-  programIds: string[];
-  audienceIds: string[];
-  readerJobId: string | null;
-  journeyStage: "understand" | "assess" | "prepare" | "act" | "maintain" | "settle" | "unknown";
-  intentType: "informational" | "commercial_investigation" | "transactional" | "navigational" | "mixed" | "unknown";
-  language: string;
-  countryContext: string | null;
-  effectiveAt: string | null;
-  serviceContextIds: string[];
-  sourceEvidenceIds: string[];
-  resolutionState: "resolved" | "partial" | "ambiguous" | "conflicted" | "unavailable";
-}
-```
-
-`readerJobId` expresses the reader's task rather than the site's desired keyword. Examples include `determine_eligibility`, `understand_requirement`, `prepare_documents`, `compare_pathways`, `resolve_exception`, `estimate_timeline`, `understand_cost`, `choose_next_step` and `obtain_assistance`. New reader jobs require reviewed ontology changes; models cannot mint arbitrary production IDs.
-
-Same-number and same-acronym resolution is explicit. `I-485` in US immigration and `Subclass 485` in Australia may share lexical tokens while resolving to different jurisdiction/entity/program identities. Ambiguous numeric or acronym queries stay `ambiguous` until evidence resolves them.
-
-### 27.3 Ontology layers
-Use a small reviewed ontology with explicit layers. Do not attempt an unconstrained world knowledge graph.
-
-| Layer | Examples | Authority / mutation rule |
-|---|---|---|
-| Jurisdiction | AU, CA, US, UK; province/state where materially relevant | Registry-backed; reviewed migration only |
-| Legal/program entity | visa class, permit, pathway, application/form, credential process | Evidence-backed canonical entity; aliases versioned |
-| Audience | international student, graduate, applicant, sponsor, employer, newcomer | Controlled vocabulary; audience may be composite |
-| Reader job | determine eligibility, prepare, compare, resolve exception | Reviewed taxonomy; separate from search phrase |
-| Journey stage | understand → assess → prepare → act → maintain/settle | Controlled lifecycle; only applicable stages used |
-| Intent | informational, commercial investigation, transactional, navigational, mixed | Observed/inferred with evidence and ambiguity |
-| Claim/predicate | requires, permits, excludes, costs, lasts, changes, applies_to | Claim-level provenance required for consequential facts |
-| Content role | primary owner, supporting answer, comparison, glossary, service | Deterministic owner remains external authority |
-| Commercial role | served_by, next_commercial_step, no_matching_supply | Catalog-backed only |
-
-Ontology aliases are searchable but canonical IDs are stable. Renaming a label does not silently change identity. Deleting an entity requires a tombstone and migration path for historical decisions.
-
-### 27.4 Semantic facts and evidence
-Important legal/immigration meaning must be representable as qualified facts rather than only prose embeddings.
-
-```typescript
-interface SemanticFact {
-  factId: string;
-  subjectEntityId: string;
-  predicateId: string;
-  objectEntityId: string | null;
-  scalarValue: string | number | boolean | null;
-  unit: string | null;
-  jurisdictionId: string | null;
-  audienceIds: string[];
-  validFrom: string | null;
-  validTo: string | null;
-  evidenceIds: string[];
-  supportState: "supported" | "contradicted" | "partial" | "historical" | "unverified";
-  sourceAuthorityClass: string;
-  claimHash: string;
-}
-```
-
-Examples: `program REQUIRES condition`, `program PERMITS work_right`, `fee HAS_AMOUNT value`, `rule APPLIES_TO audience`, `exception EXCLUDES applicant_type`. A fact may be current, historical, contradicted or partial; absence of a fact is not automatically evidence that the opposite is true.
-
-### 27.5 Typed semantic relations
-Extend the existing topical graph with explicit relation semantics. Suggested relation registry:
-
-**Knowledge:** `IS_A`, `PART_OF`, `REQUIRES`, `PERMITS`, `EXCLUDES`, `HAS_EXCEPTION`, `APPLIES_TO`, `CHANGES`, `SUPERSEDES`, `COMPARES_WITH`, `PRECEDES`, `FOLLOWS`, `EVIDENCED_BY`.
-
-**Reader/task:** `ANSWERS`, `PREREQUISITE_FOR`, `NEXT_STEP_FOR`, `ALTERNATIVE_TO`, `RESOLVES_EXCEPTION_FOR`.
-
-**SEO/editorial:** `PRIMARY_OWNER_OF`, `SUPPORTS_OWNER`, `SEMANTICALLY_OVERLAPS`, `CANDIDATE_CONFLICT_WITH`, `NEAR_WIN_FOR`, `COVERAGE_GAP_FOR`, `REFRESH_CANDIDATE_FOR`, `LINKS_TO`, `RECEIVES_AUTHORITY_FROM`.
-
-**Commercial:** `SERVED_BY`, `NEXT_COMMERCIAL_STEP`, `HAS_ACTIVE_SUPPLY`, `HAS_NO_RELEVANT_SUPPLY`, `CONVERTS_TO`.
-
-Every edge stores source, version, confidence/state, created/observed time and, where applicable, evidence IDs. Model-inferred edges are marked `candidate` until reconciled; authoritative owner/commercial edges must come from existing registries/catalogs and policy.
-
-### 27.6 Semantic state classes
-Do not present all semantics as equally trustworthy. Each node/edge/fact has one of:
-- `AUTHORITATIVE`: registry, reviewed evidence or deterministic source-of-truth mapping;
-- `OBSERVED`: direct provider/estate observation;
-- `DERIVED_DETERMINISTIC`: reproducible calculation from trusted inputs;
-- `MODEL_INFERRED`: extracted/classified by a pinned model;
-- `REVIEWED_INFERENCE`: model or analyst inference accepted by authorized review;
-- `CONFLICTED`: incompatible current evidence;
-- `STALE`: expired for the declared use;
-- `UNAVAILABLE`: not observed or not supported.
-
-Policy defines which classes are permitted for each decision. A `MODEL_INFERRED` legal fact never satisfies a consequential claim-support requirement by itself.
-
-## 28. Semantic compiler: Modal extraction, embeddings and reconciliation
-Modal becomes the bounded semantic compiler for large-scale processing. It transforms immutable inputs into derived semantic artifacts; it does not gain owner, release or policy authority.
-
-### 28.1 Incremental pipeline
-For each new or changed artifact, query corpus, competitor page or source document:
-
-```text
-immutable input
-  → safe parser / content extraction
-  → structural segmentation
-  → language + jurisdiction candidate detection
-  → entity/alias linking
-  → reader-job and intent candidates
-  → claim/predicate extraction
-  → deterministic lexical features
-  → multi-grain embeddings
-  → candidate retrieval
-  → reranking / overlap analysis
-  → graph-delta proposal
-  → deterministic reconciliation checks
-  → persisted semantic artifact + provenance
-```
-
-Each stage is independently hashed and cacheable. If only one section changes, unchanged section embeddings, entity links and claims are reused when analyzer/model/ontology versions remain compatible. No whole-estate recomputation is required merely because one article changed.
-
-### 28.2 Multi-grain representations
-Do not use one page embedding as the estate's semantic representation. Store embeddings at the grain appropriate to the decision:
-- query and query-family representation;
-- title/H1 and page-purpose representation;
-- section/chunk representation with stable locators;
-- question/FAQ representation;
-- claim representation;
-- entity description/alias representation;
-- reader-job representation;
-- topical-node representation;
-- Marketplace service/offer representation derived only from verified catalog text;
-- approved source passage representation for research retrieval where license permits.
-
-Whole-page vectors may exist for coarse discovery but are never the only signal for intent ownership or claim support.
-
-### 28.3 Embedding contract
-Each vector record stores:
-
-```typescript
-interface SemanticVector {
-  vectorId: string;
-  projectId: string;
-  objectType: "query" | "query_family" | "page" | "section" | "claim" | "entity" | "reader_job" | "topic" | "offer" | "source_passage";
-  objectId: string;
-  artifactHash: string;
-  embeddingModel: string;
-  embeddingModelVersion: string;
-  vectorDimensions: number;
-  normalization: string;
-  semanticSpaceVersion: string;
-  ontologyVersion: string;
-  createdAt: string;
-  validUntil: string | null;
-}
-```
-
-Vectors from incompatible semantic spaces are never directly compared. Model change triggers a new `semanticSpaceVersion`; migration runs shadow comparison before cutover. Historic decisions retain the vector/version IDs used at decision time.
-
-### 28.4 Candidate generation is hybrid
-Candidate discovery combines:
-1. exact/normalized lexical retrieval;
-2. BM25/full-text retrieval where available;
-3. vector nearest neighbors;
-4. entity and jurisdiction overlap;
-5. reader-job/intent compatibility;
-6. topical graph proximity;
-7. current owner/query-family observations;
-8. route/catalog hard filters.
-
-Hard contradictions such as wrong jurisdiction or retired route are filtered before reranking. A vector-nearest wrong-jurisdiction page may be useful for research but cannot become the owner candidate.
-
-### 28.5 Reranking
-Use a pinned cross-encoder or appropriately small local model only on bounded candidate sets. Rerankers answer questions such as:
-- Does this page actually answer this reader job?
-- Are these two pages same-answer, supporting-subintent, prerequisite, follow-on, comparison, exception or unrelated?
-- Does this evidence passage substantively support this proposed claim?
-- Is this Marketplace offer semantically appropriate after rule filtering?
-
-Persist input candidate IDs, model/version, output scores/distribution and exact text hashes. Reranking remains derived evidence, not truth.
-
-### 28.6 Reconciliation and abstention
-Semantic extraction may return multiple candidates. The reconciler applies deterministic registries and conflict rules. If top candidates remain too close, evidence is missing, or jurisdiction/program identity conflicts, store `AMBIGUOUS` and open research/review rather than forcing a winner.
-
-No background model is permitted to silently rewrite canonical entity IDs, reader-job taxonomy or owner mappings to reduce ambiguity.
-
-## 29. Hybrid retrieval, query-family resolution and cannibalization intelligence
-This section deepens section 24 without changing its authority model.
-
-### 29.1 Query-family pipeline
-Each observed query enters:
-
-```text
-raw query
- → normalization without meaning loss
- → language detection
- → jurisdiction/entity candidate resolution
- → reader-job candidate
- → intent candidate
- → lexical/vector neighbors
- → qualified query×page observations
- → family assignment or ambiguity
- → authoritative owner lookup
-```
-
-Store raw query separately from normalized keys. Never erase meaningful punctuation, legal prefixes, numeric identifiers or jurisdictional qualifiers during normalization.
-
-### 29.2 Relationship classes between queries/pages
-When comparing a candidate query or proposed page against an owner, classify the relationship using a controlled vocabulary:
-- `SAME_ANSWER` — substantially the same reader job and answer;
-- `SUPPORTING_SUBINTENT` — distinct narrower job that supports the owner;
-- `PREREQUISITE` — must be understood before the primary job;
-- `FOLLOW_ON` — next task after the primary answer;
-- `COMPARISON` — reader explicitly needs alternatives contrasted;
-- `EXCEPTION` — materially distinct exceptional rule/case;
-- `DISTINCT_INTENT` — sufficiently different reader job;
-- `AMBIGUOUS` — evidence does not support a safe distinction.
-
-These classes are evidence for the owner/policy process. They do not automatically authorize a new URL.
-
-### 29.3 Collision evidence bundle
-A suspected cannibalization case stores:
-- owner and candidate route/content IDs;- jurisdiction/program/audience/reader-job identities;
-- qualified overlapping query families and windows;
-- lexical similarity;
-- vector similarity by grain;
-- entity and claim overlap;
-- unique information gain estimate;
-- internal-link topology;
-- ranking/CTR behavior by query family;
-- current canonical/index state;
-- pending PR/job conflicts;
-- reviewer/Jev outputs;
-- final deterministic policy result.
-
-The system must be able to explain why two pages were treated as distinct or conflicting using recorded evidence rather than only a model statement.
-
-### 29.4 Query ownership drift
-Post-release monitoring compares query families against expected owner distributions. Drift states:
-- `STABLE_OWNER`;
-- `NEW_SUPPORTING_VISIBILITY`;
-- `OWNER_WEAKENING`;
-- `SPLIT_VISIBILITY_REVIEW`;
-- `POSSIBLE_COLLISION`;
-- `DATA_INSUFFICIENT`.
-
-Drift creates diagnosis work; it never autonomously noindexes, redirects or deletes a URL.
-
-## 30. Semantic coverage, competitive territory and information gain
-Top-tier competitiveness requires understanding **answer territory**, not merely keyword counts.
-
-### 30.1 Coverage matrix
-For every strategic cluster maintain an entity–reader-job–predicate coverage matrix. Each cell stores owner, support evidence, freshness, answer quality state and competitor/demand observations.
-
-Example dimensions:
-
-| Entity / reader job | Required predicate/question | Current owner | Coverage state | Evidence freshness | Competitive state |
-|---|---|---|---|---|---|
-| Program eligibility | Who qualifies? | route A | strong | current | parity |
-| Program exception | Passport-limited outcome | route B | weak | current | gap |
-| Application prepare | Required documents | route C | strong | current | defended |
-| Next step | What happens after expiry? | route D | partial | stale | contested |
-
-Coverage states: `STRONG`, `PARTIAL`, `WEAK`, `MISSING`, `CONFLICTED`, `STALE`, `NOT_APPLICABLE`, `UNKNOWN`.
-
-### 30.2 Competitor decomposition
-Competitor pages are untrusted observations. Modal may extract:
-- primary entity and reader job;
-- questions/sections answered;
-- entities and relationships discussed;
-- apparent claims and cited sources;
-- examples, calculators, checklists, comparison tables and decision aids;
-- content format and structured data;
-- first-party/unique elements if observable;
-- internal-link and commercial journey patterns;
-- freshness/publication markers where truthful and visible.
-
-Do **not** import competitor claims as legal evidence merely because multiple competitors repeat them. Primary authorities and approved first-party expertise still substantiate consequential claims.
-
-### 30.3 Distinct information gain
-Before CREATE or major expansion, compute a bounded `InformationGainAssessment` against the existing owner/cluster:
-
-```typescript
-interface InformationGainAssessment {
-  assessmentId: string;
-  proposedAnswerUnits: string[];
-  alreadySatisfiedUnits: string[];
-  genuinelyNewUnits: string[];
-  unsupportedUnits: string[];
-  uniqueReaderJob: boolean;
-  estimatedGainState: "high" | "medium" | "low" | "none" | "unknown";
-  evidenceIds: string[];
-  analyzerVersion: string;
-}
-```
-
-This is not a Google metric. It is an internal anti-duplication/editorial decision aid. Low/none gain normally favors REFRESH/CONSOLIDATE/NO_ACTION over CREATE, subject to policy.
-
-### 30.4 Competitive territory states
-For each strategic semantic cluster track:
-- `OWNED_STRONG` — strong qualified visibility and complete supported answer;
-- `OWNED_FRAGILE` — ranking/traffic present but semantic/trust/authority weakness exists;
-- `NEAR_WIN` — meaningful demand with owner near target visibility;
-- `CONTESTED` — competitors or multiple estate pages meaningfully challenge the owner;
-- `DECLINING` — mature negative performance movement requiring diagnosis;
-- `GAP_SUPPORTED` — evidenced demand + missing/weak answer territory;
-- `GAP_UNSUPPORTED` — apparent gap but insufficient evidence/service/authority;
-- `OFF_MISSION` — demand exists but fails mission eligibility;
-- `UNKNOWN` — insufficient data.
-
-These are operational states, not ranking predictions or guarantees.
-
-### 30.5 Competitive response hierarchy
-When a competitor gains ground, diagnose in this order:
-1. technical/indexability/canonical issue;
-2. ownership/cannibalization issue;
-3. answer mismatch or missing reader job;
-4. stale or unsupported claim/evidence;
-5. weak information architecture/internal authority;
-6. weak external authority/backlink evidence;
-7. SERP packaging/CTR issue;
-8. commercial/reader-task mismatch;
-9. genuinely distinct missing content opportunity.
-
-New-page creation is last, not first.
-
-## 31. SemanticOpportunity: the primary Content Studio work unit
-The Studio should operate on evidence-backed opportunities, not article quotas.
-
-```typescript
-interface SemanticOpportunity {
-  opportunityId: string;
-  version: number;
-  semanticIdentityId: string;
-  queryFamilyIds: string[];
-  readerJobId: string | null;
-  canonicalOwnerId: string | null;
-  clusterId: string;
-  jurisdictionId: string | null;
-  evidenceSnapshotId: string;
-
-  demandState: string;
-  performanceState: string;
-  technicalState: string;
-  ownershipState: string;
-  semanticCoverageState: string;
-  competitiveState: string;
-  authorityState: string;
-  commercialPathState: string;
-  trustState: string;
-
-  informationGainAssessmentId: string | null;
-  collisionBundleId: string | null;
-  eligibleActions: EligibleAction[];
-  blockedActions: BlockedAction[];
-
-  modalFeatureSetId: string;
-  jevDecisionRecordId: string | null;
-  recommendedAction: string | null;
-  recommendationState: "pending" | "advisory" | "accepted" | "dismissed" | "abstained";
-
-  expectedOutcomeContractId: string | null;
-  observationPlanId: string | null;
-  createdAt: string;
-  supersededBy: string | null;
-}
-```
-
-### 31.1 Allowed action vocabulary
-Use the existing intervention model with more precise machine states:
-- `RESEARCH`;
-- `REFRESH`;
-- `EXPAND_OWNER`;
-- `CONSOLIDATE`;
-- `REPAIR_TECHNICAL`;
-- `RELINK_INTERNAL`;
-- `AUTHORITY_WORK`;
-- `CTR_OPTIMIZE`;
-- `CONVERSION_PATH_REPAIR`;
-- `GEO_REMEDIATION`;
-- `CREATE_SUPPORTING`;
-- `CREATE_PRIMARY`;
-- `OBSERVE`;
-- `NO_ACTION`;
-- `ESCALATE`.
-
-`CREATE_SUPPORTING` and `CREATE_PRIMARY` remain subject to P13/cluster authorization and every existing gate. Adding them to a vocabulary grants no authority.
-
-### 31.2 Eligibility before ranking
-The opportunity engine performs:
-
-```text
-facts/evidence
- → deterministic mission/owner/gate checks
- → eligible action set
- → Jev prioritization among eligible actions
- → confidence/abstention policy
- → human/policy acceptance where required
-```
-
-Jev never sees forbidden actions as selectable choices for that decision. Example: if CREATE is frozen, CREATE is removed before the Jev request; a high model probability cannot resurrect it.
-
-### 31.3 Decision passport
-Every accepted recommendation stores a complete machine-reconstructable passport:
-- exact evidence/estate/semantic snapshot hashes;
-- ontology, analyzer, embedding, reranker, Jev and policy versions;
-- eligible and blocked actions with deterministic reason codes;
-- Jev question schema and full probability distribution;
-- chosen action and authorized actor;
-- expected reader benefit and measurable outcome;
-- execution target/model route;
-- contract/revision/release IDs if executed;
-- observation windows and mature outcome state;
-- supersession/reversal history.
-
-Months later, the system must be able to answer **why this intervention existed** without reconstructing intent from prose logs.
-
-## 32. Modal operating model, compute cascade and $30 budget discipline
-Modal is an execution substrate, not an excuse to maximize GPU hours. The objective is maximum useful verified SEO intelligence per unit of compute.
-
-### 32.1 Workload classes
-Separate pools:
-
-| Class | Typical work | Default resource |
-|---|---|---|
-| D0 deterministic | parsing, hashing, AST, diffs, graph traversals, statistics, URL checks | CPU |
-| D1 vector | embeddings, approximate nearest neighbors, bulk similarity | small GPU or efficient CPU where measured |
-| D2 rerank/classify | cross-encoder/reranker, compact classifiers | small GPU |
-| D3 semantic extraction | bounded entity/claim/relation extraction where rules insufficient | quantized small/medium model |
-| D4 difficult synthesis | exceptional competitor/evidence synthesis | approved larger local or frontier model |
-| D5 frontier arbitration | genuinely complex reasoning | DeepSeek/Grok/Sol according to contract |
-
-The scheduler always attempts the cheapest approved class capable of the job. Promotion is evidence-driven; no stage uses a GPU merely because one is available.
-
-### 32.2 Monthly compute ledger
-Track, by project/stage/model/image:
-- CPU seconds and memory GiB-seconds;
-- GPU type and active seconds;
-- cold starts and image pulls;
-- input/output token counts when applicable;
-- cache hit/miss;
-- retries and wasted duplicate compute;
-- accepted outputs versus rejected/abstained outputs;
-- cost estimate and actual provider charge when available;
-- cost per accepted semantic artifact/opportunity/intervention.
-
-The `$30/month` allowance is treated as an observed account entitlement to verify in A0, not a permanent architectural constant. Budget policy is configured from actual account state.
-
-### 32.3 Budget envelopes
-Define monthly envelopes by value, not article count. Initial policy example—values are configuration, not this document's authorization:
-- mandatory estate reconciliation/trust invalidation receives reserved capacity;
-- semantic refresh of changed/new artifacts receives next priority;
-- near-win/declining-owner analysis receives next priority;
-- competitor refresh and broad keyword expansion consume residual budget;
-- speculative long-form generation never displaces mandatory truth/ownership work.
-
-When budget pressure rises: throttle optional competitor refresh → delay low-priority embeddings → narrow exploration cohorts → park nonurgent generation. Never skip required release evidence, owner checks or trust invalidation to save compute.
-
-### 32.4 Batching and cache policy
-Batch only semantically compatible work with bounded payloads. Cache keys include object hash + model/version + ontology/analyzer version + decision rubric where relevant. A cache hit from an old ontology/model policy is a miss for current decision use.
-
-Warm containers may be retained only when measured savings justify cost. Min-container settings are configuration based on real workload; do not spend the free allowance simply to keep an idle GPU warm.
-
-### 32.5 Failure degradation
-If Modal GPU capacity is unavailable:
-- deterministic ingest/reconciliation continues where safe;
-- stale semantic artifacts remain visible but cannot masquerade as current;
-- required decisions depending on unavailable semantic work become BLOCKED/RESEARCH_REQUIRED;
-- a different model/provider is not silently substituted;
-- already saved drafts/editor work remains accessible through the thin control plane.
-
-## 33. Jev decision system: calibration, promotion and routing
-Jev is the fast bounded decision layer, not the evidence or reasoning layer.
-
-### 33.1 Decision families
-Create separate task definitions; never reuse one global confidence threshold:
-- mission-fit ambiguity;
-- intent/reader-job ambiguity;
-- semantic relationship classification;
-- eligible intervention choice;
-- opportunity priority score;
-- evidence/claim uncertainty triage;
-- YMYL escalation routing;
-- executor routing;
-- Marketplace offer ranking after rule filters;
-- observation outcome classification.
-
-Each family has its own schema, labels, holdout, calibration history and authorization level.
-
-### 33.2 Promotion ladder
-A Jev task progresses independently:
-1. **SHADOW** — output recorded, never affects queue order or action.
-2. **ADVISORY** — visible recommendation; human/policy selects action.
-3. **BOUNDED_ASSIST** — may prioritize/reorder low-risk eligible work; no release authority.
-4. **AUTO_LOW_RISK** — may trigger reversible/read-only/diagnostic actions explicitly approved by policy.
-5. **RESTRICTED_AUTOMATION** — only if separately authorized after mature evidence; never includes destructive consolidation, legal-review substitution, merge/deploy, CREATE unlock or trust fabrication.
-
-Promotion requires task-specific measured evidence. Regression demotes automatically or by Sol policy.
-
-### 33.3 Calibration metrics
-For each task and material subgroup (jurisdiction, language, ambiguity class, criticality), record:
-- accuracy/error where a labelled truth exists;
-- false-safe and false-action rates;
-- Brier score or other probability calibration metric appropriate to schema;
-- reliability curve;
-- abstention/coverage tradeoff;
-- disagreement with rule baseline and expert review;
-- drift over time/model version;
-- realized downstream outcome for accepted decisions where measurable.
-
-A high confidence value is never treated as observed domain accuracy without calibration.
-
-### 33.4 Decision boundary
-Jev request state should be compact, structured and already reconciled. Prefer facts such as:
-
-```json
-{
-  "owner_exists": true,
-  "create_allowed": false,
-  "reader_job_relation": "SAME_ANSWER_CANDIDATE",
-  "semantic_overlap": 0.91,
-  "unique_information_gain": "low",
-  "near_win_query_count": 14,
-  "source_freshness": "current",
-  "marketplace_path": "verified",
-  "collision_state": "reviewed_candidate"
-}
-```
-
-Do not send entire crawled pages when a bounded feature state is sufficient. This reduces cost, privacy exposure and prompt-injection surface.
-
-### 33.5 Executor routing
-Jev may recommend among **pre-authorized** executors:
-`RULE_ENGINE`, `MODAL_CPU`, `MODAL_VECTOR`, `MODAL_RERANKER`, `MODAL_LOCAL_MODEL`, `DEEPSEEK`, `GROK`, `SOL`, `HUMAN_REVIEW`.
-
-Routing uses task risk, ambiguity, required tools, expected cost and model capability. The route does not grant tools or credentials; the harness/policy boundary still does that.
-
-## 34. Temporal semantics, source-change propagation and freshness blast radius
-Legal/immigration semantics are time-dependent. The system must know not only what a fact is, but when and where it is valid.
-
-### 34.1 Temporal fact model
-Consequential facts store valid/effective ranges separately from retrieval time. A retrieved source may be current while describing a future rule, or retrieved today while supporting a historical rule.
-
-Do not infer `validFrom` or `validTo` merely from page publication dates. Unknown effective dates remain unknown and may block consequential claims.
-
-### 34.2 Dependency graph
-Maintain dependencies:
-
-```text
-source passage
-  → semantic fact / claim evidence
-  → article claim
-  → section/revision
-  → rendered page
-  → topical node / owner
-  → Marketplace funnel where dependent
-  → decision passport / observation
-```
-
-When a critical source changes or expires, compute the affected dependency closure. Open bounded work only for affected claims/pages instead of refreshing every page in a cluster.
-
-### 34.3 Change classes
-- `SOURCE_CHANGED_NO_SEMANTIC_IMPACT`;
-- `NONCRITICAL_WORDING_CHANGE`;
-- `FACT_VALUE_CHANGED`;
-- `SCOPE_CHANGED`;
-- `EFFECTIVE_DATE_CHANGED`;
-- `SOURCE_REMOVED`;
-- `CONTRADICTION_INTRODUCED`;
-- `AUTHORITY_SUPERSEDED`.
-
-Critical change invalidates dependent approvals/release permits according to section 5 policy. Historical versions remain available for audit.
-
-### 34.4 Refresh prioritization
-A change propagator considers:
-- claim criticality;
-- live traffic/demand;
-- page owner status;
-- how prominently the changed claim appears;
-- number of dependent pages;
-- legal consequence;
-- source deadline/effective date;
-- whether the page is currently being edited/released.
-
-This produces an eligible refresh queue, not an autonomous rewrite.
-
-## 35. Outcome, reward and learning contract
-The system learns from mature outcomes but must not mistake correlation for causation.
-
-### 35.1 Intervention identity
-Every executed change has an `InterventionRecord`:
-
+### 20.2 Prediction record before execution
+Before an eligible intervention starts, persist an `InterventionRecord` plus prediction:
 ```typescript
 interface InterventionRecord {
   interventionId: string;
@@ -2378,279 +1340,467 @@ interface InterventionRecord {
   concurrentKnownChanges: string[];
   expectedOutcomeIds: string[];
   observationPlanId: string;
+  prediction: {
+    predictedMetrics: { metric: string; direction: "up" | "down" | "stable"; horizon: string }[];
+    targetQueryFamilies: string[];
+    expectedReaderBenefit: string;
+    confoundersKnown: string[];
+    predictionAuthor: "rule" | "jev" | "model" | "human";
+    createdAt: string;
+  };
   executedAt: string;
 }
 ```
+The prediction is never rewritten after results arrive. Materially different edits are not grouped under one opaque intervention.
 
-Do not group multiple materially different edits under one opaque intervention if their effects need to be learned separately.
+### 20.3 Maturity, dimensions and confounders
+Outcome records are `PROVISIONAL`/`MATURE`/`CONFOUNDED`/`INSUFFICIENT_DATA`/`INVALIDATED`, comparing compatible populations/windows and retaining raw inputs. Account for query/device/country mix, seasonality, SERP/algorithm volatility where observable, concurrent changes, redirects, measurement-definition changes and source coverage. `unknown`/`insufficient_data` is a valid mature conclusion. A positive before/after delta is association, not proof of causation; strong effectiveness claims require appropriate experiments or repeated comparable evidence.
 
-### 35.2 Outcome dimensions
-Possible outcome families:
-- search visibility: qualified impressions, position distributions, query-family coverage;
-- packaging: CTR with comparable position/query/device mix;
-- qualified traffic: organic landing sessions/users with coverage disclosure;
-- task engagement: useful completion proxies, scroll/active engagement where valid;
-- internal authority: live-verified links and graph connectivity;
-- authority: verified backlink outcomes;
-- GEO: exact cited URLs/provider/model/prompt snapshots;
-- commercial: CTA progression, lead/order/payment/refund with attribution limits;
-- trust/quality: corrections, source invalidations, review failures.
+`Reward` (§2.14) keeps dimensions separate: search visibility, packaging, qualified traffic, task engagement, internal authority, external authority, GEO citations, commercial outcomes, trust/freshness and correction burden, execution cost, and observed regressions (cannibalization/technical/trust). Policy defines which dimensions matter for a given experiment; revenue never compensates for a trust/legal gate failure.
 
-No single reward combines these into a hidden magic SEO score.
+### 20.4 Safe experimentation boundary
+Permitted after applicable gates: truthful title/meta packaging, internal-link placement/anchor variants, non-misleading CTA presentation, answer ordering/format, helpful decision aids. **Never A/B test** contradictory legal facts, eligibility rules, deadlines, fabricated urgency, reviewer identity, disclaimers intended to cure unsupported advice, or intentionally incomplete YMYL answers. Search-visible URL/canonical/noindex/consolidation experiments require their existing technical/ownership gates plus a rollback plan.
 
-### 35.3 Maturity and confounders
-Outcome records are `PROVISIONAL`, `MATURE`, `CONFOUNDED`, `INSUFFICIENT_DATA` or `INVALIDATED`. Store seasonality, algorithm/reporting changes if known, device/country mix, concurrent edits, major SERP shifts and source coverage changes.
+### 20.5 Learning updates
+Mature evidence may tune opportunity priority bands, intervention rubrics, retrieval/reranking thresholds, Jev abstention/promotion thresholds, semantic gap patterns worth researching, Modal routing/cost policy and content patterns that repeatedly help defined readers. Every learning update is versioned, evaluated against held-out history and activated explicitly. **Online outcomes never automatically rewrite policy or ontology**, and learning never relaxes hard trust, ownership, security or phase gates.
 
-A positive before/after delta is evidence of association, not proof of causation. Strong claims about intervention effectiveness require appropriate experiments or repeated comparable evidence.
+## 21. Content Studio UI
 
-### 35.4 Learning use
-Mature evidence may update:
-- opportunity prioritization features;
-- expected cost/benefit bands;
-- Jev calibration and routing policies;
-- which intervention types tend to work for defined states;
-- semantic coverage requirements for specific reader jobs;
-- editorial templates/checklists.
+### 21.1 Migration surface and replacement rule
+The current ~9.3k-line `admin-content-studio.tsx` monolith (F1) is a **measured migration surface being replaced**, not an asset to preserve for its own sake. Replace it by **route/workspace, aligned to operator journeys**, under the existing `/dashboard/admin/content` path so deep links survive and migration is incremental. No single-component rewrite; each workspace ships independently with its own data contract.
 
-It may not automatically relax hard trust, ownership, security or phase gates.
+Global shell: project/estate selector, current program phase, CREATE lock state, source freshness, running/blocked runs and role-appropriate actions. Every status shows reason, evidence and the next permitted step.
 
-## 36. Semantic War Room and evidence-first UI extensions
-Extend section 9 with a territory-oriented view. The UI helps humans supervise search territory, not celebrate article output.
-
-### 36.1 War Room overview
-Per estate and cluster show:
-- strategic semantic clusters and current state (`OWNED_STRONG`, `OWNED_FRAGILE`, `NEAR_WIN`, `CONTESTED`, `DECLINING`, `GAP_SUPPORTED`, etc.);
-- query families monitored and data coverage;
-- canonical owners and ownership conflicts;
-- semantic coverage matrix summary;
-- stale/contradicted critical facts;
-- near-win opportunities;
-- internal-link graph gaps;
-- verified Marketplace path coverage;
-- due observations and unresolved blocked decisions;
-- compute/provider health and freshness.
-
-Never show an unlabeled “SEO dominance score.”
-
-### 36.2 Semantic graph explorer
-Allow users to navigate:
-`cluster → entity → reader job → owner → supporting pages → claims → evidence → Marketplace path`.
-
-Edges show type and state. Model-inferred candidate edges are visually distinct from authoritative/reviewed edges. Every node can open provenance and version history.
-
-### 36.3 Opportunity detail
-Add panels:
-- **Meaning:** identity, reader job, intent, audience, jurisdiction;
-- **Demand:** qualified search evidence and estimates separately;
-- **Coverage:** existing answer units, missing/weak units, information gain;
-- **Competition:** competitor observations and SERP state;
-- **Ownership:** canonical owner, collision candidates, pending reservations;
-- **Action:** eligible actions, deterministic blockers, Jev distribution/abstention;
-- **Commercial path:** active supply and contextual next step;
-- **Outcome contract:** expected benefit, observation window and maturity state.
-
-The default button remains an investigation/action appropriate to policy, never “Generate article” merely because a gap exists.
-
-### 36.4 Explainability
-For any recommendation the UI must distinguish:
-- observed facts;
-- deterministic derived metrics;
-- model-inferred semantic state;
-- Jev recommendation;
-- policy permission;
-- human decision.
-
-Do not fabricate prose reasons supposedly spoken by Jev. Human-readable explanation is generated from recorded reason codes and facts, labelled as system explanation.
-
-## 37. Semantic security and adversarial resilience
-Semantic infrastructure adds new attack surfaces and must fail closed.
-
-### 37.1 Prompt and content injection
-Competitor pages, user-generated text and fetched sources are data. Strip/neutralize executable instructions before any model stage. Retrieval text cannot request tools, credentials, policy changes, model routing or publication.
-
-Model prompts explicitly delimit untrusted content and prohibit following embedded instructions. The worker capability set is fixed before retrieved content is processed.
-
-### 37.2 Ontology poisoning
-Only reviewed registry roles can create/merge/delete canonical entities, reader jobs or relation types. Models may propose aliases/links into a candidate table. A malicious page repeating a false entity alias cannot mutate canonical identity automatically.
-
-### 37.3 Vector poisoning and collision
-Detect abnormal repeated/spam content, embedding duplicates and huge near-duplicate corpora. Candidate retrieval is filtered by trusted metadata and graph constraints; vector similarity alone cannot cross jurisdiction/tenant/project boundaries.
-
-### 37.4 Cross-tenant/project isolation
-All semantic tables carry project/estate identity and use the same private-schema/grant model as metrics. Vector indexes must enforce tenant filters in query planning; do not retrieve across projects then filter in application memory.
-
-### 37.5 Privacy
-Do not embed raw client case files, personal identifiers, private emails or sensitive free text into shared semantic indexes by default. Approved first-party questions are minimized/anonymized before semantic processing. Retention/deletion rules propagate to embeddings and derived artifacts where legally required.
-
-### 37.6 Supply-chain integrity
-Pin model IDs/images/dependencies. Record digest of embedding/reranker/extractor model artifact where available. Changes trigger compatibility/shadow tests. No runtime download of unreviewed model code with remote execution enabled.
-
-## 38. Persistence schema extensions for semantic intelligence
-These logical entities extend section 18. Reuse existing tables where semantics already exist; A0 maps exact schema before migrations.
-
-| Entity | Purpose | Critical invariant |
+| Workspace | Primary interaction | Required states |
 |---|---|---|
-| semantic_ontology_versions | ontology/relation/reader-job registry version | immutable after activation; explicit migration |
-| semantic_entities | canonical jurisdiction/program/service/concept entities | stable ID; aliases separate; reviewed writes |
-| semantic_entity_aliases | observed aliases/acronyms/numeric forms | source/provenance; cannot silently merge entities |
-| semantic_reader_jobs | controlled reader-task taxonomy | reviewed registry; no model-created production IDs |
-| semantic_identities | resolved jurisdiction/entity/audience/job/intent tuple | resolution state/provenance; no owner authority |
-| semantic_facts | subject–predicate–object/value qualified facts | claim/evidence/effective-time binding |
-| semantic_documents | artifact/page/source semantic envelope | immutable artifact hash and analyzer version |
-| semantic_sections | stable revision-bound sections/chunks | locator + parent doc + content hash |
-| semantic_claims | extracted/authorial claims with evidence links | claim hash + support state; YMYL rules apply |
-| semantic_vectors | multi-grain embeddings | semantic-space/version compatibility enforced |
-| semantic_relations | typed graph candidate/reviewed relations | relation state + evidence/model provenance |
-| semantic_query_families | grouped observed queries and family identity | raw queries retained; ambiguity supported |
-| semantic_coverage | cluster/entity/job/predicate coverage state | no fake zeros; source/evidence/freshness |
-| semantic_collision_cases | cannibalization evidence bundles | owner resolution remains external authority |
-| semantic_information_gain | proposed-vs-existing answer-unit comparison | internal diagnostic, not Google metric |
-| semantic_opportunities | primary intervention work units | eligible/blocked actions recorded separately |
-| decision_passports | reconstructable decision inputs/versions/outcomes | append-only/superseded, not overwritten |
-| interventions | executed action identity and change dimensions | release/observation linkage |
-| semantic_outcomes | mature/provisional measured results | scope/maturity/confounders explicit |
+| Command Centre | Qualified progress, trust debt, semantic coverage, territory changes, source/fact changes, owner conflicts, decision abstentions, Modal budget health, observation debt, blocked decisions. Default action "Investigate opportunity". | Current/partial/stale/unavailable; counts open scoped records; no article quota, no vanity output counter, no "AI score". |
+| Intelligence | Query×page and cluster tables with jurisdiction/intent filters, source drawer, measured windows, owner view; Query Family Explorer (variants, resolved identity, reader job, country/device/window, owner, SERP cohort, lexical/vector candidates, raw GSC evidence); Semantic Territory (bounded entity/topic tree, reader jobs, coverage, missing answer units, internal-link edges, freshness, Marketplace path). | Raw/qualified/off-mission/junk toggles with denominators; ambiguity shown as ambiguity; graph bounded around the selected node. |
+| Opportunity Detail | Left: evidence and diagnosed problem. Centre: eligible interventions and expected reader benefit. Right: gate reasons, Jev distribution/mode, blocked actions. | Recommendation, abstention, blocked, dismissed-with-reason; a Jev recommendation never visually resembles an approved gate. |
+| Research & Contract | Claim/source matrix, contradictions, research gaps, information-gain delta vs current owner, owner, link/CTA plan, observation owner. | Sealed contract read-only; edits create a new version; sources preview with locator. |
+| Editorial Desk | Three panes (outline/claims, editor, source/trust checks) with claim anchors, answer-unit coverage, duplicate-answer warnings, source-change alerts and revision diff. | Saved/unsaved/conflict, queued/running/stalled, changed-after-review; human edits invalidate relevant checks. |
+| Trust Review | Exact rendered preview with critical claims, reviewer remit/credential state, changes since approval, correction details. | Approve/return with evidence; incapable role cannot approve; **no AI-as-human badge**; changed consequential facts shown first. |
+| Release Desk | Separate cards for PR diff, exact-head checks, permit state, deployment timeline and live proof. | PR created ≠ merged ≠ deployed ≠ live verified; wrong/stale SHA disables release. |
+| Authority & Outcomes | Internal-link lifecycle, verified backlink proof, privacy-aware funnel, GEO coverage, mature experiments; typed internal-link graph and query-family outcomes alongside P6/P9/P10/P11 proof. | Planned/applied/live-verified; outreach/won/lost; unknown/no-effect/negative/positive. |
+| Operations & Policy | Queues, provider health, CPU/memory/error trends, budget and Volume bytes, gate versions, calibration registry, model-space versions, retrieval benchmark health, audit history. | Read-only policy for ordinary editors; changes require reviewed release. |
 
-### 38.1 Vector storage
-Use the existing Supabase/Postgres estate when capacity and supported vector extension are verified during A0. Do not add a separate vector database until measured scale/latency/cost demonstrates need. If a secondary vector service is ever added, Postgres keeps canonical object IDs, versions and evidence; the service is an indexed derivative cache, never authority.
+### 21.2 Interaction requirements (binding)
+- Server-filtered pagination defaults to 25, max 100; select-all applies only to the explicit page scope. No giant loaded job bodies or metric snapshots.
+- **One poll coordinator per view** (§6.5), 5 s default for visible active runs, backoff on inactivity/error, hidden-tab pause, de-duplication. Optional SSE projects persisted events only.
+- Run cards show last real event, stage, attempt, elapsed, heartbeat age and retry state; truthful "needs reconciliation" instead of fabricated progress.
+- Editor autosaves revision checkpoints with conflict detection; reconnect restores durable state; cancellation explains whether compute stopped or only cancellation was requested.
+- Full keyboard access, visible focus, screen-reader labels, non-color status cues, WCAG 2.2 AA target, reduced-motion support; destructive commands require explicit scoped review.
+- Narrow widths collapse three panes into Evidence/Draft/Checks tabs with a persistent blocker summary and no horizontal page overflow; long tables use deliberate bounded scroll.
+- Model/provider controls live in task configuration and Operations, not the main editorial flow. The main UI explains evidence and decisions in plain language.
+- **Never hydrate the whole semantic graph or full estate inventory into the browser.** Graph views are bounded server-paginated projections; large similarity matrices are exported asynchronously.
 
-### 38.2 Append-only and supersession
-Semantic model outputs are immutable observations. A better extraction creates a new artifact and supersession link. Current projections select the latest eligible version but historical decision passports always reference the exact earlier state.
+### 21.3 Decision transparency rules
+For any recommendation the user can inspect: authoritative owner + version; hard eligibility result and reasons; metric/source windows and completeness; semantic identity and ambiguity state; candidate relations/features used; Jev model/rubric/version, full distribution and mode; previous reversals/outcome maturity. Never show chain-of-thought; show recorded evidence, features, rules and decisions. Explainability must visually separate observed facts, deterministic derived metrics, model-inferred state, Jev recommendation, policy permission and human decision.
 
-## 39. Revised implementation decomposition inside A0–A7
-Do not create a parallel program. The new semantic work is folded into the existing packages:
+### 21.4 Acceptance journeys
+Qualified refresh from evidence to live proof; frozen CREATE refusal with reason; contradictory YMYL source requiring research; draft edit invalidating approval; two users editing with conflict; provider outage and browser reconnect; small-screen reviewer completion; screen-reader blocked-action explanation; territory explorer on mobile; abstention displayed without blocking safe work.
 
-| Existing package | Added semantic/Modal/Jev responsibility | Added exit evidence |
+## 22. Security, privacy and adversarial resilience
+
+### 22.1 Identity, authorization and secrets
+- Authenticated server APIs and resource-level project/role checks; no public reads of `content_jobs`, decisions, evidence, reviewer or release state (§9.7). Keep and verify current privileged-table grants.
+- Auth/IDOR/CSRF/replay tests are mandatory (§25). Command endpoints require idempotency keys; mutation endpoints verify expected versions (409 on conflict).
+- Secrets live only in the existing secret-manager/workflow boundary. Compute workers receive only the read/stage-write permissions they need; **release credentials are separate and never provisioned to writers, research runners or Modal containers**.
+- Callback/webhook credentials are scoped, expire and are replay-deduplicated. No secrets in logs, artifacts, prompts or client errors.
+
+### 22.2 Untrusted input, ingestion and capability discipline
+§16.4 is normative: retrieved content is data. Parser isolation, SSRF/private-network denial, bounded redirects, MIME/size-bomb defenses and fixed worker capability sets are required. Prompt text explicitly delimits untrusted content and prohibits following embedded instructions; policy decisions never come from retrieved text.
+
+### 22.3 Semantic-specific attack surfaces
+- **Prompt/content injection:** neutralize before model stages; retrieved text cannot request tools, credentials, routing changes or publication.
+- **Ontology poisoning:** only reviewed registry roles can create/merge/delete canonical entities, reader jobs or relation types. Models may propose aliases/links into candidate tables; a page repeating a false alias can never mutate canonical identity automatically.
+- **Vector poisoning/collision:** detect abnormal repeated/spam content, duplicate embeddings and huge near-duplicate corpora; candidate retrieval is filtered by trusted metadata and graph constraints; vector similarity alone never crosses jurisdiction, tenant or project boundaries.
+- **Cross-tenant isolation:** every semantic table carries project/estate identity; vector queries enforce the tenant filter **in query planning**, never by retrieving across projects and filtering in memory.
+- **Privacy:** never embed raw client case files, personal identifiers, private emails or sensitive free text into shared semantic indexes by default. Approved first-party questions are minimized/anonymized first; retention/deletion obligations propagate to embeddings and derived artifacts.
+- **Supply chain:** pin model ids/images/dependencies and record digests where available; changes trigger compatibility/shadow tests; never download unreviewed model code at runtime with remote execution enabled.
+
+### 22.4 Failure posture
+Security-relevant uncertainty fails closed and is visible: capability denied, scope mismatch, identity missing, unverifiable artifact, unverified external write — each produces an explicit blocked state with a reason code, never a silent fallback to a weaker path.
+
+## 23. Observability, SLOs and operations
+
+### 23.1 Required telemetry
+Correlation identity on every record: `projectId`, `runId`, `stageId`, `attemptId`, `fence`, `sourceRunId`, `opportunityId`, `decisionId`, `permitId`, `proofId`. Plus:
+- **Reason codes** for every block/failure/denial (stable, documented, user-visible in plain language).
+- **Provider health:** latency, error class, quota exhaustion, schema drift, freshness of last success.
+- **Queue/runtime:** queue age, claim latency, retry counts, reconciliation lag, lease expirations, dead-letter counts.
+- **Cost:** Modal compute by class/workload, cold starts, cache hit ratio, Volume bytes by retention class, egress, DB/index size, provider spend where billing is available.
+- **Cloudflare:** request counts, CPU p50/p95/p99 by route and build, exceeded-CPU/memory events, 1102/503, isolate startup, payload sizes.
+- **Delivery integrity:** Git PR/check/merge/deploy lineage, live verification results, uncertain external writes and their reconciliation, IndexNow receipts.
+- **Semantic health:** retrieval benchmark status, wrong-jurisdiction rate, vector space versions, coverage/denominator health, Jev calibration status and mode per task.
+
+### 23.2 Proposed SLOs (validate, then pin)
+- 100 % of semantic derived rows trace to source object/hash + producer version.
+- 0 critical owner or gate mutations from embedding/Jev-only evidence.
+- 0 cross-project semantic/vector leakage in authorization probes.
+- 100 % of consequential live claims either current-supported or explicitly blocked for review.
+- ≥ 99 % of semantic/run terminal states reconciled within the repair window (window set from the A0.2/A0.3 operational baseline).
+- Optional compute automatically throttles before the configured hard reserve is consumed.
+- Zero unresolved resource-limit incidents in canary; any recurrence blocks promotion until diagnosed.
+
+### 23.3 Operations runbook (must exist before activation)
+Checkpoint recovery; stuck-lease recovery; stale/partial provider data handling; provider schema change; token expiry/rotation; manual Ubersuggest import; uncertain PR/merge reconciliation; deployment cancellation reconciliation; restore drill evidence; kill-switch procedures per switch; budget-pressure response order; escalation path for YMYL/legal contradictions, reviewer unavailability and suspected prompt-injection/poisoning events.
+
+## 24. Migration program, legacy disposition and implementation order
+
+### 24.1 Gate rule
+**No dependent implementation starts until its required A0 sub-package has exited with recorded evidence.** A0 is not a formality: it decides the target shape of every later package. Exit evidence is stored (T1/T2) and referenced by packet id; verbal summaries are not evidence.
+
+### 24.2 A0 sub-packages (all required)
+| Package | Scope | Required exit evidence |
 |---|---|---|
-| A0 Reconcile | inventory ontology candidates, vector extension/capacity, current semantic helpers, query/owner data, Modal/Jev account limits | semantic compatibility map; real budget/account capabilities; no duplicate truth store |
-| A1 Policy | action eligibility matrix for semantic states; ontology mutation authority; model-state allowed-use rules | fixtures prove inferred semantics cannot override owner/trust/CREATE freeze |
-| A2 Durable runtime | semantic stage idempotency, caches, versioned artifacts, change propagation, budget ledger | crash/duplicate/version-change tests; cache invalidation correct |
-| A3 Intelligence/Jev | ontology v1, identity resolver, multi-grain embeddings, hybrid retrieval, reranking, coverage, opportunity objects, Jev task holdouts | ambiguity and collision corpus; retrieval/rerank quality; Jev calibration/abstention report |
-| A4 Editorial/trust | claim/fact graph, information-gain contract, source-change invalidation, semantic outline/claim checks | changed authority source invalidates exact dependent claims/approvals |
-| A5 New UI | War Room, graph explorer, coverage matrix, opportunity explanation and decision passport | acceptance journeys distinguish observed/derived/model/policy/human state |
-| A6 Release/observe | intervention IDs, semantic live verification, query-owner drift, outcome maturity and reward records | outcome scheduler runs; no autoclaimed causality; drift creates bounded tasks |
-| A7 Cutover | shadow semantic engine → read-only → advisory → bounded assist; legacy similarity helpers retired only after parity | production canary, rollback, budget, retrieval, calibration and security evidence |
+| **A0.1 Document normalization** | Verify this document is the single normative source: one section sequence, one interface registry, no surviving duplicate/contradicting schemas anywhere in repo docs; re-check against the raw revision-brief/audit artifact (§27). | Signed normalization report: duplicate-block removal confirmed, interface definitions unique, remaining doc conflicts listed and resolved. |
+| **A0.2 Runtime/Cloudflare baseline** | Re-pin `main` and P0–P13; measure the request plane (route CPU, bundle composition, import graph, payloads); identify the real Cloudflare telemetry source; record account plan/limits; map existing crons (F9) to absorb/retain/retire; record the 1102/503 history from live telemetry. | Measured baseline + import-graph report + telemetry source + plan evidence + cron disposition map + the §6.2 Stay-Free/paid decision. |
+| **A0.3 Applied schema/extensions/table-size/capacity baseline** | Reconcile the live migration ledger against `supabase/migration-baseline.json` and the repository's forward migration set; run the same policy assumptions enforced by `scripts/migration-order.mjs`, `scripts/migration-ledger-policy.mjs` and `scripts/apply-migrations.mjs`; explicitly settle whether `20260915_content_studio_execution_lease.sql` and the provider-parity migration are actually applied; verify extension availability/versions (`pgvector`, `pg_jsonschema` or reviewed alternatives), table/index sizes, DB quota/utilization and growth forecast. | Ledger reconciliation report with filename/hash/source revision, extension/version evidence, execution-lease/provider-parity truth, size/capacity table, quota forecast, forward-fix list for any divergence. |
+| **A0.4 Legacy disposition + cutover map** | Classify every legacy subsystem and table as `REUSE`/`WRAP_TEMPORARILY`/`MIGRATE_STATE`/`REPLACE_AND_RETIRE`; map invariants that must survive; define cutover order and dual-run exit conditions. | Disposition table (§24.3 completed), invariant list, cutover sequence with named owners and rollback path per switch. |
+| **A0.5 Privilege/RLS boundary** | Effective-grant and policy inventory for every relevant table/function/schema; identify public/over-permissive surfaces (F7); define private-by-default target for new state; specify hardening-before-reuse requirements. | Grant/policy inventory, hardening backlog, private-schema target, RLS probe results, explicit list of tables that may not be reused until hardened. |
+| **A0.6 Release-sink and credential inventory** | Enumerate every Git write/merge/direct-main/deploy/publish sink (F8 plus workflows and anything new), disposition each `pr_only`/`merge_via_release_service`/`retired`, and inventory credential holders and scopes. | Sink table with dispositions, credential map, "no writer merge credentials" proof plan, direct-main/autodeploy disable list, cancel-in-progress reconciliation note. |
+| **A0.7 Modal/Jev/account/cost/Volume capability probes** | Live probes: Modal workspace identity/plan/billing telemetry, Volume create/mount/read-write/byte accounting behavior, node/GPU availability and image build path; Jev/TypeSafe access, model list and limits; **revalidate official pricing and allowances** (compute credit; Volume GiB price and free allowance; egress). | Probe transcripts, actual plan/limits, current price/allowance sheet with dates, capability matrix, cost model and budget baseline. |
 
-### 39.1 Representative implementation order
-Within A3, prefer this order:
-1. stable ontology/identity types and schema;
-2. deterministic query/page extraction and existing owner joins;
-3. embeddings for query/page-purpose/section/claim/entity/job;
-4. hybrid candidate retrieval;
-5. reranking and relationship classification;
-6. coverage/information-gain calculation;
-7. semantic opportunity object;
-8. Jev shadow decisions;
-9. UI projections;
-10. outcome feedback/calibration.
+### 24.3 Legacy disposition map (A0.4 must complete; disposition is decided by evidence, not by this table)
+| Legacy subsystem (VERIFIED_REPO_FACT location) | Invariant that must survive | Likely disposition class (to be confirmed) |
+|---|---|---|
+| `lib/seoFactory/ownership.ts` (owner resolution, estate authority) | Exactly one authoritative owner per normalized intent; jurisdiction/entity/reader-job identity; no model-minted owners. | `REUSE` (wrapped by the estate registry) or `WRAP_TEMPORARILY` → registry-native. |
+| `lib/seoEngine/rankingModel.ts`, `lib/seoFactory/opportunityScore.ts`, `lib/seoFactory/opportunityEngine.ts` | Priority vector components remain inspectable; ineligible work is removed before ranking; single opportunity queue. | `MIGRATE_STATE` + `REPLACE_AND_RETIRE` after parity (no permanent second scorer). |
+| `lib/seoEngine/forecastTracker.ts`, `lib/seoEngine/forecastReward.ts` | Forecasts are never outcomes; reward uses mature observed outcomes; dimension separation. | `MIGRATE_STATE` (history) → `REPLACE_AND_RETIRE`. |
+| `lib/seoEngine/planner.ts`, `lib/seoEngine/planEconomics.ts` | Planning/economic context is derived, never authorizing; no ranking guarantee. | `MIGRATE_STATE` or `REPLACE_AND_RETIRE` per measured value. |
+| `lib/seoEngine/ontology.ts`, `lib/seoEngine/knowledge.ts` | One authoritative semantic model; aliases never mint entities; temporal/jurisdiction qualifiers preserved. | `MIGRATE_STATE` (with parity/cutover) → legacy read-only/archive. |
+| `lib/seoFactory/topicGraph.ts`, `lib/seoEngine/coverageIntent.ts` | Topical/coverage truth maps to estate routes and owners; coverage states from §15.3. | `MIGRATE_STATE` → `REPLACE_AND_RETIRE` after parity. |
+| `lib/seoFactory/currentGate.ts`, `broadCreateFreeze.ts` | Every protected action mediated by one fail-closed kernel; CREATE frozen; exception handling per §8.4. | `WRAP_TEMPORARILY` (adapter into the A1 kernel) → `RETIRE`. |
+| `lib/seoFactory/executionStages.ts` + current pipeline/runner | Execution identity, leases/fencing, checkpointing and reconciliation semantics (§7) — implemented durably, not request-bound. | `REPLACE_AND_RETIRE` after A2 parity; drain in-flight V2 jobs with pinned runtime. |
+| `lib/seoFactory/publicationProof.ts` | PR ≠ merged ≠ deployed ≠ live verified; exact-SHA lineage. | `MIGRATE_STATE` into `PublicationProof` lineage; then retire alternate writers. |
+| Current `content_jobs`-based runner and request-bound generation routes | Durable command/outbox/202 semantics; no heavy imports on the request plane. | `REPLACE_AND_RETIRE` after A2; old endpoints become compatibility adapters or explicit safe failures. |
+| `content_jobs_opportunity_reservation_idx` + `lib/seoFactory/opportunityIdentity.ts` | Existing intent reservation/identity cannot be bypassed during transition; merged/live owner still blocks duplicate CREATE even if an active-job partial index no longer reserves it. | `WRAP_TEMPORARILY`; A1 replaces it only with one transactional intent+route reservation authority and concurrency fixtures. |
+| `content_studio_writing_contracts`, `content_studio_evidence_items`, `content_studio_stage_events` | Immutable contract/evidence/stage lineage remains readable and hash-verifiable; historical rows are never rewritten to look v3-native. | `MIGRATE_STATE` by reference/envelope or retain read-only; new authoritative equivalents must have explicit lineage back to legacy IDs. |
+| `claim_content_studio_execution`, `renew_content_studio_execution`, `check_content_studio_execution`, `release_content_studio_execution` + `execution_owner`/`execution_attempt`/`execution_lease_expires_at` | Current lease/fence semantics remain fail-closed until A2's durable run/stage/attempt fence proves parity; stale attempt cannot renew/release/write a newer attempt. | `WRAP_TEMPORARILY` if live-applied; otherwise A0.3 records the schema gap and A2 introduces the successor without pretending the legacy RPC exists. |
+| `seo_cannibal_decisions` | P4 append-only collision/consolidation decision truth; recommendation is not autonomous deletion/noindex/redirect authority. `cannibal_merges` is not substituted as the P4 authority. | `MIGRATE_STATE`/read-only archive with exact decision IDs and evidence links; successor decision ledger becomes authoritative only at cutover. |
+| `seo_interlinks` verification fields/ledger | P6 planned/staged/applied/live/rejected/stale distinctions remain exact; rejected or stale never becomes applied proof. | `MIGRATE_STATE`; no re-labelling during backfill. |
+| `seo_backlink_verifications` + `seo_backlink_targets` | P9 truth distinction survives: outreach/sent/accepted is not `won`; only verified live referring-page evidence may authorize a `won` transition. | `MIGRATE_STATE`; successor authority ledger must preserve verification IDs, target href, retrieval time and evidence before cutover. |
+| `seo_reward_events` + `seo_model_calibration` | Learning history remains outcome-based, deduplicated and versioned; forecast/model confidence is not observed reward. | `MIGRATE_STATE` as historical calibration corpus; new learner may become authoritative only after shadow/parity and a single scorer cutover. |
 
-Do not begin with autonomous article generation.
+Rules: a module or persistence authority with no A0.4 disposition may not be depended on by new code; dual-write is time-boxed with a named exit; legacy tables that cannot satisfy §9.7 are not reused for authoritative state; invariants are re-tested under the new implementation before the old one is retired. The named legacy objects above are a **minimum inventory, not an exhaustive list**: A0.4 must reconcile the live schema/code and add any current authority not listed here.
 
-## 40. Expanded adversarial and quality verification
-Add these cases to section 13/19/26 acceptance without removing existing tests:
+### 24.4 A1–A7 packages
+| Package | Scope | Required exit evidence |
+|---|---|---|
+| A1 Policy kernel | One evaluator + transition API; applicability matrix; gate evidence model; intent reservation; permit issuance/consumption; bypass closure for every sink in A0.6. | P0–P13 fixture coverage; every legacy sink routed or retired; concurrent/expired/unknown/exception cases denied correctly; no phase advancement. |
+| A2 Durable runtime | Atomic command+outbox, Modal dispatcher/runners, fencing, checkpoints, artifact durability, cancellation, reconciliation, budget tags. | The §7.4 failure matrix passes; artifact-before-checkpoint ordering proven; no edge heavy imports; kill switches tested independently. |
+| A3 Semantic intelligence + Jev shadow | Ontology/identity registries, deterministic extraction, multi-grain embeddings, hybrid retrieval with exact-KNN fallback, reranking, coverage, information gain, opportunity object, Jev shadow. | Labelled retrieval benchmark vs exact KNN and lexical baseline; wrong-jurisdiction rate; collision recall; Jev holdout/calibration and abstention report; injection fixtures inert; no write path from semantic output to owner/gate. |
+| A4 Editorial/trust/reviewer | `ContractV3`, claim/fact graph, answer-unit checks, reviewer registry + approvals, render audit, invalidation wiring. | V2 readability; rewritten bytes invalidate approval; unsupported critical claim blocked; fabricated/model reviewer structurally impossible; changed fact invalidates exactly the dependent approvals. |
+| A5 New route-level UI | Workspaces by journey, one poll coordinator, bounded projections, territory/decision transparency, a11y/mobile. | All §21.4 journeys; budget/perf measurements (§6.6); keyboard/screen-reader checks; no whole-graph hydration. |
+| A6 Release/observe | Release service + permit consumption, GitHub adapter, official Modal/Cloudflare workflows, live verification, observation scheduling, uncertain-write reconciliation. | Exact-SHA release test; PR≠merged≠deployed≠live proven; cancelled-deploy reconciliation; P6/P9/P10/P11 truth distinctions; scheduler actually runs; restore/rollback drill. |
+| A7 Shadow/dual-run/cutover/retirement | Shadow read/compute → deterministic reconciliation → single authority switch → legacy read-only/archive → retirement, subsystem by subsystem. | Per-subsystem parity report, reconciliation counts, recorded cutover, rollback drill, legacy read-only proof, final retirement record; **no subsystem left in indefinite dual-run**. |
 
-### 40.1 Identity and ontology
-1. US I-485 and Australia Subclass 485 never merge despite lexical/vector similarity.
-2. Acronym with multiple programs remains ambiguous until jurisdiction/entity evidence resolves it.
-3. Alias/model proposal cannot mutate canonical entity without reviewed registry action.
-4. Historical name/renamed program remains traceable without rewriting prior decision history.
+**A7 language is explicit: dual-run is TEMPORARY.** Every dual-run has a start record, an owner, an exit condition and an end date; **one-authority cutover is mandatory**, not optional. A dual-run that cannot be closed is itself a reported blocker, not a steady state.
 
-### 40.2 Retrieval and vectors
-5. Wrong-jurisdiction nearest neighbor is filtered for ownership use.
-6. Upgrading embedding model prevents mixed-space comparisons.
-7. Re-embedding shadow corpus reproduces or improves labelled retrieval before cutover.
-8. Duplicate/spam competitor corpus cannot dominate candidate neighborhoods.
-9. Project/tenant filter is applied at vector query boundary.
+### 24.5 Implementation order and packet discipline
+- Within A3, prefer: ontology/identity types and schema → deterministic extraction + existing owner joins → multi-grain embeddings → hybrid retrieval → reranking/relation classification → coverage/information gain → opportunity object → Jev shadow → UI projections → outcome feedback. **Do not begin with autonomous article generation.**
+- Additive migrations first; verify role grants and the ledger after official application; backfill only observed facts (missing legacy evidence stays missing); never switch runners mid-attempt.
+- Shadow execution has no publication, outreach or owner authority.
+- Every Sol packet states: task id/revision, absolute worktree, verified base, objective, scope/exclusions, dependencies, interfaces consumed, acceptance, source references, capabilities, checkpoint conditions and recovery record. DeepSeek performs heavy investigation/build/test through the existing harness; Sol reviews design, a representative first change and the final candidate. No replacement harness, no duplicate jobs after a timeout (reconcile first).
+- Where two model families participate, prefer cross-family review; no model is the sole auditor of its own substantive implementation. Sol holds architecture review and final merge authority.
+- Release path remains: branch → PR → required checks → authorized merge → official deployment → source-proven live acceptance.
 
-### 40.3 Cannibalization and information gain
-10. High similarity + distinct reader job can remain supporting content after evidence review.
-11. Different slugs + same reader job are still detected as collision candidates.
-12. Proposed “ultimate guide” with no new answer units cannot pass information-gain requirement for CREATE.
-13. Competitor-only unsupported claims do not become content requirements.
+## 25. Verification contract, adversarial matrix and definition of done
 
-### 40.4 Jev
-14. Forbidden CREATE is absent from Jev choices while phase freeze applies.
-15. Jev timeout/malformed/low-confidence state abstains and does not change gates.
-16. Calibration regression demotes the affected task without disabling unrelated Jev tasks.
-17. Executor routing cannot grant credentials/tools not present in the packet.
+### 25.1 Mandatory adversarial/regression cases
+These are additions to the existing repository suites, not a replacement. Every case is executable and its evidence artifact retained.
 
-### 40.5 Temporal facts and propagation
-18. Authority fee/rule change invalidates all and only dependent active claims, preserving historical versions.
-19. Source wording change with identical semantic fact does not create unnecessary estate-wide refresh.
-20. Future-effective rule is not presented as current before its effective time.
+**Authority, ownership and gates**
+1. All P0–P13 predicates map to executable tests and evidence artifacts; canonical thresholds unchanged.
+2. Same-number jurisdiction collision, duplicate intent race, off-mission demand and a retired host can never authorize a mission.
+3. Forbidden CREATE is absent from the Jev choice set while the freeze applies; a high model probability cannot resurrect it.
+4. High Jev score cannot override deterministic failure; malformed/absent/timed-out Jev abstains and changes no gate.
+5. `ACCEPTED_EXCEPTION` without named authorizer, expiry and compensating checks is rejected; no exception clears CREATE freeze, ownership ambiguity, fabricated credentials or missing YMYL review.
+6. Stale/missing/partial provider data stays unavailable; failed GEO audits never lower successful citation share.
+7. Every legacy/manual/scheduled route meets the same release boundary; direct raw pipeline invocation cannot bypass it (A0.6 sink list is the test corpus).
+8. P6 rejection never becomes applied proof; P9 outreach never becomes won; unknown conversion never becomes revenue; IndexNow receipt never becomes indexed status.
 
-### 40.6 Modal budget and resilience
-21. Budget exhaustion parks optional competitor work while mandatory reconciliation/release checks continue.
-22. Cache keyed to old ontology/model version is rejected for current decisions.
-23. Duplicate Modal execution cannot double-count budget/result or overwrite newer semantic artifact.
-24. No GPU is allocated for deterministic API-only work in representative traces.
+**Runtime and delivery**
+9. Command transaction is atomic: no run/stage without outbox row; a DB outage acknowledges nothing.
+10. Crash before artifact durability → no checkpoint/event; crash after artifact durability → idempotent recovery with no duplicate publication.
+11. Double dispatch, ABA/lease loss, replayed callback and stale completion cannot change terminal state, publish or release.
+12. Missing strict execution identity fails closed (`IDENTITY_MISSING`); no write is inferred from ambient/ALS state.
+13. Schema-skewed worker cannot claim a run; pinned versions are enforced per run.
+14. Uncertain PR create/merge reconciles by marker before any retry; no blind retry produces a duplicate PR.
+15. Artifact checksum verified before any referencing checkpoint/event; orphan reclamation never breaks a live run.
+16. Cancelled deployment is reconciled against actual deployed bytes before any "deployed" claim.
 
-### 40.7 Outcome learning
-25. Zero impressions yields unknown CTR outcome, not zero-performance penalty.
-26. Observation with simultaneous major site migration is marked confounded.
-27. Positive ranking movement does not silently raise CREATE authorization or trust thresholds.
-28. Decision passport reconstructs exact evidence/model/policy state used months earlier.
+**Identity, ontology, retrieval and vectors**
+17. US I-485 and Australia Subclass 485 never merge despite lexical/vector similarity; acronym collisions stay ambiguous until jurisdiction/entity evidence resolves.
+18. Same entity + different reader job remains distinct when evidence supports it; different wording + same reader job is detected as a candidate overlap.
+19. Historical fact and current fact are never mixed into one current answer; future-effective rule is never represented as current.
+20. Alias/model proposal cannot mutate canonical entity without reviewed registry action; renamed entities keep prior decision history.
+21. Wrong-jurisdiction nearest neighbour is filtered and can never become an owner candidate.
+22. Embedding model change prevents mixed-space comparison; re-embedding shadow corpus reproduces or improves labelled retrieval before cutover.
+23. ANN/iterative-scan filtering cannot hide a labelled critical collision; exact-KNN fallback reproduces it.
+24. Duplicate/spam competitor corpus cannot dominate candidate neighbourhoods; project/tenant filter is applied at the vector query boundary.
+25. Deleted/relocated canonical document resolves to tombstone state rather than silently rebinding to a similar URL.
 
-## 41. Operating model for continuous competitive improvement
-The steady-state loop is:
+**Cannibalization, information gain and Marketplace**
+26. High similarity + distinct reader job may remain supporting content after evidence review; different slugs + same reader job are still detected as collision candidates.
+27. A "comprehensive guide" with no new answer units cannot pass the information-gain requirement for CREATE.
+28. Competitor-only unsupported claims never become content requirements.
+29. Marketplace semantic similarity cannot route to a wrong-jurisdiction, inactive or unverified offer; invented slug/provider/availability is rejected; empty supply blocks the funnel revision.
+30. `NO_ACTION` survives as a first-class outcome and is not overridden by quota pressure.
 
-```text
-OBSERVE
-  provider + estate + catalog + authority + outcome evidence
-        ↓
-RECONCILE
-  authoritative routes/owners/state/watermarks
-        ↓
-UNDERSTAND
-  semantic identity + graph + coverage + competitors + change impact
-        ↓
-ELIGIBILITY
-  policy removes forbidden actions
-        ↓
-DECIDE
-  Jev prioritizes bounded eligible interventions or abstains
-        ↓
-EXECUTE
-  cheapest capable path: rule → Modal → DeepSeek/Grok → Sol/human
-        ↓
-VERIFY
-  contract → review → exact-head CI → deploy → live proof
-        ↓
-MEASURE
-  mature qualified search/authority/business outcomes
-        ↓
-LEARN
-  calibration + prioritization + playbook evidence, without relaxing hard gates
-        ↺
+**YMYL, trust and reviewer**
+31. Unsupported/contradicted critical claim blocks release; a disclaimer does not cure it.
+32. Model/integration identity cannot occupy a reviewer slot or produce an approval (structurally impossible, and tested).
+33. Rewrite, source change, ownership change, policy change or renderer addition invalidates exactly the dependent approvals (no more, no less).
+34. Reviewer with out-of-remit or expired credential cannot approve; missing reviewer yields `BLOCKED`.
+35. Fabricated statistics/credentials/dates are detected and block; renderer-added sources are audited before Git writes.
+36. False urgency/expired scarcity blocks affected copy.
+
+**Sources, data honesty and security**
+37. GSC omitted queries/partial pages, provider 429, revoked token, missing Ads/Ahrefs license, GA4 thresholding and absent social API produce honest states without synthetic replacements.
+38. GA4 bounce fraction conversion, numerator/denominator aggregation, repeated conversions per session, bot/test-event exclusion, duplicate webhook and late-event corrections behave per definition.
+39. `dwellTime` unknown never becomes engagement time; share-button clicks never become confirmed shares; Ads competition never becomes organic KD.
+40. Different geo/currency/device/window values cannot merge without explicit compatible transformation; provisional cohorts never enter mature reward.
+41. Auth/IDOR/CSRF/replay/SSRF tests, prompt-injection fixtures (retrieved instructions inert), MIME/size-bomb and redirect-chain defenses pass; least-privilege SQL role probes pass; secret scanning clean.
+42. Cross-project ID mismatch fails closed; `anon`/`authenticated` cannot read private observations/decisions/reviews; workers cannot alter definitions or overwrite evidence.
+
+**Budget, degradation and learning**
+43. Budget exhaustion parks optional competitor work while mandatory reconciliation/release/trust checks continue; refresh/release reserve is preserved.
+44. Cache keyed to an old ontology/model/cache version is rejected for current decisions.
+45. Duplicate Modal execution cannot double-count budget or overwrite a newer semantic artifact.
+46. No GPU allocated for deterministic API-only work in representative traces.
+47. Zero impressions yields unknown CTR, not zero-performance penalty; missing/partial provider rows cannot train a false positive reward.
+48. Observation during a major site migration is marked confounded; a simple before/after delta never claims causality.
+49. Decision passport reconstructs the exact evidence/model/policy state used months earlier.
+50. A learning update cannot auto-relax trust, ownership, security or phase gates.
+
+**Fifty-variable schema (see §26)**
+51. Exactly 50 unique registry keys; each appears in typed values, schema, SQL seed, source policy, UI mapping and acceptance matrix.
+52. Missing/extra key, wrong scalar/array, numeric string, bad enum, NaN/Infinity, wrong unit, negative count and out-of-domain ratio are rejected.
+53. `unavailable` with null accepted; `unavailable` with 0 rejected; measured zero with evidence accepted; empty denominator unavailable.
+54. 50-key export is asynchronous; list APIs stay within §6.4 budgets; a 1,000-link page uses complete child records, not giant edge JSON or silent truncation.
+55. Excellent soft metrics cannot override CREATE freeze, owner collision, unsupported YMYL claims, fabricated trust, false urgency or a failed release gate.
+
+### 25.2 Performance and scale benchmarks (representative data, not empty tables)
+Semantic parse/embedding/rerank throughput and p95 latency; Postgres exact KNN vs ANN recall/latency at expected row counts; hybrid retrieval latency with jurisdiction/tenant filters; graph-neighbourhood and opportunity-list response sizes; incremental recomputation ratio after a single-section or single-source change; Modal cold/warm batch cost and monthly forecast under realistic cadence; Jev decision latency/error/retry/abstention; and confirmation that semantic matrices never execute in the Cloudflare request path (route budgets per §6.6).
+
+### 25.3 Definition of done
+A0.1–A0.7 exited with recorded evidence; A1–A7 evidence complete; no critical bypass; approved canary with zero resource-limit incidents; acceptance journeys verified; source/operations runbook delivered; owner-backed observation scheduling proven to actually run. SEO outcome maturity remains a separate measurement state, never implied by delivery. No unresolved provider/reviewer/schema prerequisite is hidden behind "complete".
+
+### 25.4 Pre-implementation dependencies owned by Sol
+Verify TypeSafe/Jev account and model access; Modal workspace, plan, billing telemetry and Volume behavior; Cloudflare plan/limits and telemetry source; repository main/parity/P9 re-pin; qualified domain reviewers; approved data rights and retention; cross-repository adapter support; and the real current contents of the frozen migration baseline's live counterpart. Failure blocks only the dependent work and is recorded with the next recovery action. This document creates no scheduled jobs.
+
+## 26. Fifty-variable intelligence contract (preserved and normalized)
+
+### 26.1 Corrections that are part of the contract
+- Search volume is a scoped estimate; organic difficulty is a provider model. Google Ads competition is **advertising** competition, not organic difficulty.
+- `lsiKeyword` is retained only as a compatibility alias for related semantic concepts; there is no LSI metric and no Google requirement.
+- Keyword density, power words, heading/list counts and transition counts are editorial diagnostics — never ranking guarantees or production quotas.
+- Google does not prescribe fixed 60/160-character limits; those remain optional preview warnings, with device-width simulation.
+- GA4 bounce rate is the non-engaged-session rate. `timeOnPageAverage` is explicitly relabelled *average active engagement per page view*; exact `dwellTime` remains unavailable.
+- `searchResultCount` is not the total Google index or a dependable competition metric; default decision weight is zero.
+- Image alt text, anchors and filenames are collections, not one string per page; preserve the requested keys with correctly typed values.
+- Organic sessions, organic users and GSC clicks are distinct; shares are not share-button clicks; trust signals are not a numerical E-E-A-T score.
+- No one of the 50 fields replaces claim support, jurisdiction, ownership, trust review, canonical health, source freshness, verified authority, privacy or business-outcome evidence.
+
+### 26.2 Source procurement and execution ownership
+Sol commissions each source and confirms account entitlement; DeepSeek implements and verifies adapters through the existing bridge. This specification purchases nothing and assumes no working credentials. Providers are wired per §16.2; the Modal analyzer parses Markdown/HTML **once per artifact hash** and computes all deterministic metrics from the shared AST/tokenization (model calls only for ambiguous semantics; Jev is never used for simple counts).
+
+### 26.3 Registry: definition, acquisition, grain and missing-data behavior
+Refresh values are proposed policy defaults. "Revision" invalidates immediately on changed input bytes or analyzer version; "render" means the actual target artifact, not only editor text; TTL is retrieval age, never permission to treat an old window as current.
+
+| Key | Type | Source and calculation | Grain / refresh | Decision rule and missing-data behavior |
+|---|---|---|---|---|
+| targetKeyword | string | Approved owner/query-family record informed by qualified GSC query×page; editor confirms canonical phrase | Per intent + contract; contract change | Required for keyword-led editorial action; editing text cannot transfer ownership. |
+| searchVolume | number | Google Ads `GenerateKeywordHistoricalMetrics` (authorized); Ahrefs alternative kept as a separate series | Approx. monthly searches with country/language/network/month; 30 days | Optional estimate; GSC impressions are NOT volume; null without licensed access. |
+| keywordDifficulty | number | Commissioned Ahrefs overview difficulty, provider/version pinned | 0–100 provider organic difficulty; 30 days | Optional; never substitute Ads competition or mix providers. |
+| searchIntentType | string | Qualified query evidence + authorized SERP sample + Jev Choice; editor validates ambiguity | informational / commercial_investigation / transactional / navigational / mixed / unknown; 7 days or evidence change | Required resolved intent for owner-dependent work; unresolved blocks it. |
+| keywordDensity | number | Deterministic tokenizer: non-overlapping case-folded phrase occurrences / `wordCount` × 100 | Percent, tokenizer/language pinned; revision | Diagnostic only; no target density, no minimum repetition. |
+| costPerClick | number | Same Ads request (`average_cpc_micros` / 1e6) with account currency | Currency per click; 30 days | Optional estimate, not willingness to buy; no silent FX conversion. |
+| primaryKeywordPlacement | object | AST/rendered checks of title, H1, intro, meta; retain exact/variant/absent + locators | Map of placements; revision + render | Natural placement advice; exact phrase everywhere is not a release requirement. |
+| longTailKeyword | array | Qualified GSC questions, consented first-party questions, approved provider, reviewed brief | Unique phrases; 7 days or contract change | Unobserved candidates are labelled hypotheses; no automatic new page. |
+| lsiKeyword | array | Compatibility alias for related concepts: primary-source entities, qualified queries, reviewed research | Unique strings with per-concept provenance; contract change | Deprecated label; UI says "Related concepts"; never a stuffing quota. |
+| searchResultCount | number | No default acquisition; optional licensed SERP estimate or explicitly sourced manual observation | Approx. count with query/location/device/time; 24 h if supplied | Default unavailable; excluded from scores and every gate. |
+| wordCount | number | Visible main-content extraction (exclude nav/footer/scripts; headings/list text counted once) | Integer words; revision + render | Reader-led budget warning; never length-for-ranking. |
+| headingCount | number | AST H2/H3/H4 counts with per-level breakdown | Integer; revision + render | Structure diagnostic; malformed hierarchy assessed separately. |
+| readabilityScore | number | Flesch–Kincaid grade with pinned syllable implementation | Grade (may be negative); revision | Unsupported language/zero denominator = unavailable; never simplify away legal accuracy. |
+| sentenceLengthAverage | number | Words / nonempty sentences, locale-aware segmentation | Words per sentence; revision | Diagnostic; abbreviation/bullet fixtures required. |
+| paragraphLengthMax | number | Maximum prose-paragraph word count (list items measured separately) | Integer; revision | Warning threshold lives in policy, not the value; English default >120 words, reviewable, not a hard gate. |
+| passiveVoicePercentage | number | Pinned parser passive candidates / eligible sentences × 100, spans retained | Percent; revision | Advisory; passive voice can be appropriate. |
+| callToActionCount | number | Structured CTA nodes + editor-confirmed candidates | Integer placements with shared identity; revision + render | Every new/rewritten article requires the verified contextual path (§18.3); never maximize count. |
+| introHookLength | number | Main-content words after title until first H2 or editor-marked boundary | Integer; revision | No boundary = unavailable; no teaser delaying the answer. |
+| altTextString | array | Author descriptions + rendered `img` attributes + reviewer check | Per-image id/alt/decorative/missing; revision + render | Missing meaningful alt blocks that asset under project accessibility policy; empty alt valid for decorative. |
+| bulletPointCount | number | AST unordered-list items in main content, list count stored separately | Integer; revision + render | No list quota. |
+| titleTagLength | number | Rendered title extraction, Unicode grapheme count, preview width computed separately | Integer characters; render | 60-character soft warning only; unique descriptive title required. |
+| metaDescriptionLength | number | Rendered meta description grapheme count + simulated preview | Integer characters; render | 160-character soft warning; snippet may differ; absence triggers review, not failure. |
+| urlSlug | string | Owner resolver + repository route adapter; planned and deployed canonical path | Validated path segment(s); contract + deploy | Never rename existing ranking URLs for keywords; change needs P4 evidence, redirect plan, review, rollback (§17.3). |
+| schemaMarkupType | array | AST JSON-LD/microdata extraction; renderer selects the approved adapter | Unique supported types + validation report; render + deploy | Invalid/misleading markup blocks; no rich-result guarantee; no invented review/product data. |
+| canonicalUrl | string | Planned canonical (ownership) + rendered rel=canonical + live redirect chain; Google-selected canonical separately when available | Absolute HTTPS URL; contract + pre-release + deploy | Owner mismatch blocks; declared canonical is a signal, not proof of selection. |
+| internalLinkCount | number | Main-content estate anchors with same-host/cross-estate breakdown; unique destinations stored separately | Integer; render + deploy | Outbound count ≠ inbound authority; only live-verified edges close P6. |
+| externalLinkCount | number | Off-estate anchors resolved and joined to the source ledger | Integer with distinct destinations/rel flags; render + deploy | More links is not more trust. |
+| imageFileNames | array | Asset manifest + storage metadata + rendered `src` reconciliation | Per-asset id/basename/digest; asset change | Descriptive names without stuffing; never break existing URLs for naming. |
+| anchorText | array | AST + live DOM per-link extraction; accessible name stored separately | Per-link id/text/accessibleName/target/location; render + deploy | Descriptive truthful labels; no exact-match quota. |
+| robotsTagState | object | Meta robots, bot-specific directives, HTTP `X-Robots-Tag`; robots.txt recorded separately | Raw directives + bot scope + index/follow + conflicts; render + pre-release + deploy | Unintended noindex/conflict blocks intended-indexable release; robots.txt disallow ≠ noindex. |
+| clickThroughRate | number | GSC clicks / impressions × 100 for the same page/query/country/device/search-type/window | Percent with numerator/denominator retained; daily, 72 h sync TTL | Zero impressions = null; never average row CTRs or infer conversions. |
+| bounceRate | number | GA4 `bounceRate`, or 100 × (sessions − engagedSessions)/sessions with property settings saved | Percent at landing-page/session cohort; daily, 72 h TTL | Non-engaged sessions, not single-page visits; consent-denied cohort excluded with coverage disclosed. |
+| dwellTime | number | No supported exact search→site→return measurement from normal analytics | Seconds; unavailable by default | Never substitute engagement time or tab-open duration under this name. |
+| scrollDepth | number | Consented 25/50/75/90/100 % article-progress events aggregated to session-page maxima | Mean maximum percent + distribution; daily, 72 h TTL | Versioned article container/viewport formula; no event ≠ zero; GA4 default scroll alone is insufficient. |
+| conversionRate | number | Verified first-party lead/order events + consented eligible organic landing sessions, webhook-deduplicated; GA4 key events as a separate attribution source | 100 × unique converting eligible sessions / eligible sessions; daily with settle window | Event set and (proposed) 30-day attribution window explicit; unattributed orders separate; repeated conversions handled as defined. |
+| exitPageRate | number | Authorized GA4 BigQuery export or first-party session ledger with deterministic completed-session ordering | 100 × completed tracked sessions ending on page / tracked pageviews, same cohort/window | Derived partial-observation estimate; browser-close unknown ≠ observed exit; no export/ledger → unavailable. |
+| organicTrafficVolume | number | GA4 sessions filtered to `sessionDefaultChannelGroup = Organic Search` and landing page; users separate | Integer sessions (not users, not GSC clicks); daily, 72 h TTL | Channel-definition version and consent/reporting limits recorded; Direct is a different channel. |
+| socialShareCount | number | Only commissioned platform APIs exposing actual shares, per-platform URL/time series | Integer verified shares with platform subset mandatory; daily, 72 h TTL | No universal total; share-button clicks are separate events; no API = unavailable. |
+| timeOnPageAverage | number | Consented `engagement_time_msec` or focused-visible intervals, deduplicated per page instance | Total measured engagement seconds / eligible observed page instances; daily, 72 h TTL | UI label: *Average active engagement per page view*; not dwell time. |
+| commentCount | number | First-party CMS aggregate of approved public non-spam comments on the canonical content id | Integer + moderation-state snapshot; daily or moderation event | Disabled comments = not_applicable; query failure = unavailable; never a requirement to add comments. |
+| urgencyFactor | object | Contract/evidence-led review of each urgency statement; Jev may flag unsupported pressure; human validates deadline/scarcity source | `none`/`factual_deadline`/`verified_scarcity`/`unsupported` + claim/source ids + expiry; revision + source change | Unsupported urgency or expired scarcity blocks affected copy; no numeric persuasion target for YMYL. |
+| powerWordCount | number | Pinned language-specific lexicon matches with spans and dictionary version | Integer matches; revision | Not a ranking input or objective; no forced manipulative language. |
+| readTimeMinutes | number | `ceil(wordCount / 225)`, minimum 1 for nonempty English, configurable rate pinned | Integer minutes; revision | Label as estimate; excluded with `wordCount` from independent scoring to avoid double counting. |
+| fleschReadingEase | number | English 206.835 − 1.015 × words/sentences − 84.6 × syllables/words | Unclamped score; revision | Shares counts with FK grade (different scale); unsupported language/empty denominator unavailable. |
+| transitionWordDensity | number | Pinned phrase lexicon: non-overlapping transition spans / sentences × 100 | Occurrences per 100 sentences (may exceed 100); revision | No quota; denominator must be visible in UI. |
+| problemStatement | string | Consented first-party question + qualified search/intent evidence; editor seals the reader's actual problem | Nonempty proposition + evidence ids; contract change | Required reader-problem articulation; no fabricated fear or assumed situation. |
+| solutionStatement | string | Reviewed outline tied to primary-source claims and actual service capabilities, human-approved scope | Nonempty answer/next step + evidence ids; contract/source change | No guaranteed outcome; unsupported consequential solution blocks release. |
+| benefitCount | number | Editor-selected structured benefit claims; distinct supported reader outcomes deduplicated | Integer verified benefits + claim ids; revision + evidence change | Quality not quantity; an unsupported benefit is an issue even if excluded from the verified count. |
+| trustSignalCount | number | Truth ledger + rendered page: distinct verified visible source/reviewer/credential/statistic/quote records | Integer verified signals + type breakdown; revision/render + source expiry | Never an E-E-A-T score; one fabricated credential blocks regardless of other signals. |
+| headlineType | string | Editor selects contract form; Jev may suggest; Modal/editor checks actual title and body | how_to / listicle / question / explainer / comparison / service / other; revision | Must fit intent and delivered answer; list count must match; no clickbait/superlatives. |
+
+### 26.4 Typed schema and provenance
+```typescript
+type Hash = string;                          // lowercase 64-hex SHA-256
+type Placement = Record<"title" | "H1" | "intro" | "meta",
+  "exact" | "variant" | "absent" | "not_applicable">;
+type ImageAlt = { id: string; alt: string; decorative: boolean; missing: boolean };
+type ImageFile = { id: string; basename: string; digest: Hash };
+type LinkText = { id: string; text: string; accessibleName: string; target: string; location: string };
+type RobotsState = { raw: string[]; bot: string; index: boolean | null; follow: boolean | null;
+  conflicts: string[]; crawlAllowed: boolean | null };
+type Urgency = { kind: "none" | "factual_deadline" | "verified_scarcity" | "unsupported";
+  claimIds: string[]; evidenceIds: string[]; expiresAt: string | null };
+
+export interface MetricValues {               // exactly the 50 keys of §26.3
+  targetKeyword: string; searchVolume: number; keywordDifficulty: number;
+  searchIntentType: "informational" | "commercial_investigation" | "transactional" | "navigational" | "mixed" | "unknown";
+  keywordDensity: number; costPerClick: number; primaryKeywordPlacement: Placement;
+  longTailKeyword: string[]; lsiKeyword: string[]; searchResultCount: number;
+  wordCount: number; headingCount: number; readabilityScore: number;
+  sentenceLengthAverage: number; paragraphLengthMax: number; passiveVoicePercentage: number;
+  callToActionCount: number; introHookLength: number; altTextString: ImageAlt[];
+  bulletPointCount: number; titleTagLength: number; metaDescriptionLength: number;
+  urlSlug: string; schemaMarkupType: string[]; canonicalUrl: string;
+  internalLinkCount: number; externalLinkCount: number; imageFileNames: ImageFile[];
+  anchorText: LinkText[]; robotsTagState: RobotsState; clickThroughRate: number;
+  bounceRate: number; dwellTime: number; scrollDepth: number; conversionRate: number;
+  exitPageRate: number; organicTrafficVolume: number; socialShareCount: number;
+  timeOnPageAverage: number; commentCount: number; urgencyFactor: Urgency;
+  powerWordCount: number; readTimeMinutes: number; fleschReadingEase: number;
+  transitionWordDensity: number; problemStatement: string; solutionStatement: string;
+  benefitCount: number; trustSignalCount: number;
+  headlineType: "how_to" | "listicle" | "question" | "explainer" | "comparison" | "service" | "other";
+}
+export type MetricKey = keyof MetricValues;
+
+interface Provenance {
+  observationId: string; definitionVersion: string; sourceRunId: string;
+  sourceKind: "gsc" | "google_ads" | "ahrefs" | "ga4" | "event_ledger" | "cms" |
+    "artifact_analyzer" | "editor" | "jev" | "social_api" | "serp_provider" |
+    "ubersuggest_export" | "dataforseo" | "bing_webmaster" | "tinyfish" |
+    "github" | "cloudflare" | "marketplace_catalog" | "indexnow_receipt";
+  method: string; methodVersion: string; modelVersion: string | null;
+  evidenceIds: string[]; inputHashes: Hash[];
+  observedAt: string; ingestedAt: string; validUntil: string | null;
+  quality: "observed" | "derived" | "estimated" | "editorial" | "model_judgment";
+  completeness: "complete" | "partial" | "unknown";
+  numerator: number | null; denominator: number | null; sampleSize: number | null;
+  coverage: number | null; confidence: number | null; unit: string; warnings: string[];
+}
+type Present<T> = Provenance & { status: "available" | "stale"; value: T; reason: string | null };
+type Absent  = Provenance & { status: "unavailable" | "not_applicable" | "pending" | "failed";
+  value: null; reason: string };
+export type MetricObservation<T> = Present<T> | Absent;
+export type SeoMetricSnapshot = {
+  schemaVersion: "seo.metrics/1";
+  definitionSetHash: Hash;
+  observations: { [K in MetricKey]: MetricObservation<MetricValues[K]> };
+};
 ```
+Generate one strict JSON Schema from `MetricValues` + the versioned registry, then generate TypeScript declarations, the private SQL definition seed and the UI mapping from that single source. No independently hand-maintained browser/Python/SQL definitions. Node/TypeScript owns validation and canonical hashing per §2 Rule N3.
 
-The operating objective is **not maximum pages, maximum tokens or maximum model usage**. It is:
+### 26.5 Schema and analysis rules
+- Root has exactly `schemaVersion`, `definitionSetHash`, `observations`; observations has exactly the 50 keys, all required, `additionalProperties: false`; nested objects disallow unknown properties; array IDs unique; string arrays deduplicated.
+- `available`/`stale` requires the registry type; `unavailable`/`not_applicable`/`pending`/`failed` requires JSON `null` and a nonempty reason. No numeric strings, NaN, Infinity or implicit casts.
+- Counts are integers ≥ 0; declared rates are 0–100; CPC/volume ≥ 0; keyword difficulty 0–100; FK grade and Flesch ease are unclamped finite numbers; `transitionWordDensity` ≥ 0 with no ceiling.
+- Hash is lowercase 64-hex SHA-256; timestamps are validated RFC3339 instants; currency/country codes come from versioned registries; URLs must pass the project's canonical/safe URL parser in addition to schema format checks.
+- `available`/`stale` evidence and input hashes must be nonempty; ratio rows require numerator ≥ 0 and denominator > 0; conversion numerator cannot exceed eligible sessions.
+- Artifact-derived observations require `artifactHash`; keyword metrics require query subject/country scope; currency-bearing CPC requires currency; outcome-rate metrics require cohort/window/timezone. Contextual validation enforces these cross-field rules.
+- Budget: max 100 array records per synchronous observation object and 256-character scalar labels, except reviewed problem/solution text (max 4,000). Overflow collections live in paginated child records/artifacts; never silently truncate and claim completeness.
+- A schema-valid metric grants no publication permission; policy checks eligibility, source authority, completeness, expiry and evidence independently.
+- Analysis conventions: main-content AST excludes repeated navigation/footer/hidden boilerplate but keeps lists/headings/captions as distinct nodes; decode entities, normalize Unicode NFC and whitespace, segment with pinned locale rules, keep exact substring locators against the original artifact, count heading text once. Ranges are UTC internally but retain each source's reporting timezone; product percentages are 0–100; adapters convert provider fractions explicitly; currency uses ISO codes with provider precision and no silent FX; zero numerator with positive denominator may be 0, zero denominator is null; round only for display, never stored source counts.
+- Freshness: daily metrics expire 72 h after successful retrieval while their window stays explicit; keyword estimates expire at 30 days; stale values are retained for history but excluded from mandatory current-evidence decisions; critical-source freshness follows §14.3 regardless of metric freshness.
+- Evidence/telemetry retention is proposed (raw consented events 90 days; non-identifying daily aggregates 25 months; metric evidence/release references per approved audit and provider retention) and **must be validated by Sol against consent, business and provider requirements before collection**; shorter mandatory restrictions win. No collector is "running" until deployment and observed run evidence exist.
 
-> **Continuously identify the highest-value evidence-supported change available anywhere in the SEO estate, execute it at the lowest adequate compute/risk level, verify the real deployed state, and learn from mature outcomes without losing truth, ownership or trust discipline.**
+## 27. Source register, evidence provenance and revision record
 
-This is the intended mechanism for pursuing top-tier competitive search performance. It does not guarantee rankings and does not convert model confidence into search-engine truth.
+### 27.1 Repository evidence (VERIFIED_REPO_FACT, dated)
+Read at revision base `52f63a86cc01fb574f790321b2eb751a34ff0ff7`; program baseline read of `main` `3d248afd09290a97250cb472152afaa57b2a0292` (2026-09-22). Re-pin at implementation start.
 
-## 42. CS-2026.09.22.4 revision record and implementation handoff
-This revision deepens, but does not replace, CS-2026.09.22.3. It adds:
-- a binding Semantic Fabric and reviewed ontology;
-- canonical semantic identity and reader-job modelling;
-- qualified semantic facts with temporal/evidence state;
-- multi-grain embedding/version contracts;
-- hybrid lexical/vector/entity/graph retrieval and reranking;
-- query-family and relationship classifications;
-- competitive semantic coverage and information-gain analysis;
-- `SemanticOpportunity` as the Studio's primary work unit;
-- reconstructable decision passports;
-- Modal compute cascade, cache and budget governance;
-- task-specific Jev calibration/promotion/executor routing;
-- source-change dependency propagation;
-- intervention/outcome learning without causal overclaiming;
-- Semantic War Room and graph-explorer UI;
-- semantic security, ontology/vector poisoning controls;
-- persistence extensions and integration into A0–A7;
-- expanded adversarial/quality acceptance.
+- `components/design/admin-content-studio.tsx` (9,348 lines) — monolith migration surface.
+- `middleware.ts` (`runtime = 'experimental-edge'`), 22 route files with `export const runtime = 'nodejs'`, `open-next.config.ts` (static-assets incremental cache).
+- `package.json` (test/lint/build entry points; Next 16.2.11, `@opennextjs/cloudflare` ^1.19.4, `wrangler` 4.132.0); `jest.config.cjs`; `playwright.config.ts`.
+- `scripts/deploy-production.mjs` (official-workflow guard), `.github/workflows/deploy.yml` (push/PR/dispatch, `cancel-in-progress: true`), `.github/workflows/apply-seo-factory-migrations.yml` (push to `main` path-filtered), `.github/workflows/adopt-migration-ledger.yml` (manual, SHA-pinned).
+- `supabase/migrations/` (76 files), `supabase/migration-baseline.json`, `scripts/migration-order.mjs` (three-tier order; hard error on unclassified files), `supabase/migrations/20260917173300_base_table_least_privilege.sql`, `supabase/migrations/20260806_hardening.sql`.
+- `lib/githubContentsCore.ts`, `lib/seoFactory/ship.ts`, `app/api/content-studio/jobs/{strictManualPublication,legacyCore}.ts`, `scripts/refresh-gsc-token.sh` — Git/merge write sinks.
+- `app/api/content-studio/generate/route.ts`, `lib/seoFactory/{contentStudioPipeline,contentStudioPipelineCore,writingContractStore,renderTarget,ownership}.ts` — current pipeline/contract/identity surfaces (architectural grounding from prior inspection; A0 re-verifies).
+- `lib/seoEngine/*` and `lib/seoFactory/*` legacy modules named in §24.3; scheduled routes in `app/api/cron/*`.
 
-All previous authority order, P0–P13 phase/gate semantics, CREATE freeze, YMYL human-review requirements, Marketplace publication boundary, ownership authority, exact-head release controls, Cloudflare performance contract, source provenance and no-ranking-guarantee language remain binding unless a later explicitly authorized version changes them.
+This is an architectural grounding read, not a complete repository audit; the A0 packages are the mechanism that closes the gap.
 
-Implementation begins only through bounded Sol packets against reconciled current state. A semantic feature is not "implemented" because a schema, prompt or notebook exists; acceptance requires the relevant A0–A7 evidence, production-safe persistence, tests, canary behavior and rollback path.
+### 27.2 Official vendor references (read 2026-09-22 unless noted)
+- Jev/TypeSafe: `https://docs.typesafe.ai/api`, `/models`, `/confidence` (J1–J3).
+- Modal: `https://modal.com/docs`, job queue and retry guides, billing/usage CLI, batch-processing and LLM-workload guidance, **official pricing page (verified 2026-09-22: Starter $30/month free compute; Volumes $0.09/GiB/month with 1 TiB/month included free — A0.7 revalidates)**.
+- Cloudflare: Workers platform limits, error 1102 troubleshooting.
+- Supabase: RLS guide, `pgvector`, hybrid search, HNSW indexes, `pg_jsonschema`, pricing/database limits.
+- Google: helpful-content guidance, spam policies, title links, snippets, structured-data policies, Search Analytics limitations, Ads historical keyword metrics, GA4 engagement/bounce documentation.
+- Providers: Ahrefs Keywords Explorer API, DataForSEO MCP setup, TinyFish MCP/authentication, Bing Webmaster access/method reference, IndexNow protocol, Ubersuggest API/webhook limitations.
+All numeric budgets, corpus sizes and freshness windows remain proposed controls; provider APIs, entitlements and account limits are revalidated in A0.
 
-CS-2026.09.22.4 is a documentation/design revision only. It does not connect providers, purchase compute, install MCPs, apply migrations, create schedules, publish content, unlock CREATE, perform outreach, merge code or deploy production by itself.
+### 27.3 Provenance of the audit findings integrated in this revision
+This revision responds to an external audit brief. The raw audit transcript was **not machine-readable in the authoring environment**, so its findings are integrated here as normative requirements from the enumerated revision brief (duplicate normative blocks; interface registry; OpenNext/Cloudflare semantics; 1102 honesty; migration mechanics; privilege/RLS; release authority; durable runtime; Semantic Fabric; Jev; reviewer registry; legacy disposition; UI; scoring/learning; source fabric; Marketplace; cost/capacity; observability; A0 decomposition; current-state honesty; preserved depth). **A0.1 must re-check this document against the raw audit artifact** and record any delta as a versioned amendment.
+
+### 27.4 Revision record
+**CS-2026.09.22.5** (this version) — architecture normalization and strangler-migration hardening:
+- Replaced the two competing normative §27–§35 semantic blocks (conflicting `SemanticIdentity`, `SemanticFact`, `SemanticOpportunity`, compute-class, Jev-ladder and budget schemas) with **one monotonic §1–§28 sequence** and one **Normative Interface Registry** (§2) that defines each required interface exactly once.
+- Made the **Alternative-2 strangler migration** binding: single-authority invariants, A0 disposition vocabulary (`REUSE`/`WRAP_TEMPORARILY`/`MIGRATE_STATE`/`REPLACE_AND_RETIRE`), mandatory cutover sequence, legacy-as-migration-source framing, no clean-sheet default (§3).
+- Added the **T1/T2/T3 persistence model** with Modal Volume as large-artifact storage only (never a database), official Modal pricing verification dated 2026-09-22 with mandatory A0.7 revalidation, and combined compute+storage/egress/retention budgeting (§9.1, §12.4).
+- Corrected the **OpenNext/Cloudflare request-plane contract** (Workers Free today; `runtime='nodejs'` does not leave the Worker; middleware is the only explicit edge runtime; import/call-topology enforcement; tiny-edge budget controls; one poll coordinator; no request-bound CI; real telemetry before any 1102/503 claim; zero resource-limit incidents in canary; independent kill switches) and stated the 1102 history honestly without blaming runtime labels (§4.2, §6).
+- Added **migration mechanics** (auto-apply on push to main, frozen baseline, timestamped-only files, DDL separated from behavior enablement, live-ledger/extension/table-size reconciliation, lock/backfill policy) and the **privilege/RLS boundary** with private-by-default new state and hardening-before-reuse (§9.6–§9.7).
+- Added the **release-authority sink inventory** with a disposition per sink, permit consumption, exact-SHA lineage, uncertain-write reconciliation and deploy `cancel-in-progress` reconciliation (§10).
+- Added the **durable runtime** identity/lease/fence/checkpoint contract, explicit replacement of process-local ALS as authority, and the failure matrix (§7).
+- Added the **YMYL reviewer registry** with real identity, remit, credential evidence, exact revision binding and structural model ineligibility (§14.4).
+- Replaced the A0 outline with **A0.1–A0.7** plus A1–A7, each with required exit evidence, a legacy disposition map, and the rule that no dependent implementation starts before required A0 exits (§24); A7 states explicitly that dual-run is temporary and one-authority cutover is mandatory.
+- Preserved and normalized the v4 depth: fifty-variable provenance contract (§26), estate/source fabric matrix (§16), route/slug/canonical/cannibalization safety (§17), topical map and Marketplace funnel (§18), semantic decision passports (§13.5), competitive territory and information gain (§11.9, §15), change propagation (§19), War Room and UI contracts (§15.8, §21), outcome/reward model (§20), and the merged adversarial/failure matrix (§25).
+- Earlier revisions: `.1` original evidence-led design; `.2` fifty-variable intelligence contract; `.3` estate connector/data fabric, publication targets/slugs, topical map and Marketplace funnel; `.4` Semantic Fabric, Modal/Jev strategic work (now normalized). All still-binding authority order, P0–P13 semantics, CREATE freeze, YMYL human-review requirements, Marketplace publication boundary, ownership authority, exact-head release controls, Cloudflare performance contract, provenance rules and no-ranking-guarantee language are preserved.
+
+This is a documentation/design revision only. It does not connect providers, purchase compute, install MCPs, apply migrations, create schedules, publish content, unlock CREATE, perform outreach, merge code or deploy production by itself, and **nothing is "implemented" because a schema, prompt, notebook or this document exists**.
+
+### 27.5 Maintenance
+Keep this version identical in Notion, Hjarni and its Markdown handoff. Amend only by explicit version increment with a recorded reason. Never silently overwrite Supervisor Arc or SEO Brief gates, and never let a later document fragment reintroduce a second normative block for the same interface.
+
+## 28. DO NOT IMPLEMENT UNTIL A0 EXITS — binding checklist
+
+Implementation (code, schema, provisioning, adapters, UI, scheduling or any production-affecting change) **must not start** until every item below is checked with recorded evidence. Partial A0 exits gate only their dependent work; the A0.1–A0.7 exits as a whole are the precondition for starting A1–A7.
+
+- [ ] **A0.1 Document normalization complete** — one section sequence confirmed; §27.3 re-check against the raw audit artifact recorded; no duplicate/contradicting normative blocks remain anywhere in the repository documentation.
+- [ ] **`main` and P0–P13 re-pinned** at implementation start, with the parity matrix state recorded; P9 status cited only as dated evidence.
+- [ ] **A0.2 runtime/Cloudflare baseline recorded** — measured route CPU/bundles, import-graph report (no heavy transitive imports on the request plane), existing crons mapped to absorb/retain/retire, and the §6.2 decision (Stay-Free tiny-edge contract **or** explicit paid-plan re-baseline) signed with evidence.
+- [ ] **Real Cloudflare telemetry source identified and in use** — no 1102/503 acceptance claim may be made before this.
+- [ ] **A0.3 applied schema/extension/table-size/capacity baseline recorded** — live migration ledger reconciled against the frozen baseline; extension availability/versions verified; sizes, quota utilization and 90-day forecast recorded; divergence fixed by forward migrations only.
+- [ ] **Migration mechanics confirmed** — frozen baseline untouched; new timestamped files only; DDL separated from behavior enablement; lock/backfill/index plans measured; auto-apply-on-main risk acknowledged and gated.
+- [ ] **A0.4 legacy disposition completed** for every named subsystem and its tables (`rankingModel`, `forecastTracker`, `forecastReward`, `planner`, `ontology`, `knowledge`, `planEconomics`, `topicGraph`, `opportunityScore`, `opportunityEngine`, `coverageIntent`, `currentGate`, `executionStages`, `publicationProof`, `broadCreateFreeze`, `ownership`, current runner/routes) with invariants that must survive and a cutover order with rollback.
+- [ ] **Single-authority proof plan accepted** — no second authoritative owner graph, policy kernel, scorer, opportunity queue or release authority; every dual-run has a start record, owner, exit condition and end date.
+- [ ] **A0.5 privilege/RLS boundary recorded** — effective-grant/policy inventory complete; over-permissive surfaces listed; private-by-default target defined; tables that must be hardened before authoritative reuse named; browser Realtime explicitly out of the control plane.
+- [ ] **A0.6 release-sink and credential inventory recorded** — every Git write/merge/direct-main/deploy/publish sink dispositioned (`pr_only`/`merge_via_release_service`/`retired`); direct-main and autodeploy disabled by default; writers/research/Modal confirmed to hold no merge credentials; deploy `cancel-in-progress` reconciliation defined.
+- [ ] **A0.7 Modal/Jev/account/cost/Volume probes recorded** — workspace identity/plan/billing telemetry; Volume create/mount/byte-accounting behavior; **official pricing and allowances revalidated (compute credit; Volume GiB price and 1 TiB/month free allowance; egress)**; Jev/TypeSafe access, model list and limits verified; cost baseline and hard reserve configured.
+- [ ] **Runtime kill switches exist and are tested independently** — dispatch, Modal runners, permit issuance and outbound notifications can each be stopped without stopping the others.
+- [ ] **One poll coordinator contract defined** — hidden-tab pause, de-duplication, backoff, admission control and byte caps agreed before any new UI route ships.
+- [ ] **Uncertainty is fail-closed by design** — missing strict execution identity, missing reviewer, missing evidence, stale/partial provider data, unverified artifact and uncertain external write all produce explicit blocked states with reason codes.
+- [ ] **No ranking guarantees or invented Google metrics** — confirmed in copy, UI and every metric definition before any user-facing surface ships.
+
+If any box is unchecked, the correct action is to complete A0 or record a blocker — never to begin implementation, relax a gate, or substitute an assumption for evidence.
