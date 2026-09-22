@@ -1,13 +1,15 @@
-# Superseded — Content Studio architecture
+# Content Studio Revamp — Superseded Pointer
 
-This file is **non-normative** and retained only as a stable pointer for historical links.
+**NON-NORMATIVE. DO NOT IMPLEMENT FROM THIS FILE.**
 
-The canonical Content Studio architecture is:
+The former CS-2026.09.22.4 master architecture at this path has been superseded by **CS-2026.09.22.5**.
+
+Canonical architecture:
 
 `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`
 
-Current version: **CS-2026.09.22.5** on branch `content-studio-revamp`.
+The canonical v5 specification uses the approved **Alternative 2 strangler migration**: thin Cloudflare/OpenNext control and read plane, authoritative Supabase/Postgres state, Modal durable compute and artifact storage, Semantic Fabric, bounded Jev decisions, separate release authority, and evidence-gated selective retirement of legacy subsystems.
 
-Do not use the former CS-2026.09.22.4 content from this path for implementation, policy, schema, runtime, semantic, Jev, Modal, release, ownership, or migration decisions. The v4 master contained duplicate and conflicting normative blocks and has been superseded by the audited v5 specification.
+Historical v4 remains available through Git history. Do not copy schemas, interfaces, gates, semantic definitions, compute classes, or Jev policy from an older revision into implementation packets.
 
-Implementation remains gated by the v5 **DO NOT IMPLEMENT UNTIL A0 EXITS** checklist and the existing P0–P13 / CREATE / YMYL / ownership / release authority contracts.
+Implementation remains blocked until the canonical v5 A0 exit criteria are satisfied.
