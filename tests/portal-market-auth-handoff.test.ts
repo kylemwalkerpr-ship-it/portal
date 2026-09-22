@@ -281,30 +281,37 @@ describe('#260 and marketplace bypasses stay intact', () => {
 describe('middleware wiring', () => {
   const wrapper = middleware.slice(middleware.indexOf('export default function middleware('))
 
-  test('both fast paths hand the real cookie jar to their helper', () => {
+  test('all fast paths share one lazy request cookie snapshot', () => {
     expect(wrapper).toContain('shouldBypassClerkForMarketRequest(')
     expect(wrapper).toContain('shouldBypassClerkForPortalRequest(')
-    // One jar read per host branch, passed to the helper that owns the contract.
-    expect(wrapper.split('req.cookies.getAll()').length - 1).toBe(2)
+    expect(wrapper).toContain('shouldBypassClerkForAuthIndependentApiRequest(')
+    expect(wrapper.split('req.cookies.getAll()').length - 1).toBe(1)
+    expect(wrapper).toContain('const getRequestCookies = createLazyRequestCookieSnapshot(')
     expect(wrapper).toContain("req.cookies.get('__client_uat')?.value")
   })
 
-  test('the market handoff guard runs before its fast-path handler', () => {
+  test('the market branch resolves the lazy cookie snapshot only inside its guard', () => {
+    const lazySnapshot = wrapper.indexOf('const getRequestCookies = createLazyRequestCookieSnapshot(')
     const marketGuard = wrapper.indexOf('requestHostname(req) === MARKET_HOST')
-    const jarRead = wrapper.indexOf('req.cookies.getAll()', marketGuard)
+    const jarRead = wrapper.indexOf('getRequestCookies()', marketGuard)
     const fastPath = wrapper.indexOf('return handleMarketHostRequest(req)', marketGuard)
 
+    expect(lazySnapshot).toBeGreaterThan(-1)
+    expect(marketGuard).toBeGreaterThan(lazySnapshot)
     expect(jarRead).toBeGreaterThan(marketGuard)
     expect(fastPath).toBeGreaterThan(jarRead)
   })
 
-  test('the portal handoff guard runs before its fast-path handler', () => {
+  test('the portal branch resolves cookies only after the anonymous-document path gate', () => {
     const portalGuard = wrapper.indexOf('requestHostname(req) === PORTAL_HOST')
-    const jarRead = wrapper.indexOf('req.cookies.getAll()', portalGuard)
+    const portalPathGate = wrapper.indexOf('isPortalAnonymousDocumentPath(', portalGuard)
+    const jarRead = wrapper.indexOf('getRequestCookies()', portalPathGate)
     const fastPath = wrapper.indexOf('return handlePortalAnonymousDocumentRequest(req)', portalGuard)
     const clerkFallback = wrapper.indexOf('return clerkHandler(req, event)', fastPath)
 
-    expect(jarRead).toBeGreaterThan(portalGuard)
+    expect(portalGuard).toBeGreaterThan(-1)
+    expect(portalPathGate).toBeGreaterThan(portalGuard)
+    expect(jarRead).toBeGreaterThan(portalPathGate)
     expect(fastPath).toBeGreaterThan(jarRead)
     expect(clerkFallback).toBeGreaterThan(fastPath)
   })
