@@ -291,6 +291,7 @@ with ledger as (
     coalesce(nullif(btrim(cluster), ''), 'unclassified') as cluster,
     event_type,
     attribution_state,
+    source_class,
     observation,
     consent_state,
     amount_cents

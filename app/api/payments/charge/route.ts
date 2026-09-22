@@ -222,12 +222,13 @@ export async function POST(request: NextRequest) {
 
   // ── Persist orders ─────────────────────────────────────────────────────────
   let serviceOrderRef: string | null = null
+  let templateOrderPersisted = false
   try {
     const templateItems = lineItems.filter((i) => i.type === 'template')
     const serviceItems = lineItems.filter((i) => i.type === 'service')
 
     if (templateItems.length > 0) {
-      await db.from('template_orders').insert({
+      const { error: templateOrderErr } = await db.from('template_orders').insert({
         id: orderId,
         email: customer.email,
         name: customer.name || null,
@@ -237,12 +238,24 @@ export async function POST(request: NextRequest) {
         gateway: chargeGateway,
         status: 'paid',
       })
+      if (templateOrderErr) {
+        console.error('[payments/charge] template_orders insert failed:', templateOrderErr)
+        await recordPaymentIncident(db, {
+          profileId: profile.id,
+          kind: 'charge_without_order',
+          gateway: chargeGateway,
+          transactionId: result.transactionId,
+          amountCents,
+          context: { orderId, error: templateOrderErr.message },
+        })
+      } else {
+        templateOrderPersisted = true
+      }
     }
 
     if (serviceItems.length > 0) {
       // Create parent order
       const serviceOrderId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      serviceOrderRef = serviceOrderId
       const { error: orderErr } = await db.from('orders').insert({
         id: serviceOrderId,
         client_id: profile.id,
@@ -265,6 +278,7 @@ export async function POST(request: NextRequest) {
           context: { orderId, serviceOrderId, error: orderErr.message },
         })
       } else {
+        serviceOrderRef = serviceOrderId
         const orderItems = serviceItems.map((i) => ({
           order_id: serviceOrderId,
           service_id: i.serviceId,
@@ -306,7 +320,7 @@ export async function POST(request: NextRequest) {
     gateway_status: result.status,
     surface: 'catalogue_checkout',
   }
-  if (templateItemsForAttribution.length > 0) {
+  if (templateOrderPersisted && templateItemsForAttribution.length > 0) {
     const slugs = templateItemsForAttribution.map((i) => i.slug || '').filter(Boolean)
     await bindBusinessEvent(db, {
       eventType: 'order_paid',

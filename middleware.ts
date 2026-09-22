@@ -39,6 +39,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/articles/feed',
   '/api/translate(.*)',
   '/api/chat(.*)',
+  // P10 first-party attribution collector. These handlers are anonymous by
+  // design but enforce same-origin themselves; browser routes accept only
+  // landing/CTA telemetry and refuse all business conversion event types.
+  '/api/attribution(.*)',
   // Marketplace API GET reads are anonymous-safe; mutation handlers under
   // these paths self-enforce auth (requirePortalUser / requireAttorney / etc.).
   // Public page routes themselves are owned by the clean market-domain paths

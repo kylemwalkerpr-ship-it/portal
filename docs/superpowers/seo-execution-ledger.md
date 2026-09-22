@@ -1358,3 +1358,36 @@ Recorded in the run report for this commit: P10 suite, the focused business/orde
 ### Gate
 
 P10 remains **IN_PROGRESS** and program **PASS is NOT claimed**: it requires a real production `order_paid` for `us_f1_opt`, observed after deployment with its consent truth stored as observed, and counted in `attributed_paid_events` only if a known source was truly observed. Nothing here asserts that.
+
+## 2026-09-22 — P10 A4 independent-audit blocker repair — IN_PROGRESS
+
+**Program state:** P10 remains **IN_PROGRESS**; **PASS is not claimed.** P9 remains **IN_PROGRESS / GATE OPEN** with **0 verified wins** and was not modified.
+
+### Independent exact-head audit and RED evidence
+
+An exact-head read-only audit of `3bad69a4` found two release blockers and two durable-business-truth defects. Before production code changed, `tests/p10-audit-repair.test.ts` was added and run against that exact head: **4/4 tests failed for the intended reasons** — the coverage-view CTE omitted `source_class`, `/api/attribution(.*)` was absent from the anonymous middleware matcher, catalogue attribution was not gated on durable subject persistence, and escrow refund attribution was not gated on successful wallet/update state.
+
+### Minimal repairs
+
+- `p10_conversion_chain_coverage` now projects `source_class` in its `ledger` CTE, so the outer known-source aggregate can resolve the column and the atomic migration is no longer structurally invalid.
+- `middleware.ts` now makes only `/api/attribution(.*)` public at the Clerk layer. The handlers retain same-origin enforcement, and browser routes still accept only `landing` / `cta_click` while refusing business conversion types. Anonymous organic visitors can therefore create the consent-gated first-party session needed for landing → CTA → order continuity without paying the Clerk auth path.
+- Catalogue checkout now records `order_paid` only after the corresponding durable `template_orders` / `orders` subject was successfully persisted. Failed subject inserts retain the existing `charge_without_order` incident path and do not become conversion rows.
+- Admin escrow refund now loads stored currency and appends `order_refunded` only after the required wallet refund (when a buyer exists) and order-state update both succeed. Warning-only partial failures no longer become durable conversion claims.
+
+### Verification on the repaired tree
+
+- Audit regression file: **4/4 PASS** after the recorded 4/4 RED run.
+- P10 + business/order/cancel/payment/migration/idempotency battery: **10 suites / 167 tests PASS**.
+- Middleware/SEO affected battery: **13 suites / 124 tests PASS**.
+- Migration gates: `migration-order` **77/77 accounted**; migration-ledger manifest, naming and transaction-safety checks **PASS**.
+- `npx --no-install tsc --noEmit` exit 0; `git diff --check` clean.
+- Canonical serial Jest: **497 suites PASS / 2 skipped; 5,684 tests PASS / 4 skipped; 0 failures**.
+- Credential-backed production build: **Next.js 16.2.11 PASS** and **OpenNext Cloudflare 1.19.11 PASS**, Worker bundle emitted. No deployment or migration apply was performed.
+
+### Residual risks kept explicit
+
+The production cross-domain `yattr` emitter remains pending; redirect capture hardening (token length/cache policy), possible duplicate refund lifecycle keys across admin + gateway surfaces, receipt-time fallback for malformed gateway timestamps, and minor client/session payload contract drift remain follow-up hardening items rather than evidence of P10 PASS. `internal` remains a documented known source class; this repair does not redefine source semantics without a separate product contract.
+
+### Gate
+
+P10 remains **IN_PROGRESS**. Program **PASS is NOT claimed**: the repaired instrumentation must be deployed and a real production `order_paid` for `us_f1_opt` must be observed. Unknown/session-only data must remain unknown/session-only at that live gate.
