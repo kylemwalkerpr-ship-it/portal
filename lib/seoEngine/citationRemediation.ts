@@ -5,7 +5,7 @@
  * authoritative owner. It may never manufacture a sibling page, infer an owner
  * from fuzzy coverage rows, or prescribe generic discovery files.
  */
-import { HOST_PUBLIC } from '@/lib/seoFactory/ownership'
+import { HOST_PUBLIC } from '@/lib/seoFactory/ownershipContract'
 import type { CitationAction } from './llmVisibility'
 import { jaccard, usableQuery } from './auditQuerySelector'
 
