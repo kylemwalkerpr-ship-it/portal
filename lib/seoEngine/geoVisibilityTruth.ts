@@ -171,6 +171,19 @@ const BASELINE_FAMILY_MATCHERS: ReadonlyArray<(value: string) => boolean> = [
  * remaining slots are filled by stable registry id order. No planner/knowledge
  * or generated keyword list participates in this selection.
  */
+export function resolveStrategicAuditTarget(
+  query: string,
+  rows: OwnershipRow[],
+): StrategicAuditTarget | null {
+  const key = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!key) return null
+  const row = rows.find((candidate) =>
+    isAuthoritativeOwnershipRow(candidate)
+    && String(candidate.primary_keyword || '').trim().toLowerCase().replace(/\s+/g, ' ') === key
+  )
+  return row ? strategicAuditTargetFromRow(row) : null
+}
+
 export function selectStrategicAuditTargets(rows: OwnershipRow[], limit: number): StrategicAuditTarget[] {
   const cap = Math.max(0, Math.floor(Number(limit) || 0))
   if (!cap) return []
