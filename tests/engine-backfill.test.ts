@@ -16,10 +16,12 @@ describe('backlink outreach · template path', () => {
       id: 't1',
       domain: 'uscis.gov',
       target_url: 'https://www.uscis.gov/',
+      destination_url: null,
       title: 'USCIS',
       kind: 'gov',
       lane: 'editorial',
       authority_score: 95,
+      authority_score_basis: 'legacy_internal',
       traffic_estimate: null,
       contact_name: null,
       contact_email: null,
@@ -34,6 +36,8 @@ describe('backlink outreach · template path', () => {
       won_at: null,
       lost_at: null,
       won_backlink_url: null,
+      won_verified_at: null,
+      won_verification_id: null,
       notes: null,
     }
     const draft = await draftOutreachMessage({ target, skipAi: true })

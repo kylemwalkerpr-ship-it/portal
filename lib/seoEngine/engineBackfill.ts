@@ -264,7 +264,7 @@ export async function backfillBacklinkOutreach(limit = 14): Promise<EngineBackfi
     const existing = await listOutreachForTarget(target.id)
     if (existing.length) continue
     const draft = await draftOutreachMessage({ target, skipAi: true })
-    const row = await recordOutreach({
+    const outcome = await recordOutreach({
       target_id: target.id,
       channel: 'email',
       subject: draft.subject,
@@ -273,8 +273,8 @@ export async function backfillBacklinkOutreach(limit = 14): Promise<EngineBackfi
       operator_id: 'engine-backfill',
       source_brief: { model: draft.model, backfill: true },
     })
-    if (!row) {
-      lastError = `recordOutreach returned null for ${target.domain}`
+    if (!outcome.ok) {
+      lastError = `recordOutreach failed for ${target.domain}: ${outcome.error || 'no row'}`
       continue
     }
     wrote += 1

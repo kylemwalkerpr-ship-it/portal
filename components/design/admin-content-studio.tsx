@@ -5743,7 +5743,7 @@ function ResearchLiveOperations() {
     fetchedAt: number
     status: { llmVisibility?: { total?: number; cited?: number; shareOfVoice?: number }; rankingModel?: { computed?: number } } | null
     visibility: { total?: number; cited?: number; shareOfVoice?: number; byStage?: Record<string, number> } | null
-    backlink: { summary?: { target_total?: number; target_won?: number; inbound_avg?: number; outbound_avg?: number }; targets?: Array<{ id?: string; domain?: string; title?: string | null; target_url?: string | null; authority_score?: number; status?: string }> } | null
+    backlink: { summary?: { target_total?: number; verified_wins?: number; status_won_labels?: number; inbound_avg?: number; outbound_avg?: number }; targets?: Array<{ id?: string; domain?: string; title?: string | null; target_url?: string | null; authority_score?: number; authority_score_basis?: string | null; won_verified_at?: string | null; won_verification_id?: string | null; status?: string }> } | null
     merges: Array<{ clusterId?: string; stem?: string; winnerUrl?: string; recheckDue?: boolean; followUpAt?: number; status?: string }>
     degraded?: boolean
     guidance?: string | null
@@ -5823,7 +5823,9 @@ function ResearchLiveOperations() {
     try {
       const response = await fetch('/api/seo-engine/backlink/outreach', {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'record', target_id: outreachTarget.id, subject: outreachDraft.subject, message_body: outreachDraft.body, status, operator_id: 'admin@portal' }),
+        // Provenance is server-derived from the authenticated admin: the UI
+        // never asserts an operator identity.
+        body: JSON.stringify({ action: 'record', target_id: outreachTarget.id, subject: outreachDraft.subject, message_body: outreachDraft.body, status }),
       })
       const body = await response.json().catch(() => ({})) as { error?: string }
       if (!response.ok) throw new Error(body.error || `Outreach save failed (${response.status})`)
@@ -5921,13 +5923,13 @@ function ResearchLiveOperations() {
           <CardHeader icon="↗" title="Knowledge / backlinks" sub="External authority opportunities" />
           <div style={{ padding: '10px 12px 2px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
             <strong style={{ fontFamily: C.mono, fontSize: 22, color: E.ink }}>{metric(summary?.target_total)}</strong>
-            <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{metric(summary?.target_won)} won</span>
+            <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{metric(summary?.verified_wins)} verified wins</span>
           </div>
           <div style={{ padding: '5px 12px 10px', fontFamily: C.mono, fontSize: 9, color: serviceError('backlink') ? C.red : E.inkMuted }}>{serviceError('backlink') || (snapshot ? 'Source: seo_backlink_dashboard' : 'No live opportunity read yet')}</div>
           {snapshot?.backlink?.targets?.slice(0, 2).map((target, index) => (
             <div key={`${target.domain || 'target'}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px' }}>
               <a href={target.target_url || '#'} target="_blank" rel="noreferrer" style={{ minWidth: 0, flex: 1, color: E.goldDeep, fontFamily: C.mono, fontSize: 9, textDecoration: 'none' }}>
-                ↗ {target.domain || target.title || 'authority target'} · {target.authority_score ?? '—'} authority
+                ↗ {target.domain || target.title || 'authority target'} · internal priority {target.authority_score ?? '—'} (not DR/DA)
               </a>
               {target.id && <button type="button" onClick={() => void openOutreachDraft(target)} disabled={outreachBusy} style={{ padding: '3px 6px', border: `1px solid ${E.gold}`, background: E.cream, color: E.goldDeep, fontFamily: C.mono, fontSize: 8, cursor: outreachBusy ? 'wait' : 'pointer' }}>{outreachBusy ? '…' : 'Draft outreach'}</button>}
             </div>
