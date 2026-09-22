@@ -1391,3 +1391,27 @@ The production cross-domain `yattr` emitter remains pending; redirect capture ha
 ### Gate
 
 P10 remains **IN_PROGRESS**. Program **PASS is NOT claimed**: the repaired instrumentation must be deployed and a real production `order_paid` for `us_f1_opt` must be observed. Unknown/session-only data must remain unknown/session-only at that live gate.
+
+## 2026-09-22 — P10 A5 transport-referrer + storage-shape hardening — IN_PROGRESS
+
+**Program state:** P10 remains **IN_PROGRESS**; **PASS is not claimed.** P9 remains **IN_PROGRESS / GATE OPEN** with **0 verified wins** and was not modified.
+
+### Independent-audit blocker and RED→GREEN evidence
+
+The exact-head audit of `9f5cc41e` found one remaining acquisition-truth blocker: when the browser explicitly reported `referrer: null`, `/api/attribution/session` fell back to the bootstrap fetch request's own same-origin `Referer` header. That transport header is merely the current page, but the classifier treated the estate host as `internal`, promoting a no-referrer visit to known-source `attributed`. A real route-level regression test reproduced the defect (`internal` / `attributed`) before the fix, then passed after the fallback was removed. Browser-observed `document.referrer` remains the only referrer signal supplied by the normal client path; explicit campaign/search/referral/internal evidence still classifies normally.
+
+The same audit also exposed a SQL three-valued-logic gap: the `session_only` storage branch used `source_class = 'unknown'` without separately requiring `source_class IS NOT NULL`, so a handcrafted NULL could make the CHECK evaluate NULL and pass. A RED storage-contract assertion was added first; the migration now requires `session_id IS NOT NULL`, `source_class IS NOT NULL`, and `source_class = 'unknown'` for `session_only`.
+
+### Verification
+
+- New A5 RED→GREEN guards: same-origin bootstrap self-`Referer` no longer becomes acquisition evidence; `session_only` storage explicitly refuses NULL source class.
+- P10/business focused battery: **10 suites / 168 tests PASS**.
+- Middleware/SEO affected battery: **13 suites / 124 tests PASS**.
+- Migration-order: **77/77 accounted**; migration-ledger manifest/naming/transaction-safety checks **PASS**.
+- `npx --no-install tsc --noEmit` and `git diff --check` **PASS**.
+- Canonical serial Jest on the exact A5 candidate: **497 suites PASS / 2 skipped; 5,685 tests PASS / 4 skipped; 0 failures**.
+- Credential-backed production build on the same code: **Next.js 16.2.11 PASS** through webpack/TypeScript/prerender and **OpenNext Cloudflare 1.19.11 PASS**, Worker bundle emitted. No deployment or migration apply was performed.
+
+### Gate
+
+P10 remains **IN_PROGRESS**. Program **PASS is NOT claimed**: instrumentation still must be deployed and a real production `order_paid` for `us_f1_opt` observed. A missing document referrer must remain `unknown/session_only`; the bootstrap request's own `Referer` is never acquisition evidence.

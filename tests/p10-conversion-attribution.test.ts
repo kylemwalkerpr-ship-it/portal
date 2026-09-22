@@ -130,7 +130,7 @@ describe('P10-A1 migration contract (storage-level truth)', () => {
       "attribution_state = 'attributed'\n      and session_id is not null\n      and source_class is not null\n      and source_class <> 'unknown'",
     )
     expect(sql).toContain(
-      "attribution_state = 'session_only'\n      and session_id is not null\n      and source_class = 'unknown'",
+      "attribution_state = 'session_only'\n      and session_id is not null\n      and source_class is not null\n      and source_class = 'unknown'",
     )
     expect(sql).toContain("(attribution_state = 'unknown_source' and session_id is null and source_class is null)")
   })
@@ -480,6 +480,41 @@ describe('P10 consent is a precondition, not a formality', () => {
     expect(fake.rows('conversion_attribution_sessions')[0]).toMatchObject({
       consent_state: 'granted',
       first_source_class: 'unknown',
+    })
+  })
+
+  it('does not promote the session bootstrap request Referer header into acquisition evidence', async () => {
+    // Browser fetches to /api/attribution/session carry the current page in the
+    // HTTP Referer header even when document.referrer is empty. The explicit
+    // client referrer:null means "no acquisition referrer observed" and must
+    // win over that transport-level self-referrer.
+    const fake = createP10FakeDb()
+    jest.mocked(createSupabaseAdminClient).mockReturnValue(fake.client as never)
+    const response = await attributionSessionPOST(
+      jsonRequest(
+        'https://market.yousafeconsultancy.com/api/attribution/session',
+        {
+          consent: 'granted',
+          landing: { host: 'market.yousafeconsultancy.com', path: '/gigs/f1-review' },
+          referrer: null,
+        },
+        undefined,
+        {
+          origin: 'https://market.yousafeconsultancy.com',
+          referer: 'https://market.yousafeconsultancy.com/gigs/f1-review',
+        },
+      ),
+    )
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.data).toMatchObject({
+      tracking: true,
+      attribution: { source_class: 'unknown', attribution_state: 'session_only' },
+    })
+    expect(fake.rows('conversion_attribution_sessions')[0]).toMatchObject({
+      first_source_class: 'unknown',
+      first_source_detail: {},
     })
   })
 

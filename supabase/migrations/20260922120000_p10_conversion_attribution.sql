@@ -195,6 +195,7 @@ create table if not exists public.conversion_events (
     or (
       attribution_state = 'session_only'
       and session_id is not null
+      and source_class is not null
       and source_class = 'unknown'
     )
     or (attribution_state = 'unknown_source' and session_id is null and source_class is null)

@@ -95,11 +95,14 @@ export async function POST(req: Request) {
   const source = classifyAttributionSource({
     host: typeof landing.host === 'string' ? landing.host : null,
     path: typeof landing.path === 'string' ? landing.path : null,
-    // The page supplies `document.referrer`; the request's own Referer header is
-    // our internal page, so it is only a fallback when the client sent neither.
+    // Acquisition evidence must come from the browser-observed document
+    // referrer (or an explicitly supplied landing referrer), never from this
+    // fetch request's own Referer header. Same-origin fetches carry the current
+    // page there, which proves only request context and would falsely promote a
+    // no-referrer visit to an internal acquisition.
     referrer: typeof body.referrer === 'string'
       ? body.referrer
-      : (typeof landing.referrer === 'string' ? landing.referrer : req.headers.get('referer')),
+      : (typeof landing.referrer === 'string' ? landing.referrer : null),
     campaign,
   })
 
