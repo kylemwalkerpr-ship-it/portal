@@ -5,6 +5,7 @@ import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
 import { hydrateGateFromJobScores } from '@/lib/seoEngine/gate'
+import { loadVisibilityFeed } from '@/lib/seoEngine/llmVisibility'
 
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' }
 
@@ -59,11 +60,10 @@ export async function GET() {
     const supabase = createSupabaseAdminClient()
     const [
       cells, knowledge, plans, runs, config,
-      linksPlanned, linksApplied, rankCount,
-      llmPromptTotal, llmPromptCited, llmPromptAttempted, llmAllTotal, llmAllCited,
+      linksPlanned, linksApplied, rankCount, llmFeed,
       gateTotal, gatePassed, recentGates, jobsScored, jobsPassed,
       ranking,
-      latestKnowledge, latestPlan, latestLink, latestLlm, latestGate,
+      latestKnowledge, latestPlan, latestLink, latestGate,
     ] = await Promise.all([
       countExact(supabase, 'seo_lifecycle_stages'),
       countExact(supabase, 'seo_knowledge'),
@@ -73,17 +73,9 @@ export async function GET() {
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'planned')),
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'applied')),
       countExact(supabase, 'seo_ranking_scores'),
-      // Engine-outage audits (flagged audit_failed) are NOT "not cited"
-      // outcomes — exclude them from the headline share-of-voice.
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).not('flags', 'ov', `{audit_failed}`)),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false).eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
-      // Keep failed prompt attempts visible to selection logic without putting
-      // them in the citation denominator. This distinguishes 'no prompt bank'
-      // (where the all-row/fan-out fallback is useful) from 'prompt bank exists
-      // but every attempt failed' (which must remain unavailable).
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('fan_out', false)),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.not('flags', 'ov', `{audit_failed}`)),
-      countExact(supabase, 'seo_llm_visibility', (q) => q.eq('cited', true).not('flags', 'ov', `{audit_failed}`)),
+      // P11 is the canonical GEO headline. Legacy rows stay visible only via
+      // llmFeed.reporting.legacyRows and never substitute into this denominator.
+      loadVisibilityFeed(50),
       countExact(supabase, 'seo_gate_runs'),
       countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
       supabase.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20),
@@ -93,15 +85,12 @@ export async function GET() {
       latestRow(supabase, 'seo_knowledge', 'id,title,kind,fetched_at', 'fetched_at'),
       latestRow(supabase, 'seo_cluster_plans', 'id,primary_term,status,created_at', 'created_at'),
       latestRow(supabase, 'seo_interlinks', 'id,status,source_slug,created_at', 'created_at'),
-      latestRow(supabase, 'seo_llm_visibility', 'id,query,cited,created_at', 'created_at'),
       latestRow(supabase, 'seo_gate_runs', 'id,score,passed,created_at', 'created_at'),
     ])
 
     const gateRows = ((recentGates.data as Array<{ score?: number; passed?: boolean }>) || [])
     const gateScores = gateRows.map((r) => Number(r.score) || 0)
-    const usePromptVisibility = llmPromptAttempted > 0
-    const llmTotal = usePromptVisibility ? llmPromptTotal : llmAllTotal
-    const llmCited = usePromptVisibility ? llmPromptCited : llmAllCited
+    const latestLlm = llmFeed.audits[0] ?? null
 
     return NextResponse.json({
       ok: true,
@@ -124,10 +113,14 @@ export async function GET() {
         latestAt: latestLink ? String(latestLink.created_at || '') : null,
       },
       llmVisibility: {
-        total: llmTotal,
-        cited: llmCited,
-        shareOfVoice: llmTotal ? Math.round((llmCited / llmTotal) * 100) : null,
-        measurementState: llmTotal ? 'measured' : 'unavailable',
+        total: llmFeed.total,
+        cited: llmFeed.cited,
+        attempted: llmFeed.attempted,
+        failed: llmFeed.failed,
+        shareOfVoice: llmFeed.shareOfVoice,
+        measurementState: llmFeed.measurementState,
+        reporting: llmFeed.reporting,
+        reportingTruncated: llmFeed.reportingTruncated,
         latestQuery: latestLlm ? String(latestLlm.query || '') : null,
         latestAt: latestLlm ? String(latestLlm.created_at || '') : null,
       },

@@ -151,6 +151,11 @@ export async function POST(request: Request) {
               kind: 'llm',
               cited: result.cited,
               total: result.total,
+              // Provider-attempt counters: the shareOfVoice denominator is
+              // successful provider attempts, never query rows — persisted
+              // here so the recorded run can't contradict the SSE summary.
+              successfulProviderAttempts: result.successfulProviderAttempts,
+              citedSuccessfulProviderAttempts: result.citedSuccessfulProviderAttempts,
               shareOfVoice: result.shareOfVoice,
               attempted: result.attempted,
               failed: result.failed,
@@ -161,8 +166,14 @@ export async function POST(request: Request) {
             'admin',
           )
           const shareLabel = result.shareOfVoice == null ? 'unavailable' : `${result.shareOfVoice}%`
-          emitStep('done', `LLM audit: ${result.cited}/${result.total} measured audits cited the estate (${shareLabel})`, result.failed ? `${result.failed} failed audit(s) excluded` : undefined)
-          send({ type: 'done', kind, summary: `LLM audit: ${result.cited}/${result.total} queries cited the estate`, result })
+          // Lead with the named provider-attempt denominator; legacy query
+          // counts stay as a separate clause so 1/1 queries with 1/2 provider
+          // citations cannot read as contradictory.
+          const summary = result.successfulProviderAttempts
+            ? `LLM audit: ${result.citedSuccessfulProviderAttempts}/${result.successfulProviderAttempts} successful provider attempts cited the estate (${shareLabel}); ${result.cited}/${result.total} measured queries cited`
+            : `LLM audit: ${result.cited}/${result.total} measured queries cited the estate (${shareLabel})`
+          emitStep('done', summary, result.failed ? `${result.failed} failed audit(s) excluded` : undefined)
+          send({ type: 'done', kind, summary, result })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error'

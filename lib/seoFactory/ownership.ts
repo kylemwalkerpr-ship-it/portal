@@ -21,9 +21,10 @@
  */
 
 import { loadOwnershipRegistry } from '@/lib/seoDataLoaders'
+import { HOST_PUBLIC, type OwnerHost } from './ownershipContract'
+export { HOST_PUBLIC, type OwnerHost } from './ownershipContract'
 import { matchStrikeSeed } from './strikeSeeds'
 
-export type OwnerHost = 'legal' | 'usa' | 'ca' | 'uk' | 'au' | 'apex' | 'market'
 export type IntentClass =
   | 'procedural'
   | 'checklist'
@@ -140,16 +141,6 @@ export const HOST_REPO: Record<OwnerHost, ContentRepo> = {
   ca: 'yousafe-consultancy',
   au: 'yousafe-consultancy',
   market: 'portal',
-}
-
-export const HOST_PUBLIC: Record<OwnerHost, string> = {
-  legal: 'https://legal.yousafeconsultancy.com',
-  apex: 'https://yousafeconsultancy.com',
-  usa: 'https://usa.yousafeconsultancy.com',
-  uk: 'https://uk.yousafeconsultancy.com',
-  ca: 'https://ca.yousafeconsultancy.com',
-  au: 'https://au.yousafeconsultancy.com',
-  market: 'https://market.yousafeconsultancy.com',
 }
 
 export const AUTHORITATIVE_OWNERSHIP_STATUS = 'confirmed' as const

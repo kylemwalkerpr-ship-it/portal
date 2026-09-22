@@ -332,7 +332,17 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
 
   // Live counts on the tab bar — navigation tells you where the data is.
   const sn = status as Record<string, unknown> | null
-  const llmShareOfVoice = (sn?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice
+  const statusLlmVisibility = sn?.llmVisibility as { shareOfVoice?: number | null; reporting?: Record<string, unknown> } | undefined
+  const llmShareOfVoice = statusLlmVisibility?.shareOfVoice
+  const statusLlmReporting = statusLlmVisibility?.reporting as { successful?: number; citedSuccessful?: number } | undefined
+  const visibilityReporting = visibility?.reporting as {
+    attempted?: number; successful?: number; providerUnavailable?: number; providerFailure?: number;
+    parseFailure?: number; blocked?: number; citedSuccessful?: number; legacyRows?: number;
+    auditedAuthoritativeOwners?: number; authoritativeOwnerCount?: number; ownerCoveragePercent?: number | null;
+    successfulWithAuthoritativeCitation?: number; successfulWithOtherCurrentYouSafeCitation?: number;
+    successfulWithWrongOrRetiredYouSafeCitation?: number; successfulWithCompetitorCitation?: number;
+    successfulWithNoExtractableCitation?: number;
+  } | undefined
   const tabCounts: Partial<Record<TabKey, string>> = {
     lifecycle: seededCount ? String(seededCount) : '',
     knowledge: sn ? fmtN((sn.knowledge as { total?: number } | undefined)?.total ?? 0) : '',
@@ -512,7 +522,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         <Kpi label="Missions" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions ranked" color={C.green} />
         <Kpi label="Intel" value={fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0))} sub="policy/trend items" color={C.violet} />
         <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`${(status?.gate as { runs?: number } | undefined)?.runs ?? 0} runs · avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
-        <Kpi label="LLM voice" value={((status?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice) == null ? '—' : `${(status?.llmVisibility as { shareOfVoice?: number | null } | undefined)?.shareOfVoice}%`} sub={`${(status?.llmVisibility as { cited?: number } | undefined)?.cited ?? 0}/${(status?.llmVisibility as { total?: number } | undefined)?.total ?? 0} measured cited`} color={C.violet} />
+        <Kpi label="LLM voice" value={llmShareOfVoice == null ? '—' : `${llmShareOfVoice}%`} sub={`${statusLlmReporting?.citedSuccessful ?? 0}/${statusLlmReporting?.successful ?? 0} successful provider attempts cited`} color={C.violet} />
       </div>
 
       {/* ── Tab navigation (dedicated surfaces with live counts) ── */}
@@ -880,7 +890,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
               <div>
                 <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif, marginBottom: 4 }}>🤖 LLM / AEO Visibility</h2>
                 <p style={{ margin: 0, fontSize: 11, color: C.textMuted, maxWidth: 560 }}>
-                  Prompt audits: the engine asks an LLM to answer real estate queries with sources, then checks whether yousafeconsultancy.com was cited. Share of voice = cited ÷ audited.
+                  P11 GEO prompt audits are bound to authoritative owners. Share of voice = successful provider attempts that cited a current YouSafe URL ÷ successful provider attempts; legacy rows separate and never enter this denominator.
                 </p>
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -900,7 +910,10 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 12, color: C.text }}><strong>{(visibility?.total as number) || 0}</strong> measured audits · <strong style={{ color: C.green }}>{(visibility?.cited as number) || 0}</strong> cited the estate{Number(visibility?.failed || 0) > 0 ? ` · ${Number(visibility?.failed)} failed excluded` : ''}</div>
+                <div style={{ fontSize: 12, color: C.text }}><strong>{visibilityReporting?.successful ?? 0}</strong> successful provider attempts · <strong style={{ color: C.green }}>{visibilityReporting?.citedSuccessful ?? 0}</strong> cited a current YouSafe URL · {visibilityReporting?.attempted ?? 0} attempted</div>
+                <div style={{ fontSize: 10.5, color: C.textMuted }}>authoritative owners audited: <strong>{visibilityReporting?.auditedAuthoritativeOwners ?? 0}/{visibilityReporting?.authoritativeOwnerCount ?? 0}</strong>{visibilityReporting?.ownerCoveragePercent == null ? '' : ` · ${visibilityReporting.ownerCoveragePercent}% coverage`} · legacy rows separate: <strong>{visibilityReporting?.legacyRows ?? 0}</strong></div>
+                <div style={{ fontSize: 10.5, color: C.textMuted }}>provider unavailable: <strong>{visibilityReporting?.providerUnavailable ?? 0}</strong> · provider failure: <strong>{visibilityReporting?.providerFailure ?? 0}</strong> · parse failure: <strong>{visibilityReporting?.parseFailure ?? 0}</strong> · blocked: <strong>{visibilityReporting?.blocked ?? 0}</strong></div>
+                <div style={{ fontSize: 10.5, color: C.textMuted }}>successful citation evidence — authoritative owner: <strong>{visibilityReporting?.successfulWithAuthoritativeCitation ?? 0}</strong> · other current YouSafe: <strong>{visibilityReporting?.successfulWithOtherCurrentYouSafeCitation ?? 0}</strong> · wrong/retired YouSafe: <strong>{visibilityReporting?.successfulWithWrongOrRetiredYouSafeCitation ?? 0}</strong> · competitor: <strong>{visibilityReporting?.successfulWithCompetitorCitation ?? 0}</strong> · no extractable citation: <strong>{visibilityReporting?.successfulWithNoExtractableCitation ?? 0}</strong></div>
                 {Object.entries((visibility?.byStage as Record<string, number>) || {}).map(([stage, count]) => (
                   <div key={stage} style={{ fontSize: 10.5, color: C.textMuted, display: 'flex', gap: 6 }}>
                     <span style={{ fontFamily: C.mono }}>{STAGE_LABELS[stage] || stage}</span>

@@ -41,20 +41,20 @@ describe('parseAuditResponse — structured JSON contract', () => {
   })
 })
 
-describe('buildCitationActions — deterministic, prioritized fixes', () => {
-  it('un-cited query → answer capsule + FAQ schema + entities + discovery', () => {
+describe('buildCitationActions — deterministic, evidence-driven fixes', () => {
+  it('un-cited query without concrete competitor evidence → inspect the existing owner, never prescribe generic tactics', () => {
     const actions = buildCitationActions({ shareOfVoice: 0, topCompetitorDomain: null, competitorShare: null, cited: false })
-    expect(actions.length).toBeGreaterThanOrEqual(4)
-    expect(actions[0].action).toMatch(/direct-answer/i)
-    expect(actions.map((a) => a.action).join(' ')).toMatch(/FAQPage/i)
-    // Sorted by priority (highest first).
+    expect(actions.length).toBeGreaterThanOrEqual(2)
+    expect(actions.map((a) => a.action).join(' ')).toMatch(/inspect|review/i)
+    expect(actions.map((a) => a.action).join(' ')).not.toMatch(/FAQPage|llms\.txt|new .*page/i)
     const priorities = actions.map((a) => a.priority)
     expect([...priorities].sort((a, b) => b - a)).toEqual(priorities)
   })
 
-  it('partial share-of-voice → names the top competitor to outrank', () => {
+  it('partial share-of-voice → names the top competitor as a research target, not an unsupported outrank instruction', () => {
     const actions = buildCitationActions({ shareOfVoice: 0.33, topCompetitorDomain: 'boundless.com', competitorShare: 0.75, cited: true })
-    expect(actions[0].action).toMatch(/Outrank boundless\.com/i)
+    expect(actions[0].action).toMatch(/Research why boundless\.com/i)
+    expect(actions[0].action).not.toMatch(/Outrank/i)
   })
 
   it('full share-of-voice → sustain, not fix', () => {

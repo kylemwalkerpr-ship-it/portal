@@ -50,9 +50,9 @@ describe('citation remediation matcher', () => {
     expect(match.mode).toBe('expand')
   })
 
-  it('returns new when nothing in coverage overlaps', () => {
+  it('returns unresolved when nothing in coverage overlaps and never authorizes creation', () => {
     const match = matchAuditQuery('Australia subclass 189 points test', pages)
-    expect(match.mode).toBe('new')
+    expect(match.mode).toBe('unresolved')
     expect(match.url).toBeNull()
     expect(match.jobId).toBeNull()
   })
@@ -73,19 +73,21 @@ describe('citation remediation matcher', () => {
       shareOfVoice: 0,
       topCompetitor: 'boundless.com',
       actions,
+      authoritativeOwnerUrl: pages[0].url,
+      ownershipRowId: 101,
     }, pages)
     expect(item).toBeTruthy()
     expect(item!.match.mode).toBe('expand')
     expect(item!.brief.play).toBe('refresh')
-    expect(item!.brief.aeoRemediation.actions.length).toBeGreaterThanOrEqual(4)
+    expect(item!.brief.aeoRemediation.actions.length).toBeGreaterThanOrEqual(2)
     expect(item!.brief.sourcePage).toContain('graduate-route-visa')
-    expect(actionHeadings(item!.actions).length).toBeGreaterThanOrEqual(3)
+    expect(actionHeadings(item!.actions).length).toBeGreaterThanOrEqual(2)
   })
 
   it('dedupes losing queries and ignores winners', () => {
     const list = buildCitationRemediations([
-      { query: 'F-1 visa requirements', cited: false, shareOfVoice: 0 },
-      { query: 'F-1 visa requirements', cited: false, shareOfVoice: 0 },
+      { query: 'F-1 visa requirements', cited: false, shareOfVoice: 0, authoritativeOwnerUrl: pages[1].url, ownershipRowId: 102 },
+      { query: 'F-1 visa requirements', cited: false, shareOfVoice: 0, authoritativeOwnerUrl: pages[1].url, ownershipRowId: 102 },
       { query: 'UK skilled worker visa 2026', cited: true, shareOfVoice: 1 },
     ], pages)
     expect(list).toHaveLength(1)

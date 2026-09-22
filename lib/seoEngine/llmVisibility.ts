@@ -33,6 +33,7 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { generateContentText } from '@/lib/contentAiProvider'
+import { isAuthoritativeOwnershipRow, listRegistry, type OwnershipRow } from '@/lib/seoFactory/ownership'
 import {
   COMMISSIONED_PROVIDERS,
   LANE_DEFAULT_PIN,
@@ -46,10 +47,22 @@ import {
 } from './auditQuerySelector'
 import { loadKnowledgeFeed } from './knowledge'
 import { loadPlansDashboard } from './planner'
+import type { FunnelActionKind } from './rankingModel'
 import {
-  expectedMonthlyRevenue,
-  type FunnelActionKind,
-} from './rankingModel'
+  P11_AUDIT_CONTRACT_VERSION,
+  P11_PROMPT_ID,
+  P11_PROMPT_VERSION,
+  classifyCitationUrl,
+  resolveStrategicAuditTarget,
+  selectStrategicAuditTargets,
+  summarizeProviderAttempts,
+  type CitationClassification,
+  type ClassifiedCitation,
+  type GeoAuditStatus,
+  type GeoCoverageSummary,
+  type GeoProviderAttempt,
+  type StrategicAuditTarget,
+} from './geoVisibilityTruth'
 
 /** The estate's observable surface — everything we want LLMs to cite. */
 export const ESTATE_DOMAINS: string[] = [
@@ -173,6 +186,9 @@ export interface EngineAudit {
   engine: string
   model: string | null
   ok: boolean
+  /** P11 closed audit state. Optional only for legacy in-memory/test compatibility. */
+  status?: GeoAuditStatus
+  failureReason?: string | null
   cited: boolean
   citedUrls: string[]
   competitorDomains: string[]
@@ -180,6 +196,27 @@ export interface EngineAudit {
   snippet: string
   confidence: number
   flags: string[]
+  rawCitedUrls?: string[]
+  normalizedCitedUrls?: string[]
+  citationClassifications?: ClassifiedCitation[]
+  competitorCitedUrls?: string[]
+}
+
+export interface P11AuditEvidence {
+  contractVersion: typeof P11_AUDIT_CONTRACT_VERSION
+  target: StrategicAuditTarget | null
+  promptId: typeof P11_PROMPT_ID
+  promptVersion: typeof P11_PROMPT_VERSION
+  startedAt: string
+  completedAt: string
+  auditStatus: GeoAuditStatus
+  failureReason: string | null
+  citationExtractionStatus: 'success' | 'partial' | 'parse_failure' | 'unavailable' | 'blocked'
+  rawCitedUrls: string[]
+  normalizedCitedUrls: string[]
+  citationClassifications: ClassifiedCitation[]
+  competitorCitedUrls: string[]
+  coverage: GeoCoverageSummary
 }
 
 /** A deterministic, prioritized fix for a low share-of-voice query. */
@@ -200,6 +237,82 @@ export interface CitationAction {
 /** Aggregated per-query result across all engines in the matrix. */
 export type VisibilityMeasurementState = 'measured' | 'unavailable'
 
+export interface P11VisibilityReportRow {
+  audit_contract_version?: unknown
+  ownership_row_id?: unknown
+  audit_status?: unknown
+  stage?: unknown
+  created_at?: unknown
+  coverage?: unknown
+}
+
+export interface P11VisibilityReporting {
+  contractVersion: typeof P11_AUDIT_CONTRACT_VERSION
+  queryRows: number
+  attempted: number
+  successful: number
+  providerUnavailable: number
+  providerFailure: number
+  parseFailure: number
+  blocked: number
+  unknown: number
+  citedSuccessful: number
+  successfulWithAuthoritativeCitation: number
+  successfulWithOtherCurrentYouSafeCitation: number
+  successfulWithWrongOrRetiredYouSafeCitation: number
+  successfulWithCompetitorCitation: number
+  successfulWithNoExtractableCitation: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
+  legacyRows: number
+  auditedAuthoritativeOwners: number
+  authoritativeOwnerCount: number
+  ownerCoveragePercent: number | null
+}
+function coverageCount(value: unknown, key: keyof GeoCoverageSummary): number {
+  if (!value || typeof value !== 'object') return 0
+  const n = Number((value as Record<string, unknown>)[key])
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
+}
+
+export function aggregateP11VisibilityReport(
+  rows: P11VisibilityReportRow[],
+  opts: { legacyRows: number; authoritativeOwnerCount: number },
+): P11VisibilityReporting {
+  const p11Rows = rows.filter((row) => row.audit_contract_version === P11_AUDIT_CONTRACT_VERSION)
+  const sum = (key: keyof GeoCoverageSummary) => p11Rows.reduce((total, row) => total + coverageCount(row.coverage, key), 0)
+  const attempted = sum('attempted')
+  const successful = sum('successful')
+  const citedSuccessful = sum('citedSuccessful')
+  const owners = new Set(
+    p11Rows.map((row) => Number(row.ownership_row_id)).filter((id) => Number.isInteger(id) && id > 0),
+  )
+  const authoritativeOwnerCount = Math.max(0, Math.floor(Number(opts.authoritativeOwnerCount) || 0))
+  return {
+    contractVersion: P11_AUDIT_CONTRACT_VERSION,
+    queryRows: p11Rows.length,
+    attempted,
+    successful,
+    providerUnavailable: sum('providerUnavailable'),
+    providerFailure: sum('providerFailure'),
+    parseFailure: sum('parseFailure'),
+    blocked: sum('blocked'),
+    unknown: sum('unknown'),
+    citedSuccessful,
+    successfulWithAuthoritativeCitation: sum('successfulWithAuthoritativeCitation'),
+    successfulWithOtherCurrentYouSafeCitation: sum('successfulWithOtherCurrentYouSafeCitation'),
+    successfulWithWrongOrRetiredYouSafeCitation: sum('successfulWithWrongOrRetiredYouSafeCitation'),
+    successfulWithCompetitorCitation: sum('successfulWithCompetitorCitation'),
+    successfulWithNoExtractableCitation: sum('successfulWithNoExtractableCitation'),
+    shareOfVoice: successful ? Math.round((citedSuccessful / successful) * 100) : null,
+    measurementState: successful ? 'measured' : 'unavailable',
+    legacyRows: Math.max(0, Math.floor(Number(opts.legacyRows) || 0)),
+    auditedAuthoritativeOwners: owners.size,
+    authoritativeOwnerCount,
+    ownerCoveragePercent: authoritativeOwnerCount ? Math.round((owners.size / authoritativeOwnerCount) * 100) : null,
+  }
+}
+
 export interface VisibilityAuditResult {
   query: string
   engine: string
@@ -219,6 +332,8 @@ export interface VisibilityAuditResult {
   engines: EngineAudit[]
   topCompetitor: { domain: string; share: number } | null
   actions: CitationAction[]
+  /** Present only for the versioned P11 ownership-aware evidence plane. */
+  p11?: P11AuditEvidence
 }
 
 /** Minimal evidence shape consumed by scoreMaster + the action generator. */
@@ -309,6 +424,7 @@ interface ParsedAuditResponse {
   sources: AuditSource[]
   confidence: number
   flags: string[]
+  extractionStatus: 'success' | 'parse_failure'
 }
 
 /**
@@ -348,7 +464,7 @@ export function parseAuditResponse(text: string): ParsedAuditResponse {
         ? Math.max(0, Math.min(1, Number(obj.confidence)))
         : sources.length ? 0.7 : 0.4
       const flags = Array.isArray(obj.flags) ? obj.flags.map(asString).slice(0, 10) : []
-      return { answer, answerFormat: format, sources, confidence, flags }
+      return { answer, answerFormat: format, sources, confidence, flags, extractionStatus: 'success' }
     } catch {
       /* fall through to regex extraction */
     }
@@ -363,6 +479,7 @@ export function parseAuditResponse(text: string): ParsedAuditResponse {
     sources,
     confidence: sources.length ? 0.5 : 0.2,
     flags: ['malformed_json'],
+    extractionStatus: 'parse_failure',
   }
 }
 
@@ -406,10 +523,50 @@ export function resolveAuditEngines(maxEngines = 3): CommissionedProviderPin[] {
 }
 
 /** Run one structured audit for a query against a single engine (exclusive pin). */
-async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit> {
+async function auditQueryEngine(
+  query: string,
+  pin: string,
+  target: StrategicAuditTarget | null = null,
+  registryRows: OwnershipRow[] = [],
+  configured = true,
+): Promise<EngineAudit> {
+  if (!configured) {
+    return {
+      engine: pin,
+      model: null,
+      ok: false,
+      status: 'provider_unavailable',
+      failureReason: 'commissioned provider is not configured',
+      cited: false,
+      citedUrls: [],
+      competitorDomains: [],
+      answerFormat: null,
+      snippet: '',
+      confidence: 0,
+      flags: ['provider_unavailable'],
+      rawCitedUrls: [],
+      normalizedCitedUrls: [],
+      citationClassifications: [],
+      competitorCitedUrls: [],
+    }
+  }
   const fail = (flags: string[], confidence = 0): EngineAudit => ({
-    engine: pin, model: null, ok: false, cited: false, citedUrls: [],
-    competitorDomains: [], answerFormat: null, snippet: '', confidence, flags,
+    engine: pin,
+    model: null,
+    ok: false,
+    status: 'provider_failure',
+    failureReason: flags[0] || 'provider failure',
+    cited: false,
+    citedUrls: [],
+    competitorDomains: [],
+    answerFormat: null,
+    snippet: '',
+    confidence,
+    flags,
+    rawCitedUrls: [],
+    normalizedCitedUrls: [],
+    citationClassifications: [],
+    competitorCitedUrls: [],
   })
   try {
     const ai = await generateContentText({
@@ -425,22 +582,55 @@ async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit
     })
     const text = (ai.text || '').trim()
     const parsed = parseAuditResponse(text)
-    const estateSources = parsed.sources.filter((s) => s.isEstate)
-    const competitors = parsed.sources
-      .filter((s) => !s.isEstate)
-      .map((s) => s.domain)
+    const classifications = target
+      ? parsed.sources.map((source) => classifyCitationUrl(source.url, target, registryRows))
+      : []
+    const currentClasses = new Set<CitationClassification>([
+      'current_authoritative_owner',
+      'current_support_page',
+      'current_estate_other',
+    ])
+    const estateSources = target
+      ? classifications.filter((entry) => currentClasses.has(entry.classification))
+      : parsed.sources.filter((source) => source.isEstate).map((source) => ({
+          rawUrl: source.url,
+          normalizedUrl: source.url,
+          classification: 'current_estate_other' as const,
+          matchedOwnershipRowId: null,
+        }))
+    const competitorEntries = target
+      ? classifications.filter((entry) => entry.classification === 'competitor')
+      : parsed.sources.filter((source) => !source.isEstate).map((source) => ({
+          rawUrl: source.url,
+          normalizedUrl: source.url,
+          classification: 'competitor' as const,
+          matchedOwnershipRowId: null,
+        }))
+    const competitors = competitorEntries
+      .map((entry) => entry.normalizedUrl ? domainOf(entry.normalizedUrl) : '')
       .filter(Boolean)
+    const parseFailed = parsed.extractionStatus === 'parse_failure'
+    const rawCitedUrls = parsed.sources.map((source) => source.url)
+    const normalizedCitedUrls = classifications.length
+      ? classifications.map((entry) => entry.normalizedUrl).filter((url): url is string => Boolean(url))
+      : rawCitedUrls
     return {
       engine: ai.provider || pin,
       model: ai.model || null,
-      ok: true,
-      cited: estateSources.length > 0 || BRAND_MENTIONS.some((b) => parsed.answer.toLowerCase().includes(b.toLowerCase())),
-      citedUrls: estateSources.map((s) => s.url),
+      ok: !parseFailed,
+      status: parseFailed ? 'parse_failure' : 'success',
+      failureReason: parseFailed ? 'structured citation response could not be parsed' : null,
+      cited: !parseFailed && estateSources.length > 0,
+      citedUrls: estateSources.map((entry) => entry.normalizedUrl || entry.rawUrl),
       competitorDomains: [...new Set(competitors)],
       answerFormat: parsed.answerFormat,
       snippet: parsed.answer.replace(/\s+/g, ' ').slice(0, 500),
       confidence: parsed.confidence,
       flags: parsed.flags,
+      rawCitedUrls,
+      normalizedCitedUrls: [...new Set(normalizedCitedUrls)],
+      citationClassifications: classifications,
+      competitorCitedUrls: [...new Set(competitorEntries.map((entry) => entry.normalizedUrl || entry.rawUrl))],
     }
   } catch (e) {
     return fail(['engine_error: ' + (e instanceof Error ? e.message.slice(0, 120) : 'unknown')])
@@ -449,7 +639,7 @@ async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit
 
 /** Aggregate per-engine audits into one per-query VisibilityAuditResult. */
 export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]): VisibilityAuditResult {
-  const okAudits = engineAudits.filter((e) => e.ok)
+  const okAudits = engineAudits.filter((e) => e.ok && (e.status == null || e.status === 'success'))
   const citedAudits = okAudits.filter((e) => e.cited)
   const citedUrls = [...new Set(okAudits.flatMap((e) => e.citedUrls))]
   const brandMentions = BRAND_MENTIONS.filter((b) => okAudits.some((e) => e.snippet.toLowerCase().includes(b.toLowerCase())))
@@ -492,7 +682,8 @@ export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]
   ]
   for (const [re, s] of stageMap) if (re.test(lower)) { stage = s; break }
 
-  const cited = citedAudits.length > 0 || brandMentions.length > 0
+  // Brand mentions remain observable metadata, but P11 citation truth requires a cited current-estate URL.
+  const cited = citedAudits.length > 0
   const result: VisibilityAuditResult = {
     query,
     engine: engines.join(' + ') || 'cascade',
@@ -522,82 +713,176 @@ export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]
   return result
 }
 
-/**
- * Conservative expected-USD estimate for a citation fix. Honesty contract:
- *  1. impressions MUST be a real positive GSC observation — a caller without
- *     impression data never reaches this helper.
- *  2. a stage and/or country cell must be resolvable — without a cell there is
- *     no funnel bet to price.
- *  3. inputs are the conservative end of the funnel: informational intent
- *     (lowest CVR bucket), flat $400 price fallback, and modest rank jumps
- *     (11→3 for climbs; 21→5 for a brand-new page that must first win
- *     indexability + authority).
- */
-function citationExpectedRevenue(opts: {
-  impressions: number
-  stage: string | null
-  country: string | null
-  actionKind: FunnelActionKind
-}): { usdPerMonth: number; note: string } | undefined {
-  const imp = Number(opts.impressions)
-  if (!Number.isFinite(imp) || imp <= 0) return undefined
-  if (!opts.stage && !opts.country) return undefined
-  const isNew = opts.actionKind === 'funnel_new'
-  return expectedMonthlyRevenue({
-    impressions: imp,
-    currentPosition: isNew ? 21 : 11,
-    targetPosition: isNew ? 5 : 3,
-    intent: 'informational',
-    action: opts.actionKind,
-    priceMin: 0,
-    priceMax: 0,
-  })
+function engineAuditToGeoAttempt(engine: EngineAudit): GeoProviderAttempt {
+  const status: GeoAuditStatus = engine.status ?? (engine.ok ? 'success' : 'provider_failure')
+  return {
+    provider: engine.engine,
+    model: engine.model,
+    status,
+    failureReason: engine.failureReason ?? null,
+    rawCitedUrls: engine.rawCitedUrls ?? [],
+    normalizedCitedUrls: engine.normalizedCitedUrls ?? [],
+    citationClassifications: engine.citationClassifications ?? [],
+    competitorCitedUrls: engine.competitorCitedUrls ?? [],
+    flags: engine.flags,
+  }
+}
+
+function p11OverallStatus(coverage: GeoCoverageSummary): GeoAuditStatus {
+  if (coverage.successful > 0) return 'success'
+  if (coverage.attempted === 0) return 'unknown'
+  if (coverage.providerUnavailable === coverage.attempted) return 'provider_unavailable'
+  if (coverage.providerFailure === coverage.attempted) return 'provider_failure'
+  if (coverage.parseFailure === coverage.attempted) return 'parse_failure'
+  return 'unknown'
+}
+
+function p11Evidence(
+  target: StrategicAuditTarget,
+  engines: EngineAudit[],
+  startedAt: string,
+  completedAt: string,
+): P11AuditEvidence {
+  const attempts = engines.map(engineAuditToGeoAttempt)
+  const coverage = summarizeProviderAttempts(attempts)
+  const auditStatus = p11OverallStatus(coverage)
+  const rawCitedUrls = [...new Set(attempts.flatMap((attempt) => attempt.rawCitedUrls))]
+  const normalizedCitedUrls = [...new Set(attempts.flatMap((attempt) => attempt.normalizedCitedUrls))]
+  const citationClassifications = attempts.flatMap((attempt) => attempt.citationClassifications)
+  const competitorCitedUrls = [...new Set(attempts.flatMap((attempt) => attempt.competitorCitedUrls))]
+  const failedAttempts = attempts.filter((attempt) => attempt.status !== 'success')
+  const failureReason = auditStatus === 'success'
+    ? null
+    : [...new Set(failedAttempts.map((attempt) => attempt.failureReason || attempt.status))].join(' | ') || null
+  const citationExtractionStatus: P11AuditEvidence['citationExtractionStatus'] = coverage.successful > 0
+    ? (failedAttempts.length ? 'partial' : 'success')
+    : coverage.parseFailure > 0
+      ? 'parse_failure'
+      : 'unavailable'
+  return {
+    contractVersion: P11_AUDIT_CONTRACT_VERSION,
+    target,
+    promptId: P11_PROMPT_ID,
+    promptVersion: P11_PROMPT_VERSION,
+    startedAt,
+    completedAt,
+    auditStatus,
+    failureReason,
+    citationExtractionStatus,
+    rawCitedUrls,
+    normalizedCitedUrls,
+    citationClassifications,
+    competitorCitedUrls,
+    coverage,
+  }
+}
+
+async function auditStrategicTarget(
+  target: StrategicAuditTarget,
+  registryRows: OwnershipRow[],
+  maxEngines: number,
+): Promise<VisibilityAuditResult> {
+  const startedAt = new Date().toISOString()
+  const candidates = auditEngineCandidates().slice(0, Math.max(1, Math.min(3, maxEngines)))
+  const engines = await Promise.all(candidates.map((candidate) => {
+    let configured = false
+    try {
+      configured = candidate.configured()
+    } catch {
+      configured = false
+    }
+    return auditQueryEngine(target.query, candidate.pin, target, registryRows, configured)
+  }))
+  const result = aggregateEngineAudits(target.query, engines)
+  if (target.jurisdiction !== 'GLOBAL' && target.jurisdiction !== 'UNKNOWN') result.country = target.jurisdiction
+  result.p11 = p11Evidence(target, engines, startedAt, new Date().toISOString())
+  return result
+}
+
+function blockedP11Result(query: string): VisibilityAuditResult {
+  const now = new Date().toISOString()
+  const coverage: GeoCoverageSummary = {
+    ...summarizeProviderAttempts([]),
+    blocked: 1,
+  }
+  return {
+    query,
+    engine: 'blocked',
+    model: null,
+    cited: false,
+    citedUrls: [],
+    brandMentions: [],
+    competitorDomains: [],
+    snippet: '',
+    rawScore: 0,
+    shareOfVoice: null,
+    measurementState: 'unavailable',
+    stage: null,
+    country: null,
+    engines: [],
+    topCompetitor: null,
+    actions: [],
+    p11: {
+      contractVersion: P11_AUDIT_CONTRACT_VERSION,
+      target: null,
+      promptId: P11_PROMPT_ID,
+      promptVersion: P11_PROMPT_VERSION,
+      startedAt: now,
+      completedAt: now,
+      auditStatus: 'blocked',
+      failureReason: 'no authoritative strategic owner for query',
+      citationExtractionStatus: 'blocked',
+      rawCitedUrls: [],
+      normalizedCitedUrls: [],
+      citationClassifications: [],
+      competitorCitedUrls: [],
+      coverage,
+    },
+  }
 }
 
 /**
- * Deterministic, prioritized fixes for a low share-of-voice query. Pure — no
- * AI — so the action list is stable and reviewable. Every action carries a
- * funnel kind (Phase 2b) so the UI can render a mission verb + expected value.
+ * P11 remediation starts with measured evidence, not generic content edits.
+ * A citation loss alone can justify research/review, but not generic discovery
+ * files, a sibling page, or invented revenue impact.
  */
 export function buildCitationActions(evidence: {
   shareOfVoice: number
   topCompetitorDomain: string | null
   competitorShare: number | null
   cited: boolean
-  /** Lifecycle stage when resolvable from the query tags — enables expectedRevenue. */
   stage?: string | null
-  /** Country when resolvable from the query tags — enables expectedRevenue. */
   country?: string | null
-  /** Real observed impressions (GSC). NEVER fabricated: absent ⇒ no expectedRevenue. */
   impressions?: number | null
 }): CitationAction[] {
-  const out: CitationAction[] = []
   const pct = Math.round((evidence.shareOfVoice || 0) * 100)
-  // Expected-revenue estimate — same base for every action so the fix list is
-  // internally consistent; each action's kind keeps its own conservative jump.
-  const revEstimate = (kind: FunnelActionKind): { usdPerMonth: number; note: string } | undefined =>
-    citationExpectedRevenue({
-      impressions: Number(evidence.impressions) || 0,
-      stage: evidence.stage ?? null,
-      country: evidence.country ?? null,
-      actionKind: kind,
-    })
-  if (!evidence.cited || evidence.shareOfVoice === 0) {
-    out.push({ priority: 4, action: 'Add a direct-answer "In 60 seconds" capsule above the fold', evidence: `0/${100} engines cited the estate (share-of-voice ${pct}%) — the page lacks a quotable direct answer`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-    out.push({ priority: 3, action: 'Add FAQPage JSON-LD (4–6 Q&As) matching the exact sub-queries engines ask', evidence: 'No structured answer surface — answer engines default to a bare paragraph', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-    out.push({ priority: 2, action: 'Add 2–3 original statistics / named entities to raise quotability', evidence: 'Answer engines cite concrete, citable facts — this query returned none for the estate', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-    out.push({ priority: 1, action: 'Confirm the page is in llms.txt + sitemap so crawlers can discover it', evidence: 'Undiscovered content cannot be cited', actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-    out.push({ priority: 1, action: 'Build or expand a dedicated service-enabled page if the estate has no canonical for this query', evidence: 'No estate page surfaced for this query — a new funnel entry point may be required', actionKind: 'funnel_new', expectedRevenue: revEstimate('funnel_new') })
-  } else if (evidence.shareOfVoice < 1) {
-    const top = evidence.topCompetitorDomain
-    if (top) {
-      out.push({ priority: 3, action: `Outrank ${top} in answer engines for this query`, evidence: `Top competitor ${top} cited by ${Math.round((evidence.competitorShare || 0) * 100)}% of engines vs the estate at ${pct}%`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-    }
-    out.push({ priority: 2, action: 'Add the unanswered fan-out sub-queries as H2/H3 + FAQ entries', evidence: `Share-of-voice ${pct}% — some engines still answer this cluster without the estate`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
-  } else {
-    out.push({ priority: 1, action: 'Sustain: re-audit weekly and watch for competitor drift', evidence: `Share-of-voice ${pct}% — the estate owns this query for now`, actionKind: 'funnel_climb', expectedRevenue: revEstimate('funnel_climb') })
+  if (evidence.shareOfVoice >= 1 && evidence.cited) {
+    return [{
+      priority: 1,
+      action: 'Sustain the authoritative owner and re-audit for citation drift',
+      evidence: `Successful-provider citation share is ${pct}% for this query`,
+    }]
   }
-  return out.sort((a, b) => b.priority - a.priority)
+
+  const actions: CitationAction[] = []
+  if (evidence.topCompetitorDomain) {
+    actions.push({
+      priority: 3,
+      action: `Research why ${evidence.topCompetitorDomain} was cited before changing the authoritative owner`,
+      evidence: `Measured competitor citation evidence exists while current-estate citation share is ${pct}%`,
+    })
+  } else {    actions.push({
+      priority: 3,
+      action: 'Inspect successful audit evidence before changing the authoritative owner',
+      evidence: `Current-estate citation share is ${pct}%, but no concrete competitor/source gap is yet established`,
+    })
+  }
+  actions.push({
+    priority: 2,
+    action: 'Review the existing authoritative owner against cited evidence for answer structure, source freshness, and internal authority',
+    evidence: 'P11 permits edits only after measured citation evidence identifies the actual deficit',
+  })
+  return actions
 }
 
 // ── Audit entry points ──────────────────────────────────────────────────────
@@ -641,15 +926,19 @@ export async function auditQuery(query: string, engineLabel: string = DEFAULT_AU
   return aggregateEngineAudits(query, engineAudits)
 }
 
-/** Run a batch of audits and persist to seo_llm_visibility. */
+/** Run a batch of ownership-bound P11 audits and persist to seo_llm_visibility. */
 export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Promise<{
   audits: VisibilityAuditResult[]
   cited: number
-  /** Successful/measured query audits — the citation denominator. */
+  /** Successful/measured query audits — the legacy query-level denominator. */
   total: number
-  /** All attempted query audits, including provider failures. */
+  /** All attempted strategic query audits, including blocked/provider failures. */
   attempted: number
   failed: number
+  /** Successful provider attempts across the P11 batch — the citation-share denominator. */
+  successfulProviderAttempts: number
+  /** Successful provider attempts that cited a current YouSafe estate URL. */
+  citedSuccessfulProviderAttempts: number
   shareOfVoice: number | null
   measurementState: VisibilityMeasurementState
   engine: string
@@ -658,38 +947,64 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
 }> {
   const cap = Math.min(15, opts.maxAudits ?? 10)
   const maxEngines = Math.max(1, Math.min(3, opts.maxEngines ?? 2))
-  let queries = (opts.queries || []).map(String).filter(Boolean).slice(0, cap)
+  const explicitQueries = (opts.queries || []).map(String).map((query) => query.trim()).filter(Boolean).slice(0, cap)
+  let registryRows: OwnershipRow[] = []
+  try {
+    registryRows = await listRegistry()
+  } catch {
+    registryRows = []
+  }
+
+  const work: Array<{ query: string; target: StrategicAuditTarget | null }> = []
   let selected: Array<{ query: string; source: string; score: number; reasons: string[] }> = []
-  if (!queries.length) {
-    const pool = await assembleAuditQueryPool(cap)
-    queries = pool.queries
-    selected = pool.picked.map((p) => ({
-      query: p.query,
-      source: p.source,
-      score: Math.round(p.score * 10) / 10,
-      reasons: p.reasons.slice(0, 4),
+  if (explicitQueries.length) {
+    for (const query of explicitQueries) {
+      work.push({ query, target: resolveStrategicAuditTarget(query, registryRows) })
+    }
+  } else {
+    const targets = selectStrategicAuditTargets(registryRows, cap)
+    for (const target of targets) work.push({ query: target.query, target })
+    selected = targets.map((target) => ({
+      query: target.query,
+      source: 'ownership',
+      score: 100,
+      reasons: [
+        `authoritative owner row ${target.ownershipRowId}`,
+        target.authoritativeOwnerUrl,
+        `${target.jurisdiction}/${target.readerIntent}`,
+      ],
     }))
     opts.onProgress?.(
       'think',
-      `Selected ${queries.length} adaptive queries (not the fixed seed list)`,
-      selected.slice(0, 3).map((s) => `${s.query} (${s.source})`).join(' · ') || undefined,
+      `Selected ${targets.length} authoritative strategic ownership queries`,
+      selected.slice(0, 3).map((item) => item.query).join(' · ') || undefined,
     )
   }
-  if (!queries.length) queries = DEFAULT_AUDIT_QUERIES.slice(0, cap)
+
   const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
   const audits: VisibilityAuditResult[] = []
+  const runId = globalThis.crypto.randomUUID()
 
-  for (const q of queries) {
-    const why = selected.find((s) => s.query === q)
-    opts.onProgress?.('audit', `Auditing “${q}”…`, why ? why.reasons.join(' · ') || undefined : undefined)
-    const result = await auditQuery(q, engine, null, maxEngines)
+  for (const item of work) {
+    const { query, target } = item
+    opts.onProgress?.(
+      'audit',
+      target ? `Auditing “${query}”…` : `Blocking unowned query “${query}”…`,
+      target?.authoritativeOwnerUrl,
+    )
+    const result = target
+      ? await auditStrategicTarget(target, registryRows, maxEngines)
+      : blockedP11Result(query)
     audits.push(result)
-    opts.onProgress?.('result', `“${q}” ${result.cited ? 'cited the estate' : 'not cited'}`, result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : undefined)
-    // A failed audit (all engines timed out / quota / model down) is NOT a
-    // genuine "estate not cited" outcome — the row is flagged audit_failed so
-    // every read-side SoV excludes it (previously these rows were stored as
-    // uncited losses and quietly degraded share-of-voice on engine outages).
+    const p11 = result.p11
+    opts.onProgress?.(
+      'result',
+      `“${query}” ${p11?.auditStatus === 'success' ? (result.cited ? 'cited current YouSafe estate' : 'returned no current YouSafe citation') : p11?.auditStatus || 'unknown'}`,
+      result.cited ? result.citedUrls.slice(0, 3).join(' · ') || undefined : p11?.failureReason || undefined,
+    )
+
     const flags = persistenceFlags(result)
+    const successfulEngines = result.engines.filter((attempt) => attempt.ok && (attempt.status == null || attempt.status === 'success'))
     try {
       const supabase = createSupabaseAdminClient()
       await supabase.from('seo_llm_visibility').insert({
@@ -704,16 +1019,39 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
         stage: result.stage,
         country: result.country,
         competitor_domains: result.competitorDomains,
-        answer_format: result.engines.map((e) => e.answerFormat).filter(Boolean)[0] ?? null,
-        confidence: result.engines.length ? result.engines.reduce((a, e) => a + e.confidence, 0) / result.engines.length : null,
+        answer_format: successfulEngines.map((attempt) => attempt.answerFormat).filter(Boolean)[0] ?? null,
+        confidence: successfulEngines.length
+          ? successfulEngines.reduce((sum, attempt) => sum + attempt.confidence, 0) / successfulEngines.length
+          : null,
         flags,
         share_of_voice: result.shareOfVoice,
         top_competitor: result.topCompetitor?.domain ?? null,
         competitor_share: result.topCompetitor?.share ?? null,
         engines_json: result.engines,
+        audit_contract_version: p11?.contractVersion ?? P11_AUDIT_CONTRACT_VERSION,
+        run_id: runId,
+        ownership_row_id: p11?.target?.ownershipRowId ?? null,
+        query_family: p11?.target?.queryFamily ?? null,
+        strategic_intent: p11?.target?.strategicIntent ?? null,
+        reader_intent: p11?.target?.readerIntent ?? null,
+        jurisdiction: p11?.target?.jurisdiction ?? null,
+        authoritative_owner_url: p11?.target?.authoritativeOwnerUrl ?? null,
+        owner_host: p11?.target?.ownerHost ?? null,
+        prompt_id: p11?.promptId ?? P11_PROMPT_ID,
+        prompt_version: p11?.promptVersion ?? P11_PROMPT_VERSION,
+        audit_status: p11?.auditStatus ?? 'unknown',
+        failure_reason: p11?.failureReason ?? null,
+        citation_extraction_status: p11?.citationExtractionStatus ?? 'unavailable',
+        raw_cited_urls: p11?.rawCitedUrls ?? [],
+        normalized_cited_urls: p11?.normalizedCitedUrls ?? [],
+        citation_classifications: p11?.citationClassifications ?? [],
+        competitor_cited_urls: p11?.competitorCitedUrls ?? [],
+        coverage: p11?.coverage ?? summarizeProviderAttempts([]),
+        started_at: p11?.startedAt ?? new Date().toISOString(),
+        completed_at: p11?.completedAt ?? new Date().toISOString(),
       })
     } catch {
-      // storage best-effort — the audit itself stands
+      // Storage remains best-effort; a failed insert must not rewrite the audit truth.
     }
   }
 
@@ -722,18 +1060,24 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   const attempted = audits.length
   const failed = attempted - measuredAudits.length
   const total = measuredAudits.length
+  const providerSuccessful = audits.reduce((sum, audit) => sum + (audit.p11?.coverage.successful ?? 0), 0)
+  const providerCitedSuccessful = audits.reduce((sum, audit) => sum + (audit.p11?.coverage.citedSuccessful ?? 0), 0)
   let remediations: import('./citationRemediation').CitationRemediation[] = []
   try {
     const { remediateVisibilityAudits } = await import('./citationRemediation')
-    remediations = await remediateVisibilityAudits(measuredAudits.map((a) => ({
-      query: a.query,
-      cited: a.cited,
-      shareOfVoice: a.shareOfVoice,
-      topCompetitor: a.topCompetitor?.domain ?? null,
-      competitorShare: a.topCompetitor?.share ?? null,
-      stage: a.stage,
-      country: a.country,
-      actions: a.actions,
+    remediations = await remediateVisibilityAudits(measuredAudits.map((audit) => ({
+      query: audit.query,
+      cited: audit.cited,
+      shareOfVoice: audit.shareOfVoice,
+      topCompetitor: audit.topCompetitor?.domain ?? null,
+      competitorShare: audit.topCompetitor?.share ?? null,
+      stage: audit.stage,
+      country: audit.country,
+      actions: audit.actions,
+      authoritativeOwnerUrl: audit.p11?.target?.authoritativeOwnerUrl ?? null,
+      ownershipRowId: audit.p11?.target?.ownershipRowId ?? null,
+      competitorCitedUrls: audit.p11?.competitorCitedUrls ?? [],
+      citationClassifications: audit.p11?.citationClassifications ?? [],
     })))
   } catch {
     remediations = []
@@ -744,13 +1088,30 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     total,
     attempted,
     failed,
-    // Share-of-voice over MEASURED audits only. No successful engine is an
-    // unavailable observation, not a genuine 0% citation result.
-    shareOfVoice: total ? Math.round((cited / total) * 100) : null,
-    measurementState: total ? 'measured' : 'unavailable',
+    successfulProviderAttempts: providerSuccessful,
+    citedSuccessfulProviderAttempts: providerCitedSuccessful,
+    shareOfVoice: providerSuccessful ? Math.round((providerCitedSuccessful / providerSuccessful) * 100) : null,
+    measurementState: providerSuccessful ? 'measured' : 'unavailable',
     engine,
     selected,
     remediations,
+  }
+}
+
+const P11_REPORTING_ROW_LIMIT = 5000
+
+async function exactVisibilityCount(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  contractVersion?: string,
+): Promise<number | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = supabase.from('seo_llm_visibility').select('id', { count: 'exact', head: true }).eq('fan_out', false)
+    if (contractVersion) query = query.eq('audit_contract_version', contractVersion)
+    const { count } = await query
+    return typeof count === 'number' ? count : null
+  } catch {
+    return null
   }
 }
 
@@ -763,79 +1124,95 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
   attempted: number
   failed: number
   byStage: Record<string, number>
+  reporting: P11VisibilityReporting
+  reportingTruncated: boolean
   remediations: import('./citationRemediation').CitationRemediation[]
 }> {
+  const emptyReporting = aggregateP11VisibilityReport([], { legacyRows: 0, authoritativeOwnerCount: 0 })
   try {
     const supabase = createSupabaseAdminClient()
-    // Base feed = prompt-audit bank only. Fan-out sub-query audits are a
-    // different population (they roll into the recent-50 window daily and
-    // would silently change what the headline share-of-voice means); they
-    // surface separately via loadVisibilityByCluster on the same GET.
-    const { data } = await supabase
-      .from('seo_llm_visibility')
-      .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,fan_out,cluster_id,source_field,competitor_domains,answer_format,confidence,flags,share_of_voice,top_competitor,competitor_share,created_at')
-      .eq('fan_out', false)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-    const rows = (data as Array<Record<string, unknown>>) || []
-    // Exclude audit_failed rows from read-side SoV (engine outage ≠ non-citation).
-    const measuredRows = rows.filter((row) => !isFailedVisibilityRow(row))
-    const cited = measuredRows.filter((r) => r.cited).length
+    const [{ data, error }, totalRows, p11RowsExact, registryRows] = await Promise.all([
+      supabase
+        .from('seo_llm_visibility')
+        .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,fan_out,competitor_domains,answer_format,confidence,flags,share_of_voice,top_competitor,competitor_share,created_at,audit_contract_version,ownership_row_id,authoritative_owner_url,audit_status,failure_reason,citation_extraction_status,raw_cited_urls,normalized_cited_urls,citation_classifications,competitor_cited_urls,coverage')
+        .eq('fan_out', false)
+        .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
+        .order('created_at', { ascending: false })
+        .limit(P11_REPORTING_ROW_LIMIT),
+      exactVisibilityCount(supabase),
+      exactVisibilityCount(supabase, P11_AUDIT_CONTRACT_VERSION),
+      listRegistry().catch(() => [] as OwnershipRow[]),
+    ])
+    if (error) throw error
+    const rows = ((data as Array<Record<string, unknown>>) || [])
+    const legacyRows = totalRows == null || p11RowsExact == null ? 0 : Math.max(0, totalRows - p11RowsExact)
+    const authoritativeOwnerCount = registryRows.filter(isAuthoritativeOwnershipRow).length
+    const reporting = aggregateP11VisibilityReport(rows as P11VisibilityReportRow[], {
+      legacyRows,
+      authoritativeOwnerCount,
+    })
+    const measuredRows = rows.filter((row) => coverageCount(row.coverage, 'successful') > 0)
     const byStage: Record<string, number> = {}
-    for (const r of measuredRows) {
-      const s = String(r.stage || 'untagged')
-      byStage[s] = (byStage[s] || 0) + 1
-      // Deterministic, prioritized fixes derived from the stored evidence —
-      // so the audit trail shows WHAT to do about a low share-of-voice, not
-      // just that it is low.
-      const sov = r.share_of_voice == null ? Number.NaN : Number(r.share_of_voice)
-      ;(r as Record<string, unknown>).actions = buildCitationActions({
-        shareOfVoice: Number.isFinite(sov) ? sov : r.cited ? 1 : 0,
-        topCompetitorDomain: r.top_competitor ? String(r.top_competitor) : null,
-        competitorShare: Number(r.competitor_share),
-        cited: Boolean(r.cited),
-        stage: r.stage ? String(r.stage) : null,
-        country: r.country ? String(r.country) : null,
+    for (const row of measuredRows) {
+      const stage = String(row.stage || 'untagged')
+      byStage[stage] = (byStage[stage] || 0) + 1
+      const sov = row.share_of_voice == null ? Number.NaN : Number(row.share_of_voice)
+      row.actions = buildCitationActions({
+        shareOfVoice: Number.isFinite(sov) ? sov : 0,
+        topCompetitorDomain: row.top_competitor ? String(row.top_competitor) : null,
+        competitorShare: Number(row.competitor_share),
+        cited: Boolean(row.cited),
+        stage: row.stage ? String(row.stage) : null,
+        country: row.country ? String(row.country) : null,
       })
     }
     let remediations: import('./citationRemediation').CitationRemediation[] = []
     try {
       const { remediateVisibilityAudits } = await import('./citationRemediation')
-      remediations = await remediateVisibilityAudits(measuredRows.map((r) => ({
-        id: r.id ? String(r.id) : null,
-        query: String(r.query || ''),
-        cited: Boolean(r.cited),
-        shareOfVoice: r.share_of_voice == null ? (r.cited ? 1 : 0) : Number(r.share_of_voice),
-        topCompetitor: r.top_competitor ? String(r.top_competitor) : null,
-        competitorShare: Number(r.competitor_share),
-        stage: r.stage ? String(r.stage) : null,
-        country: r.country ? String(r.country) : null,
-        actions: Array.isArray(r.actions) ? r.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
+      remediations = await remediateVisibilityAudits(measuredRows.map((row) => ({
+        id: row.id ? String(row.id) : null,
+        query: String(row.query || ''),
+        cited: Boolean(row.cited),
+        shareOfVoice: row.share_of_voice == null ? 0 : Number(row.share_of_voice),
+        topCompetitor: row.top_competitor ? String(row.top_competitor) : null,
+        competitorShare: Number(row.competitor_share),
+        stage: row.stage ? String(row.stage) : null,
+        country: row.country ? String(row.country) : null,
+        actions: Array.isArray(row.actions) ? row.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
+        authoritativeOwnerUrl: row.authoritative_owner_url ? String(row.authoritative_owner_url) : null,
+        ownershipRowId: Number(row.ownership_row_id) || null,
+        competitorCitedUrls: Array.isArray(row.competitor_cited_urls) ? row.competitor_cited_urls.map(String) : [],
+        citationClassifications: Array.isArray(row.citation_classifications)
+          ? row.citation_classifications as import('./citationRemediation').CitationClassificationEvidence[]
+          : [],
       })))
       const byQuery = new Map(remediations.map((item) => [item.query.toLowerCase(), item]))
-      for (const r of measuredRows) {
-        const hit = byQuery.get(String(r.query || '').toLowerCase())
-        if (hit) (r as Record<string, unknown>).remediation = hit
+      for (const row of measuredRows) {
+        const hit = byQuery.get(String(row.query || '').toLowerCase())
+        if (hit) row.remediation = hit
       }
     } catch {
       remediations = []
     }
-    const total = measuredRows.length
-    const attempted = rows.length
-    const failed = attempted - total
     return {
-      audits: rows,
-      shareOfVoice: total ? Math.round((cited / total) * 100) : null,
-      measurementState: total ? 'measured' : 'unavailable',
-      cited,
-      total,
-      attempted,
-      failed,
+      audits: rows.slice(0, Math.max(1, limit)),
+      shareOfVoice: reporting.shareOfVoice,
+      measurementState: reporting.measurementState,
+      cited: reporting.citedSuccessful,
+      total: reporting.successful,
+      attempted: reporting.attempted,
+      failed: Math.max(0, reporting.attempted - reporting.successful),
       byStage,
+      reporting,
+      reportingTruncated: rows.length >= P11_REPORTING_ROW_LIMIT && (p11RowsExact == null || p11RowsExact > rows.length),
       remediations,
     }
   } catch {
-    return { audits: [], shareOfVoice: null, measurementState: 'unavailable', cited: 0, total: 0, attempted: 0, failed: 0, byStage: {}, remediations: [] }
+    return {
+      audits: [], shareOfVoice: null, measurementState: 'unavailable', cited: 0, total: 0,
+      attempted: 0, failed: 0, byStage: {}, reporting: emptyReporting,
+      reportingTruncated: false, remediations: [],
+    }
   }
 }
 
@@ -852,56 +1229,36 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_llm_visibility')
-      .select('query,cited,share_of_voice,top_competitor,competitor_share,flags,engines_json')
+      .select('query,audit_contract_version,audit_status,coverage,top_competitor,competitor_share,created_at')
+      .eq('fan_out', false)
+      .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
       .order('created_at', { ascending: false })
       .limit(200)
-    const rows = ((data as Array<Record<string, unknown>>) || []).filter((row) => !isFailedVisibilityRow(row))
-    // The daily cron re-audits the same canonical queries, so a single prompt
-    // accumulates one row per run (currently 14 copies each). Dedupe by
-    // normalized query, preferring the newest row (the DESC order already
-    // surfaces it first), so `total` means distinct topics — not 14 copies of
-    // the same prompt inflating the denominator.
-    const seen = new Set<string>()
-    const matches: Array<Record<string, unknown>> = []
-    for (const r of rows) {
-      const q = normalizeAuditQuery(String(r.query || ''))
-      if (!q || !(q === normalized || q.includes(normalized) || normalized.includes(q))) continue
-      if (seen.has(q)) continue
-      seen.add(q)
-      matches.push(r)
+    const rows = (data as Array<Record<string, unknown>>) || []
+
+    // Ranking evidence is intentionally exact-topic and latest-observation only.
+    // Legacy rows, fuzzy query overlaps, and an older successful run must never
+    // override a newer unavailable P11 observation.
+    const latest = rows.find((row) => normalizeAuditQuery(String(row.query || '')) === normalized)
+    if (!latest) return null
+
+    const successful = coverageCount(latest.coverage, 'successful')
+    if (successful <= 0 || latest.audit_status !== 'success') return null
+    const citedSuccessful = Math.min(successful, coverageCount(latest.coverage, 'citedSuccessful'))
+    const shareOfVoice = citedSuccessful / successful
+    const topCompetitorDomain = String(latest.top_competitor || '').trim() || null
+    const competitorShareRaw = Number(latest.competitor_share)
+    const competitorShare = topCompetitorDomain && Number.isFinite(competitorShareRaw)
+      ? competitorShareRaw
+      : null
+
+    return {
+      cited: citedSuccessful,
+      total: successful,
+      shareOfVoice,
+      topCompetitorDomain,
+      competitorShare,
     }
-    if (!matches.length) return null
-    const cited = matches.filter((r) => r.cited).length
-    const total = matches.length
-    // Prefer the stored per-row share. Legacy measured rows predating the v3
-    // column fall back to their cited boolean; unavailable rows were removed
-    // before de-duplication and never participate here.
-    const sovs = matches.map((r) => {
-      if (r.share_of_voice == null) return r.cited ? 1 : 0
-      const n = Number(r.share_of_voice)
-      return Number.isFinite(n) ? n : (r.cited ? 1 : 0)
-    })
-    const shareOfVoice = sovs.length ? sovs.reduce((a, b) => a + b, 0) / sovs.length : null
-    const compCounts = new Map<string, { n: number; share: number }>()
-    for (const r of matches) {
-      const d = String(r.top_competitor || '').trim()
-      if (!d) continue
-      const cur = compCounts.get(d) || { n: 0, share: 0 }
-      cur.n += 1
-      const cs = Number(r.competitor_share)
-      cur.share += Number.isFinite(cs) ? cs : 0
-      compCounts.set(d, cur)
-    }
-    let topCompetitorDomain: string | null = null
-    let competitorShare: number | null = null
-    for (const [d, v] of compCounts) {
-      const share = v.n ? v.share / v.n : 0
-      if (topCompetitorDomain == null || v.n > (compCounts.get(topCompetitorDomain)?.n ?? 0)) {
-        topCompetitorDomain = d
-        competitorShare = share
-      }
-    }
-    return { cited, total, shareOfVoice, topCompetitorDomain, competitorShare }
   } catch {
     return null
   }

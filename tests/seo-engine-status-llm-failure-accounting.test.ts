@@ -114,7 +114,7 @@ describe('GET /api/seo-engine/status — failed prompt audit accounting', () => 
     }))
   })
 
-  it('falls back to measured all-row history only when there have been no prompt attempts at all', async () => {
+  it('does not fall back to legacy all-row history when no P11 prompt attempts exist', async () => {
     promptAttempts = 0
     const res = await GET()
     const body = await res.json() as {
@@ -122,10 +122,10 @@ describe('GET /api/seo-engine/status — failed prompt audit accounting', () => 
     }
 
     expect(body.llmVisibility).toEqual(expect.objectContaining({
-      total: 4,
-      cited: 2,
-      shareOfVoice: 50,
-      measurementState: 'measured',
+      total: 0,
+      cited: 0,
+      shareOfVoice: null,
+      measurementState: 'unavailable',
     }))
   })
 })
