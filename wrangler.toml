@@ -8,6 +8,11 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 minify = true
 
+# Required runtime secrets. Values are never committed to this file; Wrangler
+# only validates that the named secret binding exists for the Worker.
+[secrets]
+required = ["CLERK_JWT_KEY"]
+
 # ── CPU & Subrequest Limits ─────────────────────────────────────────────
 # This Worker currently deploys on the Cloudflare Workers Free plan. Do NOT
 # activate a [limits] block here: Cloudflare rejects paid-only CPU limits on
