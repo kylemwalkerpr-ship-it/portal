@@ -19,7 +19,7 @@ const from = jest.fn(() => ({ select }))
 const createSupabaseAdminClient = jest.fn(() => ({ from }))
 
 jest.mock('@/lib/auth', () => ({ getClerkUserId }))
-jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient }))
+jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient, getSupabaseAdminClient: createSupabaseAdminClient }))
 jest.mock('@clerk/nextjs/server', () => ({ clerkClient }))
 
 import { requirePortalUser } from '@/lib/portalAuth'

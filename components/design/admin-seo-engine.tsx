@@ -476,6 +476,9 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
             if (snap.source === 'live') {
               return <span title={`Live Search Console (${snap.mode || 'gsc'}) ${snap.siteUrl || ''}`} style={{ padding: '4px 10px', borderRadius: 999, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 GSC live{snap.mode ? ` · ${snap.mode}` : ''}</span>
             }
+            if (snap.source === 'configured') {
+              return <span title={`Search Console credentials configured but not probed (${snap.mode || 'gsc'}) ${snap.siteUrl || ''}`} style={{ padding: '4px 10px', borderRadius: 999, background: C.goldSoft, border: `1px solid ${C.goldBorder}`, color: '#8a5a00', fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 GSC configured · unverified</span>
+            }
             if ((snap.stale && (snap.generatedAt == null || snap.ageDays == null)) || snap.ageDays == null || snap.ageDays < 0) {
               return <span title="No GSC snapshot available — the engine only plans on live demand" style={{ padding: '4px 10px', borderRadius: 999, background: C.surface2, border: `1px solid ${C.border2}`, color: C.textMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>🗃 no snapshot</span>
             }

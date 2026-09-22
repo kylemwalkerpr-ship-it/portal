@@ -339,6 +339,9 @@ export function StudioLiveDesk({
                 </span>
               )
             }
+            if (snap.source === 'configured') {
+              return <span title={`Search Console credentials configured but not probed (${snap.mode || 'gsc'}) ${snap.siteUrl || ''}`} style={{ padding: '3px 9px', borderRadius: 999, background: E.goldSoft, color: '#7a5200', fontWeight: 800 }}>🗃 GSC configured · unverified</span>
+            }
             if (!snap.ageDays || snap.ageDays < 0) {
               return <span style={{ padding: '3px 9px', borderRadius: 999, background: E.hairline, color: E.inkMuted }}>🗃 no snapshot</span>
             }

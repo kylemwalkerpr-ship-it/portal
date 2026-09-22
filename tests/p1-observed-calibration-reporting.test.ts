@@ -8,7 +8,10 @@ jest.mock('next/server', () => ({
 }))
 
 jest.mock('@/lib/portalAuth', () => ({
-  requireAdminUser: jest.fn(async () => ({ user: { id: 'admin' } })),
+  requireAdminUser: jest.fn(async () => ({
+    user: { id: 'admin' },
+    db: { from: (table: string) => queryFor(table) },
+  })),
 }))
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }))
@@ -72,7 +75,7 @@ describe('P1 observed calibration reporting', () => {
   })
 
   it('never presents a newer legacy forecast calibration as the current model calibration', async () => {
-    const res = await GET(new Request('https://portal.example/api/content-studio/model-calibration'))
+    const res = await GET(new Request('https://portal.example/api/content-studio/model-calibration') as any)
     expect(res.status).toBe(200)
     const body = await res.json()
 

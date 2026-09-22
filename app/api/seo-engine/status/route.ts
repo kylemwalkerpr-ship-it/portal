@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { createSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
+import { getSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
 import { hydrateGateFromJobScores } from '@/lib/seoEngine/gate'
-import { loadVisibilityFeed } from '@/lib/seoEngine/llmVisibility'
+import { loadVisibilityStatusSummary } from '@/lib/seoEngine/llmVisibility'
 
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' }
 
-type Admin = ReturnType<typeof createSupabaseAdminClient>
+type Admin = ReturnType<typeof getSupabaseAdminClient>
 
 async function countExact(
   supabase: Admin,
@@ -52,15 +53,18 @@ async function latestRow(
  * Live desk health: exact table counts (not list-window lengths) plus the
  * newest row on each engine table so the studio can show last-movement age.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAdminUser()
+    // Request-aware Clerk resolution (getAuth(NextRequest)) — parity with PR
+    // #281's unread fix, applied here because this handler always receives a
+    // real NextRequest. Same verified Clerk context, less per-request CPU.
+    const auth = await requireAdminUser(req)
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: NO_STORE })
 
-    const supabase = createSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
     const [
       cells, knowledge, plans, runs, config,
-      linksPlanned, linksApplied, rankCount, llmFeed,
+      linksPlanned, linksApplied, rankCount, llmSummary,
       gateTotal, gatePassed, recentGates, jobsScored, jobsPassed,
       ranking,
       latestKnowledge, latestPlan, latestLink, latestGate,
@@ -73,9 +77,11 @@ export async function GET() {
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'planned')),
       countExact(supabase, 'seo_interlinks', (q) => q.eq('status', 'applied')),
       countExact(supabase, 'seo_ranking_scores'),
-      // P11 is the canonical GEO headline. Legacy rows stay visible only via
-      // llmFeed.reporting.legacyRows and never substitute into this denominator.
-      loadVisibilityFeed(50),
+      // P11 is the canonical GEO headline. The status render needs only the
+      // reporting aggregates, not the deep visibility/remediation pipeline
+      // (which fetches up to 5000 wide rows + runs the remediation generator).
+      // Deep computation stays in /api/seo-engine/llm-visibility.
+      loadVisibilityStatusSummary(),
       countExact(supabase, 'seo_gate_runs'),
       countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
       supabase.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20),
@@ -90,7 +96,7 @@ export async function GET() {
 
     const gateRows = ((recentGates.data as Array<{ score?: number; passed?: boolean }>) || [])
     const gateScores = gateRows.map((r) => Number(r.score) || 0)
-    const latestLlm = llmFeed.audits[0] ?? null
+    const latestLlm = llmSummary.latest
 
     return NextResponse.json({
       ok: true,
@@ -113,16 +119,19 @@ export async function GET() {
         latestAt: latestLink ? String(latestLink.created_at || '') : null,
       },
       llmVisibility: {
-        total: llmFeed.total,
-        cited: llmFeed.cited,
-        attempted: llmFeed.attempted,
-        failed: llmFeed.failed,
-        shareOfVoice: llmFeed.shareOfVoice,
-        measurementState: llmFeed.measurementState,
-        reporting: llmFeed.reporting,
-        reportingTruncated: llmFeed.reportingTruncated,
+        total: llmSummary.total,
+        cited: llmSummary.cited,
+        attempted: llmSummary.attempted,
+        failed: llmSummary.failed,
+        shareOfVoice: llmSummary.shareOfVoice,
+        measurementState: llmSummary.measurementState,
+        reporting: llmSummary.reporting,
+        reportingTruncated: llmSummary.reportingTruncated,
         latestQuery: latestLlm ? String(latestLlm.query || '') : null,
-        latestAt: latestLlm ? String(latestLlm.created_at || '') : null,
+        latestAt: latestLlm ? String(latestLlm.createdAt || '') : null,
+        // Backward-compatible marker: this status response is built from the
+        // summary path, not the deep loadVisibilityFeed pipeline.
+        summaryMode: llmSummary.summaryMode,
       },
       rankingModel: {
         computed: rankCount,
@@ -148,7 +157,10 @@ export async function GET() {
       })(),
       // Demand-data health — snapshots are the planner's fallback feed; the
       // operator must always SEE when demand is snapshot-derived and how old.
-      demandSnapshot: await (await import('@/lib/seoEngine/demandHealth')).resolveDemandHealth(),
+      // Status only needs the persisted/configured GSC health signal. A live
+      // probe here would refresh OAuth or mint a service-account token on every
+      // polling request; data-fetching routes own the live probe.
+      demandSnapshot: await (await import('@/lib/seoEngine/demandHealth')).resolveDemandHealth({ probeLive: false }),
       runs: runs as Array<Record<string, unknown>>,
       specCoverage: reportSpecCoverage(),
       ahrefs: await import('@/lib/seoEngine/ahrefsAudit').then((m) => m.loadLatestAhrefsSnapshot()).catch(() => null),

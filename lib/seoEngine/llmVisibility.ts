@@ -31,7 +31,7 @@
  * The audit uses the same AI cascade as content generation (contentAiProvider).
  */
 
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { createSupabaseAdminClient, getSupabaseAdminClient } from '@/lib/supabase'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { isAuthoritativeOwnershipRow, listRegistry, type OwnershipRow } from '@/lib/seoFactory/ownership'
 import {
@@ -120,7 +120,7 @@ export async function assembleAuditQueryPool(limit: number): Promise<{
     return { queries: picked.map((p) => p.query), picked }
   }
   try {
-  const supabase = createSupabaseAdminClient()
+  const supabase = getSupabaseAdminClient()
   const [plansDash, knowledge, priorRes] = await Promise.all([
     loadPlansDashboard(24).catch(() => ({ plans: [] as Array<Record<string, unknown>> })),
     loadKnowledgeFeed(24).catch(() => ({ items: [] as Array<Record<string, unknown>> })),
@@ -1006,7 +1006,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     const flags = persistenceFlags(result)
     const successfulEngines = result.engines.filter((attempt) => attempt.ok && (attempt.status == null || attempt.status === 'success'))
     try {
-      const supabase = createSupabaseAdminClient()
+      const supabase = getSupabaseAdminClient()
       await supabase.from('seo_llm_visibility').insert({
         query: result.query,
         engine: result.engine,
@@ -1130,7 +1130,7 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
 }> {
   const emptyReporting = aggregateP11VisibilityReport([], { legacyRows: 0, authoritativeOwnerCount: 0 })
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
     const [{ data, error }, totalRows, p11RowsExact, registryRows] = await Promise.all([
       supabase
         .from('seo_llm_visibility')
@@ -1217,6 +1217,101 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
 }
 
 /**
+ * Narrow column set for the status summary: only what
+ * `aggregateP11VisibilityReport` consumes. Deliberately EXCLUDES the deep-feed
+ * columns (snippet, cited_urls, brand_mentions, citation_classifications,
+ * competitor arrays, actions) so a health/status render never pays to transfer
+ * and re-shape thousands of wide rows.
+ */
+const P11_STATUS_SUMMARY_COLUMNS = 'audit_contract_version,ownership_row_id,coverage'
+
+export interface VisibilityStatusSummary {
+  /** Aggregates over successful provider attempts — the P11 headline numbers. */
+  cited: number
+  total: number
+  attempted: number
+  failed: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
+  reporting: P11VisibilityReporting
+  reportingTruncated: boolean
+  /** Newest audited query, for the status card's latestQuery/latestAt fields. */
+  latest: { query: string; createdAt: string } | null
+  /** True: produced by this summary path, not the deep loadVisibilityFeed pipeline. */
+  summaryMode: true
+}
+
+/**
+ * Status-summary read for /api/seo-engine/status (and any other health surface).
+ *
+ * Splits the cheap status work from the deep visibility/remediation computation
+ * in `loadVisibilityFeed`: no wide-row fetch (narrow columns only), no per-row
+ * citation actions, no remediation generator, no audits slice. The `reporting`
+ * aggregate is computed by the same `aggregateP11VisibilityReport` so the two
+ * paths cannot drift in what they report.
+ */
+export async function loadVisibilityStatusSummary(): Promise<VisibilityStatusSummary> {
+  const emptyReporting = aggregateP11VisibilityReport([], { legacyRows: 0, authoritativeOwnerCount: 0 })
+  try {
+    const supabase = getSupabaseAdminClient()
+    // One narrow row replaces the deep feed's audits[0] headline read.
+    const latestPromise = (supabase
+      .from('seo_llm_visibility')
+      .select('query,created_at')
+      .eq('fan_out', false)
+      .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
+      .order('created_at', { ascending: false })
+      .limit(1) as unknown as Promise<{ data: Array<Record<string, unknown>> | null; error: unknown }>).catch(
+      () => ({ data: null, error: null }),
+    )
+    const [dataResult, totalRows, p11RowsExact, registryRows, latestRes] = await Promise.all([
+      supabase
+        .from('seo_llm_visibility')
+        .select(P11_STATUS_SUMMARY_COLUMNS)
+        .eq('fan_out', false)
+        .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
+        .order('created_at', { ascending: false })
+        .limit(P11_REPORTING_ROW_LIMIT),
+      exactVisibilityCount(supabase),
+      exactVisibilityCount(supabase, P11_AUDIT_CONTRACT_VERSION),
+      listRegistry().catch(() => [] as OwnershipRow[]),
+      latestPromise,
+    ])
+    const { data, error } = dataResult as { data: Array<Record<string, unknown>> | null; error: { message: string } | null }
+    if (error) throw error
+    const rows = (data as Array<Record<string, unknown>>) || []
+    const legacyRows = totalRows == null || p11RowsExact == null ? 0 : Math.max(0, totalRows - p11RowsExact)
+    const authoritativeOwnerCount = registryRows.filter(isAuthoritativeOwnershipRow).length
+    const reporting = aggregateP11VisibilityReport(rows as P11VisibilityReportRow[], {
+      legacyRows,
+      authoritativeOwnerCount,
+    })
+    const latestRows = (((latestRes as { data?: Array<Record<string, unknown>> } | null)?.data) || []) as Array<Record<string, unknown>>
+    const latestRow0 = latestRows[0] ?? null
+    return {
+      cited: reporting.citedSuccessful,
+      total: reporting.successful,
+      attempted: reporting.attempted,
+      failed: Math.max(0, reporting.attempted - reporting.successful),
+      shareOfVoice: reporting.shareOfVoice,
+      measurementState: reporting.measurementState,
+      reporting,
+      reportingTruncated: rows.length >= P11_REPORTING_ROW_LIMIT && (p11RowsExact == null || p11RowsExact > rows.length),
+      latest: latestRow0
+        ? { query: String(latestRow0.query || ''), createdAt: String(latestRow0.created_at || '') }
+        : null,
+      summaryMode: true,
+    }
+  } catch {
+    return {
+      cited: 0, total: 0, attempted: 0, failed: 0,
+      shareOfVoice: null, measurementState: 'unavailable',
+      reporting: emptyReporting, reportingTruncated: false, latest: null, summaryMode: true,
+    }
+  }
+}
+
+/**
  * Load measured LLM share-of-voice evidence for a topic/term (best-effort
  * match against audited queries). Feeds scoreMaster's `g_share_of_voice`
  * signal + the competitive-delta recommendation.
@@ -1226,7 +1321,7 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
   const normalized = normalizeAuditQuery(term)
   if (normalized.length < 3) return null
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_llm_visibility')
       .select('query,audit_contract_version,audit_status,coverage,top_competitor,competitor_share,created_at')
@@ -1372,7 +1467,7 @@ export async function runFanOutVisibilityAudits(opts: {
 
     const audits: VisibilityAuditResult[] = []
     const byCluster: Record<string, { cited: number; total: number }> = {}
-    const supabase = createSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
     for (const fq of queries) {
       const result = await auditQuery(fq.query, engine)
       audits.push(result)
@@ -1441,7 +1536,7 @@ export async function runFanOutVisibilityAudits(opts: {
  */
 export async function loadVisibilityByCluster(perCluster = 12, maxClusters = 50): Promise<Record<string, { cited: number; total: number }>> {
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
     const { data: clusters } = await supabase
       .from('seo_llm_visibility')
       .select('cluster_id,flags,engines_json')

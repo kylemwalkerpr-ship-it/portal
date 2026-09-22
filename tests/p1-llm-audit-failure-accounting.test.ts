@@ -21,6 +21,7 @@ jest.mock('@/lib/contentAiRegistry', () => ({
 }))
 
 jest.mock('@/lib/supabase', () => ({
+  getSupabaseAdminClient: () => mockCreateSupabaseAdminClient(),
   createSupabaseAdminClient: () => mockCreateSupabaseAdminClient(),
 }))
 
