@@ -4,7 +4,7 @@ Append-only supervisor record for the program defined in `docs/superpowers/specs
 
 Do not rewrite prior evidence to make a later state look cleaner. Add a new dated entry when facts change.
 
-> **Latest status (2026-09-21):** P6 Internal authority execution is **PASS** on the documented `verified applied OR explicitly rejected/stale` gate: canonical production accounting is **59/73 resolved = 80.8219%** at threshold 80%, with **0 verified-applied**, **59 allowlisted explicit source-stale rejections**, `unknown=0`, and a complete non-truncated report. Production is **1,553 rejected / 346 planned / 0 applied** of 1,899 rows; no source/job/verification/applied proof was fabricated. P7 remains **PASS**. P8-P13 remain PENDING and broad net-new CREATE stays frozen until P13. Earlier P6 0/73 entries below are preserved as append-only history and superseded for current state.
+> **Latest status (2026-09-22):** P6 Internal authority execution is **PASS** on the documented `verified applied OR explicitly rejected/stale` gate: canonical production accounting is **59/73 resolved = 80.8219%** at threshold 80%, with **0 verified-applied**, **59 allowlisted explicit source-stale rejections**, `unknown=0`, and a complete non-truncated report. Production is **1,553 rejected / 346 planned / 0 applied** of 1,899 rows; no source/job/verification/applied proof was fabricated. P7 remains **PASS**. **P8 Trust / E-E-A-T is production-closed PASS** across public YouSafe, Caseworks and Portal; P9-P13 remain PENDING and P9 is the next scheduling pointer. Broad net-new CREATE stays frozen until P13. Earlier P6 0/73 entries below are preserved as append-only history and superseded for current state.
 
 ## 2026-09-15 — Control-plane resume / parity recon
 
@@ -1163,3 +1163,33 @@ The current P6 contract treats planner `source_slug` as a locator, not source UR
 **Internal-authority condition.** Fresh retained crawl evidence confirms the three strategic Marketplace category canonicals are live HTTP 200 and already have multiple relevant inbound links: immigration **20**, study-permits **875**, work-permits **17**. No broad CREATE was required.
 
 **Residuals and program state.** **14/73** live-target cohort rows remain unresolved and **332** legacy Portal auth-wall rows remain planned/outside the approved-live cohort; neither group is called applied. Earlier same-day 0/73 / BLOCKED P6 entries are retained below as historical checkpoints and are superseded for current state by this entry. P6 is **PASS**. P7 remains **PASS**. P8-P13 remain PENDING. Broad net-new CREATE remains frozen until P13.
+
+
+---
+
+## 2026-09-22 — P8 Trust / E-E-A-T production closeout — PASS
+
+**Program state:** P8 is production-closed **PASS**. P9 External authority is next in sequence but remains **PENDING** until explicitly started. Broad net-new CREATE remains frozen until P13.
+
+### Release evidence
+- Public trust foundation PR #192 merged as `7c58f2d88a916dc0784d0082818ceadda8a52eac`; it completed the DeepSeek → Grok REVISE → repair → Grok APPROVE → Sol release sequence.
+- Public residual blog-date PR #193 merged as `6c060e58ebd1c98818b65a97c9bf01cd449d99c2`; Check Blog Heading Typography and Deploy Landing Page both succeeded. Unknown blog dates now omit visible time, OpenGraph publication time and sitemap lastmod rather than synthesizing freshness.
+- Caseworks PR #156 exact head `06edeffdb228c8b1dff3164b664df089b7a74fc5` merged as `5b4ca2305156d878ba9801920160dfab579ed461`; Deploy Caseworks Worker, Content quality gate and SEO integrity gate succeeded. Optional author-review/date contracts preserve known values and omit unknown ones.
+- Portal canonical closeout PR #272 exact head `24431ec34dde64e8f41342cfc4b4fb13ee5a664e`, tree `9aae63932df0bfe9211c941677ea8b709e15a650`, merged as `48556c1718c37aa8664439651879896366f36742`. Duplicate PR #271 was closed without merge after proving an identical tree.
+- Portal local gate: 19/19 suites PASS, 337/337 tests PASS, TypeScript PASS, `git diff --check` PASS.
+- Portal exact-head CI: Content Studio Review SUCCESS; Deploy YouSafe Portal PR-context SUCCESS through Typecheck, Unit tests, Next/OpenNext build, static-cache population, market-root payload budget and SEO audit guard.
+- Portal exact-main production run `35670874847` SUCCESS through Cloudflare deployment, Worker secrets-health and post-deploy studio/build-freshness smoke.
+
+### Closed trust invariants
+- Author/reviewer surfaces do not manufacture self-review or reviewer events.
+- Render/build time is not publication, modification or review time; unknown dates remain absent.
+- `shipReady` and editorial verdicts bind to exact content bytes; changed/repair-mutated content invalidates stale verdicts until re-audit.
+- Save, reaudit and manual-publication paths fail closed on stale body evidence.
+- Renderer-added Caseworks external `SourceRef` URLs are re-extracted after render and pass through the existing authoritative live/retrieval audit before any Git write; blocker findings refuse ship.
+
+### Live acceptance and review exception
+- Opera live acceptance confirmed the authenticated Portal dashboard reports `SYSTEM OPERATIONAL`, the public blog loads, USA `/methodology/` exposes source hierarchy/corrections language, and the MyCaseworks estate renders normally.
+- Grok exact-head review of the residual public-blog, Caseworks and final Portal closeout could not run because the authenticated Grok Build account returned HTTP 402 usage balance exhausted. No Grok approval is claimed for those residual releases. Sol independent review plus exact-head CI and production/live acceptance were the release authority. Public PR #192 retains its earlier successful Grok exact-head approval.
+
+### Next
+P9 External authority is the next scheduling pointer. It is not started by this closeout and remains PENDING. CREATE remains frozen until P13.
