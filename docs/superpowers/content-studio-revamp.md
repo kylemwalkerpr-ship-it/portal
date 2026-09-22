@@ -2,14 +2,16 @@
 
 **NON-NORMATIVE. DO NOT IMPLEMENT FROM THIS FILE.**
 
-The former CS-2026.09.22.4 master architecture at this path has been superseded by **CS-2026.09.22.5**.
+The former master at this path is superseded by **CS-2026.09.22.6**.
 
-Canonical architecture:
+Canonical architecture: `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`.
 
-`docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`
+Implementation companion: `docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md`.
 
-The canonical v5 specification uses the approved **Alternative 2 strangler migration**: thin Cloudflare/OpenNext control and read plane, authoritative Supabase/Postgres state, Modal durable compute and artifact storage, Semantic Fabric, bounded Jev decisions, separate release authority, and evidence-gated selective retirement of legacy subsystems.
+Final audit: `docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md`.
 
-Historical v4 remains available through Git history. Do not copy schemas, interfaces, gates, semantic definitions, compute classes, or Jev policy from an older revision into implementation packets.
+Exact file digests: `docs/superpowers/specs/2026-09-22-content-studio-revamp-manifest.json`.
 
-Implementation remains blocked until the canonical v5 A0 exit criteria are satisfied.
+The canonical v6 specification retains Alternative 2 strangler migration: thin Cloudflare control/read plane, authoritative Postgres state, Modal compute/artifacts, Semantic Fabric, bounded Jev, isolated release and evidence-gated legacy retirement. Historical versions remain available through Git history; do not import superseded schemas or policy into implementation packets.
+
+**Design approved; implementation blocked.** Remaining canonical P0–P13 gates must close and Sol must open implementation before operational A0 begins. A0.1–A0.7 evidence then gates A1–A7. No phase advancement, broad CREATE, provider commissioning, migration, outreach, merge or deployment is authorized by these documents.

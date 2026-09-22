@@ -1,8 +1,10 @@
 # Content Studio Revamp — Master Architecture (Strangler Migration)
 
-**Version CS-2026.09.22.5** · Normative master design · **Implementation has NOT started**
+**Version CS-2026.09.22.6** · Normative master design · **Astra design audit: APPROVED; implementation remains BLOCKED**
 Owner: Kyle · Architecture and release authority: GPT Sol · Default heavy executor: DeepSeek through the existing ds bridge
-Supersedes for this subject: CS-2026.09.22.4 as published in `docs/superpowers/content-studio-revamp.md` (2,656 lines; contains two competing §27–§35 blocks and conflicting semantic interface definitions). That file must be reduced to a superseded pointer or archived in A0.1; until then this document and that file must never both be treated as normative. Earlier revisions (.1–.3) remain the historical record; their still-valid content is incorporated here and is not repeated.
+Supersedes CS-2026.09.22.5 at architecture branch head `8dfcbcd17c0afe381b2e5a47209131602b6c1770`, exact input SHA-256 `93d64ed33b40fa2e459b1d9f172e1cf8fb1b775bbdc404529713364766ee8e30`. Earlier revisions are historical. `docs/superpowers/content-studio-revamp.md` remains a non-normative pointer. This file is the sole normative architecture; the companion `docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md` translates it into implementation packets without independent policy authority. The audit record is `docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md`.
+
+Approval means the design corrections are accepted for the gated implementation sequence. It is not a claim that live capabilities, reviewer availability, phase outcomes, runtime safety or account budgets have passed. Sol retains implementation supervision and merge authority; DeepSeek executes through the existing bridge, with Grok only when granted and available.
 
 Changing this document is **not** implementation. Nothing here connects providers, creates accounts, provisions Modal, applies migrations, seeds data, installs MCPs, schedules jobs, publishes content, unlocks CREATE, performs outreach, merges code or deploys production. Implementation starts only through bounded Sol packets after the required A0 exits in §24.
 
@@ -36,10 +38,11 @@ The end-state architecture is a **strangler migration**: a thin Cloudflare/OpenN
 Current human authorization → repository `AGENTS.md` and approved design → Supervisor Arc v2026.09.21.1 → SEO Brief and the current repository parity matrix → this document. Conflicts block the affected action. This document does not amend phase thresholds and does not authorize broad CREATE, outreach, destructive action, merges or deployments by itself.
 
 ### 1.3 Current-state honesty (binding)
-- The program baseline read of `main` was snapshot `3d248afd09290a97250cb472152afaa57b2a0292` on 2026-09-22; the revision base for this document is worktree head `52f63a86cc01fb574f790321b2eb751a34ff0ff7`. Both are **dated evidence**. Re-pin `main`, the parity matrix and the P0–P13 state at implementation start, and treat any later change as superseding this text where it conflicts.
-- Program-state records are **dated evidence**, not standing truth. The earlier Hjarni SEO Brief snapshot recorded P0–P8 closed and P9–P13 pending; the independent repository audit of the frozen v4 branch later observed P9 as `IN_PROGRESS` with the P9 truth infrastructure present. Neither snapshot is promoted here. A0.2 MUST re-pin `main` and the canonical parity matrix before implementation, and any P9 statement is cited with its evidence date and state (`PENDING`/`IN_PROGRESS`/`PASS`) rather than silently normalized.
-- **Live Supabase project state, applied migration ledger, table sizes, extension versions, effective grants, Cloudflare account plan/limits/bindings, live Worker telemetry, Modal workspace state, Jev account access and all provider entitlements are A0_UNVERIFIED** until A0 records probe evidence (§24).
-- The Notion grade-5 roadmap describing P8 as NEXT is historical for this specification.
+- Audit source: v5 at `8dfcbcd17c0afe381b2e5a47209131602b6c1770`, hash above; Hjarni 34785 matched its exact bytes. This revision changes documentation only.
+- Current program evidence read on 2026-09-22: Portal `main` rechecked at `4b0a310f22a43e532c2f16ce08df3897d760caf4`, `docs/superpowers/seo-parity-matrix.md`, blob `0d2e1f5ed78adaf48334f87a21caa9a602e398cd`. **P0–P8 are recorded PASS; P9, P10 and P11 are IN_PROGRESS; P12–P13 are PENDING.** P11 implementation is in progress and does not claim the production/live-observation gate passed. P9 records zero independently verified backlink wins. P10 implementation/migration/deployment is recorded complete, but the program gate awaits a real production `order_paid` for `us_f1_opt`; the recorded production event count is zero. This is verification of repository records, not a new live production probe.
+- The incoming handoff's “P10 passed/closed; only P11–P13 remain” conflicts with that matrix and is not adopted. Hjarni SEO Brief 34332 still contains older P8/P9 checkpoints. Do not rewrite their historical evidence or silently advance phases. Re-pin the canonical matrix at execution start and resolve any new discrepancy before acting.
+- Architecture authoring/review is permitted now. Content Studio implementation, including operational A0 probes/provisioning, starts only after the remaining canonical SEO phase gates close and Sol opens the corresponding packet. A0 reconciliation exits then gate A1–A7. P13 completion is not a universal CREATE permit: each cluster and each action still requires explicit eligibility.
+- Live schema, effective privileges, extensions, account entitlements, reviewer capacity, billing, Cloudflare telemetry, and provider credentials remain **A0_UNVERIFIED**. Historical repository counts in §4 are dated v5 evidence, not a refreshed inventory.
 
 ### 1.4 Scope boundaries
 - Do not touch `MARKET-PORTAL-AUTH-HANDOFF-1102` or sibling jobs/worktrees; other lanes own them.
@@ -52,9 +55,11 @@ Current human authorization → repository `AGENTS.md` and approved design → S
 
 **Rule N2 — monotonic sequence.** The document has one monotonic section sequence (§1–§28). New material is added by versioned amendment to the correct existing section, never by appending a second block with a re-used number.
 
-**Rule N3 — canonical hashing.** Every hash in these interfaces is a lowercase 64-hex SHA-256 over the **same** canonical serialization used by the existing contract code. One serializer, one golden-fixture corpus. Node/TypeScript owns validation and canonical hashing until shared fixtures prove another implementation byte-identical; Python (Modal) transports opaque JSON and never invents its own canon. Cross-language hash drift is a release-blocking defect (test in §25).
+**Rule N3 — hash domains.** All digest values use lowercase 64-hex SHA-256, but their input domains differ. `contractHash`, `decisionStateHash`, policy/feature hashes and other structured-object hashes use the one existing, versioned Node/TypeScript canonical serializer; cross-language golden fixtures must prove byte parity before any second implementation is used. `artifactKey`, downloaded-object checksums and document file SHA-256 hash the **exact stored bytes**, without JSON serialization, newline rewriting or Unicode normalization. `bodyHash` and `renderHash` name separately registered byte/structured domains; A0 pins existing behavior and golden fixtures. Each stored digest records `hashDomain` and `serializerVersion` where applicable. No Python reserialization of a sealed contract.
 
-**Rule N4 — unknown discipline.** Every optional field may be `null` and every enumeration includes an explicit unknown/unavailable member. `null` is never coerced to `false`, `0`, "low risk" or "no action". A schema-valid object never carries permission; permission lives only in the policy kernel (§8) and release authority (§10).
+**Rule N4 — unknown discipline.** Nullable fields and unknown/unavailable states are explicit in each schema. Closed action/role/transition enums are not extended with an executable UNKNOWN action. Missing data remains null with a reason and health state; null is never false, zero, low risk or permission. Invalid enum/schema values are rejected.
+
+**Rule N5 — project identity.** Persist every object within a `Stored<T>` envelope: `projectId`, `objectId`, `objectVersion`, `schemaVersion`, `createdAt`, `sourceRunId|null`, `payload:T`, `payloadHash`, `hashDomain`, `serializerVersion|null`. Composite project/object foreign keys prevent cross-project references. Append-only facts/events are separate from CAS-updated current projections. Interface fields below are payload fields unless project scope is explicitly included.
 
 ### 2.1 Registry index
 
@@ -95,7 +100,7 @@ interface SemanticIdentity {
   legalSystem: string | null;
   entityIds: string[];                      // program, visa class, institution, service, product
   programOrPathwayId: string | null;
-  audienceId: string | null;                // audienceIds[] when composite
+  audienceId: string | null;                // one registry-backed audience; composite requires an explicit registered audience
   readerJobId: string | null;               // the reader's task, not the site's keyword
   journeyStage: "understand" | "assess" | "prepare" | "act" |
                 "apply" | "maintain" | "transition" | "settle" | "unknown";
@@ -137,6 +142,9 @@ interface SemanticFact {
   verification: "observed" | "reviewed" | "derived" | "model_candidate";
   extractorVersion: string | null;
   reviewerId: string | null;
+  recordedAt: string; supersedesFactId: string | null;
+  legalDatePrecision: "instant" | "date" | "unknown"; legalTimezone: string | null;
+  predicateVersion: string; supportFingerprint: string;
   factHash: string;
 }
 ```
@@ -205,55 +213,62 @@ There is **one** opportunity queue. Legacy `opportunityEngine`/`opportunityScore
 
 ### 2.6 `DecisionState`
 ```typescript
+type DecisionFamily = "D0_RELATION" | "D1_DIAGNOSIS" | "D2_INTERVENTION" | "D6_FUNNEL";
+type DecisionFeature = {
+  key: string; value: number | boolean | string | null;
+  status: "available" | "stale" | "partial" | "unavailable" | "not_applicable";
+  unit: string; definitionVersion: string; scopeHash: string;
+  windowStart: string | null; windowEnd: string | null;
+  observedAt: string | null; validUntil: string | null;
+  observationIds: string[]; reason: string | null;
+};
 interface DecisionState {
-  schemaVersion: string;
-  decisionTask: string;
-  subjectId: string;
-  semanticIdentityHash: string;
-  ownerId: string | null;
-  ownerVersion: string | null;
-  policyVersion: string;
-  featureSetVersion: string;
-  rubricVersion: string;
-  ontologyVersion: string;
-  eligibility: { action: string; eligible: boolean; reasonCodes: string[] }[];
-  semanticFeatures: {
-    lexicalOverlap: number | null; vectorSimilarity: number | null; rerankerScore: number | null;
-    entityOverlap: number | null; readerJobOverlap: number | null; claimOverlap: number | null;
-    informationGain: number | null; jurisdictionMatch: boolean | null; temporalMatch: boolean | null;
-  };
-  evidenceState: { completeness: string; freshness: string; contradictions: number; requiredReviewer: boolean };
-  outcomeFeatures: Record<string, number | string | null>;
-  allowedChoices: string[];                 // policy-derived; forbidden actions are absent, not down-weighted
-  inputArtifactHashes: string[];
+  schemaVersion: "studio.decision-state/2";
+  projectId: string; decisionTask: DecisionFamily; subjectId: string;
+  subjectVersion: number; estateSnapshotId: string; estateSnapshotHash: string;
+  semanticIdentityHash: string; ontologyVersion: string;
+  ownerId: string | null; ownerVersion: string | null; policyVersion: string;
+  eligibilityEvaluationId: string; eligibleSetHash: string;
+  featureSetId: string; featureSetVersion: string; rubricVersion: string;
+  semanticSpaceVersion: string | null; expectedModelVersion: string;
+  subjects: { id: string; revisionHash: string; jurisdiction: string | null;
+    readerJob: string | null; purpose: string | null; answerUnits: string[];
+    sourceRefs: string[] }[];
+  features: DecisionFeature[];
+  evidenceState: { completeness: "complete" | "partial" | "unknown";
+    freshness: "current" | "stale" | "unknown"; contradictions: number | null;
+    requiredReviewer: boolean | null; reasonCodes: string[] };
+  allowedChoices: string[]; outOfDistributionFlags: string[];
+  inputArtifactHashes: string[]; computedAt: string; validUntil: string;
 }
 ```
-Precondition: Modal has already compressed raw estate state into this bounded, reconciled form. Raw crawled pages are never sent when this state is sufficient.
+One immutable subject revision and task per state; D0 has exactly two named subjects, D6 one article plus at most five validated offers, D1/D2 one opportunity with compact owner context. Semantic text is bounded evidence data, not instructions. Feature values require independent scope/window/health provenance. Missing inputs required by the task cause abstention before a provider call. State is a projection of authoritative observations and derived feature artifacts; Modal cannot mint owner/policy truth.
 
 ### 2.7 `DecisionRecord`
 ```typescript
+type JevAnswer =
+  | { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number }
+  | { type: "score"; score: number; legend: Record<string, string>;
+      probabilities: Record<string, number>; confidence: number }
+  | { type: "noul"; noul: number };
 interface DecisionRecord {
-  decisionId: string;
-  decisionTask: string;
-  decisionStateHash: string;
-  inputArtifactHashes: string[];
-  provider: string;                         // e.g. typesafe
-  modelVersion: string;                     // actual returned version, not requested alias
-  rubricVersion: string;
-  ontologyVersion: string;
-  calibrationVersion: string;
-  distribution: { choice: string; probability: number }[];
-  nativeConfidence: number | null;          // never reinterpreted as accuracy
-  selectedOption: string | null;
-  abstained: boolean;
-  abstentionReasonCode: string | null;
-  policyResult: { eligible: boolean; reasonCodes: string[] };  // computed independently of the model
+  schemaVersion: "studio.decision-record/2";
+  decisionId: string; decisionTask: DecisionFamily; subjectId: string; subjectVersion: number;
+  decisionStateHash: string; inputArtifactHashes: string[]; eligibleSetHash: string;
+  provider: "typesafe"; requestedModelVersion: string; returnedModelVersion: string | null;
+  rubricVersion: string; ontologyVersion: string; featureSetVersion: string;
+  calibrationVersion: string | null; requestHash: string; responseArtifactKey: string | null;
+  providerOutcome: "ok" | "timeout" | "rate_limited" | "overloaded" | "auth_failed" |
+    "schema_failed" | "provider_failed" | "budget_blocked" | "not_called";
+  answer: JevAnswer | null; selectedOption: string | null;
+  abstained: boolean; abstentionReasonCode: string | null;
+  policyResult: { eligible: boolean; evaluationId: string | null; reasonCodes: string[] };
   mode: "shadow" | "advisory" | "bounded_assist" | "expanded_bounded";
-  createdAt: string;
-  supersededBy: string | null;
+  inputTokens: number | null; outputTokens: number | null; latencyMs: number | null;
+  createdAt: string; supersedesDecisionId: string | null;
 }
 ```
-No synthesized natural-language rationale is ever attributed to the model; explanations are generated from recorded reason codes and facts (§21).
+Failure records do not invent a returned model, distribution or calibration. Preserve raw typed answer without conversion between Choice/Score/Noul; v1 records remain readable. Only Choice is enabled for v6 action recommendations. Score/Noul adapters may be verified in shadow but require an independently approved family before operational use. Native confidence describes distribution concentration, not observed accuracy. No free-form model rationale is fabricated; UI explanations use stored features and rule reasons.
 
 ### 2.8 `InformationGainAssessment`
 ```typescript
@@ -265,7 +280,10 @@ interface InformationGainAssessment {
   alreadySatisfiedUnits: string[];
   genuinelyNewUnits: string[];
   unsupportedUnits: string[];
-  uniqueReaderJob: boolean;
+  proposedRevisionHash: string; identityVersion: string; coverageSnapshotHash: string;
+  comparedOwnerRevisions: { routeId: string; revisionHash: string }[];
+  comparisonCompleteness: "complete" | "partial" | "unknown";
+  uniqueReaderJob: "yes" | "no" | "unknown";
   estimatedGainState: "high" | "medium" | "low" | "none" | "unknown";
   evidenceIds: string[];
   analyzerVersion: string;
@@ -309,26 +327,22 @@ interface GateEvaluation {
 ### 2.11 `ReleasePermit`
 ```typescript
 interface ReleasePermit {
-  permitId: string;
-  action: string;
-  actorId: string;
-  runId: string;
-  targetAdapterId: string;
-  contractHash: string;
-  bodyHash: string;
-  renderHash: string;
-  ownershipVersion: string;
-  policyVersion: string;
-  expectedRepositoryBase: string;           // expected main/head SHA the PR must be based on
-  issuedAt: string;
-  expiresAt: string;                        // short TTL
+  schemaVersion: "studio.release-permit/2";
+  permitId: string; purpose: "PREPARE_PR" | "MERGE";
+  projectId: string; releaseId: string; actorId: string; runId: string;
+  authorityEpoch: number; targetAdapterId: string; repositoryId: string;
+  targetBranch: string; expectedRepositoryBase: string; candidateSha: string;
+  pullRequestNumber: number | null; requiredChecksDigest: string | null;
+  contractHash: string; bodyHash: string; renderHash: string; artifactHash: string;
+  markerHash: string; ownershipVersion: string; policyVersion: string;
+  sourceSnapshotHash: string; approvalIds: string[]; inputValidityHash: string;
+  issuedAt: string; expiresAt: string;
   state: "issued" | "consumed" | "expired" | "revoked";
-  consumedAt: string | null;
-  consumeTransactionId: string | null;
-  externalOperationIntentId: string | null; // recorded before dispatch
+  consumedAt: string | null; consumeTransactionId: string | null;
+  externalOperationIntentId: string | null;
 }
 ```
-Single-use and transactional. A hash detects change; it is not itself authorization.
+PREPARE_PR requires the immutable reviewed candidate and write scope; PR/check fields are null before they exist. MERGE is freshly issued after PR creation and exact-head CI; it requires PR identity, required-check digest, Sol authorization and a fresh policy/review/owner/source/base check. No permit includes future deployment/live proof as an issuance prerequisite. Two permits authorize two distinct operations; neither is reusable. Permits contain no bearer Git credentials. A consumed permit remains consumed after timeout, cancellation or rollback; reconciliation resumes its recorded operation or records a no-op/failed outcome, never consumes it again.
 
 ### 2.12 `PublicationProof`
 ```typescript
@@ -404,6 +418,8 @@ interface Reward {
   };
   maturity: "provisional" | "mature" | "confounded" | "insufficient_data" | "invalidated";
   attribution: { method: string; confidence: number | null; limitations: string[] };
+  dimensionObservationIds: Record<string, string[]>; // each dimension carries definition/unit/cohort/window via observations
+  correctionObservationIds: string[];
   policyVersion: string;
   computedAt: string;
 }
@@ -585,6 +601,11 @@ A0.2 produces one of two recorded outcomes, and the architecture must not procee
 - Run cards show last real event, stage, attempt, elapsed time, heartbeat age and retry state. A stale heartbeat shows "execution status needs reconciliation" — never a fabricated percentage or an endless "Working".
 - Admission control: per-user and global concurrency caps on commands; excess returns 429 with retry guidance instead of degrading reads.
 
+### 6.5.1 Request allowance and polling budget
+CPU safety is independent from daily request allowance. A0.2 records account-wide requests/day and other estate traffic. At 50 visible sessions for 8 hours, one request every 5 seconds is 288,000 requests/day before any other traffic; perpetual five-second polling is not a free-plan strategy. Use one cross-tab leader per signed-in project where supported, terminal-state stop, visibility pause, de-duplication and server `nextPollAfterMs`. Active-run cadence starts 5 s for the first 2 minutes, then 15 s and 30 s; idle overview 60 s, with an explicit refresh button. Server pressure may increase these intervals. Queue work never polls because a widget is mounted.
+
+The admission model reserves request capacity for interactive use and safe state changes; forecast from active sessions × polling interval plus measured baseline. Hold optional background traffic before the verified allowance is exhausted. Existing §6.6 load tests run against an isolated staging allowance, not blindly against production free-plan quota. Always use Cloudflare's current limits and the actual deployed-account values when third-party/OpenNext guidance differs.
+
 ### 6.6 Telemetry and acceptance (real signals only)
 - A0.2 identifies the **actual Cloudflare telemetry source** (analytics dataset or equivalent) for CPU time, exceeded-CPU/memory events, 1102, 503, isolate startup and request counts. **No acceptance claim about 1102/503 is permitted before that source is identified and used.**
 - Track CPU separately from wall latency, aggregated by route and by build SHA. Aggregate CPU per route/build is a first-class release metric.
@@ -688,6 +709,11 @@ Every stage uses `(runId, stageName, inputHash, policyVersion)` idempotency plus
 ### 7.6 Limits and configuration (proposed defaults, pinned in versioned config)
 60 s lease with 20 s renewal; three transient retries with jittered backoff; per-stage wall/resource budgets; two editorial revision loops; bounded global and per-project concurrency; separate CPU-research and GPU-inference pools. Pin and load-test actual values; never provision GPUs for API-only tasks.
 
+### 7.6.1 Lock and clock discipline
+Use `FOR UPDATE SKIP LOCKED` only to claim queue candidates. Owner/reservation/permit transitions lock the exact authority rows and use CAS; a skipped locked owner is not an absent owner. Compare lease expiry against database time obtained after the row lock, not a worker clock or transaction-start timestamp. Default lock timeout 1 s and transaction statement budget 3 s are acceptance proposals. No network operation inside a DB transaction. Transaction-pool clients use transaction-scoped locks only; session advisory locks and session-local identity assumptions are prohibited.
+
+Store logical operation identity separately from physical attempts. Duplicate deliveries/results deduplicate business transitions, **not real compute charges**: each actual Modal execution and provider request incurs its own cost ledger entry. Outbox delivery receipts are not stage completion proof.
+
 ### 7.7 Interaction with existing scheduled routes
 The existing routes (F9: `content-studio-retry`, `reconcile-content-jobs`, `reconcile-incidents`, and the engine crons) must be mapped in A0.2/A0.6 to one of: absorbed by the durable dispatcher/reconciler, retained as read-only status surfaces, or retired. Two retry/reconcile mechanisms acting on the same run state is forbidden; until reconciliation is complete the legacy cron keeps authority and the new runtime must not enqueue the same work class.
 
@@ -746,7 +772,7 @@ The publisher consumes a **short-lived, single-use `ReleasePermit`** bound to ac
 **Cost basis (official pricing verified 2026-09-22; A0.7 must revalidate before anything depends on it):** Modal Starter includes **$30/month free compute credits**; Modal Volumes are billed at **$0.09/GiB/month with 1 TiB/month included free**. These are **A0_UNVERIFIED for our workspace**: A0.7 records actual plan, billing telemetry, allowance behavior and current published pricing/limits. Do not assume the 1 TiB free allowance persists; model both compute credit and storage/egress/retention cost, and re-check on every planning cycle.
 
 ### 9.2 T1 object discipline
-- Every durable row carries `project_id`, created/superseded timestamps, schema version and provenance.
+- Every durable row carries `project_id`, schema version and provenance. Immutable versions/events carry created/supersession links; mutable projections carry a monotonic version and CAS guard. Do not UPDATE a historical decision merely to add a superseded pointer; insert a supersession event/new version.
 - Immutable by default: corrections insert a new version with a supersession link; only explicit projection tables are mutable, and they are compare-and-swap.
 - Large bodies (rendered HTML, raw provider payloads, corpora) never live in list-read rows; they live in T2 with a `ArtifactRef` row in T1.
 - Tenant/project scoping is enforced by composite keys and RLS; no query retrieves across projects and then filters in application memory.
@@ -754,10 +780,18 @@ The publisher consumes a **short-lived, single-use `ReleasePermit`** bound to ac
 ### 9.3 T2 artifact discipline
 Every durable object records: content hash (verified checksum), byte size, media type, producer version, source run, retention class, license constraints and creation time. Rules:
 - Write bytes → verify checksum → then write the referencing T1 checkpoint/event (§7.5).
-- Content-addressed deduplication is mandatory; identical bytes are stored once.
+- Content-addressed logical deduplication is mandatory; one canonical project manifest references identical bytes, while physical duplicate uploads may temporarily exist until safe cleanup.
 - Retention classes: `transient` (rebuildable caches; short TTL), `derived` (recomputable; medium TTL), `evidence` (license/retention-governed), `proof` (release/live verification evidence; retained per audit policy), `snapshot` (model/semantic-space snapshots).
 - Automatic cleanup follows the retention class; cleanup never deletes an object referenced by an open run, an active release proof, or an unreconciled decision.
 - A missing T2 object degrades to `unavailable` for its dependent computation; it never silently becomes empty/zero.
+
+### 9.3.1 Artifact publication and browser access
+- Evidence/proof data uses a commissioned Modal **Volume v1** plus an independent backup; v2 is optional for disposable caches only while official documentation describes it as Beta and unsuitable for mission-critical data. Neither tier is an availability guarantee.
+- Artifact states are `STAGING → COMMITTED → VERIFIED → READY`, or `QUARANTINED/TOMBSTONED`. The writer uses an upload/attempt/fence-specific path; closes files; commits the Volume; an independent reader reloads after closing open handles, reads all bytes, checks digest/size/type and records a receipt. Only then may one short fenced T1 transaction publish the READY manifest and checkpoint/outbox reference. Any failure leaves no trusted pointer.
+- Canonical dedupe is one T1 manifest per `(project_id, byte_digest, media_type)`; concurrent uploads may leave physical duplicate orphans. Never use a shared `latest.json`, filesystem lock, overwrite-in-place, or rename as a transactional authority. A stale worker cannot update the canonical pointer. Quarantine writers cannot mutate sealed proof storage; use verified read-only mounts or scoped gateway reads where mount-level isolation is unavailable.
+- A small dedicated Modal artifact gateway accepts scoped upload/download grants issued after edge authentication. Grants bind project, principal, artifact/upload ID, operation, size ceiling, MIME, expiry and nonce; upload finalization is single-use. Browser sends bytes directly to the gateway, never through Cloudflare or with a Modal workspace token. There is no assumed S3-presign API for Volumes. Gateway capabilities and network/credential isolation are A0.7 exit evidence.
+- Garbage collection marks candidates in T1, rechecks live references/holds at deletion, uses a grace period and appends a tombstone/receipt. No deletion of evidence still required by active contracts, approvals, release proofs, legal retention or backup recovery. Licensed deletion requirements produce explicit unavailable/tombstone history, never a fake intact checksum.
+- To keep saved editing useful during a Modal outage, bounded current draft chunks live in private T1 tables: at most 48 KiB/chunk, 256 KiB/active draft, 100 active drafts initially subject to measured DB capacity. CAS revision saves transmit one bounded chunk command; list endpoints never load bodies. Research/large sealed renders remain T2 and honestly show unavailable when the gateway is down.
 
 ### 9.4 Capacity and budget controls (compute **and** storage)
 - Budget/capacity tracking covers: Modal compute credit consumption, Volume bytes by retention class, egress, DB size/index growth, provider quotas and Cloudflare-plan resource limits.
@@ -766,7 +800,7 @@ Every durable object records: content hash (verified checksum), byte size, media
 - If capacity is insufficient, Sol presents measured retention or hosting alternatives; **no automatic paid upgrade and no silently reduced fidelity**.
 
 ### 9.5 Growth and projection rules
-History is never overwritten: `metric_current_projection`-style tables select the latest eligible value by (source effective window, retrieved at, sequence) and reject late stale completions. Current projections are small, indexed and list-safe. Full-fidelity exports are asynchronous artifacts, not request-time joins.
+Immutable history is never overwritten; mutable `metric_current_projection`-style tables select the latest eligible value by (source effective window, retrieved at, sequence) and reject late stale completions. Current projections are small, indexed and list-safe. Full-fidelity exports are asynchronous artifacts, not request-time joins.
 
 ### 9.6 Migration mechanics (repository-verified conventions, binding)
 1. **Auto-apply is real:** pushing to `main` changes under any live-apply workflow path — `supabase/migrations/**`, `supabase/migration-baseline.json`, `scripts/migration-order.mjs`, `scripts/migration-ledger-policy.mjs`, `scripts/migration-ledger-runner.mjs`, `scripts/supabase-management-sql.mjs`, `scripts/apply-migrations.mjs`, or the apply workflow itself — can change what is applied to production (F5). Treat both migration SQL and migration-application control changes as production changes.
@@ -812,7 +846,7 @@ create index metric_observation_read
 alter table studio_core.metric_observations enable row level security;
 revoke all on all tables in schema studio_core from public, anon, authenticated;
 ```
-Additional required seeds from A0.4/A1: semantic identity/ontology registries, relation authority classes, gate applicability matrix, reviewer registry, release-permit and publication-proof tables, integration bindings, outbox/dispatch state. The dedicated worker role receives definition/subject/run reads and validated observation INSERT only — no UPDATE/DELETE on observations/definitions. Only the outbox coordinator updates run state; only the trusted policy role seals snapshots. RLS policies follow actual project/service identity, never a client-supplied project id.
+Additional required seeds from A0.4/A1: semantic identity/ontology registries, relation authority classes, gate applicability matrix, reviewer registry, release-permit and publication-proof tables, integration bindings, outbox/dispatch state. The dedicated worker role receives definition/subject/run reads and validated observation INSERT only — no UPDATE/DELETE on observations/definitions. Only the authoritative transition API updates run state on behalf of the coordinator or an authorized fenced worker; only the trusted policy role seals snapshots. RLS policies follow actual project/service identity, never a client-supplied project id.
 
 ### 9.9 API surface (proposed, versioned)
 Under `/api/content-studio/v3`:
@@ -849,17 +883,16 @@ A0.6 enumerates **every** existing path that can write to a repository, merge a 
 | Content/writer workflows (`marketplace-copy-rewrite*.yml`, `payhip-batch1-artifacts.yml`, `seo-engine-daily.yml`, `war-room-daily.yml`, `rhythm-scan-weekly.yml`) | workflow list at revision base | Enumerate actual writes in A0.6; each becomes `pr_only` or `retired`. Any direct-main/autodeploy behavior is disabled by default. |
 | Anything discovered later (new script, new workflow, dashboard action, cron route, MCP tool) | A0.6 + continuous audit | Default deny; must be dispositioned before use. |
 
-**Direct-main and autodeploy are disabled by default.** A writer that needs a change creates a branch + PR. `merge_via_release_service` is the only merge path, and it is reachable only after a valid `ReleasePermit` is consumed.
+**Direct-main writers and unmanaged deployment paths are disabled by default. Official main-triggered deployment is retained.** A writer that needs a change creates a branch + PR. `merge_via_release_service` is the only merge path, and it is reachable only after a valid `ReleasePermit` is consumed.
 
 ### 10.3 Permit consumption and lineage
-The release service:
-1. validates the permit (unexpired, unconsumed, hashes match the current candidate artifacts, ownership/policy versions current, expected base matches the repository state);
-2. records the external operation intent;
-3. creates the PR (`pr_only`) with the exact candidate SHA;
-4. records **exact candidate SHA + body/artifact marker + PR + CI results at that exact head + merge SHA + deployment id + live verification** in a single `PublicationProof` lineage (the chain in §2.12);
-5. consumes the permit transactionally; a second consumption attempt is a hard failure, not a retry.
+Proposed release host: a dedicated repository GitHub Actions release workflow under a protected environment, separate from Modal compute. It uses an installation-scoped GitHub App credential granted only there; default workflow token is read-only. Modal may submit a release intent to Postgres but receives no App private key, merge token, deployment token or generic workflow-dispatch capability. A0.6 proves workflow trigger, environment/branch protection, expected workflow revision and credential restrictions before activation. Until commissioned, release stays Sol-operated through the existing official PR workflow.
 
-No step may be skipped because a previous step "looked green": exact-head CI is checked against the actual candidate SHA; if the head moved, the permit is invalidated and a new review is required.
+The release workflow obtains the permit and candidate by ID from the trusted database; user-supplied workflow inputs are not authority. Before **each** external write it transactionally locks the permit, release operation and authority row; checks purpose, scope, expiry, current epoch, hashes, owner/policy/reviewer/source validity; marks the permit consumed; inserts one immutable external-operation intent and outbox event; commits; then calls GitHub outside the transaction. Failed CAS or transaction means no network write. Release events append to the ledger and update a bounded PublicationProof projection.
+
+PREPARE_PR and MERGE have separate identities and fresh permits. PR creation never waits inside an edge request. MERGE is issued only after exact candidate-head checks and Sol approval, expires after a proposed 5 minutes, and passes the expected candidate SHA to GitHub's merge operation. A moved base requires a refreshed mergeability/checks snapshot and permit. Enforce serialized protected main changes or a reconciled merge-queue contract; an application lock alone cannot prevent outside writers. If A0 cannot prove that boundary, automatic merging remains disabled.
+
+On timeout, retain the consumed permit and `uncertain` operation. Inspect exact repo/PR/head/marker/merge state, then classify `reconciled_present`, `reconciled_absent`, or `still_unknown`. Only proven absence permits a controlled retry of the same intent. A new permit cannot bypass uncertainty. MERGED, DEPLOYED and LIVE_VERIFIED are later receipts, never inferred from successful dispatch. After network success with failed DB receipt, reconciliation records the existing result without reissuing the mutation.
 
 ### 10.4 Release sequence (unchanged semantics, wrapped in the new boundary)
 `reserve intent/route → seal snapshot/contract/target → render and audit → recheck repository base and reservations → create scoped PR → required exact-head checks → authorized merge → official workflow deployment → independent live verification → queue discovery notifications → observe`.
@@ -873,7 +906,7 @@ Live verification is performed by a verifier that does not trust the deployment 
 The deploy workflow currently uses `concurrency.cancel-in-progress: true` (F4). A cancelled in-flight deployment must be reconciled, never assumed:
 - A cancelled run's partial deployment state is recorded as `uncertain`.
 - Verification queries the actual deployed version/bytes and reconciles against the intended candidate before any "deployed" claim.
-- If the deployed bundle does not match the intended candidate SHA, the release is blocked and the correct version is re-deployed through the official workflow.
+- Maintain a monotonic per-target release generation and desired-deployment pointer. If the actual version differs, first check whether a newer authorized generation superseded it. An old/cancelled release may never redeploy itself over that newer generation. Only the current authorized desired generation may request official redeployment; target-level deployment serialization and cancel behavior are proven in A0.6/A6.
 - `PublicationProof` records which deployment run satisfied the candidate, independent of any cancelled sibling run.
 
 ### 10.7 Rollback and kill switches
@@ -890,11 +923,15 @@ Core invariant:
 ### 11.2 Identity resolution
 Resolution follows §2.2 and is conservative: unknown stays unknown; numbers/acronyms require jurisdiction and entity evidence; audience and reader job are independent; aliases never mint entities. Same-number collisions (US `I-485` vs Australian subclass `485`, etc.) are permanent fixtures.
 
+### 11.2.1 Stable identity and temporal truth
+Use stable registry IDs for intents/entities/routes and separate immutable identity versions. The permanent ownership key comprises resolved jurisdiction, program/entity, reader job, required audience scope and language; it excludes evidence IDs, retrieval time, mutable labels and model/resolver versions. Unknown jurisdiction never equals a global wildcard or no competing owner. Alias uniqueness is scoped by namespace/language/jurisdiction; ambiguous aliases remain candidates.
+
+Facts preserve two times: legal-valid interval and when the assertion became known. Keep contradictory assertions side by side; a reviewed current projection selects only applicable support. Future effective rules do not overwrite present rules, and a publication date is not a legal effective date. Preserve date precision/timezone; do not invent an instant for a date-only law. Predicate definitions declare value kind/unit/currency, scope dimensions and cardinality.
+
 ### 11.3 Ontology node classes and semantic state
 Versioned node classes: `entity`, `reader_job`, `intent`, `query_family`, `route`, `revision`, `claim`, `answer_unit`, `source`, `offer`, `competitor_document`, `topic_cluster`. New classes require a reviewed schema migration and fixtures, never free-form labels.
 
-Every node, edge and fact carries a state class that determines permitted use:
-`AUTHORITATIVE` · `OBSERVED` · `DERIVED_DETERMINISTIC` · `MODEL_INFERRED` · `REVIEWED_INFERENCE` · `CONFLICTED` · `STALE` · `UNAVAILABLE`.
+Every node, edge and fact keeps provenance/authority (`AUTHORITATIVE`, `OBSERVED`, `DERIVED_DETERMINISTIC`, `MODEL_INFERRED`, `REVIEWED_INFERENCE`) separate from health (`current`, `stale`, `conflicted`, `unavailable`) and lifecycle (`active`, `superseded`, `invalidated`). No single score/state field mixes these dimensions.
 A `MODEL_INFERRED` legal fact never satisfies a consequential claim-support requirement by itself.
 
 ### 11.4 Relation vocabulary (one list, controlled types)
@@ -904,6 +941,11 @@ A `MODEL_INFERRED` legal fact never satisfies a consequential claim-support requ
 - **Commercial:** `SERVED_BY`, `NEXT_COMMERCIAL_STEP`, `HAS_ACTIVE_SUPPLY`, `HAS_NO_VERIFIED_SUPPLY`, `CONVERTS_TO`, `FALLBACK_OFFER_FOR`.
 
 No untyped `related_to` edge when a stronger type is known. `CANDIDATE_*`/`SHOULD_*` edges are non-authoritative by construction and can never be read as owner, gate or release input.
+
+### 11.4.1 Minimum relational graph
+Implement only the relationships needed by the first cohort: entity aliases, intent/reader job, query-family membership, owner/intent, revision/answer unit/claim, claim/fact/passage, approval/claim-version, funnel/offer. Other listed relations are reserved vocabulary, not a requirement to build a universal graph.
+
+The registry for each persisted relation declares endpoint kinds, direction, allowed authority classes, cardinality, symmetry and temporal applicability. `PRIMARY_OWNER_OF` is a read-only projection from the existing owner authority; `HAS_ACTIVE_SUPPLY` comes from a verified catalog observation, never a model edge. Knowledge quantities such as fee/deadline use typed fact predicates rather than duplicate editable graph values. Query-family membership roles in §11.5 are typed join attributes, not new generic edges. Lowercase topical roles in §18.2 are UI/import aliases mapped once to this registry; unmapped terms fail validation. Query observations shared across candidate memberships are deduplicated by observation ID and never summed twice.
 
 ### 11.5 Query meaning graph and family operations
 ```
@@ -930,6 +972,15 @@ Every vector row stores embedding model, exact revision/digest, dimensionality, 
 - **Bounded retrieval:** no unbounded pgvector scan. Queries use hard scope filters + an index with a bounded candidate budget (`k`, oversampling and iterative-scan policy pinned and benchmarked). **Collision-critical paths (ownership, cannibalization, CREATE) require an exact-KNN fallback set** — approximated retrieval may never be the sole basis for a critical collision conclusion. Exact KNN remains the recall reference corpus.
 - Vectors are deletable/rebuildable derivative state: deleting a vector never deletes evidence, claims or an owner; a missing vector never turns an existing owner into unknown.
 
+### 11.7.1 Initial vector scope and storage decision
+Start with indexed identity/alias/owner joins and lexical retrieval. Embed current page-purpose segments and approved query-family purpose segments for one measured cohort; add typically 4–8 useful answer units per page only where retrieval improves. This is a planning range, not permission to truncate content. Claims/facts/source passages and full historic corpora are not automatically embedded.
+
+The **one initial hot derivative vector index is pgvector in T1**, a bounded exception to T2 bulk storage. T2 holds immutable vector batch/snapshot artifacts. Neither owns semantic identity. Begin exact asynchronous distance search over bounded scoped candidates; introduce ANN only when installed-version tests and measured latency justify it. Suggested experiment: one pinned licensed 384–768-dimensional model, lexical top 30 + vector top 30, rerank at most 60 discovery candidates; mandatory owner/reservation/conflict candidates are never dropped to fit k. No graph database or second vector service at launch.
+
+Illustration, not estate measurement: 1,000 pages × (one purpose + six answer units) × two spaces × (4×768+8 bytes) is about 41.1 MiB vector payload before family/offer rows, indexes or metadata. At 10,000 pages this alone is about 411 MiB. A0.3 approves measured total relation/index growth; free-tier feasibility is not assumed.
+
+Critical collision review always includes estate-wide deterministic owners, reservations, exact aliases/entities and unresolved relevant identities across hosts. Exact vector KNN is a benchmark, not proof of semantic completeness. Missing vectors, incomplete inventory or exhausted scan budgets yield `INCOMPLETE_COLLISION_REVIEW`, never “no collision.” During upgrades, pin each run's space, validate the complete target-cohort manifest, then switch one read alias; same dimensions do not make different spaces compatible.
+
 ### 11.8 Hybrid retrieval and reranking
 Candidate discovery = hard filters (project/estate, language, host, jurisdiction, temporal, route/catalog state) → lexical retrieval (full-text/trigram/exact entity/alias) → vector retrieval → graph neighbors (owner, parent, supporting, prerequisite, same entity) → union with a pinned fusion method (for example reciprocal-rank fusion; never average incomparable scores) → bounded rerank (cross-encoder or measured equivalent) → candidates with component evidence.
 
@@ -940,7 +991,7 @@ Information gain is measured at the predicate/reader-question/answer-unit level,
 `proposed answer units / predicates − adequately satisfied current owner coverage = candidate distinct information gain` (§2.8).
 A new page with high lexical novelty but the same reader job and answer set has low useful gain; a narrow exception with modest volume can have high value when it solves a distinct evidenced problem. Information gain can justify research; it can never independently unlock CREATE (P13 and owner reservation remain mandatory).
 
-### 11.10 Persistence (T1 metadata + T2 vectors/artifacts)
+### 11.10 Persistence (T1 metadata + bounded hot vector index; T2 bulk artifacts)
 Logical tables (A0.3 maps exact names; nothing here is applied by this document): `semantic_ontology_versions`, `semantic_entities`, `semantic_aliases`, `semantic_reader_jobs`, `semantic_identities`, `semantic_facts`, `semantic_documents`, `semantic_segments`, `semantic_claims`, `semantic_vectors`, `semantic_relations`, `semantic_query_families`, `semantic_clusters`/`_members`, `semantic_coverage`, `semantic_collision_cases`, `semantic_information_gain`, `semantic_features`, `semantic_opportunities`, `semantic_decision_links`, `semantic_outcomes`, `decision_passports`.
 Rules: tenant/project columns everywhere; append-only with supersession instead of mutation; vectors stored at segment grain only where retrieval value is demonstrated; Postgres keeps canonical object IDs and versions even if a secondary vector index is ever added (it would be a derivative cache, never authority).
 
@@ -998,6 +1049,15 @@ Rules:
 - Every stage records resource class, cold/warm state where observable, batch size, cache hit, duration, retries, and billing allocation/tag when available. Compute `cost_per_semantic_unit`, `cost_per_decision_state`, `cost_per_accepted_intervention` and `cost_per_mature_positive_outcome`; a cheaper model that causes more escalations may be the more expensive one in accepted-work terms.
 - Pressure response order: throttle optional competitor refresh → delay low-priority embeddings → narrow exploration cohorts → park non-urgent generation. Never skip release evidence, owner checks or trust invalidation to save compute.
 
+### 12.4.1 Free-first admission, not a billing guarantee
+Default all functions to zero minimum warm containers; resource reservations, execution timeout and scale-down window are pinned per workload. A constantly warm dispatcher can consume material credit before useful work. Use durable Postgres admission and scheduled short dispatch batches, not an always-on polling loop.
+
+Reserve estimated worst-case cost transactionally before each attempt, including CPU, memory, GPU, cold/image overhead, provider calls, egress and storage exposure. Reconcile actual usage when available; unknown spend remains reserved. Separate Modal credit from Jev and other provider budgets. Initial proposal for verified $30 compute credit: $6 protected mandatory-work reserve, $3 uncertainty reserve, $21 optional pool; per-job optional estimate ceiling $0.50. Any unset entitlement/rate/budget disables optional dispatch. Retries and duplicate executions consume budget independently.
+
+Modal's published billing-report API is plan-dependent; Starter cannot be assumed to expose it. Use conservative instrumented usage estimates plus a dated owner-verified dashboard reconciliation; if unavailable or older than 24 hours, hold optional jobs. Enforce the application's reservation cap and any verified provider budget control. This reduces overspend risk but is not a promise of a hard provider billing ceiling. On complete exhaustion even mandatory compute may stop: preserve current truth, queue critical work and block releases whose evidence expires.
+
+The official egress notice read 2026-09-22 says September is telemetry-only and charges start 2026-10-01; transfer to external backup/API destinations must enter the cost model. A0 rechecks allowance, pricing and available telemetry. Do not assume compute credits cover every storage/egress/provider charge.
+
 ### 12.5 Failure degradation
 If capacity/GPU is unavailable: deterministic ingest and reconciliation continue where safe; stale semantic artifacts remain visible but cannot masquerade as current; decisions depending on unavailable semantic work become `BLOCKED`/`RESEARCH_REQUIRED`; **no silent substitution of a different model/provider**; saved drafts and editor state remain accessible through the thin control plane.
 
@@ -1011,17 +1071,25 @@ Verified TypeSafe API shape (J1–J3, §27.2): `POST https://api.typesafe.ai/v1/
 
 Jev runs server-side in Modal, never in the browser; it writes no prose and holds no release credentials. It consumes **typed derived state only** (`DecisionState`, §2.6), never raw uncontrolled web pages when a bounded feature state is sufficient.
 
-**Noul has no separate confidence field. Never invent one, derive one, or present one.** Noul output is a bare 0–1 value in shadow/advisory contexts; treating it as a calibrated probability is a defect.
+**Noul has no separate confidence field. Never invent one, derive one, or present one.** The vendor response is a tagged object containing a 0–1 yes-probability. It is not empirically calibrated YouSafe accuracy; Noul remains shadow-only in the minimum v6 release.
 
 ### 13.2 Decision tasks (each calibrated independently)
 **D0 semantic ambiguity:** `SAME_READER_JOB`, `SUPPORTING_SUBINTENT`, `DISTINCT_INTENT`, `WRONG_SCOPE`, `AMBIGUOUS`.
 **D1 diagnosis:** `MISSING_ANSWER`, `STALE_FACT`, `TECHNICAL_EXCLUSION`, `OWNER_COLLISION`, `WEAK_INTERNAL_AUTHORITY`, `WEAK_EXTERNAL_AUTHORITY`, `CTR_PACKAGING`, `COMMERCIAL_PATH`, `INSUFFICIENT_EVIDENCE`, `OTHER/ESCALATE`.
-**D2 intervention:** only from policy-supplied eligible actions (`RESEARCH`, `REFRESH`, `EXPAND_OWNER`, `LINK`, `REPAIR`, `CONSOLIDATE_RECOMMENDATION`, `CONVERSION`, `OBSERVE`, `NO_ACTION`, and `CREATE` only when P13 makes it eligible).
-**D3 priority band:** within the already-eligible queue, with inspectable components.
-**D4 executor route:** minimum sufficient route from `RULE_ENGINE`, `MODAL_CPU`, `MODAL_EMBEDDING`, `MODAL_RERANKER`, `MODAL_LOCAL_MODEL`, `DEEPSEEK`, `GROK`, `SOL`, `QUALIFIED_HUMAN`. Each executor route maps to exactly one `ComputeClass` (§2.9, §12.1) in versioned configuration; a route may never select a resource class its mapped `ComputeClass` forbids.
-**D5 abstention/escalation:** explicit when distributions are close, required fields are unavailable, out-of-distribution markers fire, or policy requires human expertise.
+**D2 intervention:** only exact canonical action identifiers from §15.2 intersected with the current policy eligibility set. Legacy names `LINK`, `REPAIR`, `CONVERSION`, `CREATE` and `CONSOLIDATE_RECOMMENDATION` are prohibited on this interface; their importer mappings must be explicit, and ambiguous generic CREATE is rejected.
+**D3 priority band:** deterministic queue policy, not a Jev call in v6. Safety/incident class first, then observation debt, then evidence-ready interventions in a versioned portfolio. Within each lane use due time, validated opportunity band, cost band and stable ID; expose all components. A future learned ranker requires a separate benchmark and promotion.
+**D4 executor route:** deterministic capability/cost registry in v6. Route exact parsing/validation to rules, batch semantics to the commissioned Modal resource class, difficult research/execution to DeepSeek (Grok only if granted/available), architecture/arbitration to Sol, and consequential approval to a qualified human. Never pay to run a lower-tier model for a task known to require human expertise. Capability availability/cost evidence selects among permitted alternatives; there is no silent provider substitution.
+**D5 abstention/escalation:** deterministic wrapper around every decision family; never ask a model to decide whether deterministic policy may be ignored.
+**D6 commercial target:** Jev may rank only 2–5 already validated relevant active offers, plus `ABSTAIN`. Zero valid offers is `BLOCKED_NO_RELEVANT_SUPPLY`; one valid offer is selected deterministically. It cannot repair missing supply by guessing.
 
-Routing never grants tools, credentials or authority; the harness/policy boundary does that.
+Routing never grants tools, credentials or authority. D0/D1/D2/D6 initially use Choice questions. Rubrics, feature keys, record schemas, stable choice IDs and per-family limits are commissioned together in the companion blueprint. Required family configuration missing means `BLOCKED_CONFIGURATION`.
+
+### 13.2.1 Decision scheduling and freshness
+- Coalesce material source/owner/claim/catalog events by project+subject+task; routine debounce 5 minutes and deterministic changed-state hash. Immediate safety invalidation is never delayed for Jev. Daily reconciliation finds missed events; a weekly stratified sample includes abstentions and no-action cases.
+- Proposed limits: one subject/task per request, max 64 feature keys, six compact subjects, 32 answer-unit summaries (160 characters each), 4,096 input tokens total and 16 KiB serialized state. Budget both bytes and tokens; oversize produces `INPUT_TOO_LARGE`, never silent truncation. At most two independent questions against the same state may share a request; D2 cannot depend on D1 returned in that same call.
+- Initial project concurrency 2, global 4, 60 requests/minute, reduced to proven account allowance if lower; deadline 10 seconds/attempt, maximum three attempts with jitter and Retry-After. One retry layer only. 401/403/422 and schema/model mismatch are terminal configuration failures; 429/529/5xx/timeouts receive bounded retries within the total job deadline.
+- Cache key includes full canonical state, task/question/choice order and rubric bytes, expected and returned pinned model, feature schema, ontology/semantic space, tenant scope, policy and eligible-set hash. Raw inference cache and calibrated decision interpretation cache are separate. Interpretation adds calibration version and promotion mode. Maximum reuse is min(input validUntil, 24 hours); a material revision change invalidates immediately. No caching provider failures as valid no-action.
+- On acceptance, compare subject/snapshot/owner/policy/source/supply versions again in the database. Late or stale decisions remain history and cannot change current projections. Any failed prerequisite means abstain or block; no model creates an eligible action.
 
 ### 13.3 Confidence, distributions and abstention
 - Store the **full returned distribution** and native confidence semantics. Never rewrite `0.90` as "90 % accurate".
@@ -1043,6 +1111,13 @@ Ladder, promoted **separately per** `(decisionTask, modelVersion, rubricVersion,
 **No tier may** publish, merge, delete, redirect/noindex, fabricate a reviewer, clear CREATE freeze, alter a legal claim, or make destructive/YMYL/release decisions. Those remain human/policy governed absent a separate future authorization that names the decision class.
 
 Track per task and material subgroup: accuracy/error where labelled truth exists; false-safe and false-action rates; Brier/reliability where the schema is probabilistic; abstention/coverage tradeoff; disagreement with the rule baseline and expert review; drift over model version; downstream reversal rate.
+
+### 13.4.1 Promotion evidence and feedback discipline
+The 500-case/100-critical seed is a collection target, not per-family promotion proof. Group near-duplicate page/query/source cases before splitting training/tuning and time-separated holdout; keep a final untouched set. Two independent qualified labels adjudicate critical cases. Evaluate by family, language/jurisdiction, feature/projector version, rubric, pinned model and choice-mask/candidate-count regime. Unseen slices stay advisory/shadow.
+
+For low-risk bounded assistance only, proposed gate: zero observed critical false-safe outcomes and one-sided 95% upper bound on accepted-case error ≤1%, with useful measured coverage and improvement over the deterministic baseline. Roughly 300 independent accepted cases with zero errors are needed to bound error below 1%; correlated cases do not count as 300 independent trials. Starting threshold experiments may use top probability ≥0.85 and margin ≥0.20, but thresholds never activate assistance without the held-out evidence. Ties abstain; a one-option question is not confidence evidence.
+
+Keep three feedback streams separate: expert correctness labels, human acceptance/override/reversal, and mature observed business/search outcomes. Jev option probabilities are not intervention selection propensities. A successful REFRESH does not prove unchosen CREATE would have failed. Sample abstentions/no-action as well as executed work; forecasts and reviewer agreement never become observed reward. Model/rubric/features/choice-regime changes invalidate calibration; critical false-safe events demote the affected slice immediately. No learner rewrites policy, rubric or thresholds online without reviewed version promotion.
 
 ### 13.5 Decision passport
 Every opportunity carries a reconstructable chain, never a synthesized retrospective rationale:
@@ -1082,7 +1157,7 @@ Google emphasizes people-first reliability and truthful Who/How/Why; E-E-A-T is 
 ### 14.4 YMYL Reviewer Registry (`ReviewerCredential`, defined once)
 ```typescript
 interface ReviewerCredential {
-  reviewerId: string;
+  reviewerId: string; humanPrincipalId: string; credentialVersion: number;
   legalName: string;                        // real identity; never a model, alias or shared account
   jurisdiction: string;
   remit: string[];                          // programs/topics the reviewer is qualified to approve
@@ -1096,11 +1171,12 @@ interface ReviewApproval {
   approvalId: string;
   reviewerId: string;
   runId: string;
-  claimIds: string[];
+  claimVersions: { claimId: string; version: number; claimHash: string }[];
+  humanPrincipalId: string; credentialVersion: number;
   bodyHash: string;
   renderHash: string;
   sourceSnapshotHash: string;
-  claimRevisionVersion: string;
+  revisionId: string; revisionVersion: number;
   decision: "approved" | "returned" | "escalated";
   reasonCodes: string[];
   approvedAt: string;
@@ -1109,7 +1185,7 @@ interface ReviewApproval {
 ```
 Binding rules:
 - **Exact binding:** an approval binds to the exact claim set, body hash, source snapshot hash and render hash it reviewed.
-- **Structural model ineligibility:** a model, service account, integration identity or agent can never occupy a reviewer slot, be listed as a reviewer, or generate an approval event. The data model makes model review structurally impossible (no model reviewer ids exist in the registry), not merely policy-forbidden.
+- **Structural model ineligibility:** approvals require an authenticated human principal bound to a verified credential version and exact claim-version joins. Machine roles cannot create reviewer identities, attest credentials or submit approvals. Registry administration requires a separate authorized human principal. Recheck principal, credential status/remit and revocation at permit consumption; delayed invalidation events cannot preserve a revoked approval.
 - **Invalidation:** any change to the source set, the claim, the body or the rendered artifact invalidates dependent approvals. Approvals never survive a substantive edit or a renderer change.
 - **Remit and validity:** an approval from a reviewer whose remit does not cover the claim's jurisdiction/program is `BLOCKED`; an expired credential cannot approve.
 - **No inherited trust:** `shipReady`-style flags are never inherited across revisions; P8's protection (audit renderer-added sources before Git writes) is preserved.
@@ -1123,7 +1199,8 @@ Binding rules:
 | Source change/expiry | Dependent claim support, approvals, pending releases for affected claims. |
 | Owner/policy version change | Gate evaluations, permits, opportunity eligibility. |
 | Reviewer credential expiry/remit change | Approvals by that reviewer for affected claims. |
-| Embedding/ontology version change | Derived candidates and DecisionRecords only (never owner/gate state). |
+| Embedding-space change with identical semantic identity | Derived retrieval candidates/features/decisions; no owner mutation. |
+| Ontology, entity resolution, query-family or jurisdiction/reader-job identity change | Affected semantic snapshots, owner eligibility, contracts, reviews where claim meaning changes, gate evaluations and unused permits are invalidated for re-evaluation. Existing owners remain reserved; a model cannot reassign them. |
 
 ## 15. Opportunity engine, territory model and Marketplace routing
 
@@ -1131,7 +1208,7 @@ Binding rules:
 The primary work unit is `SemanticOpportunity` (§2.5), not an article quota or raw keyword. Evaluation order is fixed:
 ```
 facts/evidence → deterministic mission/owner/gate checks → eligible action set →
-Jev prioritization among eligible actions only → confidence/abstention policy →
+Jev D2 recommendation among eligible actions only → deterministic confidence/abstention policy →
 human/policy acceptance where required
 ```
 **Forbidden actions are absent from the Jev choice set, not merely down-weighted.** If CREATE is frozen, CREATE is removed before the request; a high model probability can never resurrect it.
@@ -1144,7 +1221,7 @@ human/policy acceptance where required
 Per strategic query family/reader job, maintain an observed management state (explicit windows/populations, never a ranking prediction): `OWNED_STRONG`, `OWNED_FRAGILE`, `WINNING`, `NEAR_WIN`, `CONTESTED`, `DECLINING`, `LOST`, `UNCLAIMED`, `GAP_SUPPORTED`, `GAP_UNSUPPORTED`, `OFF_MISSION`, `UNKNOWN`. Coverage cells use `STRONG`, `PARTIAL`, `WEAK`, `MISSING`, `CONFLICTED`, `STALE`, `NOT_APPLICABLE`, `UNKNOWN` with the underlying answer-unit IDs stored.
 
 ### 15.4 Priority without a magic score
-Never collapse the estate into one opaque `SEO_SCORE`. The queue stores a **priority vector** with inspectable components: observed qualified demand; current position/CTR trend where available; semantic information deficit; owner confidence/collision risk; source/evidence readiness; internal/external authority gap; commercial relevance and verified supply; user-risk/trust burden; estimated execution cost; maturity/observation debt; competitive change pressure. Deterministic rules remove ineligible work before Jev maps the remaining vector to a bounded band. The UI exposes components and uncertainty.
+Never collapse the estate into one opaque `SEO_SCORE`. The queue stores a **priority vector** with inspectable components: observed qualified demand; current position/CTR trend where available; semantic information deficit; owner confidence/collision risk; source/evidence readiness; internal/external authority gap; commercial relevance and verified supply; user-risk/trust burden; estimated execution cost; maturity/observation debt; competitive change pressure. Deterministic rules remove ineligible work and assign the approved priority band under the versioned queue policy. Jev D2 may recommend an eligible intervention; it does not set queue priority. The UI exposes components and uncertainty.
 
 ### 15.5 Competitive decomposition and response hierarchy
 Competitor pages are untrusted observations: decompose a timestamped cohort into answer units, entities, predicates, questions, evidence patterns, decision aids, format/structured-data observations, internal-link roles and commercial journey. Classify differences as `ALREADY_COVERED`, `WEAKER_ANSWER`, `MISSING_ANSWER`, `MISSING_EXCEPTION`, `MISSING_EVIDENCE`, `MISSING_DECISION_AID`, `FORMAT_ONLY`, `OFF_MISSION`, `UNVERIFIED_COMPETITOR_CLAIM`, `NOT_REPRODUCIBLE`. Competitor copy is never imported/paraphrased as authority; the gap opens primary-source research. Greater word/heading/keyword counts are not information gaps.
@@ -1153,7 +1230,7 @@ When a competitor gains ground, diagnose in this order: technical/indexability �
 
 ### 15.6 Intervention selection principles
 - Existing adequate owner + missing answer unit → `EXPAND_OWNER`/`REFRESH`, not CREATE.
-- Existing winner + weak internal support → `LINK`.
+- Existing winner + weak internal support → `RELINK_INTERNAL`.
 - Strong impressions/position with packaging mismatch but adequate answer → diagnostic then packaging experiment/`REFRESH`.
 - Two pages with the same reader job → collision/consolidation review before new content.
 - Distinct evidenced reader job + no owner + P13 unlock → CREATE candidate.
@@ -1165,7 +1242,7 @@ When a competitor gains ground, diagnose in this order: technical/indexability �
 Map article reader job → next reader job → service capability → jurisdiction/audience eligibility → **active verified offer**. Only after deterministic filtering may Jev rank multiple valid targets. Rules:
 - Offer embeddings are discovery aids; catalog IDs, provider status, slug/path and availability remain authoritative — **never invent a slug, provider, price, license or availability**.
 - A category subpage requires positively confirmed supply; unknown supply cannot authorize a link.
-- A funnel mismatch opens a `CONVERSION` opportunity without changing the editorial owner, and commercial relevance never grants permission to create redundant search pages.
+- A funnel mismatch opens a `CONVERSION_PATH_REPAIR` opportunity without changing the editorial owner, and commercial relevance never grants permission to create redundant search pages.
 - Missing match → hold the dependent publication/funnel revision, open a supply-gap task, keep useful existing articles live. Never route every reader to a generic shelf.
 
 ### 15.8 Ranking War Room (view contract)
@@ -1295,7 +1372,7 @@ Choose **one primary contextual Marketplace destination**; secondary links are a
 
 Before release: validate target catalog identity, provider status where applicable, target response/canonical, substantive supply, CTA correctness and working navigation (§15.7). Existing useful articles remain live while supply gaps are remediated — never delete them solely because supply is missing.
 
-Apply the funnel to new/rewritten articles prospectively. Audit existing articles and remediate in qualified, reviewed batches; nothing in this document authorizes destructive retroactive enforcement. A "all articles have a funnel" acceptance claim requires the full registered cohort audited with no unknowns.
+Apply the funnel to new/rewritten articles prospectively. Audit existing articles and remediate in qualified, reviewed batches; nothing in this document authorizes destructive retroactive enforcement. An "all articles have a funnel" acceptance claim requires the full registered cohort audited with no unknowns.
 
 ### 18.4 Conversion measurement
 Track `article_cta_view → article_cta_click → market_landing → service_view → lead_submitted/order_created → verified_payment/refund`. Each event carries a non-personal content/route/cluster/CTA/target/release id; event names are proposed internal schema, not claimed existing implementation. Keep the same approved GA4 property/tag and cross-domain configuration; never introduce internal UTMs that overwrite acquisition attribution. First-party consented journey ids are short-lived, canonical URLs stay clean, and unattributable events are retained honestly rather than fingerprinted or reconstructed. Optimize qualified lead/order value and helpful task completion under trust, accuracy and service-fit constraints; CTR/scroll/CTA counts and vendor KD are explanatory only.
@@ -1350,7 +1427,7 @@ interface InterventionRecord {
     predictionAuthor: "rule" | "jev" | "model" | "human";
     createdAt: string;
   };
-  executedAt: string;
+  plannedAt: string; executedAt: string | null;
 }
 ```
 The prediction is never rewritten after results arrive. Materially different edits are not grouped under one opaque intervention.
@@ -1450,7 +1527,7 @@ Checkpoint recovery; stuck-lease recovery; stale/partial provider data handling;
 ## 24. Migration program, legacy disposition and implementation order
 
 ### 24.1 Gate rule
-**No dependent implementation starts until its required A0 sub-package has exited with recorded evidence.** A0 is not a formality: it decides the target shape of every later package. Exit evidence is stored (T1/T2) and referenced by packet id; verbal summaries are not evidence.
+**First, the canonical SEO program must close its remaining gates and Sol must open Content Studio implementation. Then no dependent A1–A7 implementation starts until its required A0 sub-package has exited with recorded evidence.** A0 is not a formality: it decides the target shape of every later package. Exit evidence is stored (T1/T2) and referenced by packet id; verbal summaries are not evidence.
 
 ### 24.2 A0 sub-packages (all required)
 | Package | Scope | Required exit evidence |
@@ -1569,7 +1646,7 @@ These are additions to the existing repository suites, not a replacement. Every 
 **Budget, degradation and learning**
 43. Budget exhaustion parks optional competitor work while mandatory reconciliation/release/trust checks continue; refresh/release reserve is preserved.
 44. Cache keyed to an old ontology/model/cache version is rejected for current decisions.
-45. Duplicate Modal execution cannot double-count budget or overwrite a newer semantic artifact.
+45. Duplicate Modal execution records every physical attempt cost while deduplicating the business result; no duplicate cost receipt is counted twice, and no stale attempt may overwrite a newer semantic artifact.
 46. No GPU allocated for deterministic API-only work in representative traces.
 47. Zero impressions yields unknown CTR, not zero-performance penalty; missing/partial provider rows cannot train a false positive reward.
 48. Observation during a major site migration is marked confounded; a simple before/after delta never claims causality.
@@ -1591,7 +1668,7 @@ Semantic parse/embedding/rerank throughput and p95 latency; Postgres exact KNN v
 A0.1–A0.7 exited with recorded evidence; A1–A7 evidence complete; no critical bypass; approved canary with zero resource-limit incidents; acceptance journeys verified; source/operations runbook delivered; owner-backed observation scheduling proven to actually run. SEO outcome maturity remains a separate measurement state, never implied by delivery. No unresolved provider/reviewer/schema prerequisite is hidden behind "complete".
 
 ### 25.4 Pre-implementation dependencies owned by Sol
-Verify TypeSafe/Jev account and model access; Modal workspace, plan, billing telemetry and Volume behavior; Cloudflare plan/limits and telemetry source; repository main/parity/P9 re-pin; qualified domain reviewers; approved data rights and retention; cross-repository adapter support; and the real current contents of the frozen migration baseline's live counterpart. Failure blocks only the dependent work and is recorded with the next recovery action. This document creates no scheduled jobs.
+Verify TypeSafe/Jev account and model access; Modal workspace, plan, billing telemetry and Volume behavior; Cloudflare plan/limits and telemetry source; repository main/parity/P9–P13 re-pin; qualified domain reviewers; approved data rights and retention; cross-repository adapter support; and the real current contents of the frozen migration baseline's live counterpart. Failure blocks only the dependent work and is recorded with the next recovery action. This document creates no scheduled jobs.
 
 ## 26. Fifty-variable intelligence contract (preserved and normalized)
 
@@ -1617,7 +1694,7 @@ Refresh values are proposed policy defaults. "Revision" invalidates immediately 
 | targetKeyword | string | Approved owner/query-family record informed by qualified GSC query×page; editor confirms canonical phrase | Per intent + contract; contract change | Required for keyword-led editorial action; editing text cannot transfer ownership. |
 | searchVolume | number | Google Ads `GenerateKeywordHistoricalMetrics` (authorized); Ahrefs alternative kept as a separate series | Approx. monthly searches with country/language/network/month; 30 days | Optional estimate; GSC impressions are NOT volume; null without licensed access. |
 | keywordDifficulty | number | Commissioned Ahrefs overview difficulty, provider/version pinned | 0–100 provider organic difficulty; 30 days | Optional; never substitute Ads competition or mix providers. |
-| searchIntentType | string | Qualified query evidence + authorized SERP sample + Jev Choice; editor validates ambiguity | informational / commercial_investigation / transactional / navigational / mixed / unknown; 7 days or evidence change | Required resolved intent for owner-dependent work; unresolved blocks it. |
+| searchIntentType | string | Qualified query evidence + authorized SERP sample + reviewed intent classification; editor resolves ambiguity | informational / commercial_investigation / transactional / navigational / mixed / unknown; 7 days or evidence change | Required resolved intent for owner-dependent work; unresolved blocks it. |
 | keywordDensity | number | Deterministic tokenizer: non-overlapping case-folded phrase occurrences / `wordCount` × 100 | Percent, tokenizer/language pinned; revision | Diagnostic only; no target density, no minimum repetition. |
 | costPerClick | number | Same Ads request (`average_cpc_micros` / 1e6) with account currency | Currency per click; 30 days | Optional estimate, not willingness to buy; no silent FX conversion. |
 | primaryKeywordPlacement | object | AST/rendered checks of title, H1, intro, meta; retain exact/variant/absent + locators | Map of placements; revision + render | Natural placement advice; exact phrase everywhere is not a release requirement. |
@@ -1663,7 +1740,7 @@ Refresh values are proposed policy defaults. "Revision" invalidates immediately 
 | solutionStatement | string | Reviewed outline tied to primary-source claims and actual service capabilities, human-approved scope | Nonempty answer/next step + evidence ids; contract/source change | No guaranteed outcome; unsupported consequential solution blocks release. |
 | benefitCount | number | Editor-selected structured benefit claims; distinct supported reader outcomes deduplicated | Integer verified benefits + claim ids; revision + evidence change | Quality not quantity; an unsupported benefit is an issue even if excluded from the verified count. |
 | trustSignalCount | number | Truth ledger + rendered page: distinct verified visible source/reviewer/credential/statistic/quote records | Integer verified signals + type breakdown; revision/render + source expiry | Never an E-E-A-T score; one fabricated credential blocks regardless of other signals. |
-| headlineType | string | Editor selects contract form; Jev may suggest; Modal/editor checks actual title and body | how_to / listicle / question / explainer / comparison / service / other; revision | Must fit intent and delivered answer; list count must match; no clickbait/superlatives. |
+| headlineType | string | Editor selects contract form; Modal/editor checks actual title and body | how_to / listicle / question / explainer / comparison / service / other; revision | Must fit intent and delivered answer; list count must match; no clickbait/superlatives. |
 
 ### 26.4 Typed schema and provenance
 ```typescript
@@ -1702,6 +1779,12 @@ export type MetricKey = keyof MetricValues;
 
 interface Provenance {
   observationId: string; definitionVersion: string; sourceRunId: string;
+  projectId: string; subject: { kind: "query" | "page" | "revision" | "cluster" | "cohort"; id: string };
+  artifactHash: Hash | null;
+  scope: { canonicalUrl: string | null; query: string | null; country: string | null;
+    language: string; device: string | null; channel: string | null; searchType: string | null;
+    propertyId: string | null; cohortId: string | null; currency: string | null; timezone: string };
+  window: { start: string | null; end: string | null };
   sourceKind: "gsc" | "google_ads" | "ahrefs" | "ga4" | "event_ledger" | "cms" |
     "artifact_analyzer" | "editor" | "jev" | "social_api" | "serp_provider" |
     "ubersuggest_export" | "dataforseo" | "bing_webmaster" | "tinyfish" |
@@ -1713,18 +1796,19 @@ interface Provenance {
   completeness: "complete" | "partial" | "unknown";
   numerator: number | null; denominator: number | null; sampleSize: number | null;
   coverage: number | null; confidence: number | null; unit: string; warnings: string[];
+  collectionRef: { collectionId: string; totalCount: number | null; completeness: "complete" | "partial" | "unknown"; artifactHash: Hash } | null;
 }
 type Present<T> = Provenance & { status: "available" | "stale"; value: T; reason: string | null };
 type Absent  = Provenance & { status: "unavailable" | "not_applicable" | "pending" | "failed";
   value: null; reason: string };
 export type MetricObservation<T> = Present<T> | Absent;
 export type SeoMetricSnapshot = {
-  schemaVersion: "seo.metrics/1";
+  schemaVersion: "seo.metrics/2";
   definitionSetHash: Hash;
   observations: { [K in MetricKey]: MetricObservation<MetricValues[K]> };
 };
 ```
-Generate one strict JSON Schema from `MetricValues` + the versioned registry, then generate TypeScript declarations, the private SQL definition seed and the UI mapping from that single source. No independently hand-maintained browser/Python/SQL definitions. Node/TypeScript owns validation and canonical hashing per §2 Rule N3.
+Version 1 snapshots remain immutable and readable; missing provenance cannot be backfilled by invention. Generate one strict JSON Schema from `MetricValues` + the versioned registry, then generate TypeScript declarations, the private SQL definition seed and the UI mapping from that single source. No independently hand-maintained browser/Python/SQL definitions. Node/TypeScript owns validation and canonical hashing per §2 Rule N3.
 
 ### 26.5 Schema and analysis rules
 - Root has exactly `schemaVersion`, `definitionSetHash`, `observations`; observations has exactly the 50 keys, all required, `additionalProperties: false`; nested objects disallow unknown properties; array IDs unique; string arrays deduplicated.
@@ -1732,7 +1816,7 @@ Generate one strict JSON Schema from `MetricValues` + the versioned registry, th
 - Counts are integers ≥ 0; declared rates are 0–100; CPC/volume ≥ 0; keyword difficulty 0–100; FK grade and Flesch ease are unclamped finite numbers; `transitionWordDensity` ≥ 0 with no ceiling.
 - Hash is lowercase 64-hex SHA-256; timestamps are validated RFC3339 instants; currency/country codes come from versioned registries; URLs must pass the project's canonical/safe URL parser in addition to schema format checks.
 - `available`/`stale` evidence and input hashes must be nonempty; ratio rows require numerator ≥ 0 and denominator > 0; conversion numerator cannot exceed eligible sessions.
-- Artifact-derived observations require `artifactHash`; keyword metrics require query subject/country scope; currency-bearing CPC requires currency; outcome-rate metrics require cohort/window/timezone. Contextual validation enforces these cross-field rules.
+- The Observation interface (§2.13) is the generic storage envelope; MetricObservation is its registry-typed projection, with one observationId and identical scope/window/provenance, never a second independently ingested observation. Artifact-derived observations require `artifactHash`; keyword metrics require query subject/country scope; currency-bearing CPC requires currency; outcome-rate metrics require cohort/window/timezone. Contextual validation enforces these cross-field rules.
 - Budget: max 100 array records per synchronous observation object and 256-character scalar labels, except reviewed problem/solution text (max 4,000). Overflow collections live in paginated child records/artifacts; never silently truncate and claim completeness.
 - A schema-valid metric grants no publication permission; policy checks eligibility, source authority, completeness, expiry and evidence independently.
 - Analysis conventions: main-content AST excludes repeated navigation/footer/hidden boilerplate but keeps lists/headings/captions as distinct nodes; decode entities, normalize Unicode NFC and whitespace, segment with pinned locale rules, keep exact substring locators against the original artifact, count heading text once. Ranges are UTC internally but retain each source's reporting timezone; product percentages are 0–100; adapters convert provider fractions explicitly; currency uses ISO codes with provider precision and no silent FX; zero numerator with positive denominator may be 0, zero denominator is null; round only for display, never stored source counts.
@@ -1765,7 +1849,7 @@ This is an architectural grounding read, not a complete repository audit; the A0
 All numeric budgets, corpus sizes and freshness windows remain proposed controls; provider APIs, entitlements and account limits are revalidated in A0.
 
 ### 27.3 Provenance of the audit findings integrated in this revision
-This revision responds to an external audit brief. The raw audit transcript was **not machine-readable in the authoring environment**, so its findings are integrated here as normative requirements from the enumerated revision brief (duplicate normative blocks; interface registry; OpenNext/Cloudflare semantics; 1102 honesty; migration mechanics; privilege/RLS; release authority; durable runtime; Semantic Fabric; Jev; reviewer registry; legacy disposition; UI; scoring/learning; source fabric; Marketplace; cost/capacity; observability; A0 decomposition; current-state honesty; preserved depth). **A0.1 must re-check this document against the raw audit artifact** and record any delta as a versioned amendment.
+Historical v5 provenance: that revision responded to an external audit brief whose original raw audit transcript was **not machine-readable in the v5 authoring environment**. Its findings were integrated as normative requirements from the enumerated revision brief (duplicate normative blocks; interface registry; OpenNext/Cloudflare semantics; 1102 honesty; migration mechanics; privilege/RLS; release authority; durable runtime; Semantic Fabric; Jev; reviewer registry; legacy disposition; UI; scoring/learning; source fabric; Marketplace; cost/capacity; observability; A0 decomposition; current-state honesty; preserved depth). **A0.1 must re-check this document against that original raw audit artifact** and record any delta as a versioned amendment. Separately, the supplied final-Astra handoff (`Pasted markdown.md`) was read in full for v6; its phase claim was checked against the current repository matrix and corrected. Do not conflate the unavailable historical transcript with this readable final handoff.
 
 ### 27.4 Revision record
 **CS-2026.09.22.5** (this version) — architecture normalization and strangler-migration hardening:
@@ -1783,15 +1867,26 @@ This revision responds to an external audit brief. The raw audit transcript was 
 
 This is a documentation/design revision only. It does not connect providers, purchase compute, install MCPs, apply migrations, create schedules, publish content, unlock CREATE, perform outreach, merge code or deploy production by itself, and **nothing is "implemented" because a schema, prompt, notebook or this document exists**.
 
+### 27.4.1 CS-2026.09.22.6 final design audit
+- Reconciled current repository phase evidence; corrected the incoming P10-PASS claim and retained the implementation/CREATE holds.
+- Fixed hash domains, nullable/closed-enum discipline, project scoping, strict metric provenance and canonical action names.
+- Defined compact Jev decision/failure schemas, bounded families, deterministic routing/priority, current-state acceptance, caching and family-specific promotion.
+- Specified two purpose-scoped release permits consumed before external writes, protected release credentials, uncertain-write reconciliation and monotonic deployment generations.
+- Added Volume commit/read-back publication, artifact gateway, T1 outage-safe draft chunks, scoped dedupe/GC, conservative budget reservation and request allowance controls.
+- Defined the minimum relational semantic model, stable identity, temporal facts, derivative hot pgvector index, safe invalidation and human-principal review bindings.
+- Issued a separate implementation blueprint and audit record. This is design approval, not deployed-code certification or live A0 acceptance.
+
+Additional official references checked for v6: [TypeSafe API](https://docs.typesafe.ai/api), [models](https://docs.typesafe.ai/models), [confidence](https://docs.typesafe.ai/confidence); [Modal Volumes](https://modal.com/docs/guide/volumes), [billing](https://modal.com/docs/guide/billing), [egress](https://modal.com/docs/guide/network-egress-billing), [pricing](https://modal.com/pricing); [Cloudflare limits](https://developers.cloudflare.com/workers/platform/limits/); [pgvector](https://github.com/pgvector/pgvector); [Postgres constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [locking](https://www.postgresql.org/docs/current/explicit-locking.html); [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security). Account probes remain outstanding.
+
 ### 27.5 Maintenance
 Keep this version identical in Notion, Hjarni and its Markdown handoff. Amend only by explicit version increment with a recorded reason. Never silently overwrite Supervisor Arc or SEO Brief gates, and never let a later document fragment reintroduce a second normative block for the same interface.
 
-## 28. DO NOT IMPLEMENT UNTIL A0 EXITS — binding checklist
+## 28. DO NOT IMPLEMENT UNTIL PROGRAM AND A0 GATES EXIT — binding checklist
 
 Implementation (code, schema, provisioning, adapters, UI, scheduling or any production-affecting change) **must not start** until every item below is checked with recorded evidence. Partial A0 exits gate only their dependent work; the A0.1–A0.7 exits as a whole are the precondition for starting A1–A7.
 
 - [ ] **A0.1 Document normalization complete** — one section sequence confirmed; §27.3 re-check against the raw audit artifact recorded; no duplicate/contradicting normative blocks remain anywhere in the repository documentation; `docs/superpowers/content-studio-revamp.md` is archived or reduced to a superseded pointer, leaving this file as the sole master architecture.
-- [ ] **`main` and P0–P13 re-pinned** at implementation start, with the parity matrix state recorded; P9 status cited only as dated evidence.
+- [ ] **`main` and P0–P13 re-pinned** at implementation start, with the parity matrix state recorded; all phase statuses cited only as dated evidence; P9/P10 outcome gates remain open at the audit snapshot.
 - [ ] **A0.2 runtime/Cloudflare baseline recorded** — measured route CPU/bundles, import-graph report (no heavy transitive imports on the request plane), existing crons mapped to absorb/retain/retire, and the §6.2 decision (Stay-Free tiny-edge contract **or** explicit paid-plan re-baseline) signed with evidence.
 - [ ] **Real Cloudflare telemetry source identified and in use** — no 1102/503 acceptance claim may be made before this.
 - [ ] **A0.3 applied schema/extension/table-size/capacity baseline recorded** — live migration ledger reconciled against the frozen baseline; extension availability/versions verified; sizes, quota utilization and 90-day forecast recorded; divergence fixed by forward migrations only.

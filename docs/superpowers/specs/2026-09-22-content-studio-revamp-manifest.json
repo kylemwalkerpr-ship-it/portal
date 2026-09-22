@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "studio.architecture-manifest/1",
+  "architectureVersion": "CS-2026.09.22.6",
+  "designStatus": "APPROVED",
+  "implementationStatus": "BLOCKED",
+  "repository": "kylemwalkerpr-ship-it/portal",
+  "branch": "content-studio-revamp",
+  "sourceHead": "8dfcbcd17c0afe381b2e5a47209131602b6c1770",
+  "programEvidence": {
+    "mainSha": "4b0a310f22a43e532c2f16ce08df3897d760caf4",
+    "parityBlobSha": "0d2e1f5ed78adaf48334f87a21caa9a602e398cd",
+    "states": {
+      "P0": "PASS",
+      "P1": "PASS",
+      "P2": "PASS",
+      "P3": "PASS",
+      "P4": "PASS",
+      "P5": "PASS",
+      "P6": "PASS",
+      "P7": "PASS",
+      "P8": "PASS",
+      "P9": "IN_PROGRESS",
+      "P10": "IN_PROGRESS",
+      "P11": "IN_PROGRESS",
+      "P12": "PENDING",
+      "P13": "PENDING"
+    },
+    "isLiveProbe": false
+  },
+  "hashDomain": "sha256-exact-file-bytes",
+  "files": [
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "localFilename": "Content-Studio-SEO-Architecture.md",
+      "bytes": 237791,
+      "sha256": "b35a9da4a2a86323ac4f7e6658a158ec331e2c95a70279ca097310a63ce30042"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+      "localFilename": "Content-Studio-Implementation-Blueprint.md",
+      "bytes": 78119,
+      "sha256": "1782a0096685d3868b1939246265eb81b47fdf727913f049eda11b92fd3e7007"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
+      "localFilename": "Content-Studio-Final-Architecture-Audit.md",
+      "bytes": 13036,
+      "sha256": "14e03adda23350e05be0065e5b2d42410f561153459c18b9ea50dab7e2882471"
+    },
+    {
+      "path": "docs/superpowers/content-studio-revamp.md",
+      "localFilename": "Content-Studio-Revamp-Pointer.md",
+      "bytes": 1263,
+      "sha256": "cc7feee2f15eacca06964a71b62d64a1880f3c1adfb0c1296abcaa3ab5a9c22b"
+    }
+  ],
+  "selfDigestExcluded": true,
+  "executionRequires": [
+    "Current canonical program closure",
+    "Explicit Sol implementation packet",
+    "Required A0 exits",
+    "Scoped review and operational authorization"
+  ]
+}
