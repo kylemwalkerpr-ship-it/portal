@@ -23,6 +23,8 @@
  * address classes is directly testable without network access.
  */
 
+import { resolve4 as nodeResolve4, resolve6 as nodeResolve6 } from 'node:dns/promises'
+
 export interface HostResolution {
   ok: boolean
   /** Every address the hostname resolved to (empty when the lookup failed). */
@@ -157,36 +159,45 @@ export function isPrivateOrReservedAddress(address: string): boolean {
   return true
 }
 
-type NodeLookup = (
-  host: string,
-  options: { all: true; verbatim: boolean },
-) => Promise<Array<{ address?: string }>>
+export type DnsFamilyResolver = (host: string) => Promise<string[]>
 
-/**
- * The runtime DNS resolver. `node:dns` is provided natively by the Workers
- * runtime under `nodejs_compat` and by Node.js in dev/tests, but it is loaded
- * lazily so an environment without it degrades to a REFUSAL (never a fetch)
- * instead of breaking module evaluation.
- */
-async function loadNodeLookup(): Promise<NodeLookup | null> {
-  for (const specifier of ['node:dns/promises', 'node:dns']) {
-    try {
-      const module: unknown = await import(/* webpackIgnore: true */ specifier)
-      const candidate = module as { lookup?: unknown; default?: { lookup?: unknown } }
-      const lookup = candidate?.lookup ?? candidate?.default?.lookup
-      if (typeof lookup === 'function') return lookup as NodeLookup
-    } catch {
-      /* try the next specifier */
+export interface HostResolutionDeps {
+  resolve4?: DnsFamilyResolver
+  resolve6?: DnsFamilyResolver
+}
+
+const NO_RECORD_CODES = new Set(['ENODATA', 'ENOTFOUND', 'ENOENT'])
+
+async function resolveFamily(
+  family: 'A' | 'AAAA',
+  host: string,
+  resolver: DnsFamilyResolver,
+): Promise<{ addresses: string[]; hardError: string | null }> {
+  try {
+    const answers = await resolver(host)
+    return {
+      addresses: [...new Set((answers || []).map((answer) => normalizeAddress(String(answer || ''))).filter(Boolean))],
+      hardError: null,
     }
+  } catch (error) {
+    const code = String((error as { code?: unknown } | null)?.code || '').toUpperCase()
+    if (NO_RECORD_CODES.has(code)) return { addresses: [], hardError: null }
+    const detail = error instanceof Error ? error.message.slice(0, 200) : 'DNS resolution failed'
+    return { addresses: [], hardError: `${family} lookup failed: ${detail}` }
   }
-  return null
 }
 
 /**
  * Resolve a hostname (or accept an IP literal) and refuse anything that is not
- * a public address. Never throws.
+ * a public address. Workers supports the family-specific resolve4/resolve6
+ * APIs under nodejs_compat; lookup()/generic resolve() are intentionally not
+ * used. One missing family is normal, but a hard resolver error, an empty
+ * combined answer set, or ANY private/reserved answer fails closed.
  */
-export async function resolveHostAddresses(host: string): Promise<HostResolution> {
+export async function resolveHostAddresses(
+  host: string,
+  deps: HostResolutionDeps = {},
+): Promise<HostResolution> {
   const name = String(host || '')
     .trim()
     .toLowerCase()
@@ -200,31 +211,25 @@ export async function resolveHostAddresses(host: string): Promise<HostResolution
     return { ok: true, addresses: [name] }
   }
 
-  const lookup = await loadNodeLookup()
-  if (!lookup) {
+  const resolve4 = deps.resolve4 || nodeResolve4
+  const resolve6 = deps.resolve6 || nodeResolve6
+  const [a, aaaa] = await Promise.all([
+    resolveFamily('A', name, resolve4),
+    resolveFamily('AAAA', name, resolve6),
+  ])
+
+  const hardErrors = [a.hardError, aaaa.hardError].filter((value): value is string => Boolean(value))
+  if (hardErrors.length) {
     return {
       ok: false,
-      addresses: [],
-      reason: `the DNS resolver is unavailable, so "${name}" cannot be proven public`,
+      addresses: [...a.addresses, ...aaaa.addresses],
+      reason: `"${name}" could not be safely resolved (${hardErrors.join('; ')})`,
     }
   }
 
-  let answers: Array<{ address?: string }>
-  try {
-    answers = await lookup(name, { all: true, verbatim: true })
-  } catch (error) {
-    return {
-      ok: false,
-      addresses: [],
-      reason: `"${name}" could not be resolved (${
-        error instanceof Error ? error.message.slice(0, 200) : 'lookup failed'
-      })`,
-    }
-  }
-
-  const addresses = [...new Set((answers || []).map((answer) => normalizeAddress(String(answer?.address || ''))).filter(Boolean))]
+  const addresses = [...new Set([...a.addresses, ...aaaa.addresses])]
   if (!addresses.length) {
-    return { ok: false, addresses: [], reason: `"${name}" did not resolve to any address` }
+    return { ok: false, addresses: [], reason: `"${name}" did not resolve to any public address` }
   }
   const offending = addresses.filter((address) => isPrivateOrReservedAddress(address))
   if (offending.length) {

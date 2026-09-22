@@ -87,6 +87,20 @@ const FETCH_TIMEOUT_MS = 12_000
 export const MAX_BACKLINK_REDIRECT_HOPS = 3
 /** Hard cap on the third-party body this verifier will read (2 MiB). */
 export const MAX_BACKLINK_BODY_BYTES = 2 * 1024 * 1024
+/** Destination-currentness proof is deliberately small: headers + redirect truth, no body parse. */
+export const DESTINATION_LIVE_METHOD = 'live_http_get_no_redirect' as const
+const DESTINATION_LIVE_TIMEOUT_MS = 8_000
+
+export interface DestinationLiveObservation {
+  current: boolean
+  status: number | null
+  finalUrl: string | null
+  method: typeof DESTINATION_LIVE_METHOD
+  error: string | null
+}
+
+export type DestinationLiveChecker = (url: string) => Promise<DestinationLiveObservation>
+
 /** Content types that can contain a real anchor. Missing header ⇒ unobservable. */
 const HTML_CONTENT_TYPES = ['text/html', 'application/xhtml+xml'] as const
 const ANCHOR_TEXT_MAX = 200
@@ -499,6 +513,85 @@ function declaredContentLength(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
+/**
+ * Prove the persisted YouSafe destination is CURRENT before a verified backlink
+ * may become a win. Redirects are intentionally NOT followed: a 3xx means the
+ * persisted URL is stale and must be corrected before authority can be credited.
+ * The response body is cancelled immediately; currentness needs only status and
+ * exact URL identity, keeping the Worker/network cost bounded.
+ */
+export async function checkDestinationLive(url: string): Promise<DestinationLiveObservation> {
+  const exact = String(url || '').trim()
+  if (!exact) {
+    return {
+      current: false,
+      status: null,
+      finalUrl: null,
+      method: DESTINATION_LIVE_METHOD,
+      error: 'the persisted destination URL is empty',
+    }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), DESTINATION_LIVE_TIMEOUT_MS)
+  try {
+    const response = await fetch(exact, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        'User-Agent': BACKLINK_VERIFIER_USER_AGENT,
+        Accept: 'text/html,*/*;q=0.8',
+      },
+      signal: controller.signal,
+    })
+    const status = Number.isFinite(Number(response?.status)) ? Number(response.status) : null
+    const location = status != null && REDIRECT_STATUSES.has(status) ? readHeader(response, 'location') : null
+    let finalUrl = typeof response?.url === 'string' && response.url ? response.url : exact
+    if (location) {
+      try {
+        finalUrl = new URL(location, exact).toString()
+      } catch {
+        finalUrl = location
+      }
+    }
+    try {
+      await response.body?.cancel()
+    } catch {
+      // Body cancellation is resource hygiene, not part of the currentness verdict.
+    }
+
+    const success = status != null && status >= 200 && status < 300
+    const exactFinal =
+      normalizeInterlinkProofUrl(finalUrl) === normalizeInterlinkProofUrl(exact)
+    const current = success && exactFinal
+    const error = current
+      ? null
+      : status != null && REDIRECT_STATUSES.has(status)
+        ? `the persisted destination redirects (HTTP ${status}) to ${finalUrl}`
+        : success
+          ? `the destination resolved to ${finalUrl}, not the persisted canonical ${exact}`
+          : `the persisted destination responded HTTP ${status ?? 'unknown'}`
+
+    return {
+      current,
+      status,
+      finalUrl,
+      method: DESTINATION_LIVE_METHOD,
+      error,
+    }
+  } catch (error) {
+    return {
+      current: false,
+      status: null,
+      finalUrl: null,
+      method: DESTINATION_LIVE_METHOD,
+      error: error instanceof Error ? error.message.slice(0, 300) : 'destination live check failed',
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 interface BoundedBodyRead {
   ok: boolean
   /** Present only when ok is false. */
@@ -777,6 +870,8 @@ export interface VerifyBacklinkClaimInput {
   now?: string
   /** Injectable host resolver; defaults to the real DNS resolver. */
   resolveHostAddresses?: HostAddressResolver
+  /** Injectable owned-destination currentness checker for deterministic tests. */
+  checkDestinationLive?: DestinationLiveChecker
 }
 
 export interface VerifyBacklinkClaimResult {
@@ -792,6 +887,8 @@ export interface VerifyBacklinkClaimResult {
   /** The PERSISTED destination this verification was bound to. */
   targetUrl: string | null
   destinationOwnership?: 'registry_confirmed' | 'host_public'
+  /** True only when the persisted destination itself was observed live and exact. */
+  destinationCurrent: boolean | null
   sourceHttpStatus: number | null
   sourceFinalUrl: string | null
   /** A redirect location refused BEFORE it was fetched. */
@@ -820,6 +917,7 @@ function result(partial: Partial<VerifyBacklinkClaimResult>): VerifyBacklinkClai
     targetStatus: null,
     sourceUrl: null,
     targetUrl: null,
+    destinationCurrent: null,
     sourceHttpStatus: null,
     sourceFinalUrl: null,
     blockedUrl: null,
@@ -942,6 +1040,21 @@ export async function verifyBacklinkClaim(
       verdict = linkPresent ? 'verified' : 'absent'
     }
 
+    let destinationLive: DestinationLiveObservation | null = null
+    if (verdict === 'verified' && linkPresent && observation.finalUrl) {
+      try {
+        destinationLive = await (input.checkDestinationLive || checkDestinationLive)(destinationUrl)
+      } catch (error) {
+        destinationLive = {
+          current: false,
+          status: null,
+          finalUrl: null,
+          method: DESTINATION_LIVE_METHOD,
+          error: error instanceof Error ? error.message.slice(0, 300) : 'destination live check failed',
+        }
+      }
+    }
+
     const verifier = String(input.actor || '').trim() || BACKLINK_VERIFIER_USER_AGENT
     const evidenceRow = {
       target_id: targetId,
@@ -964,6 +1077,34 @@ export async function verifyBacklinkClaim(
       verifier,
       evidence: {
         claimedSource: claimedSourceUrl,
+        observedFinalSource: {
+          url: observation.finalUrl,
+          host: finalHost,
+        },
+        persistedDestination: {
+          url: destinationUrl,
+          source: 'target_row',
+          ownership: destination.ownership || null,
+          requested: String(input.requestedTargetUrl || '').trim() || null,
+        },
+        destinationLive: destinationLive
+          ? {
+              checked: true,
+              current: destinationLive.current,
+              status: destinationLive.status,
+              finalUrl: destinationLive.finalUrl,
+              method: destinationLive.method,
+              error: destinationLive.error,
+            }
+          : {
+              checked: false,
+              current: null,
+              status: null,
+              finalUrl: null,
+              method: null,
+              error: null,
+            },
+        // Compatibility aliases retained for existing evidence readers.
         destination: {
           url: destinationUrl,
           source: 'target_row',
@@ -1011,6 +1152,7 @@ export async function verifyBacklinkClaim(
         linkPresent,
         sourceUrl: claimedSourceUrl,
         targetUrl: destinationUrl,
+        destinationCurrent: destinationLive?.current ?? null,
         sourceHttpStatus: observation.status,
         sourceFinalUrl: observation.finalUrl,
         observedHref,
@@ -1030,6 +1172,7 @@ export async function verifyBacklinkClaim(
         sourceUrl: claimedSourceUrl,
         targetUrl: destinationUrl,
         destinationOwnership: destination.ownership,
+        destinationCurrent: destinationLive?.current ?? null,
         sourceHttpStatus: observation.status,
         sourceFinalUrl: observation.finalUrl,
         blockedUrl: observation.blockedUrl,
@@ -1046,6 +1189,27 @@ export async function verifyBacklinkClaim(
       })
     }
 
+    if (!observation.finalUrl || destinationLive?.current !== true) {
+      return result({
+        ok: true,
+        verdict,
+        linkPresent,
+        verificationId,
+        evidencePersisted: true,
+        sourceUrl: claimedSourceUrl,
+        targetUrl: destinationUrl,
+        destinationOwnership: destination.ownership,
+        destinationCurrent: destinationLive?.current ?? false,
+        sourceHttpStatus: observation.status,
+        sourceFinalUrl: observation.finalUrl,
+        observedHref,
+        targetStatus: target.status ?? null,
+        reason: !observation.finalUrl
+          ? 'the verified backlink has no observed final source URL, so it cannot become a win'
+          : destinationLive?.error || 'the persisted destination is not current/live',
+      })
+    }
+
     const { data: updated, error: updateError } = await supabase
       .from('seo_backlink_targets')
       .update({
@@ -1053,7 +1217,7 @@ export async function verifyBacklinkClaim(
         won_at: now,
         won_verified_at: now,
         won_verification_id: verificationId,
-        won_backlink_url: claimedSourceUrl,
+        won_backlink_url: observation.finalUrl,
         // Restate the exact destination this proof was taken against, so the
         // DB guard can re-prove the binding against the row's own column.
         destination_url: destinationUrl,
@@ -1070,6 +1234,7 @@ export async function verifyBacklinkClaim(
         evidencePersisted: true,
         sourceUrl: claimedSourceUrl,
         targetUrl: destinationUrl,
+        destinationCurrent: true,
         sourceHttpStatus: observation.status,
         sourceFinalUrl: observation.finalUrl,
         observedHref,
@@ -1097,6 +1262,7 @@ export async function verifyBacklinkClaim(
         sourceUrl: claimedSourceUrl,
         targetUrl: destinationUrl,
         destinationOwnership: destination.ownership,
+        destinationCurrent: true,
         sourceHttpStatus: observation.status,
         sourceFinalUrl: observation.finalUrl,
         observedHref,
@@ -1115,6 +1281,7 @@ export async function verifyBacklinkClaim(
       sourceUrl: claimedSourceUrl,
       targetUrl: destinationUrl,
       destinationOwnership: destination.ownership,
+      destinationCurrent: true,
       sourceHttpStatus: observation.status,
       sourceFinalUrl: observation.finalUrl,
       observedHref,

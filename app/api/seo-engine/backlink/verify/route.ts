@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
       target_url: result.targetUrl,
       destination_url: result.targetUrl,
       destination_ownership: result.destinationOwnership || null,
+      destination_current: result.destinationCurrent,
       source_http_status: result.sourceHttpStatus,
       source_final_url: result.sourceFinalUrl,
       blocked_url: result.blockedUrl || null,

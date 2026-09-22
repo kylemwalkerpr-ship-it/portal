@@ -21,8 +21,10 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requireAdminUser } from '@/lib/portalAuth'
 import {
   BACKLINK_VERIFICATION_METHOD,
+  DESTINATION_LIVE_METHOD,
   MAX_BACKLINK_BODY_BYTES,
   MAX_BACKLINK_REDIRECT_HOPS,
+  checkDestinationLive,
   isPrivateOrLocalHost,
   isYouSafeOwnedHost,
   listBacklinkVerifications,
@@ -177,6 +179,13 @@ function verifyInput(overrides: Record<string, unknown> = {}) {
     actor: 'admin@portal',
     now: '2026-09-21T10:00:00.000Z',
     resolveHostAddresses: scriptedResolver(),
+    checkDestinationLive: async (url: string) => ({
+      current: true,
+      status: 200,
+      finalUrl: url,
+      method: DESTINATION_LIVE_METHOD,
+      error: null,
+    }),
     ...overrides,
   }
 }
@@ -292,7 +301,10 @@ describe('C) the persisted destination is the only authority', () => {
 
   it('refuses a request that tries to choose a different YouSafe URL', async () => {
     const db = installDb()
-    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml(OTHER_ESTATE_PAGE) } })
+    const fetchMock = installFetchScript({
+      [SOURCE]: { body: positiveHtml(OTHER_ESTATE_PAGE) },
+      [TARGET]: { body: '<html><body>live destination</body></html>' },
+    })
 
     const result = await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: OTHER_ESTATE_PAGE }))
 
@@ -499,6 +511,7 @@ describe('D) outbound-fetch safety: DNS and redirects', () => {
       redirectChain: [{ from: SOURCE, status: 301, to: SOURCE_ROOTS }],
     })
     expect(targetUpdates(db)).toHaveLength(1)
+    expect(targetUpdates(db)[0].patch.won_backlink_url).toBe(SOURCE_ROOTS)
   })
 })
 
@@ -634,6 +647,17 @@ describe('F) positive live proof ⇒ evidence row + won', () => {
     expect(String(evidence.anchor_context)).toContain('YouSafe student visas')
     expect(evidence.id).toBe(result.verificationId)
     expect(evidence.evidence).toMatchObject({
+      claimedSource: SOURCE,
+      observedFinalSource: { url: SOURCE, host: 'www.ilw.com' },
+      persistedDestination: { url: TARGET, source: 'target_row', ownership: expect.any(String) },
+      destinationLive: {
+        checked: true,
+        current: true,
+        status: 200,
+        finalUrl: TARGET,
+        method: DESTINATION_LIVE_METHOD,
+        error: null,
+      },
       destination: { url: TARGET, source: 'target_row', ownership: expect.any(String) },
       resolvedHosts: [{ host: 'www.ilw.com', addresses: ['93.184.216.34'] }],
       bodyLimitBytes: MAX_BACKLINK_BODY_BYTES,
@@ -812,6 +836,76 @@ describe('I) rejected claims are never fetched and never recorded', () => {
   })
 })
 
+
+describe('J0) destination currentness gates a win without erasing backlink truth', () => {
+  it('records a verified backlink but withholds won when the persisted destination redirects', async () => {
+    const db = installDb()
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(
+      verifyInput({
+        checkDestinationLive: async () => ({
+          current: false,
+          status: 301,
+          finalUrl: OTHER_ESTATE_PAGE,
+          method: DESTINATION_LIVE_METHOD,
+          error: 'the persisted destination redirects to a different estate URL',
+        }),
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.verdict).toBe('verified')
+    expect(result.linkPresent).toBe(true)
+    expect(result.destinationCurrent).toBe(false)
+    expect(result.transitionedToWon).toBe(false)
+    expect(result.reason).toMatch(/persisted destination redirects/)
+    expect(targetUpdates(db)).toHaveLength(0)
+
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence).toMatchObject({
+      verdict: 'verified',
+      link_present: true,
+      source_final_url: SOURCE,
+    })
+    expect(evidence.evidence).toMatchObject({
+      claimedSource: SOURCE,
+      observedFinalSource: { url: SOURCE },
+      persistedDestination: { url: TARGET },
+      destinationLive: {
+        checked: true,
+        current: false,
+        status: 301,
+        finalUrl: OTHER_ESTATE_PAGE,
+        method: DESTINATION_LIVE_METHOD,
+      },
+    })
+  })
+
+  it('checks the owned destination with no redirect-follow and cancels the body', async () => {
+    const liveFetch = installFetchScript({ [TARGET]: { status: 200, body: '<html>ok</html>' } })
+    const live = await checkDestinationLive(TARGET)
+    expect(live).toEqual({
+      current: true,
+      status: 200,
+      finalUrl: TARGET,
+      method: DESTINATION_LIVE_METHOD,
+      error: null,
+    })
+    expect(liveFetch).toHaveBeenCalledTimes(1)
+
+    installFetchScript({ [TARGET]: { status: 302, headers: { location: OTHER_ESTATE_PAGE } } })
+    const redirected = await checkDestinationLive(TARGET)
+    expect(redirected).toMatchObject({
+      current: false,
+      status: 302,
+      finalUrl: OTHER_ESTATE_PAGE,
+      method: DESTINATION_LIVE_METHOD,
+    })
+    expect(redirected.error).toMatch(/redirects/)
+  })
+})
+
 describe('J) outreach provenance must belong to the target', () => {
   it('refuses an outreach_id that belongs to another target (nothing persisted)', async () => {
     const db = installDb([targetRow()], {
@@ -893,6 +987,71 @@ describe('K) idempotency and the evidence trail', () => {
   })
 })
 
+
+describe('K1) Cloudflare-compatible family DNS resolution', () => {
+  const noData = async (): Promise<string[]> => {
+    throw Object.assign(new Error('no data'), { code: 'ENODATA' })
+  }
+  const notFound = async (): Promise<string[]> => {
+    throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' })
+  }
+  const hardFail = async (): Promise<string[]> => {
+    throw Object.assign(new Error('servfail'), { code: 'ESERVFAIL' })
+  }
+
+  it('accepts IPv4-only when AAAA has no data', async () => {
+    await expect(
+      resolveHostAddresses('example.com', {
+        resolve4: async () => ['93.184.216.34'],
+        resolve6: noData,
+      }),
+    ).resolves.toEqual({ ok: true, addresses: ['93.184.216.34'] })
+  })
+
+  it('accepts IPv6-only when A has no data', async () => {
+    await expect(
+      resolveHostAddresses('example.com', {
+        resolve4: notFound,
+        resolve6: async () => ['2606:4700::1111'],
+      }),
+    ).resolves.toEqual({ ok: true, addresses: ['2606:4700::1111'] })
+  })
+
+  it('accepts public dual-stack and preserves both families', async () => {
+    await expect(
+      resolveHostAddresses('example.com', {
+        resolve4: async () => ['93.184.216.34'],
+        resolve6: async () => ['2606:4700::1111'],
+      }),
+    ).resolves.toEqual({ ok: true, addresses: ['93.184.216.34', '2606:4700::1111'] })
+  })
+
+  it('fails closed when both families have no records', async () => {
+    const result = await resolveHostAddresses('example.com', { resolve4: noData, resolve6: notFound })
+    expect(result.ok).toBe(false)
+    expect(result.addresses).toEqual([])
+    expect(result.reason).toMatch(/did not resolve/)
+  })
+
+  it('fails closed on a hard resolver error even if the other family is public', async () => {
+    const result = await resolveHostAddresses('example.com', {
+      resolve4: async () => ['93.184.216.34'],
+      resolve6: hardFail,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toMatch(/AAAA lookup failed: servfail/)
+  })
+
+  it('fails closed if either family returns a private/reserved answer', async () => {
+    const result = await resolveHostAddresses('example.com', {
+      resolve4: async () => ['93.184.216.34'],
+      resolve6: async () => ['::1'],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toMatch(/private\/reserved/)
+  })
+})
+
 describe('L) admin-only route', () => {
   function post(body: Record<string, unknown>) {
     return new NextRequest('http://localhost/api/seo-engine/backlink/verify', {
@@ -923,7 +1082,10 @@ describe('L) admin-only route', () => {
   it('drives a real verification through the route and reports the durable win', async () => {
     requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
     const db = installDb()
-    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+    installFetchScript({
+      [SOURCE]: { body: positiveHtml() },
+      [TARGET]: { body: '<html><body>live destination</body></html>' },
+    })
     const response = await verifyPOST(post({ target_id: 'target-1', source_url: SOURCE, target_url: TARGET }))
     expect(response.status).toBe(200)
     const body = (await response.json()) as Record<string, unknown>
@@ -937,6 +1099,7 @@ describe('L) admin-only route', () => {
       target_status: 'won',
       target_url: TARGET,
       destination_url: TARGET,
+      destination_current: true,
     })
     expect(String(body.verification_id)).not.toHaveLength(0)
     // Provenance is the AUTHENTICATED identity, never a body field.
@@ -959,6 +1122,7 @@ describe('L) admin-only route', () => {
     )
     expect(spoofed.status).toBe(200)
     expect(evidenceInserts(db)[0].rows[0].verifier).toBe('real.admin@yousafeconsultancy.com')
+    // Wrong anchor => no destination-currentness fetch is needed.
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 

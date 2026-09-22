@@ -24,8 +24,9 @@
 --      constraint: status='won' cannot exist without won_at, an absolute
 --      won_backlink_url and both pointers. A BEFORE INSERT/UPDATE guard
 --      trigger additionally proves the pointer is a POSITIVE verdict for THIS
---      target whose backlink URL equals the recorded won_backlink_url AND whose
---      verified target_url is this row's OWN persisted destination_url.
+--      target whose observed final source URL equals won_backlink_url, whose
+--      verified target_url is this row's OWN persisted destination_url, and
+--      whose immutable evidence proves that destination was live/current.
 --   2b. `destination_url` — the STRATEGIC YouSafe canonical a prospect should
 --      link to, persisted on the target itself (additive, NULLABLE). It is NOT
 --      `target_url`, which remains the third-party placement surface. Legacy
@@ -96,6 +97,8 @@ create table if not exists public.seo_backlink_verifications (
       or (
         observed_href is not null
         and nullif(btrim(observed_href), '') is not null
+        and source_final_url is not null
+        and nullif(btrim(source_final_url), '') is not null
         and source_http_status is not null
         and source_http_status between 200 and 399
       )
@@ -106,7 +109,7 @@ create table if not exists public.seo_backlink_verifications (
 comment on table public.seo_backlink_verifications is
   'P9 append-only evidence for live external backlink verification. One immutable row per attempt (positive, absent or unavailable). Never updated, never deleted; the only authority that may transition a seo_backlink_targets row to status=won.';
 comment on column public.seo_backlink_verifications.backlink_url is
-  'The claimed third-party backlink page URL that was fetched live. Validated as absolute http(s) on the prospect domain (or a subdomain) and never a YouSafe-owned host.';
+  'The claimed third-party backlink page URL used to start verification. The actual page whose HTML was inspected is source_final_url; redirects are preserved as provenance rather than conflated with the win URL.';
 comment on column public.seo_backlink_verifications.target_url is
   'The exact YouSafe estate URL the claim says is linked. Validated against HOST_PUBLIC estate hosts before any fetch.';
 comment on column public.seo_backlink_verifications.link_present is
@@ -243,7 +246,7 @@ begin
   if new.won_verification_id is null then
     raise exception 'seo_backlink_targets.status=won requires won_verification_id from live backlink verification';
   end if;
-  select v.id, v.target_id, v.link_present, v.verdict, v.backlink_url, v.target_url
+  select v.id, v.target_id, v.link_present, v.verdict, v.backlink_url, v.source_final_url, v.target_url, v.evidence
     into verified
     from public.seo_backlink_verifications v
    where v.id = new.won_verification_id;
@@ -256,8 +259,11 @@ begin
   if verified.verdict is distinct from 'verified' or verified.link_present is not true then
     raise exception 'seo_backlink_targets.status=won requires a positive live verification verdict';
   end if;
-  if new.won_backlink_url is distinct from verified.backlink_url then
-    raise exception 'seo_backlink_targets.won_backlink_url must equal the verified backlink page URL';
+  if verified.source_final_url is null or nullif(btrim(verified.source_final_url), '') is null then
+    raise exception 'seo_backlink_targets.status=won requires an observed final source URL from live verification';
+  end if;
+  if new.won_backlink_url is distinct from verified.source_final_url then
+    raise exception 'seo_backlink_targets.won_backlink_url must equal the observed final source URL that carried the verified backlink';
   end if;
   -- The proof must have been taken against THIS target's own persisted
   -- destination: a win can never be bound to a YouSafe URL the target row does
@@ -267,6 +273,12 @@ begin
   end if;
   if verified.target_url is distinct from new.destination_url then
     raise exception 'seo_backlink_targets.won_verification_id must have verified the target''s persisted destination_url';
+  end if;
+  -- A verified anchor to a stale/redirecting YouSafe URL is real backlink
+  -- evidence, but it is NOT a win. The app stores the bounded live observation
+  -- in immutable evidence JSON and the DB guard re-proves current=true.
+  if lower(coalesce(verified.evidence #>> '{destinationLive,current}', 'false')) <> 'true' then
+    raise exception 'seo_backlink_targets.status=won requires the persisted destination_url to be live and current in verification evidence';
   end if;
   return new;
 end;

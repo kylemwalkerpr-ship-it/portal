@@ -179,6 +179,8 @@ describe('B) append-only verification evidence table', () => {
     expect(body).toContain('seo_backlink_verifications_positive_proof_check')
     expect(body).toContain("((verdict = 'verified') = link_present)")
     expect(body).toContain("observed_href is not null")
+    expect(body).toContain('source_final_url is not null')
+    expect(body).toContain("nullif(btrim(source_final_url), '') is not null")
     expect(body).toContain('source_http_status between 200 and 399')
   })
 
@@ -250,11 +252,15 @@ describe('C) durable won proof pointers + DB truth constraint', () => {
     expect(body).toContain('if new.status is distinct from \'won\' then')
     expect(body).toContain('belongs to a different target')
     expect(body).toContain("verified.verdict is distinct from 'verified' or verified.link_present is not true")
-    expect(body).toContain('won_backlink_url must equal the verified backlink page URL')
+    expect(body).toContain('requires an observed final source URL from live verification')
+    expect(body).toContain('won_backlink_url must equal the observed final source URL that carried the verified backlink')
     // The proof must have been taken against THIS row's persisted destination.
-    expect(body).toContain('v.backlink_url, v.target_url')
+    expect(body).toContain('v.backlink_url, v.source_final_url, v.target_url, v.evidence')
     expect(body).toContain('requires a persisted destination_url on the target')
     expect(body).toContain("if verified.target_url is distinct from new.destination_url then")
+    // A real anchor to a stale/redirecting owned URL is evidence, not a win.
+    expect(body).toContain("verified.evidence #>> '{destinationLive,current}'")
+    expect(body).toContain('requires the persisted destination_url to be live and current in verification evidence')
   })
 
   it('closes the authority_score provenance vocabulary', () => {
