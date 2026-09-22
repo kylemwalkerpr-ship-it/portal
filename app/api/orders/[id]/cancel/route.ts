@@ -21,6 +21,7 @@ import {
   runClientCancelRpc,
   UNSTARTED_STATUSES,
 } from '@/lib/orderCancellation'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
 
 async function authClient() {
   const auth = await requirePortalUser()
@@ -55,6 +56,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (result.kind === 'denied') {
     return fail(result.message, cancellationHttpStatus(result.code), { code: result.code })
   }
+
+  // P10: a cancellation is appended as its own lifecycle event. The earlier
+  // order_paid row stays exactly as observed — cancelling does not erase the fact
+  // that money was captured, and any refund is a separate lifecycle row too.
+  await bindBusinessEvent(auth!.db, {
+    eventType: 'order_cancelled',
+    subjectType: 'order',
+    subjectId: id,
+    occurredAt: new Date().toISOString(),
+    evidence: {
+      verification: 'client_cancel_rpc',
+      from_status: result.from_status ?? null,
+      refund_cents: result.refund_cents,
+    },
+  })
 
   return ok({
     order: { id, status: 'cancelled' },

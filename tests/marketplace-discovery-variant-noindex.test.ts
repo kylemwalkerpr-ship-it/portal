@@ -35,10 +35,12 @@ import {
   isDiscoveryVariantPath,
   isDiscoveryVariantRequest,
 } from '@/lib/marketplaceDiscoveryQuery'
+import { stripTrackingParams } from '@/lib/trackingParams'
 
 const readRepo = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
 
 const middleware = readRepo('middleware.ts')
+const trackingParams = readRepo('lib/trackingParams.ts')
 const landing = readRepo('app/marketplace/page.tsx')
 const gigsHub = readRepo('app/marketplace/gigs/page.tsx')
 const queryGate = readRepo('components/marketplace/GigsDiscoveryQueryGate.tsx')
@@ -179,17 +181,24 @@ describe('edge wiring — header only, params untouched, tracking 301 preserved'
   })
 
   it('never strips or redirects a recognized discovery param', () => {
-    const setStart = middleware.indexOf('const STRIP_QUERY_KEYS = new Set([')
+    // The tracking key set moved to the shared, edge-safe helper module; the
+    // middleware consumes it instead of inlining a set of its own.
+    const setStart = trackingParams.indexOf('export const TRACKING_QUERY_KEYS')
     expect(setStart).toBeGreaterThan(-1)
-    const stripBlock = middleware.slice(setStart, middleware.indexOf('])', setStart))
+    const stripBlock = trackingParams.slice(setStart, trackingParams.indexOf('])', setStart))
     for (const key of [...DISCOVERY_FILTER_KEYS, 'page', 'country', 'lang']) {
       expect(stripBlock).not.toContain(`'${key}'`)
     }
     // Tracking keys keep their existing 301 consolidation.
     expect(stripBlock).toContain("'utm_source'")
     expect(stripBlock).toContain("'gclid'")
-    expect(middleware).toContain("key.toLowerCase().startsWith('utm_')")
+    expect(trackingParams).toContain("normalized.startsWith('utm_')")
     expect(middleware).toContain('NextResponse.redirect(dest, { status: 301 })')
+
+    // Behavioural guard (not just text): the consolidation really keeps every
+    // discovery param and strips only tracking junk.
+    const discoveryUrl = new URL('https://market.yousafeconsultancy.com/gigs?q=f1&country=us&page=2&utm_source=newsletter')
+    expect(stripTrackingParams(discoveryUrl)).toBe('/gigs?q=f1&country=us&page=2')
 
     // The robots branch is header-only: no param mutation, no redirect.
     const robotsBranch = middleware.slice(

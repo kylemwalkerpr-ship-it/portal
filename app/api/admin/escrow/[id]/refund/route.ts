@@ -14,6 +14,7 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { refundToWallet } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
 
 async function authViaServiceToken(req: Request) {
   const header = req.headers.get('authorization') || ''
@@ -57,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { data, error } = await db
       .from('orders')
-      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, client_id, amount_paid, total_amount')
+      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, client_id, amount_paid, total_amount, currency')
       .eq('id', orderId)
       .single() as any
     if (error || !data) return fail('Order not found.', 404)
@@ -88,6 +89,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const isFullRefund = remaining <= 0
   const newEscrowStatus = isFullRefund ? 'refunded' : 'partial_released'
   const refundCents = Math.round(requestedAmount * 100)
+  let walletRefundSucceeded = !order.client_id
+  let orderUpdateSucceeded = false
 
   // Refund to buyer wallet if we have a client_id. MUST go through
   // refundToWallet — a raw credit() gets typed 'topup' by the RPC, which
@@ -107,6 +110,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           metadata: { reason, adminId: profileId, orderId },
         }
       )
+      walletRefundSucceeded = true
     } catch (err: any) {
       warnings.push(`wallet_credit_failed: ${err.message}`)
     }
@@ -123,6 +127,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const { error: updErr } = await db.from('orders').update(update).eq('id', orderId)
     if (updErr) warnings.push(`order_update_failed: ${updErr.message}`)
+    else orderUpdateSucceeded = true
   } catch (err: any) {
     warnings.push(`order_update_failed: ${err.message}`)
   }
@@ -140,6 +145,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
   } catch (err: any) {
     warnings.push(`escrow_event_failed: ${err.message}`)
+  }
+
+  // P10: append a refund lifecycle event only after the business state that
+  // constitutes this refund actually completed. A warning-only partial failure
+  // must not become a durable conversion claim.
+  if (walletRefundSucceeded && orderUpdateSucceeded) {
+    await bindBusinessEvent(db, {
+      eventType: 'order_refunded',
+      subjectType: 'order',
+      subjectId: orderId,
+      amountCents: refundCents,
+      currency: (order.currency || 'usd').toLowerCase(),
+      occurredAt: new Date().toISOString(),
+      lifecycleRef: `escrow-${Math.round(Number(order.escrow_refunded_amount || 0) + requestedAmount)}`,
+      evidence: {
+        verification: 'admin_escrow_refund',
+        full_refund: isFullRefund,
+        buyer_wallet_credit: Boolean(order.client_id),
+      },
+    })
   }
 
   try {

@@ -4,6 +4,7 @@ import {
   cancellationHttpStatus,
   runClientCancelRpc,
 } from '@/lib/orderCancellation'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
 
 /**
  * POST /api/mobile/orders/[id]/cancel
@@ -52,6 +53,20 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
         { status: cancellationHttpStatus(result.code) },
       )
     }
+
+    // P10: cancellation is a NEW append-only lifecycle event; the earlier
+    // order_paid row is never mutated or removed.
+    await bindBusinessEvent(auth.db, {
+      eventType: 'order_cancelled',
+      subjectType: 'order',
+      subjectId: id,
+      occurredAt: new Date().toISOString(),
+      evidence: {
+        verification: 'client_cancel_rpc',
+        from_status: result.from_status ?? null,
+        refund_cents: result.refund_cents,
+      },
+    })
 
     return Response.json({
       data: {

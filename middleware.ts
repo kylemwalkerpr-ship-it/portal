@@ -2,6 +2,8 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
+import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
+import { attributionCaptureCookies } from './lib/attribution/cookies'
 import {
   PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS,
   shouldBypassClerkForPortalRequest,
@@ -37,6 +39,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/articles/feed',
   '/api/translate(.*)',
   '/api/chat(.*)',
+  // P10 first-party attribution collector. These handlers are anonymous by
+  // design but enforce same-origin themselves; browser routes accept only
+  // landing/CTA telemetry and refuse all business conversion event types.
+  '/api/attribution(.*)',
   // Marketplace API GET reads are anonymous-safe; mutation handlers under
   // these paths self-enforce auth (requirePortalUser / requireAttorney / etc.).
   // Public page routes themselves are owned by the clean market-domain paths
@@ -214,31 +220,19 @@ function withPathHeaders(res: NextResponse, pathname: string, search: string, la
 const MARKET_HOST = 'market.yousafeconsultancy.com'
 const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 
-/** Tracking/query junk that must never create distinct indexable URLs. */
-const STRIP_QUERY_KEYS = new Set([
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_content',
-  'utm_term',
-  'utm_id',
-  'gclid',
-  'fbclid',
-  'msclkid',
-  'mc_cid',
-  'mc_eid',
-  '_ga',
-])
-
-function stripTrackingParams(url: URL): string | null {
-  let changed = false
-  for (const key of [...url.searchParams.keys()]) {
-    if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
-      url.searchParams.delete(key)
-      changed = true
-    }
+/**
+ * Attach the P10 capture cookies to a tracking-consolidation redirect.
+ *
+ * The pure capture decision lives in `lib/attribution/cookies.ts` so it is
+ * directly testable: it stores NOTHING unless this browser already granted
+ * analytics consent, while the caller still 301s every tracking URL (including
+ * `yattr`) to its clean canonical path.
+ */
+function withAttributionCapture(res: NextResponse, req: NextRequest): NextResponse {
+  for (const cookie of attributionCaptureCookies(req)) {
+    res.headers.append('set-cookie', cookie)
   }
-  return changed ? url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') : null
+  return res
 }
 
 /** Remove a category query value that merely repeats the clean route slug. */
@@ -284,12 +278,8 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
     target.hostname = MARKET_HOST
     target.port = ''
     target.pathname = cleanMarketplacePath
-    for (const key of [...target.searchParams.keys()]) {
-      if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
-        target.searchParams.delete(key)
-      }
-    }
-    return withCorsHeaders(NextResponse.redirect(target, { status: 301 }), req)
+    deleteTrackingQueryParams(target.searchParams)
+    return withCorsHeaders(withAttributionCapture(NextResponse.redirect(target, { status: 301 }), req), req)
   }
 
   if (pathname === '/sitemap.xml' || pathname === '/sitemap.xml/') {
@@ -300,7 +290,7 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
     const cleaned = stripTrackingParams(new URL(req.url))
     if (cleaned !== null) {
       const dest = new URL(cleaned, req.url)
-      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+      return withCorsHeaders(withAttributionCapture(NextResponse.redirect(dest, { status: 301 }), req), req)
     }
   }
 
@@ -390,7 +380,7 @@ function handlePortalAnonymousDocumentRequest(req: NextRequest): NextResponse {
     const cleaned = stripTrackingParams(new URL(req.url))
     if (cleaned !== null) {
       const dest = new URL(cleaned, req.url)
-      return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+      return withCorsHeaders(withAttributionCapture(NextResponse.redirect(dest, { status: 301 }), req), req)
     }
   }
 
@@ -425,12 +415,8 @@ const clerkHandler = clerkMiddleware(
       target.hostname = MARKET_HOST
       target.port = ''
       target.pathname = cleanMarketplacePath
-      for (const key of [...target.searchParams.keys()]) {
-        if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
-          target.searchParams.delete(key)
-        }
-      }
-      return withCorsHeaders(NextResponse.redirect(target, { status: 301 }), req)
+      deleteTrackingQueryParams(target.searchParams)
+      return withCorsHeaders(withAttributionCapture(NextResponse.redirect(target, { status: 301 }), req), req)
     }
 
     // Portal sitemap must stay empty. OpenNext prerenders app/sitemap.ts into
@@ -467,7 +453,7 @@ const clerkHandler = clerkMiddleware(
       const cleaned = stripTrackingParams(new URL(req.url))
       if (cleaned !== null) {
         const dest = new URL(cleaned, req.url)
-        return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+        return withCorsHeaders(withAttributionCapture(NextResponse.redirect(dest, { status: 301 }), req), req)
       }
     }
 

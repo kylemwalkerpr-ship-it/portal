@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { writeConsentCookie } from '@/lib/attribution/client'
 
 export const COOKIE_CONSENT_KEY = 'yousafe:cookie-consent'
 export const COOKIE_CONSENT_EVENT = 'yousafe:cookie-consent-change'
@@ -14,6 +15,10 @@ function saveConsent(value: Consent) {
     // Storage can be unavailable in privacy modes; the current page still
     // receives the event and analytics remains off unless explicitly granted.
   }
+  // P10: mirror the choice into a server-readable cookie so `middleware.ts` can
+  // honour a rejection at the edge (it must never capture campaign/handoff
+  // attribution for a visitor who denied analytics).
+  writeConsentCookie(value)
   window.dispatchEvent(new CustomEvent(COOKIE_CONSENT_EVENT, { detail: value }))
 }
 

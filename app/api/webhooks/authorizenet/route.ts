@@ -14,6 +14,7 @@
  * (`wrangler secret put AUTHORIZENET_SIGNATURE_KEY`).
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
 
 interface AuthnetWebhookPayload {
   notificationId: string
@@ -27,6 +28,12 @@ interface AuthnetWebhookPayload {
     authAmount?: number
     entityName?: string
   }
+}
+
+/** Parse a gateway timestamp without ever throwing; falls back to receipt time. */
+function safeOccurredAt(value: unknown): string {
+  const parsed = typeof value === 'string' ? new Date(value).getTime() : NaN
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString()
 }
 
 async function verifySignature(rawBody: string, headerSignature: string | null, signatureKey: string): Promise<boolean> {
@@ -99,10 +106,44 @@ export async function POST(req: Request) {
   // we'll widen this switch as new flows ask for it.
   try {
     if (event.eventType === 'net.authorize.payment.refund.created' && transactionId) {
+      // Primary reconciliation FIRST: attribution is derived from this update and
+      // must never delay it or prevent it from happening.
       await db
         .from('orders')
         .update({ status: 'refunded', updated_at: new Date().toISOString() })
         .eq('authnet_transaction_id', transactionId)
+
+      // P10: a gateway refund is a NEW append-only lifecycle event. The earlier
+      // order_paid event is never mutated or deleted, so "we were paid and then
+      // refunded" stays fully reconstructable from stored rows. The subject
+      // lookup is best-effort: if it fails there is simply no lifecycle row to
+      // append, and the reconciliation above has already been applied.
+      let refundedOrderId: string | null = null
+      try {
+        const { data: refundedOrder } = await db
+          .from('orders')
+          .select('id')
+          .eq('authnet_transaction_id', transactionId)
+          .maybeSingle()
+        refundedOrderId = refundedOrder?.id ? String(refundedOrder.id) : null
+      } catch (lookupErr) {
+        console.error('[webhooks/authorizenet] refunded order lookup failed', lookupErr)
+      }
+
+      if (refundedOrderId) {
+        const authAmount = Number(event.payload?.authAmount)
+        const hasAmount = Number.isFinite(authAmount) && authAmount > 0
+        await bindBusinessEvent(db, {
+          eventType: 'order_refunded',
+          subjectType: 'order',
+          subjectId: refundedOrderId,
+          amountCents: hasAmount ? Math.round(authAmount * 100) : null,
+          currency: hasAmount ? 'usd' : null,
+          occurredAt: safeOccurredAt(event.eventDate),
+          lifecycleRef: transactionId,
+          evidence: { gateway: 'authorizenet', verification: 'gateway_refund_webhook' },
+        })
+      }
     } else if (event.eventType === 'net.authorize.payment.authcapture.created' && transactionId) {
       await db
         .from('orders')
