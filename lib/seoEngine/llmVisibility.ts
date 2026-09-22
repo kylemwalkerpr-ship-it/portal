@@ -50,6 +50,7 @@ import {
   expectedMonthlyRevenue,
   type FunnelActionKind,
 } from './rankingModel'
+import type { GeoAuditStatus } from './geoVisibilityTruth'
 
 /** The estate's observable surface — everything we want LLMs to cite. */
 export const ESTATE_DOMAINS: string[] = [
@@ -173,6 +174,9 @@ export interface EngineAudit {
   engine: string
   model: string | null
   ok: boolean
+  /** P11 closed audit state. Optional only for legacy in-memory/test compatibility. */
+  status?: GeoAuditStatus
+  failureReason?: string | null
   cited: boolean
   citedUrls: string[]
   competitorDomains: string[]
@@ -309,6 +313,7 @@ interface ParsedAuditResponse {
   sources: AuditSource[]
   confidence: number
   flags: string[]
+  extractionStatus: 'success' | 'parse_failure'
 }
 
 /**
@@ -348,7 +353,7 @@ export function parseAuditResponse(text: string): ParsedAuditResponse {
         ? Math.max(0, Math.min(1, Number(obj.confidence)))
         : sources.length ? 0.7 : 0.4
       const flags = Array.isArray(obj.flags) ? obj.flags.map(asString).slice(0, 10) : []
-      return { answer, answerFormat: format, sources, confidence, flags }
+      return { answer, answerFormat: format, sources, confidence, flags, extractionStatus: 'success' }
     } catch {
       /* fall through to regex extraction */
     }
@@ -363,6 +368,7 @@ export function parseAuditResponse(text: string): ParsedAuditResponse {
     sources,
     confidence: sources.length ? 0.5 : 0.2,
     flags: ['malformed_json'],
+    extractionStatus: 'parse_failure',
   }
 }
 
@@ -408,7 +414,8 @@ export function resolveAuditEngines(maxEngines = 3): CommissionedProviderPin[] {
 /** Run one structured audit for a query against a single engine (exclusive pin). */
 async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit> {
   const fail = (flags: string[], confidence = 0): EngineAudit => ({
-    engine: pin, model: null, ok: false, cited: false, citedUrls: [],
+    engine: pin, model: null, ok: false, status: 'provider_failure',
+    failureReason: flags[0] || 'provider failure', cited: false, citedUrls: [],
     competitorDomains: [], answerFormat: null, snippet: '', confidence, flags,
   })
   try {
@@ -430,11 +437,16 @@ async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit
       .filter((s) => !s.isEstate)
       .map((s) => s.domain)
       .filter(Boolean)
+    const parseFailed = parsed.extractionStatus === 'parse_failure'
     return {
       engine: ai.provider || pin,
       model: ai.model || null,
-      ok: true,
-      cited: estateSources.length > 0 || BRAND_MENTIONS.some((b) => parsed.answer.toLowerCase().includes(b.toLowerCase())),
+      ok: !parseFailed,
+      status: parseFailed ? 'parse_failure' : 'success',
+      failureReason: parseFailed ? 'structured citation response could not be parsed' : null,
+      // Regex-recovered URLs stay visible as evidence, but a parse failure is
+      // never promoted to a successful citation observation.
+      cited: !parseFailed && estateSources.length > 0,
       citedUrls: estateSources.map((s) => s.url),
       competitorDomains: [...new Set(competitors)],
       answerFormat: parsed.answerFormat,
@@ -449,7 +461,7 @@ async function auditQueryEngine(query: string, pin: string): Promise<EngineAudit
 
 /** Aggregate per-engine audits into one per-query VisibilityAuditResult. */
 export function aggregateEngineAudits(query: string, engineAudits: EngineAudit[]): VisibilityAuditResult {
-  const okAudits = engineAudits.filter((e) => e.ok)
+  const okAudits = engineAudits.filter((e) => e.ok && (e.status == null || e.status === 'success'))
   const citedAudits = okAudits.filter((e) => e.cited)
   const citedUrls = [...new Set(okAudits.flatMap((e) => e.citedUrls))]
   const brandMentions = BRAND_MENTIONS.filter((b) => okAudits.some((e) => e.snippet.toLowerCase().includes(b.toLowerCase())))
