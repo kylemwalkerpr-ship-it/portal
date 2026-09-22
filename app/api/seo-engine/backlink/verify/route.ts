@@ -12,17 +12,23 @@ import {
  * The ONLY path that may transition a backlink target to `won`. Admin-only.
  *
  * Body shape:
- *   { target_id, source_url, target_url, outreach_id?, actor? }
+ *   { target_id, source_url, target_url? | destination_url?, outreach_id? }
  *
  *   target_id   exact seo_backlink_targets.id the claim belongs to
  *   source_url  claimed third-party page that should carry the link; must be
  *               absolute http(s) on the prospect domain (or a subdomain), and
  *               may not be a YouSafe-owned host or a localhost/private literal
- *   target_url  the exact YouSafe URL the claim says is linked; its host must
- *               be a HOST_PUBLIC estate host
+ *   target_url  OPTIONAL restatement of the destination PERSISTED on the target
+ *               (`destination_url`). The persisted value is the only authority:
+ *               a request may repeat it, never choose a different YouSafe URL.
+ *   outreach_id OPTIONAL touch this claim came from; it is recorded as
+ *               provenance ONLY after it is proven to belong to target_id.
+ *
+ * Provenance is server-derived: the verifier actor is the authenticated admin
+ * identity from the auth context, never a body field.
  *
  * The helper fetches the claimed page live, requires a REAL anchor href to the
- * exact target URL (structural exact-href proof), appends one immutable
+ * persisted destination URL (structural exact-href proof), appends one immutable
  * seo_backlink_verifications evidence row for EVERY attempt that reached the
  * network, and only on a positive verdict writes the durable won pointers.
  * Negative/unavailable checks never mark the target won and never mark it lost.
@@ -38,11 +44,13 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const targetId = String(body.target_id || '').trim()
     const sourceUrl = String(body.source_url || '').trim()
-    const targetUrl = String(body.target_url || '').trim()
+    // Compatibility: the caller may restate the target's persisted destination
+    // under either name. It is only ever compared — never used as the authority.
+    const requestedTargetUrl = String(body.target_url || body.destination_url || '').trim()
     if (!targetId) return NextResponse.json({ ok: false, error: 'target_id required' }, { status: 400 })
-    if (!sourceUrl || !targetUrl) {
+    if (!sourceUrl) {
       return NextResponse.json(
-        { ok: false, error: 'source_url (the claimed third-party page) and target_url (the exact YouSafe URL) are required' },
+        { ok: false, error: 'source_url (the claimed third-party page) is required' },
         { status: 400 },
       )
     }
@@ -50,8 +58,9 @@ export async function POST(req: NextRequest) {
     const result = await verifyBacklinkClaim({
       targetId,
       sourceUrl,
-      targetUrl,
+      requestedTargetUrl: requestedTargetUrl || null,
       outreachId: body.outreach_id ? String(body.outreach_id) : null,
+      // Provenance is the AUTHENTICATED identity, never a caller-supplied field.
       actor: auth.profile?.email || auth.profileId || null,
     })
     if (!result.verdict) {
@@ -90,8 +99,11 @@ export async function POST(req: NextRequest) {
       target_status: result.targetStatus,
       source_url: result.sourceUrl,
       target_url: result.targetUrl,
+      destination_url: result.targetUrl,
+      destination_ownership: result.destinationOwnership || null,
       source_http_status: result.sourceHttpStatus,
       source_final_url: result.sourceFinalUrl,
+      blocked_url: result.blockedUrl || null,
       observed_href: result.observedHref,
       reason: result.reason,
     })

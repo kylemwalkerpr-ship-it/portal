@@ -5823,7 +5823,9 @@ function ResearchLiveOperations() {
     try {
       const response = await fetch('/api/seo-engine/backlink/outreach', {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'record', target_id: outreachTarget.id, subject: outreachDraft.subject, message_body: outreachDraft.body, status, operator_id: 'admin@portal' }),
+        // Provenance is server-derived from the authenticated admin: the UI
+        // never asserts an operator identity.
+        body: JSON.stringify({ action: 'record', target_id: outreachTarget.id, subject: outreachDraft.subject, message_body: outreachDraft.body, status }),
       })
       const body = await response.json().catch(() => ({})) as { error?: string }
       if (!response.ok) throw new Error(body.error || `Outreach save failed (${response.status})`)

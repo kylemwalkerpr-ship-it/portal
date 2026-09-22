@@ -1635,7 +1635,8 @@ export default function AdminCommandCenter({
           subject: draftModalContent.subject,
           message_body: draftModalContent.body,
           status,
-          operator_id: 'admin@portal',
+          // Provenance is server-derived from the authenticated admin: the UI
+          // never asserts an operator identity.
         }),
       })
       const data = await res.json().catch(() => ({})) as any

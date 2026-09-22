@@ -16,6 +16,7 @@ describe('backlink outreach · template path', () => {
       id: 't1',
       domain: 'uscis.gov',
       target_url: 'https://www.uscis.gov/',
+      destination_url: null,
       title: 'USCIS',
       kind: 'gov',
       lane: 'editorial',

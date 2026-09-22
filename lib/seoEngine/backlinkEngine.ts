@@ -63,13 +63,37 @@ export function isSentLikeOutreachStatus(status: string | null | undefined): boo
   return (SENT_LIKE_OUTREACH_STATUSES as readonly string[]).includes(String(status || ''))
 }
 
+/**
+ * The parent-target state after a successfully persisted send-like touch.
+ * Sending is not winning: the prospect moves to "we sent it, a reply is
+ * pending". A later state (responded / won / lost / skipped) is never dragged
+ * back, and a target is never marked won from a send.
+ */
+export const TARGET_STATUS_AFTER_SENT: TargetStatus = 'awaiting_reply'
+/** Pre-reply states a send may advance. Terminal/later states are left alone. */
+export const SENDABLE_TARGET_STATES: readonly TargetStatus[] = [
+  'identified',
+  'researching',
+  'qualified',
+  'drafting',
+  'sent',
+  'awaiting_reply',
+]
+
 /** Provenance for the internal priority weight stored in `authority_score`. */
 export type AuthorityScoreBasis = 'legacy_internal' | 'internal_priority'
 
 export interface BacklinkTarget {
   id: string
   domain: string
+  /** The third-party placement surface (today's outreach subject). */
   target_url: string | null
+  /**
+   * The STRATEGIC YouSafe canonical this prospect should link to (P9, additive
+   * and nullable). It is distinct from `target_url`, legacy rows are NULL, and
+   * a target without one can never be verified won.
+   */
+  destination_url: string | null
   title: string | null
   kind: BacklinkKind
   lane: BacklinkLane
@@ -337,6 +361,7 @@ function rowToTarget(r: Record<string, unknown>): BacklinkTarget {
     id: String(r.id || ''),
     domain: String(r.domain || ''),
     target_url: (r.target_url as string) || null,
+    destination_url: (r.destination_url as string) || null,
     title: (r.title as string) || null,
     kind: (r.kind as BacklinkKind) || 'media',
     lane: (r.lane as BacklinkLane) || 'editorial',
@@ -439,11 +464,19 @@ export async function recordOutreach(input: {
         error: String(error?.message || 'outreach insert returned no row').slice(0, 300),
       }
     }
-    // Bump the parent target's last_touched_at so dashboards stay fresh.
-    await supabase
+    // Keep the parent target truthful. Every touch bumps last_touched_at; a
+    // persisted SEND-LIKE touch additionally advances a pre-reply target to
+    // 'awaiting_reply' — a send is never a win, never a regression of a later
+    // state, and legacy rows are never rewritten.
+    const sent = isSentLikeOutreachStatus(status)
+    const targetPatch: Record<string, unknown> = { last_touched_at: now }
+    if (sent) targetPatch.status = TARGET_STATUS_AFTER_SENT
+    let targetUpdate = supabase
       .from('seo_backlink_targets')
-      .update({ last_touched_at: now })
+      .update(targetPatch)
       .eq('id', input.target_id)
+    if (sent) targetUpdate = targetUpdate.in('status', [...SENDABLE_TARGET_STATES])
+    await targetUpdate
     return { ok: true, outreach: rowToOutreach(data as Record<string, unknown>) }
   } catch (error) {
     return {

@@ -19,6 +19,8 @@ import { NextRequest } from 'next/server'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requireAdminUser } from '@/lib/portalAuth'
 import {
+  SENDABLE_TARGET_STATES,
+  TARGET_STATUS_AFTER_SENT,
   isSentLikeOutreachStatus,
   isVerifiedWin,
   recordOutreach,
@@ -206,6 +208,22 @@ describe('C) durable won proof pointers + DB truth constraint', () => {
     expect(body).toMatch(/not dr, da, ahrefs, moz or any third-party metric/)
   })
 
+  it('persists the strategic YouSafe destination on the target, additively and nullable', () => {
+    const body = flat()
+    expect(body).toContain('add column if not exists destination_url text null')
+    expect(body).toContain('comment on column public.seo_backlink_targets.destination_url is')
+    // Distinct from the third-party placement surface, never fabricated.
+    expect(body).toMatch(/distinct from target_url, which is the third-party placement surface/)
+    expect(body).toMatch(/null means no destination has been recorded/)
+    expect(body).toMatch(/never backfilled/)
+    expect(body).toContain('seo_backlink_targets_destination_url_check')
+    expect(body).toContain("check (destination_url is null or destination_url ~* '^https://[^[:space:]]+$')")
+    // A future-write contract only: no historical row is rewritten, ever.
+    const ddl = ddlOnly().toLowerCase()
+    expect(ddl).not.toMatch(/\bupdate\b[^;]*\bset\b/)
+    expect(ddl).not.toMatch(/\binsert\s+into\b/)
+  })
+
   it('makes status=won impossible without won_at, a real backlink URL and both pointers', () => {
     const body = squish()
     expect(body).toContain('seo_backlink_targets_won_requires_verification')
@@ -233,6 +251,10 @@ describe('C) durable won proof pointers + DB truth constraint', () => {
     expect(body).toContain('belongs to a different target')
     expect(body).toContain("verified.verdict is distinct from 'verified' or verified.link_present is not true")
     expect(body).toContain('won_backlink_url must equal the verified backlink page URL')
+    // The proof must have been taken against THIS row's persisted destination.
+    expect(body).toContain('v.backlink_url, v.target_url')
+    expect(body).toContain('requires a persisted destination_url on the target')
+    expect(body).toContain("if verified.target_url is distinct from new.destination_url then")
   })
 
   it('closes the authority_score provenance vocabulary', () => {
@@ -278,6 +300,7 @@ describe('E) dashboard exposes proof, not labels', () => {
       't.authority_score_basis',
       't.won_verified_at',
       't.won_verification_id',
+      't.destination_url',
       'as verification_count',
       'as last_verified_at',
       'as last_verdict',
@@ -361,6 +384,50 @@ describe('F) outreach write truth (engine)', () => {
     await recordOutreach({ target_id: 'target-1', message_body: 'New draft', status: 'drafted' })
     expect(db.updatesFor('seo_backlink_outreach')).toHaveLength(0)
     expect(db.rows('seo_backlink_outreach')[0]).toMatchObject({ status: 'sent', sent_at: null })
+  })
+
+  it('advances the parent target to a non-won awaiting state after a real send', async () => {
+    const db = installDb([{ id: 'target-1', domain: 'ilw.com', status: 'qualified' }])
+    const outcome = await recordOutreach({ target_id: 'target-1', message_body: 'Hello', status: 'sent' })
+    expect(outcome.ok).toBe(true)
+
+    const updates = db.updatesFor('seo_backlink_targets')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].patch).toMatchObject({ status: TARGET_STATUS_AFTER_SENT })
+    expect(updates[0].patch).not.toHaveProperty('won_at')
+    expect(updates[0].patch).not.toHaveProperty('won_verified_at')
+    expect(updates[0].patch).not.toHaveProperty('won_verification_id')
+    // The state move is fenced to pre-reply states, never a blind overwrite.
+    expect(updates[0].filters).toEqual([
+      { op: 'eq', column: 'id', value: 'target-1' },
+      { op: 'in', column: 'status', value: [...SENDABLE_TARGET_STATES] },
+    ])
+    expect(db.rows('seo_backlink_targets')[0]).toMatchObject({ status: 'awaiting_reply' })
+    expect(JSON.stringify(updates[0].patch)).not.toContain('won')
+  })
+
+  it('never drags a later or terminal target state backwards on a send', async () => {
+    for (const status of ['won', 'lost', 'skipped', 'responded']) {
+      jest.clearAllMocks()
+      jest.spyOn(console, 'warn').mockImplementation(() => {})
+      const db = installDb([{ id: 'target-1', domain: 'ilw.com', status }])
+      await recordOutreach({ target_id: 'target-1', message_body: 'Hello', status: 'follow_up_sent' })
+      // The fenced update matches no row: the later state stands.
+      const updates = db.updatesFor('seo_backlink_targets')
+      expect(updates).toHaveLength(1)
+      expect(updates[0].rows).toHaveLength(0)
+      expect(db.rows('seo_backlink_targets')[0]).toMatchObject({ status })
+    }
+  })
+
+  it('leaves the target state alone for a non-sent touch and only bumps last_touched_at', async () => {
+    const db = installDb([{ id: 'target-1', domain: 'ilw.com', status: 'qualified' }])
+    await recordOutreach({ target_id: 'target-1', message_body: 'Draft', status: 'drafted' })
+    const updates = db.updatesFor('seo_backlink_targets')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].patch).not.toHaveProperty('status')
+    expect(Object.keys(updates[0].patch)).toEqual(['last_touched_at'])
+    expect(db.rows('seo_backlink_targets')[0]).toMatchObject({ status: 'qualified' })
   })
 })
 
@@ -456,6 +523,72 @@ describe('G2) the generic outreach-record route cannot create a win', () => {
     const body = (await response.json()) as { outreach?: { status?: string; sent_at?: string | null } }
     expect(body.outreach?.status).toBe('sent')
     expect(typeof body.outreach?.sent_at).toBe('string')
+  })
+})
+
+describe('G3) outreach provenance is server-derived', () => {
+  const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
+  const requireAdminUserMock = jest.mocked(requireAdminUser)
+
+  function outreachRequest(body: Record<string, unknown>) {
+    return new NextRequest('http://localhost/api/seo-engine/backlink/outreach', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  function installDb() {
+    const db = createP9FakeDb({
+      seo_backlink_targets: [{ id: 'target-1', domain: 'ilw.com', status: 'qualified' }],
+      seo_backlink_outreach: [],
+    })
+    createSupabaseAdminClientMock.mockReturnValue(db.client as never)
+    return db
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    jest.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  it('records the authenticated admin, ignoring a caller-supplied operator_id', async () => {
+    requireAdminUserMock.mockResolvedValue({
+      profile: { email: 'real.admin@yousafeconsultancy.com' },
+      profileId: 'admin-1',
+    } as never)
+    const db = installDb()
+
+    const response = await outreachPOST(
+      outreachRequest({
+        action: 'record',
+        target_id: 'target-1',
+        message_body: 'Body',
+        status: 'sent',
+        operator_id: 'admin@portal',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const inserted = db.insertsFor('seo_backlink_outreach')[0].rows[0]
+    expect(inserted.operator_id).toBe('real.admin@yousafeconsultancy.com')
+    expect(inserted.operator_id).not.toBe('admin@portal')
+  })
+
+  it('falls back to the authenticated profile id when no email is available', async () => {
+    requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
+    const db = installDb()
+    await outreachPOST(
+      outreachRequest({ action: 'record', target_id: 'target-1', message_body: 'Body', operator_id: 'someone-else' }),
+    )
+    expect(db.insertsFor('seo_backlink_outreach')[0].rows[0].operator_id).toBe('admin-1')
+  })
+
+  it('never hardcodes an operator identity in the backlink UIs', () => {
+    for (const source of [read(COMMAND_CENTER), read(CONTENT_STUDIO)]) {
+      expect(source).not.toContain("operator_id: 'admin@portal'")
+      expect(source).not.toContain('operator_id')
+    }
   })
 })
 

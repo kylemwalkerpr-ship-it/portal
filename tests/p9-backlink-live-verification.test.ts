@@ -1,13 +1,17 @@
 /**
  * P9 — a backlink target may become `won` ONLY from a live verification that
  * fetched the claimed third-party page and found a real anchor href to the
- * exact YouSafe target URL.
+ * target's OWN persisted destination URL.
  *
- * Covers: URL/prospect/estate validation, the positive proof path (evidence row
- * + durable won pointers), every negative lane (plain-text URL, commented-out
- * anchor, script-serialized URL, wrong href, dead page, network failure),
- * evidence-persistence failure (no proof ⇒ no win), idempotency, and the
- * admin-only route.
+ * Covers: URL/prospect/estate validation, the persisted-destination binding,
+ * the outbound-fetch safety controls (per-hop validation, DNS resolution of
+ * every hop BEFORE it is requested, redirect-to-private/cross-domain refusal,
+ * bounded hop count), the bounded HTML body (content type, declared length,
+ * streaming cap), the positive proof path (evidence row + durable won
+ * pointers), every negative lane (plain-text URL, commented-out anchor,
+ * script-serialized URL, wrong href, dead page, network failure), outreach
+ * provenance binding, evidence-persistence failure (no proof ⇒ no win),
+ * idempotency, and the admin-only route.
  */
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
 jest.mock('@/lib/portalAuth', () => ({ requireAdminUser: jest.fn() }))
@@ -17,21 +21,34 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requireAdminUser } from '@/lib/portalAuth'
 import {
   BACKLINK_VERIFICATION_METHOD,
+  MAX_BACKLINK_BODY_BYTES,
+  MAX_BACKLINK_REDIRECT_HOPS,
   isPrivateOrLocalHost,
   isYouSafeOwnedHost,
   listBacklinkVerifications,
   observeBacklinkAnchorFacts,
   observeBacklinkPageFacts,
+  resolvePersistedDestination,
   validateBacklinkSourceUrl,
   validateEstateTargetUrl,
+  validateFetchHopUrl,
   verifyBacklinkClaim,
 } from '@/lib/seoFactory/backlinkVerification'
+import {
+  isIpLiteral,
+  isPrivateOrReservedAddress,
+  resolveHostAddresses,
+} from '@/lib/seoFactory/hostResolution'
 import { POST as verifyPOST, GET as verifyGET } from '@/app/api/seo-engine/backlink/verify/route'
 import { createP9FakeDb, type P9FakeRow } from './helpers/p9BacklinkFakeDb'
 
 const SOURCE = 'https://www.ilw.com/articles/immigration-news.shtm'
+const SOURCE_ROOTS = 'https://ilw.com/articles/immigration-news.shtm'
 const TARGET = 'https://legal.yousafeconsultancy.com/us/student-visas/'
 const OTHER_ESTATE_PAGE = 'https://legal.yousafeconsultancy.com/us/other-guide/'
+/** The third-party placement surface — NEVER the destination. */
+const PLACEMENT_SURFACE = 'https://www.ilw.com/submit-a-guest-post'
+const OTHER_PROSPECT = 'https://www.other-prospect.example/articles/guest-post'
 
 const createSupabaseAdminClientMock = jest.mocked(createSupabaseAdminClient)
 const requireAdminUserMock = jest.mocked(requireAdminUser)
@@ -41,6 +58,8 @@ function targetRow(overrides: P9FakeRow = {}): P9FakeRow {
     id: 'target-1',
     domain: 'ilw.com',
     status: 'sent',
+    target_url: PLACEMENT_SURFACE,
+    destination_url: TARGET,
     won_at: null,
     won_verified_at: null,
     won_verification_id: null,
@@ -50,39 +69,92 @@ function targetRow(overrides: P9FakeRow = {}): P9FakeRow {
   }
 }
 
-function installDb(targets: P9FakeRow[] = [targetRow()], options: { failEvidenceInsert?: string } = {}) {
+function installDb(
+  targets: P9FakeRow[] = [targetRow()],
+  options: { failEvidenceInsert?: string; outreach?: P9FakeRow[] } = {},
+) {
   const db = createP9FakeDb(
-    { seo_backlink_targets: targets, seo_backlink_verifications: [], seo_backlink_outreach: [] },
+    {
+      seo_backlink_targets: targets,
+      seo_backlink_verifications: [],
+      seo_backlink_outreach: options.outreach || [],
+    },
     options.failEvidenceInsert ? { failInsert: { seo_backlink_verifications: options.failEvidenceInsert } } : {},
   )
   createSupabaseAdminClientMock.mockReturnValue(db.client as never)
   return db
 }
 
-interface FetchScript {
-  html?: string | null
+interface FakeResponse {
   status?: number
-  finalUrl?: string | null
-  robots?: string | null
+  headers?: Record<string, string>
+  /** Single UTF-8 body chunk. */
+  body?: string
+  /** Byte-exact chunks, streamed in order (for the body-cap paths). */
+  chunks?: Uint8Array[]
+  /** Expose no body stream at all (only a declared length can bound it). */
+  noStream?: boolean
+  /** Do not invent a Content-Type header for this response. */
+  noContentType?: boolean
+  /** The URL the runtime reports (should be the requested one). */
+  reportedUrl?: string
   throwError?: boolean
 }
 
-function installFetch(script: FetchScript = {}) {
+/**
+ * Scripted fetch: each URL maps to one response (or a queue consumed in order).
+ * Any request for an unscripted URL throws, so a test can prove a blocked hop
+ * was never fetched.
+ */
+function installFetchScript(routes: Record<string, FakeResponse | FakeResponse[]>) {
+  const queues = new Map<string, FakeResponse[]>()
+  for (const [url, value] of Object.entries(routes)) {
+    queues.set(url, Array.isArray(value) ? [...value] : [value])
+  }
+  const calls: string[] = []
   const fetchMock = jest.fn(async (input: unknown) => {
+    const url = String(input)
+    calls.push(url)
+    const queue = queues.get(url)
+    if (!queue || !queue.length) throw new Error(`no scripted response for ${url}`)
+    const script = queue.length > 1 ? (queue.shift() as FakeResponse) : queue[0]
     if (script.throwError) throw new Error('network down')
+
     const status = script.status ?? 200
+    const headers = new Map(
+      Object.entries(script.headers || {}).map(([key, value]) => [key.toLowerCase(), value]),
+    )
+    if (status >= 200 && status < 300 && !script.noContentType && !headers.has('content-type')) {
+      headers.set('content-type', 'text/html; charset=utf-8')
+    }
+    const text = script.body ?? ''
+    const bytes = script.chunks ? undefined : new TextEncoder().encode(text)
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of script.chunks || (bytes ? [bytes] : [])) controller.enqueue(chunk)
+        controller.close()
+      },
+    })
     return {
       ok: status >= 200 && status < 300,
       status,
-      url: script.finalUrl === undefined ? String(input) : script.finalUrl,
-      headers: {
-        get: (name: string) => (name.toLowerCase() === 'x-robots-tag' ? script.robots ?? null : null),
-      },
-      text: async () => script.html ?? '',
+      url: script.reportedUrl === undefined ? url : script.reportedUrl,
+      headers: { get: (name: string) => headers.get(String(name).toLowerCase()) ?? null },
+      body: script.noStream ? null : stream,
+      text: async () => text,
     }
   })
   global.fetch = fetchMock as unknown as typeof fetch
-  return fetchMock
+  return Object.assign(fetchMock, { calls })
+}
+
+/** Scripted host resolver: public fixture address unless a host says otherwise. */
+function scriptedResolver(byHost: Record<string, string[] | 'fail'> = {}) {
+  return jest.fn(async (host: string) => {
+    const entry = host in byHost ? byHost[host] : ['93.184.216.34']
+    if (entry === 'fail') return { ok: false, addresses: [] as string[], reason: `"${host}" could not be resolved` }
+    return { ok: true, addresses: [...entry] }
+  })
 }
 
 const positiveHtml = (href = TARGET) =>
@@ -101,22 +173,23 @@ function verifyInput(overrides: Record<string, unknown> = {}) {
   return {
     targetId: 'target-1',
     sourceUrl: SOURCE,
-    targetUrl: TARGET,
+    requestedTargetUrl: TARGET,
     actor: 'admin@portal',
     now: '2026-09-21T10:00:00.000Z',
+    resolveHostAddresses: scriptedResolver(),
     ...overrides,
   }
 }
 
-let errorSpy: jest.SpyInstance
+let warnSpy: jest.SpyInstance
 
 beforeEach(() => {
   jest.clearAllMocks()
-  errorSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+  warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
-  errorSpy.mockRestore()
+  warnSpy.mockRestore()
 })
 
 describe('A) claimed-source validation', () => {
@@ -156,6 +229,18 @@ describe('A) claimed-source validation', () => {
     expect(validateBacklinkSourceUrl('http://192.168.1.10/x', '192.168.1.10').ok).toBe(false)
     expect(validateBacklinkSourceUrl('http://[::1]/x', '::1').ok).toBe(false)
   })
+
+  it('applies the SAME rule to every redirect hop before it is fetched', () => {
+    expect(validateFetchHopUrl(SOURCE, 'ilw.com').ok).toBe(true)
+    expect(validateFetchHopUrl(OTHER_PROSPECT, 'ilw.com').reason).toMatch(/does not match the prospect domain/)
+    expect(validateFetchHopUrl('https://legal.yousafeconsultancy.com/x', 'yousafeconsultancy.com').reason).toMatch(
+      /third-party page, not the YouSafe estate/,
+    )
+    expect(validateFetchHopUrl('http://169.254.169.254/latest/meta-data/', '169.254.169.254').reason).toMatch(
+      /localhost\/private address/,
+    )
+    expect(validateFetchHopUrl('mailto:editor@ilw.com', 'ilw.com').ok).toBe(false)
+  })
 })
 
 describe('B) linked-destination validation', () => {
@@ -167,28 +252,370 @@ describe('B) linked-destination validation', () => {
     expect(validateEstateTargetUrl('https://evil.example.com/x').reason).toMatch(/not a HOST_PUBLIC/)
     expect(validateEstateTargetUrl('').reason).toMatch(/required/)
   })
+
+  it('binds the destination to the target row and refuses a substituted URL', async () => {
+    const bound = await resolvePersistedDestination(TARGET, TARGET)
+    expect(bound.ok).toBe(true)
+    expect(bound.url).toBe(TARGET)
+    // A restatement that normalizes to the same canonical is the same claim.
+    const restated = await resolvePersistedDestination(TARGET, 'https://legal.yousafeconsultancy.com/us/student-visas')
+    expect(restated.ok).toBe(true)
+    expect(restated.url).toBe(TARGET)
+    // A different YouSafe canonical is a claim the target row never made.
+    const substituted = await resolvePersistedDestination(TARGET, OTHER_ESTATE_PAGE)
+    expect(substituted.ok).toBe(false)
+    expect(substituted.reason).toMatch(/does not match the destination_url persisted on this target/)
+    // A target with no persisted destination has nothing to verify against.
+    const missing = await resolvePersistedDestination(null)
+    expect(missing.ok).toBe(false)
+    expect(missing.reason).toMatch(/no persisted destination_url/)
+    // The persisted value must itself be an owned estate canonical.
+    const offEstate = await resolvePersistedDestination('https://evil.example.com/x')
+    expect(offEstate.ok).toBe(false)
+    expect(offEstate.reason).toMatch(/not a HOST_PUBLIC/)
+  })
 })
 
-describe('C) positive live proof ⇒ evidence row + won', () => {
-  it('records the full evidence row and writes the durable won pointers', async () => {
+describe('C) the persisted destination is the only authority', () => {
+  it('verifies against the persisted destination when the request does not restate it', async () => {
     const db = installDb()
-    const fetchMock = installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml(TARGET) } })
+
+    const result = await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: null }))
+
+    expect(result.ok).toBe(true)
+    expect(result.verdict).toBe('verified')
+    expect(result.targetUrl).toBe(TARGET)
+    expect(evidenceInserts(db)[0].rows[0].target_url).toBe(TARGET)
+    expect(targetUpdates(db)).toHaveLength(1)
+  })
+
+  it('refuses a request that tries to choose a different YouSafe URL', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml(OTHER_ESTATE_PAGE) } })
+
+    const result = await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: OTHER_ESTATE_PAGE }))
+
+    expect(result.ok).toBe(false)
+    expect(result.verdict).toBeNull()
+    expect(result.reason).toMatch(/does not match the destination_url persisted on this target/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(evidenceInserts(db)).toHaveLength(0)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('cannot win a target with no persisted destination, and never fetches for it', async () => {
+    const db = installDb([targetRow({ destination_url: null })])
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
 
     const result = await verifyBacklinkClaim(verifyInput())
 
-    expect(fetchMock).toHaveBeenCalledWith(SOURCE, expect.objectContaining({ redirect: 'follow' }))
+    expect(result.ok).toBe(false)
+    expect(result.verdict).toBeNull()
+    expect(result.reason).toMatch(/no persisted destination_url/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(evidenceInserts(db)).toHaveLength(0)
+    expect(targetUpdates(db)).toHaveLength(0)
+    expect(db.rows('seo_backlink_targets')[0]).toMatchObject({ status: 'sent', won_verified_at: null })
+  })
+
+  it('uses destination_url, not the third-party target_url placement surface', async () => {
+    const db = installDb()
+    installFetchScript({ [SOURCE]: { body: positiveHtml(PLACEMENT_SURFACE) } })
+
+    const result = await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: null }))
+
+    // The page links to the placement surface only: no anchor to the estate.
+    expect(result.verdict).toBe('absent')
+    expect(result.linkPresent).toBe(false)
+    expect(evidenceInserts(db)[0].rows[0].target_url).toBe(TARGET)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+})
+
+describe('D) outbound-fetch safety: DNS and redirects', () => {
+  it('refuses a hop whose hostname resolves to a private address, without fetching it', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+    const resolver = scriptedResolver({ 'www.ilw.com': ['10.1.2.3'] })
+
+    const result = await verifyBacklinkClaim(verifyInput({ resolveHostAddresses: resolver }))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.verdict).toBe('unavailable')
+    expect(result.linkPresent).toBe(false)
+    expect(result.transitionedToWon).toBe(false)
+    expect(result.reason).toMatch(/resolves to a private\/reserved address \(10\.1\.2\.3\)/)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence).toMatchObject({ verdict: 'unavailable', link_present: false, source_http_status: null })
+    expect(evidence.evidence).toMatchObject({
+      blockedUrl: SOURCE,
+      resolvedHosts: [{ host: 'www.ilw.com', addresses: ['10.1.2.3'] }],
+    })
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a hostname that fails to resolve at all (fail closed, no fetch)', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(
+      verifyInput({ resolveHostAddresses: scriptedResolver({ 'www.ilw.com': 'fail' }) }),
+    )
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/could not be resolved/)
+    expect(evidenceInserts(db)[0].rows[0].verdict).toBe('unavailable')
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a resolver answer set that contains one private address', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(
+      verifyInput({ resolveHostAddresses: scriptedResolver({ 'www.ilw.com': ['93.184.216.34', '::ffff:127.0.0.1'] }) }),
+    )
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/private\/reserved address/)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a redirect to a private host literal BEFORE fetching it', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({
+      [SOURCE]: { status: 302, headers: { location: 'http://127.0.0.1/admin' } },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.calls).toEqual([SOURCE])
+    expect(result.verdict).toBe('unavailable')
+    expect(result.blockedUrl).toBe('http://127.0.0.1/admin')
+    expect(result.reason).toMatch(/localhost\/private address/)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    // The redirect itself was observed: that status is real evidence, not a 200.
+    expect(evidence).toMatchObject({ verdict: 'unavailable', source_http_status: 302, source_final_url: SOURCE })
+    expect(evidence.evidence).toMatchObject({
+      redirectChain: [{ from: SOURCE, status: 302, to: 'http://127.0.0.1/admin' }],
+      blockedUrl: 'http://127.0.0.1/admin',
+    })
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a redirect onto a prospect subdomain that resolves to link-local metadata', async () => {
+    const db = installDb()
+    const metadata = 'https://internal.ilw.com/latest/meta-data/'
+    const fetchMock = installFetchScript({
+      [SOURCE]: { status: 302, headers: { location: metadata } },
+    })
+
+    const result = await verifyBacklinkClaim(
+      verifyInput({ resolveHostAddresses: scriptedResolver({ 'internal.ilw.com': ['169.254.169.254'] }) }),
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.verdict).toBe('unavailable')
+    expect(result.blockedUrl).toBe(metadata)
+    expect(result.reason).toMatch(/169\.254\.169\.254/)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a cross-domain redirect before following it', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({
+      [SOURCE]: { status: 301, headers: { location: OTHER_PROSPECT } },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.verdict).toBe('unavailable')
+    expect(result.linkPresent).toBe(false)
+    expect(result.observedHref).toBeNull()
+    expect(result.reason).toMatch(/does not match the prospect domain/)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence.link_present).toBe(false)
+    expect(evidence.observed_href).toBeNull()
+    expect(evidence.source_http_status).toBe(301)
+    expect(evidence.evidence).toMatchObject({ redirectLeftProspect: true, blockedUrl: OTHER_PROSPECT })
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a redirect into the YouSafe estate itself', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({
+      [SOURCE]: { status: 307, headers: { location: TARGET } },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/third-party page, not the YouSafe estate/)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('bounds the redirect chain instead of following it without limit', async () => {
+    const db = installDb()
+    const hopUrls = Array.from({ length: MAX_BACKLINK_REDIRECT_HOPS + 1 }, (_, index) =>
+      index === 0 ? SOURCE : `https://www.ilw.com/hop-${index}`,
+    )
+    const routes: Record<string, FakeResponse> = {}
+    hopUrls.forEach((url, index) => {
+      routes[url] = { status: 302, headers: { location: hopUrls[index + 1] || `${url}-forever` } }
+    })
+    const fetchMock = installFetchScript(routes)
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(fetchMock.calls).toHaveLength(MAX_BACKLINK_REDIRECT_HOPS + 1)
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/exceeded 3 redirects/)
+    expect(evidenceInserts(db)[0].rows[0].verdict).toBe('unavailable')
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('still follows a same-prospect redirect and records the hop', async () => {
+    const db = installDb()
+    installFetchScript({
+      [SOURCE]: { status: 301, headers: { location: SOURCE_ROOTS } },
+      [SOURCE_ROOTS]: { body: positiveHtml() },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('verified')
+    expect(result.transitionedToWon).toBe(true)
+    expect(result.sourceFinalUrl).toBe(SOURCE_ROOTS)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence.source_final_url).toBe(SOURCE_ROOTS)
+    expect(evidence.evidence).toMatchObject({
+      redirectLeftProspect: false,
+      redirectChain: [{ from: SOURCE, status: 301, to: SOURCE_ROOTS }],
+    })
+    expect(targetUpdates(db)).toHaveLength(1)
+  })
+})
+
+describe('E) bounded body and resource limits', () => {
+  it('refuses a page that declares a body beyond the verification cap', async () => {
+    const db = installDb()
+    installFetchScript({
+      [SOURCE]: { headers: { 'content-length': String(MAX_BACKLINK_BODY_BYTES + 1) }, body: positiveHtml() },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('unavailable')
+    expect(result.linkPresent).toBe(false)
+    expect(result.reason).toMatch(/beyond the 2097152-byte verification limit/)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence).toMatchObject({ verdict: 'unavailable', source_http_status: 200 })
+    expect(evidence.evidence).toMatchObject({ declaredContentLength: MAX_BACKLINK_BODY_BYTES + 1, bytesRead: null })
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('stops reading a streaming body that crosses the cap (even when it carries a real anchor)', async () => {
+    const db = installDb()
+    const padding = new Uint8Array(MAX_BACKLINK_BODY_BYTES + 64).fill(0x20)
+    const anchor = new TextEncoder().encode(positiveHtml())
+    installFetchScript({
+      [SOURCE]: { chunks: [padding, anchor] },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('unavailable')
+    expect(result.linkPresent).toBe(false)
+    expect(result.observedHref).toBeNull()
+    expect(result.reason).toMatch(/exceeded the 2097152-byte verification limit/)
+    const evidence = evidenceInserts(db)[0].rows[0]
+    expect(evidence).toMatchObject({ verdict: 'unavailable', observed_href: null, link_present: false })
+    expect(Number((evidence.evidence as Record<string, unknown>).bytesRead)).toBeGreaterThan(MAX_BACKLINK_BODY_BYTES)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('reads a legal HTML body under the cap', async () => {
+    const db = installDb()
+    const filler = '<!-- filler -->'.repeat(4_000)
+    installFetchScript({ [SOURCE]: { body: `<html><body>${filler}${positiveHtml()}</body></html>` } })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('verified')
+    expect(targetUpdates(db)).toHaveLength(1)
+  })
+
+  it('refuses a body that is not HTML when the content type is observable', async () => {
+    const db = installDb()
+    installFetchScript({ [SOURCE]: { headers: { 'content-type': 'application/pdf' }, body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/not an HTML document \(content-type application\/pdf\)/)
+    expect(evidenceInserts(db)[0].rows[0].evidence).toMatchObject({ contentType: 'application/pdf' })
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses a response with neither a stream nor a provable body length', async () => {
+    const db = installDb()
+    installFetchScript({ [SOURCE]: { noStream: true, body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('unavailable')
+    expect(result.reason).toMatch(/could not be read within the verification body limit/)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('reads a streamless body only when its declared length proves it fits', async () => {
+    const db = installDb()
+    const html = positiveHtml()
+    installFetchScript({
+      [SOURCE]: {
+        noStream: true,
+        body: html,
+        headers: { 'content-length': String(new TextEncoder().encode(html).byteLength) },
+      },
+    })
+
+    const result = await verifyBacklinkClaim(verifyInput())
+
+    expect(result.verdict).toBe('verified')
+    expect(targetUpdates(db)).toHaveLength(1)
+  })
+})
+
+describe('F) positive live proof ⇒ evidence row + won', () => {
+  it('records the full evidence row and writes the durable won pointers', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+    const resolver = scriptedResolver()
+
+    const result = await verifyBacklinkClaim(verifyInput({ resolveHostAddresses: resolver }))
+
+    expect(fetchMock).toHaveBeenCalledWith(SOURCE, expect.objectContaining({ redirect: 'manual' }))
+    expect(resolver).toHaveBeenCalledWith('www.ilw.com')
     expect(result.ok).toBe(true)
     expect(result.verdict).toBe('verified')
     expect(result.linkPresent).toBe(true)
     expect(result.transitionedToWon).toBe(true)
     expect(result.targetStatus).toBe('won')
     expect(result.observedHref).toBe(TARGET)
+    expect(result.targetUrl).toBe(TARGET)
 
     const inserts = evidenceInserts(db)
     expect(inserts).toHaveLength(1)
     const evidence = inserts[0].rows[0]
     expect(evidence).toMatchObject({
       target_id: 'target-1',
+      outreach_id: null,
       backlink_url: SOURCE,
       target_url: TARGET,
       source_domain: 'www.ilw.com',
@@ -206,6 +633,11 @@ describe('C) positive live proof ⇒ evidence row + won', () => {
     expect(evidence.rel_attributes).toEqual(['nofollow', 'noopener'])
     expect(String(evidence.anchor_context)).toContain('YouSafe student visas')
     expect(evidence.id).toBe(result.verificationId)
+    expect(evidence.evidence).toMatchObject({
+      destination: { url: TARGET, source: 'target_row', ownership: expect.any(String) },
+      resolvedHosts: [{ host: 'www.ilw.com', addresses: ['93.184.216.34'] }],
+      bodyLimitBytes: MAX_BACKLINK_BODY_BYTES,
+    })
 
     const updates = targetUpdates(db)
     expect(updates).toHaveLength(1)
@@ -215,6 +647,9 @@ describe('C) positive live proof ⇒ evidence row + won', () => {
       won_verified_at: '2026-09-21T10:00:00.000Z',
       won_verification_id: result.verificationId,
       won_backlink_url: SOURCE,
+      // The row restates the exact destination the proof was bound to, which is
+      // what the DB guard re-proves.
+      destination_url: TARGET,
     })
     // The transition is a compare-and-set: it can never overwrite an existing win.
     expect(updates[0].filters).toEqual([
@@ -225,8 +660,8 @@ describe('C) positive live proof ⇒ evidence row + won', () => {
 
   it('records rel/text/canonical/indexability only when they are observable', async () => {
     const db = installDb()
-    installFetch({
-      html: `<html><body><a href="${TARGET}">  Study   permits </a></body></html>`,
+    installFetchScript({
+      [SOURCE]: { body: `<html><body><a href="${TARGET}">  Study   permits </a></body></html>` },
     })
     await verifyBacklinkClaim(verifyInput())
     const evidence = evidenceInserts(db)[0].rows[0]
@@ -265,10 +700,10 @@ describe('C) positive live proof ⇒ evidence row + won', () => {
   })
 })
 
-describe('D) negative and unavailable lanes never win', () => {
+describe('G) negative and unavailable lanes never win', () => {
   it('records an absent verdict when the live page has no real anchor', async () => {
     const db = installDb()
-    installFetch({ html: `<html><body><p>See ${TARGET} in our prose.</p></body></html>` })
+    installFetchScript({ [SOURCE]: { body: `<html><body><p>See ${TARGET} in our prose.</p></body></html>` } })
 
     const result = await verifyBacklinkClaim(verifyInput())
 
@@ -287,8 +722,8 @@ describe('D) negative and unavailable lanes never win', () => {
 
   it('records absent for a real anchor to a DIFFERENT YouSafe page (exact href only)', async () => {
     const db = installDb()
-    installFetch({ html: positiveHtml(OTHER_ESTATE_PAGE) })
-    const result = await verifyBacklinkClaim(verifyInput())
+    installFetchScript({ [SOURCE]: { body: positiveHtml(OTHER_ESTATE_PAGE) } })
+    const result = await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: null }))
     expect(result.verdict).toBe('absent')
     expect(result.linkPresent).toBe(false)
     expect(evidenceInserts(db)[0].rows[0].observed_href).toBeNull()
@@ -297,7 +732,7 @@ describe('D) negative and unavailable lanes never win', () => {
 
   it('records unavailable (with the real HTTP status) when the page is dead', async () => {
     const db = installDb()
-    installFetch({ status: 404, html: null })
+    installFetchScript({ [SOURCE]: { status: 404, body: 'not found' } })
     const result = await verifyBacklinkClaim(verifyInput())
     expect(result.ok).toBe(true)
     expect(result.verdict).toBe('unavailable')
@@ -313,7 +748,7 @@ describe('D) negative and unavailable lanes never win', () => {
 
   it('records unavailable (status NULL, never a fabricated 200) on a network failure', async () => {
     const db = installDb()
-    installFetch({ throwError: true })
+    installFetchScript({ [SOURCE]: { throwError: true } })
     const result = await verifyBacklinkClaim(verifyInput())
     expect(result.verdict).toBe('unavailable')
     expect(result.sourceHttpStatus).toBeNull()
@@ -323,51 +758,23 @@ describe('D) negative and unavailable lanes never win', () => {
     expect(targetUpdates(db)).toHaveLength(0)
   })
 
-  it('refuses a claimed page that redirects OFF the prospect domain', async () => {
-    const db = installDb()
-    const finalUrl = 'https://evil.example.com/redirected'
-    installFetch({ html: positiveHtml(), finalUrl })
-
-    const result = await verifyBacklinkClaim(verifyInput())
-
-    expect(result.verdict).toBe('unavailable')
-    expect(result.linkPresent).toBe(false)
-    expect(result.observedHref).toBeNull()
-    expect(result.sourceFinalUrl).toBe(finalUrl)
-    expect(result.reason).toMatch(/redirected off the prospect domain/)
-    const evidence = evidenceInserts(db)[0].rows[0]
-    expect(evidence.link_present).toBe(false)
-    expect(evidence.observed_href).toBeNull()
-    expect(evidence.source_final_url).toBe(finalUrl)
-    expect((evidence.evidence as Record<string, unknown>).redirectLeftProspect).toBe(true)
-    expect(targetUpdates(db)).toHaveLength(0)
-  })
-
-  it('still accepts a same-prospect canonical redirect (www / trailing host form)', async () => {
-    const db = installDb()
-    installFetch({ html: positiveHtml(), finalUrl: 'https://ilw.com/articles/immigration-news.shtm' })
-    const result = await verifyBacklinkClaim(verifyInput())
-    expect(result.verdict).toBe('verified')
-    expect(result.transitionedToWon).toBe(true)
-    expect(targetUpdates(db)).toHaveLength(1)
-  })
-
   it('never writes a lost status on a negative check', async () => {
     const db = installDb()
-    installFetch({ html: '<html><body>nothing here</body></html>' })
+    installFetchScript({ [SOURCE]: { body: '<html><body>nothing here</body></html>' } })
     await verifyBacklinkClaim(verifyInput())
-    await verifyBacklinkClaim(verifyInput({ targetUrl: 'https://market.yousafeconsultancy.com/x' }))
+    await verifyBacklinkClaim(verifyInput({ requestedTargetUrl: null, now: '2026-09-21T11:00:00.000Z' }))
     for (const write of db.writes) {
       expect(JSON.stringify(write.patch ?? write.rows)).not.toContain('lost')
     }
     expect(db.updatesFor('seo_backlink_outreach')).toHaveLength(0)
+    expect(db.rows('seo_backlink_targets')[0]).toMatchObject({ status: 'sent', won_verified_at: null })
   })
 })
 
-describe('E) no durable evidence ⇒ no win', () => {
+describe('H) no durable evidence ⇒ no win', () => {
   it('does not transition the target when the evidence insert fails', async () => {
     const db = installDb([targetRow()], { failEvidenceInsert: 'permission denied for table seo_backlink_verifications' })
-    installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
 
     const result = await verifyBacklinkClaim(verifyInput())
 
@@ -381,10 +788,10 @@ describe('E) no durable evidence ⇒ no win', () => {
   })
 })
 
-describe('F) rejected claims are never fetched and never recorded', () => {
+describe('I) rejected claims are never fetched and never recorded', () => {
   it('performs no fetch and appends no evidence for an off-prospect source', async () => {
     const db = installDb()
-    const fetchMock = installFetch({ html: positiveHtml() })
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     const result = await verifyBacklinkClaim(verifyInput({ sourceUrl: 'https://evil.example.com/post' }))
     expect(result.ok).toBe(false)
     expect(result.verdict).toBeNull()
@@ -394,9 +801,9 @@ describe('F) rejected claims are never fetched and never recorded', () => {
   })
 
   it('performs no fetch for a non-estate destination or an unknown target', async () => {
-    const db = installDb()
-    const fetchMock = installFetch({ html: positiveHtml() })
-    const offEstate = await verifyBacklinkClaim(verifyInput({ targetUrl: 'https://evil.example.com/x' }))
+    const db = installDb([targetRow({ destination_url: 'https://evil.example.com/x' })])
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+    const offEstate = await verifyBacklinkClaim(verifyInput())
     expect(offEstate.reason).toMatch(/not a HOST_PUBLIC/)
     const unknown = await verifyBacklinkClaim(verifyInput({ targetId: 'missing-target' }))
     expect(unknown.reason).toBe('backlink target not found')
@@ -405,7 +812,46 @@ describe('F) rejected claims are never fetched and never recorded', () => {
   })
 })
 
-describe('G) idempotency and the evidence trail', () => {
+describe('J) outreach provenance must belong to the target', () => {
+  it('refuses an outreach_id that belongs to another target (nothing persisted)', async () => {
+    const db = installDb([targetRow()], {
+      outreach: [{ id: 'outreach-other', target_id: 'target-2' }],
+    })
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(verifyInput({ outreachId: 'outreach-other' }))
+
+    expect(result.ok).toBe(false)
+    expect(result.verdict).toBeNull()
+    expect(result.reason).toMatch(/does not belong to this backlink target/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(evidenceInserts(db)).toHaveLength(0)
+    expect(targetUpdates(db)).toHaveLength(0)
+  })
+
+  it('refuses an outreach_id that does not exist at all', async () => {
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+    const result = await verifyBacklinkClaim(verifyInput({ outreachId: 'outreach-missing' }))
+    expect(result.ok).toBe(false)
+    expect(result.reason).toMatch(/cannot be recorded as provenance/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(evidenceInserts(db)).toHaveLength(0)
+  })
+
+  it('persists a provenance outreach_id only when it belongs to this target', async () => {
+    const db = installDb([targetRow()], { outreach: [{ id: 'outreach-1', target_id: 'target-1' }] })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
+
+    const result = await verifyBacklinkClaim(verifyInput({ outreachId: 'outreach-1' }))
+
+    expect(result.verdict).toBe('verified')
+    expect(evidenceInserts(db)[0].rows[0].outreach_id).toBe('outreach-1')
+    expect(targetUpdates(db)).toHaveLength(1)
+  })
+})
+
+describe('K) idempotency and the evidence trail', () => {
   it('appends evidence but never re-writes an already won target', async () => {
     const db = installDb([
       targetRow({
@@ -416,7 +862,7 @@ describe('G) idempotency and the evidence trail', () => {
         won_backlink_url: SOURCE,
       }),
     ])
-    installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
 
     const result = await verifyBacklinkClaim(verifyInput())
 
@@ -437,7 +883,7 @@ describe('G) idempotency and the evidence trail', () => {
 
   it('lists the append-only trail for one target only', async () => {
     const db = installDb()
-    installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     await verifyBacklinkClaim(verifyInput())
     const trail = await listBacklinkVerifications('target-1')
     expect(trail).toHaveLength(1)
@@ -447,7 +893,7 @@ describe('G) idempotency and the evidence trail', () => {
   })
 })
 
-describe('H) admin-only route', () => {
+describe('L) admin-only route', () => {
   function post(body: Record<string, unknown>) {
     return new NextRequest('http://localhost/api/seo-engine/backlink/verify', {
       method: 'POST',
@@ -465,20 +911,19 @@ describe('H) admin-only route', () => {
     expect(forbidden.status).toBe(403)
   })
 
-  it('rejects a missing target_id / source_url / target_url with 400 and no fetch', async () => {
+  it('rejects a missing target_id / source_url with 400 and no fetch', async () => {
     requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
-    const fetchMock = installFetch({ html: positiveHtml() })
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     installDb()
     expect((await verifyPOST(post({}))).status).toBe(400)
     expect((await verifyPOST(post({ target_id: 'target-1' }))).status).toBe(400)
-    expect((await verifyPOST(post({ target_id: 'target-1', source_url: SOURCE }))).status).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('drives a real verification through the route and reports the durable win', async () => {
     requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
-    installDb()
-    installFetch({ html: positiveHtml() })
+    const db = installDb()
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     const response = await verifyPOST(post({ target_id: 'target-1', source_url: SOURCE, target_url: TARGET }))
     expect(response.status).toBe(200)
     const body = (await response.json()) as Record<string, unknown>
@@ -490,14 +935,37 @@ describe('H) admin-only route', () => {
       evidence_persisted: true,
       transitioned_to_won: true,
       target_status: 'won',
+      target_url: TARGET,
+      destination_url: TARGET,
     })
     expect(String(body.verification_id)).not.toHaveLength(0)
+    // Provenance is the AUTHENTICATED identity, never a body field.
+    expect(evidenceInserts(db)[0].rows[0].verifier).toBe('admin-1')
+  })
+
+  it('ignores a caller-supplied actor and refuses a destination the target never persisted', async () => {
+    requireAdminUserMock.mockResolvedValue({ profile: { email: 'real.admin@yousafeconsultancy.com' }, profileId: 'admin-1' } as never)
+    const db = installDb()
+    const fetchMock = installFetchScript({ [SOURCE]: { body: positiveHtml(OTHER_ESTATE_PAGE) } })
+
+    const substituted = await verifyPOST(
+      post({ target_id: 'target-1', source_url: SOURCE, destination_url: OTHER_ESTATE_PAGE }),
+    )
+    expect(substituted.status).toBe(400)
+    expect(String(((await substituted.json()) as Record<string, unknown>).error)).toMatch(/does not match/)
+
+    const spoofed = await verifyPOST(
+      post({ target_id: 'target-1', source_url: SOURCE, target_url: TARGET, actor: 'somebody@else.example' }),
+    )
+    expect(spoofed.status).toBe(200)
+    expect(evidenceInserts(db)[0].rows[0].verifier).toBe('real.admin@yousafeconsultancy.com')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('reports a rejected claim as 400 and an unknown target as 404', async () => {
     requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
     installDb()
-    installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     const rejected = await verifyPOST(
       post({ target_id: 'target-1', source_url: 'https://evil.example.com/post', target_url: TARGET }),
     )
@@ -515,7 +983,7 @@ describe('H) admin-only route', () => {
 
     requireAdminUserMock.mockResolvedValue({ profileId: 'admin-1' } as never)
     installDb()
-    installFetch({ html: positiveHtml() })
+    installFetchScript({ [SOURCE]: { body: positiveHtml() } })
     await verifyBacklinkClaim(verifyInput())
     const response = await verifyGET(
       new NextRequest(`http://localhost/api/seo-engine/backlink/verify?target_id=target-1`),
@@ -523,5 +991,69 @@ describe('H) admin-only route', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { verifications?: unknown[] }
     expect(body.verifications).toHaveLength(1)
+  })
+})
+
+describe('M) address classification (fail closed)', () => {
+  it('classifies loopback, private, link-local, reserved, multicast and unspecified', () => {
+    for (const address of [
+      '127.0.0.1',
+      '10.0.0.5',
+      '172.20.3.4',
+      '192.168.1.1',
+      '169.254.169.254',
+      '100.64.0.1',
+      '0.0.0.0',
+      '192.0.2.10',
+      '198.18.0.1',
+      '224.0.0.1',
+      '255.255.255.255',
+      '::',
+      '::1',
+      'fc00::1',
+      'fd12:3456::1',
+      'fe80::1',
+      'ff02::1',
+      '::ffff:10.0.0.1',
+      '::ffff:127.0.0.1',
+      '::10.0.0.1',
+      '2002:0a00:0001::1',
+      '64:ff9b::a00:1',
+      'fe80::1%en0',
+    ]) {
+      expect(isPrivateOrReservedAddress(address)).toBe(true)
+    }
+    for (const address of ['93.184.216.34', '8.8.8.8', '2606:4700:4700::1111', '2001:4860:4860::8888']) {
+      expect(isPrivateOrReservedAddress(address)).toBe(false)
+    }
+  })
+
+  it('refuses an address it cannot parse instead of assuming it is public', () => {
+    for (const value of ['', 'not-an-address', 'example.com', '999.1.1.1', 'fe80::zz', '1.2.3', '::1::2']) {
+      expect(isPrivateOrReservedAddress(value)).toBe(true)
+    }
+  })
+
+  it('reads IPv6 composition forms without over-blocking public answers', () => {
+    // Mapped / compatible / 6to4 / NAT64 all inherit the embedded IPv4 verdict.
+    expect(isPrivateOrReservedAddress('::ffff:7f00:1')).toBe(true)
+    expect(isPrivateOrReservedAddress('0:0:0:0:0:ffff:127.0.0.1')).toBe(true)
+    expect(isPrivateOrReservedAddress('::ffff:93.184.216.34')).toBe(false)
+    expect(isPrivateOrReservedAddress('2002:5db8:d822::1')).toBe(false)
+    expect(isPrivateOrReservedAddress('64:ff9b::5db8:d822')).toBe(false)
+    // Special-purpose IPv6 ranges stay refused.
+    for (const address of ['2001:db8::1', '2001:0:1::1', '2001:2::1', 'fec0::1', '100::1']) {
+      expect(isPrivateOrReservedAddress(address)).toBe(true)
+    }
+    expect(isPrivateOrReservedAddress('2001:4860:4860::8888')).toBe(false)
+  })
+
+  it('resolves a literal address without DNS and refuses private literals', async () => {
+    expect(isIpLiteral('127.0.0.1')).toBe(true)
+    expect(isIpLiteral('::ffff:10.0.0.1')).toBe(true)
+    expect(isIpLiteral('ilw.com')).toBe(false)
+    await expect(resolveHostAddresses('127.0.0.1')).resolves.toMatchObject({ ok: false })
+    await expect(resolveHostAddresses('93.184.216.34')).resolves.toEqual({ ok: true, addresses: ['93.184.216.34'] })
+    await expect(resolveHostAddresses('')).resolves.toMatchObject({ ok: false })
   })
 })

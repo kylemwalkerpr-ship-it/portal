@@ -24,7 +24,13 @@
 --      constraint: status='won' cannot exist without won_at, an absolute
 --      won_backlink_url and both pointers. A BEFORE INSERT/UPDATE guard
 --      trigger additionally proves the pointer is a POSITIVE verdict for THIS
---      target whose backlink URL equals the recorded won_backlink_url.
+--      target whose backlink URL equals the recorded won_backlink_url AND whose
+--      verified target_url is this row's OWN persisted destination_url.
+--   2b. `destination_url` — the STRATEGIC YouSafe canonical a prospect should
+--      link to, persisted on the target itself (additive, NULLABLE). It is NOT
+--      `target_url`, which remains the third-party placement surface. Legacy
+--      rows stay NULL: nothing is fabricated or backfilled, and a target with
+--      no destination can never be verified won.
 --   3. Future-write truth on public.seo_backlink_outreach: a sent-like status
 --      must carry sent_at, and an outreach row may not claim `won` (wins are
 --      produced only by live backlink verification on the target). Both
@@ -153,6 +159,29 @@ alter table public.seo_backlink_targets
     references public.seo_backlink_verifications(id),
   add column if not exists authority_score_basis text not null default 'legacy_internal';
 
+-- The strategic destination is a property of the PROSPECT, not of a request:
+-- verification reads this column and refuses to credit a caller-supplied URL.
+-- Additive and nullable — legacy rows keep NULL, and no row is ever backfilled.
+alter table public.seo_backlink_targets
+  add column if not exists destination_url text null;
+
+comment on column public.seo_backlink_targets.destination_url is
+  'P9: the STRATEGIC YouSafe canonical this prospect should link to (absolute https on an exact HOST_PUBLIC estate host). Distinct from target_url, which is the third-party placement surface. NULL means no destination has been recorded: such a target can never be verified won. Never backfilled.';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'seo_backlink_targets_destination_url_check'
+  ) then
+    alter table public.seo_backlink_targets
+      add constraint seo_backlink_targets_destination_url_check
+      check (destination_url is null or destination_url ~* '^https://[^[:space:]]+$');
+  end if;
+end $$;
+
+comment on constraint seo_backlink_targets_destination_url_check on public.seo_backlink_targets is
+  'P9: a recorded destination must be an absolute https URL. All historical rows are NULL, so this future-write contract validates without rewriting a single row.';
+
 comment on column public.seo_backlink_targets.won_verification_id is
   'The exact seo_backlink_verifications row whose positive live proof produced this win. Required (with won_verified_at) whenever status=won; NULL means the row was never verified live.';
 comment on column public.seo_backlink_targets.won_verified_at is
@@ -214,7 +243,7 @@ begin
   if new.won_verification_id is null then
     raise exception 'seo_backlink_targets.status=won requires won_verification_id from live backlink verification';
   end if;
-  select v.id, v.target_id, v.link_present, v.verdict, v.backlink_url
+  select v.id, v.target_id, v.link_present, v.verdict, v.backlink_url, v.target_url
     into verified
     from public.seo_backlink_verifications v
    where v.id = new.won_verification_id;
@@ -229,6 +258,15 @@ begin
   end if;
   if new.won_backlink_url is distinct from verified.backlink_url then
     raise exception 'seo_backlink_targets.won_backlink_url must equal the verified backlink page URL';
+  end if;
+  -- The proof must have been taken against THIS target's own persisted
+  -- destination: a win can never be bound to a YouSafe URL the target row does
+  -- not carry (and a target with no destination can never be won at all).
+  if new.destination_url is null then
+    raise exception 'seo_backlink_targets.status=won requires a persisted destination_url on the target';
+  end if;
+  if verified.target_url is distinct from new.destination_url then
+    raise exception 'seo_backlink_targets.won_verification_id must have verified the target''s persisted destination_url';
   end if;
   return new;
 end;
@@ -348,6 +386,7 @@ SELECT
   t.authority_score_basis,
   t.won_verified_at,
   t.won_verification_id,
+  t.destination_url,
   (
     SELECT count(*)::int FROM public.seo_backlink_verifications v WHERE v.target_id = t.id
   ) AS verification_count,
