@@ -1229,3 +1229,132 @@ Local final candidate: focused P9 3 suites / **103 tests PASS**; cross-phase mig
 
 ### Gate
 P9 remains **IN_PROGRESS / GATE OPEN**. Engineering truth infrastructure and the first evidence-backed prospect queue are live. The remaining closeout dependency is external: obtain a legitimate citation/backlink, then run the production verifier and independently re-fetch the exact referring page. Until that happens, P9 must not be marked PASS.
+
+---
+
+## 2026-09-22 — P10 conversion-attribution A0 pilot selection + A1 truth repair — IN_PROGRESS
+
+**Program state:** P10 is started and locally verified, but **PASS is not claimed.** The P10 gate requires a real production business event observed after deployment; no production deployment of this candidate has happened and no stored `conversion_events` row exists yet. `program_pass_claimed` is a literal `false` in the read-only proof surface.
+
+**Local candidate state:** this entry describes an uncommitted-then-locally-committed candidate on
+`seo/p10-conversion-attribution-20260922` (base `ef7ef17414a6d520b5a76c2ab995173dc6dcfde3`). No push, PR, merge, deploy or production migration apply was performed from this worktree.
+
+### A0 pilot evidence (read-only production; classification is conservative)
+
+Persisted Google Search Console evidence for the pilot cluster `us_f1_opt` (US F-1 / OPT):
+
+- **102** top-20 rows / **724** top-20 impressions; **34** top-10 rows / **44** top-10 impressions; best position **8.5**.
+
+Other near-win clusters, same conservative classification, for contrast:
+
+- `uk_student`: 173 top-20 impressions and **no** top-10 rows.
+- `express_entry`: 15 top-20 impressions despite a best position of 1.
+- `au_485` and `ca_family`: no top-20 rows in this conservative classification.
+
+Marketplace US F-1 supply (read-only production): **4** active gigs, including the active
+`I will review your US F-1 reinstatement file` gig with `order_count = 5`.
+
+This is **evidence, not PASS**: it selected the pilot cluster because the US F-1/OPT route is the only
+strategic cluster that simultaneously has recorded qualified GSC demand, an owned-intent surface, real
+Marketplace supply, and an Intake lane whose F-1/OPT case types already end in a durable server-side
+inquiry row that can convert into a paid order.
+
+### Locked event definition
+
+- Pilot cluster: `us_f1_opt` (`P10_PILOT` in `lib/attribution/contract.ts`).
+- **Meaningful event: `order_paid`** — a paid order row persisted by trusted server code after a captured payment.
+- Supporting event: `lead_created` (interest, not revenue, and therefore not the locked event).
+
+### Implementation scope (A1 truth repair)
+
+- New anonymous mapping only: `conversion_attribution_sessions` (SHA-256 identity hash + capped source detail; consent is a precondition of existence), `conversion_attribution_links` (signed, single-use handoff edges that LINK, never merge), `conversion_events` (append-only ledger with a deterministic `event_key` idempotency boundary), and the read-only `p10_conversion_chain_coverage` view. No existing table or P9 code is modified.
+- **Consent truth (release-blocker repair):** `conversion_events.consent_state` no longer hard-codes `granted` for server-observed events. An event bound to an active consented session (attributed) is `granted`; an `unknown_source` business event defaults to **`unknown`** and may only carry `granted`/`denied` when the call site recorded *how* it observed that consent (`evidence.consent_evidence`, enforced by a storage-level check). An unattributed paid order is therefore never stored as consent granted.
+- **Edge capture truth:** middleware no longer captures `yattr` (handoff) or campaign state for "not denied". Capture requires **explicit `granted`** consent; `unknown` and `denied` persist nothing while the tracking parameters are still 301-stripped to the clean SEO canonical. The capture decision and the tracking-key list now live in pure, edge-safe modules (`lib/attribution/cookies.ts`, `lib/trackingParams.ts`) so both are directly testable.
+- **Non-blocking telemetry invariant preserved:** `bindBusinessEvent` keeps `return await insertWithDedupe(...)` inside its try/catch (without the await, a rejecting insert escapes as an unhandled rejection and fails the money path; a deliberate removal was previously proven to fail 7 of 73 tests). Every checkout/payment/inquiry/cancel/refund/webhook binder call site is unchanged and remains `await`ed-but-non-throwing.
+- **Privacy:** no IP, user agent, email, Clerk/profile id, device id or fingerprint is read or stored anywhere in the attribution modules or routes; subject ids are durable business object ids only and a non-object id (for example an email) is refused. Regression tests scan the executable source and the stored event/evidence payloads.
+- **Cross-domain handoff adapter gap (not fixed, recorded):** the consumer half exists (HMAC mint/verify, middleware cookie capture, `/api/attribution/session` link), but **no production code mints a `yattr` handoff token or appends it to a cross-domain link**. The read-only admin proof surface therefore reports `cross_domain_handoff = { emitter_shipped: false, state: 'emitter_adapter_pending' }` and cannot claim cross-domain continuity. Until a future adapter safely re-establishes consent on the receiving host, cross-domain attribution is incomplete for a first-time visitor who has not yet chosen. No token is smuggled around the consent choice.
+
+### Local verification
+
+- Focused: P10 suite + order-cancel + order-cancel-late-credit + marketplace-gigs-search + migration-order + idempotency + mobile-checkout + orders-workflow + mobile-orders = **9 suites / 152 tests PASS**; middleware-affected suites (legacy marketplace redirect, marketplace category/clean-url/clerk/sitemap/public-route, landing-query parity, discovery-variant noindex, portal auth lanes, GSC soft-404) = **12 suites / 111 tests PASS** after updating two source-location assertions to the extracted pure modules.
+- `npx --no-install tsc --noEmit` exit 0.
+- `git diff --check` clean (brokered).
+- Full serial Jest and `npm run build` are recorded in the run's final report; the only known harness-dependent failure is the pre-existing P9 verifier suite, which fails **fail-closed** because the sandbox blocks DNS (`resolve4` ECONNREFUSED) and reports `unavailable` instead of a win.
+
+### P9 dependency truth (unchanged by this work)
+
+P9 remains **IN_PROGRESS / GATE OPEN** with **0 verified wins**; it is not a P10 blocker and was not modified or weakened. The exact P9 suite passes **61/61** on clean current `main` `ef7ef174` outside the restricted harness; its failure inside this sandbox is environmental (blocked DNS), not a P9/P10 code regression.
+
+### Gate
+
+P10 remains **IN_PROGRESS**. Program PASS is **NOT claimed**: it requires a real production business event (`order_paid` for `us_f1_opt`) observed after deployment, with its consent truth stored as observed. Nothing in this ledger entry asserts that yet.
+
+## 2026-09-22 — P10 A2 acquisition-truth hardening (`session_only`) — IN_PROGRESS
+
+**Program state:** P10 remains **IN_PROGRESS**; **PASS is not claimed.** The gate still requires a real production `order_paid` observed after deployment. P9 is untouched and remains **IN_PROGRESS / GATE OPEN** with **0 verified wins**.
+
+### Sole release blocker being repaired
+
+A consented attribution session whose `first_source_class = 'unknown'` was persisted with `attribution_state = 'attributed'` and counted by `p10_conversion_chain_coverage.attributed_paid_events`. That claimed knowledge the estate never had and violated the canonical rule *"unknown conversion data remains unknown, never inferred"*. A session identity proves **continuity/consent**; it does **not** prove **acquisition source**.
+
+### Truth model now enforced (storage + writer + report)
+
+- **State vocabulary is three-valued** and derived by ONE pure function (`deriveAttributionState` in `lib/attribution/contract.ts`) used by BOTH the browser collector and the trusted business binder, so the two paths cannot drift:
+  - `attributed` — a **KNOWN** acquisition source: `session_id NOT NULL` AND `source_class NOT NULL` AND `source_class <> 'unknown'`;
+  - `session_only` — an active consented session exists: `session_id NOT NULL` AND `source_class = 'unknown'` (continuity + consent proven, acquisition still unknown);
+  - `unknown_source` — `session_id NULL` AND `source_class NULL` (no traceable session at all).
+- **Consent semantics are unchanged and now explicit:** `attributed` and `session_only` are both session-bound, so both are `consent_state = 'granted'` (session existence *is* the consent evidence — the sessions table can only hold granted visitors). An `unknown_source` server business event still defaults to `consent_state = 'unknown'` unless the call site passes explicit named `evidence.consent_evidence`. Consent truth and source knowledge are independent facts.
+- **Storage constraints** (`conversion_events_attribution_shape`, `conversion_events_consent_shape`) make the shapes non-representable: an unknown source can no longer be stored as `attributed`, and a session-bound event without granted consent is refused.
+- **Coverage/report truth:** `attributed_paid_events` counts ONLY known-source `attribution_state = 'attributed'` rows; `session_only_paid_events` was added; `unknown_source_paid_events` remains separate. The fake-DB coverage mirror, the SQL view and the read-only admin proof response expose the same three fields, plus an aggregate `paid_event_states { attributed, session_only, unknown_source, stale_view }`. `stale_view = true` says the deployed view predates the new column, so a stale migration cannot silently look healthy.
+- **Truthfulness of the state is proven by removal, not by assertion:** temporarily reverting both call paths to the old "session ⇒ attributed" rule fails 4 of the 49 P10 tests (session_only order, session_only browser event, session/attributed counts, admin proof fields); the storage mirror also refuses the regressed rows outright.
+
+### Preserved invariants (no regression)
+
+Explicit `granted` consent is still required before any `yattr`/campaign capture; the tracking query is still stripped regardless of consent; a no-consent business event never claims granted; `bindBusinessEvent` keeps its load-bearing `return await insertWithDedupe(...)` so a rejecting telemetry insert can never fail checkout/payment/inquiry/cancel/refund/webhook; a browser still cannot declare a business conversion (route 422 + storage check); append-only lifecycle/idempotency and "no historical backfill" are untouched; no PII/fingerprint is read or stored; the cross-domain emitter remains explicitly pending (`emitter_shipped = false`, `emitter_adapter_pending`).
+
+### Local verification (exact final candidate)
+
+- P10 suite: **52/52 PASS**. This includes the state vocabulary/session_only proofs plus a browser-chain wiring guard that requires the consented session bootstrap to emit the deduped `landing` edge before CTA/order measurement can be considered wired.
+- Focused business/order/cancel/migration/idempotency battery (P10 + order-cancel + order-cancel-late-credit + marketplace-gigs-search + migration-order + idempotency + mobile-checkout + orders-workflow + mobile-orders): **9 suites / 160 tests PASS** before the final landing-only client wiring change; the exact-final full suite below re-ran those tests on the final code.
+- Middleware/extraction-affected battery (legacy marketplace redirect, marketplace category/clean-url/clerk/sitemap/public-route/discovery-variant, landing-query parity, portal auth lanes, GSC soft-404, portal-market handoff): **13 suites / 124 tests PASS**; the exact-final full suite below re-ran them on the final code.
+- Exact-final canonical Jest (direct local run with normal DNS): **496 suites PASS / 2 skipped; 5,680 tests PASS / 4 skipped; 0 failures**. This includes the P9 live-verifier suite; unlike the restricted DeepSeek sandbox, the direct run had DNS and therefore required no environmental exception.
+- `npx --no-install tsc --noEmit` exit 0; `git diff --check` clean.
+- Credential-backed production build using the already-authorized primary-repo local environment: **Next.js 16.2.11 PASS** through webpack, TypeScript and prerender/static-param generation; **OpenNext Cloudflare 1.19.11 PASS**, Worker bundle emitted to `.open-next/worker.js`. No deployment was performed.
+
+### Gate
+
+P10 remains **IN_PROGRESS** and program **PASS is NOT claimed**: it requires a real production `order_paid` for `us_f1_opt`, observed after deployment with its consent truth stored as observed, and counted in `attributed_paid_events` only if a known source was truly observed. Nothing here asserts that.
+
+## 2026-09-22 — P10 A3 classifier-truth repair (landing context is not acquisition) — IN_PROGRESS
+
+**Program state:** P10 remains **IN_PROGRESS**; **PASS is not claimed.** The gate still requires a real production `order_paid` for `us_f1_opt` observed after deployment. P9 is untouched and remains **IN_PROGRESS / GATE OPEN** with **0 verified wins**.
+
+### Sole release blocker repaired here
+
+`lib/attribution/source.ts` documented "Nothing is inferred from a missing signal", but `classifyAttributionSource` returned `source_class = 'direct'` whenever a landing host **or** path existed with no campaign and no referrer. That is the same class of inference the A2 repair closed one layer up: landing host/path prove only **where** a visitor landed, never **how** they arrived. A missing referrer can be produced by privacy settings, a `Referrer-Policy` header or ordinary browser behaviour, so it cannot prove typed/bookmark/direct acquisition.
+
+### What changed
+
+- `classifyAttributionSource` now derives a source class from **real navigation evidence only**: campaign query/click-id evidence → `campaign`; explicit referrer on an estate domain → `internal`; explicit search-engine referrer → `organic_search`; explicit other external referrer → `referral`; **anything else — including host/path with no campaign and no usable referrer (missing, blank, malformed, non-http or protocol-relative) → `unknown`.** `landing_host`/`landing_path` are still retained in the snapshot as context.
+- `direct` remains in `ATTRIBUTION_SOURCE_CLASSES` as a **reserved explicit future value** (documented as such in `lib/attribution/contract.ts`) and is never derived from missing evidence; no code path emits it, and no "direct evidence" signal is invented that the browser does not have.
+- Current doc wording corrected in place so it cannot imply otherwise: the `/api/attribution/session` route header now states the classification vocabulary as `campaign / organic_search / referral / internal / unknown` and explicitly records that host/path are context, not acquisition evidence.
+
+### Tests added/updated
+
+- Host/path only → `unknown` (with `landing_host`/`landing_path` preserved), for host-only, path-only and host+path inputs.
+- Malformed/blank/non-http/protocol-relative referrer **plus** host/path → `unknown`, never `direct`.
+- `campaign`, `organic_search`, `referral` and `internal` remain **known** classifications.
+- End-to-end through the real session route: an issued consented session with a genuine landing host/path but no source evidence stores `first_source_class = 'unknown'` and reports `attribution_state = 'session_only'`, while `first_landing_host`/`first_landing_path` are retained.
+- A `order_paid` bound to exactly that session stays `session_only` with `source_class = 'unknown'` and `consent_state = 'granted'`, and `loadConversionCoverage` reports `attributed_paid_events = 0` / `session_only_paid_events = 1` — the unknown source cannot inflate the attributed count.
+
+### Preserved invariants (no regression)
+
+`attributed` = session + known `source_class` ≠ `unknown`; `session_only` = session + unknown source; `unknown_source` = no session/source; explicit `granted` consent is still required before any `yattr`/campaign capture; tracking params are still stripped regardless of consent; a no-consent business event never claims granted; `bindBusinessEvent` keeps its load-bearing `return await insertWithDedupe(...)`; a browser still cannot declare a business conversion; append-only lifecycle/idempotency and "no historical backfill" are untouched; no PII/fingerprint; the cross-domain emitter remains explicitly pending (`emitter_shipped = false`, `emitter_adapter_pending`).
+
+### Local verification (this candidate)
+
+Recorded in the run report for this commit: P10 suite, the focused business/order/cancel/migration/idempotency battery, the middleware/extraction-affected battery, `npx --no-install tsc --noEmit`, brokered `git diff --check`, the full serial Jest suite (single known harness-only exception: `tests/p9-backlink-live-verification.test.ts` fails closed on blocked sandbox DNS; P9 code untouched, exact P9 suite 61/61 outside the harness) and `npm run build` — exact results in that report.
+
+### Gate
+
+P10 remains **IN_PROGRESS** and program **PASS is NOT claimed**: it requires a real production `order_paid` for `us_f1_opt`, observed after deployment with its consent truth stored as observed, and counted in `attributed_paid_events` only if a known source was truly observed. Nothing here asserts that.

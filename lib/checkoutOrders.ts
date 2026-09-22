@@ -1,4 +1,6 @@
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from './fiverr'
+import { bindBusinessEvent } from './attribution/engine'
+import { classifyBusinessCluster } from './attribution/source'
 
 type Db = ReturnType<typeof import('./supabase').createSupabaseAdminClient>
 
@@ -211,6 +213,13 @@ export async function createPaidOrder(
     actorId?: string | null
     acceptedAt?: string
     skipSourceUpdate?: boolean
+    /**
+     * P10: opaque first-party attribution token for THIS request (read from the
+     * httpOnly cookie by the calling route). Optional and never trusted for the
+     * payment itself — it only decides whether the paid order can be attributed
+     * to a consented session or must be stored as an unknown source.
+     */
+    attributionToken?: string | null
   },
 ) {
   // Idempotency: don't duplicate by offer ids
@@ -315,6 +324,29 @@ export async function createPaidOrder(
     const { data: gig } = await db.from('gigs').select('order_count').eq('id', item.gigId).maybeSingle()
     await db.from('gigs').update({ order_count: Number(gig?.order_count || 0) + 1 }).eq('id', item.gigId)
   }
+
+  // ── P10 conversion attribution (trusted server binder) ───────────────────
+  // This is the paid-order choke point: every wallet/card order created after a
+  // captured payment passes through here. The binder is idempotent (deterministic
+  // event_key) and never throws, so a telemetry problem can never fail a payment.
+  // When there is no consented attribution identity, the order is still recorded
+  // with attribution_state='unknown_source' — the source is unknown, never inferred.
+  await bindBusinessEvent(db, {
+    eventType: 'order_paid',
+    subjectType: 'order',
+    subjectId: order.id,
+    amountCents: item.totalCents,
+    currency: item.currency,
+    cluster: classifyBusinessCluster({ productText: `${item.title} ${item.description}` }),
+    productRef: item.gigId ? `gig:${item.gigId}` : `offer:${item.sourceId}`,
+    occurredAt: acceptedAt,
+    token: opts.attributionToken ?? null,
+    evidence: {
+      payment_method: opts.paymentMethod,
+      escrow_status: 'held',
+      verification: 'paid_order_created',
+    },
+  })
 
   return order
 }

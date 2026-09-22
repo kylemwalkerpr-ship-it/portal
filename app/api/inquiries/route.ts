@@ -2,6 +2,9 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { handleOptions, jsonWithCors } from '@/lib/cors'
 import { sendEmail } from '@/lib/email'
 import { safetyGuard } from '@/lib/safety'
+import { readAttributionToken } from '@/lib/attribution/cookies'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
+import { classifyBusinessCluster } from '@/lib/attribution/source'
 
 const ACTIVE_STATUS_CAP = 10
 
@@ -147,6 +150,28 @@ export async function POST(req: Request) {
     console.error('[inquiries] insert failed', error?.message)
     return jsonWithCors(req, { error: 'Could not save your inquiry. Please try again.' }, 500)
   }
+
+  // ── P10 conversion attribution (trusted server binder) ───────────────────
+  // The inquiry row above is a real, durable lead. It is recorded as a
+  // server-observed business event: the browser never declares it, and when no
+  // consented attribution session was presented the lead is stored with
+  // attribution_state='unknown_source' instead of an invented source. The binder
+  // is idempotent per inquiry id and never throws, so a telemetry problem cannot
+  // fail a lead that a client is waiting on.
+  await bindBusinessEvent(db, {
+    eventType: 'lead_created',
+    subjectType: 'inquiry',
+    subjectId: inquiry.id,
+    cluster: classifyBusinessCluster({ caseType }),
+    occurredAt: new Date().toISOString(),
+    token: readAttributionToken(req),
+    evidence: {
+      verification: 'inquiry_row_persisted',
+      country: country ?? null,
+      case_type: caseType ?? null,
+      intake_source: clean(body.source, 60) || 'caseworks',
+    },
+  })
 
   // Drop a 24h status broadcast row for any buyer who has a profile so the
   // marketplace status ring lights up. Best-effort — if the table isn't

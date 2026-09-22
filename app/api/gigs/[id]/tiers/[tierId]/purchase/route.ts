@@ -1,6 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { createPaidOrder, resolveCheckoutItem } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { readAttributionToken } from '@/lib/attribution/cookies'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 
@@ -23,7 +24,13 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     }
 
     const tx = await debit(auth.profileId, resolved.totalCents, `Purchase: ${resolved.title}`)
-    const order = await createPaidOrder(auth.db, resolved, { paymentMethod: 'wallet', actorId: auth.profileId })
+    const order = await createPaidOrder(auth.db, resolved, {
+      paymentMethod: 'wallet',
+      actorId: auth.profileId,
+      // P10: attributing a real paid order to a consented session (or storing
+      // it as an unknown source) must not require the buyer to re-prove payment.
+      attributionToken: readAttributionToken(req),
+    })
     try {
       await creditEarning({
         providerId: resolved.providerProfileId,

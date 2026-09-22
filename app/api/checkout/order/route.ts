@@ -2,6 +2,7 @@ import { getClerkUserId } from '@/lib/auth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { createPaidOrder, resolveCheckoutItem, type CheckoutSourceType } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { readAttributionToken } from '@/lib/attribution/cookies'
 import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
@@ -171,7 +172,13 @@ export async function POST(req: Request) {
       // surface a bare 500 with a captured charge and no trace.
       let order
       try {
-        order = await createPaidOrder(auth.db, resolved, { paymentMethod, actorId: auth.profileId })
+        order = await createPaidOrder(auth.db, resolved, {
+          paymentMethod,
+          actorId: auth.profileId,
+          // P10: the paid-order binder records the real event exactly once and
+          // attributes it only when this browser presented a consented session.
+          attributionToken: readAttributionToken(req),
+        })
       } catch (orderErr) {
         console.error('[checkout/order] order creation failed AFTER charge:', orderErr)
         await recordPaymentIncident(auth.db, {
@@ -215,7 +222,11 @@ export async function POST(req: Request) {
     // so the student is never out of pocket with no order.
     let order
     try {
-      order = await createPaidOrder(auth.db, resolved, { paymentMethod: 'wallet', actorId: auth.profileId })
+      order = await createPaidOrder(auth.db, resolved, {
+        paymentMethod: 'wallet',
+        actorId: auth.profileId,
+        attributionToken: readAttributionToken(req),
+      })
     } catch (orderErr) {
       console.error('[checkout/order] order creation failed AFTER wallet debit — refunding:', orderErr)
       try {

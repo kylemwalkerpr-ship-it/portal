@@ -14,6 +14,7 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { refundToWallet } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
 
 async function authViaServiceToken(req: Request) {
   const header = req.headers.get('authorization') || ''
@@ -141,6 +142,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch (err: any) {
     warnings.push(`escrow_event_failed: ${err.message}`)
   }
+
+  // P10: the refund is recorded as a new lifecycle event. Partial refunds are
+  // distinct events (the cumulative refunded amount is the lifecycle reference),
+  // and the original order_paid row is never rewritten or removed.
+  await bindBusinessEvent(db, {
+    eventType: 'order_refunded',
+    subjectType: 'order',
+    subjectId: orderId,
+    amountCents: refundCents,
+    currency: (order.currency || 'usd').toLowerCase(),
+    occurredAt: new Date().toISOString(),
+    lifecycleRef: `escrow-${Math.round(Number(order.escrow_refunded_amount || 0) + requestedAmount)}`,
+    evidence: {
+      verification: 'admin_escrow_refund',
+      full_refund: isFullRefund,
+      buyer_wallet_credit: Boolean(order.client_id),
+    },
+  })
 
   try {
     await db.from('admin_audit_log').insert({

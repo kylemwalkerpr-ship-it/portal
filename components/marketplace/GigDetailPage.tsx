@@ -24,6 +24,7 @@ import { renderBioMarkdown } from '@/lib/bioMarkdown'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import { getCategoryById, getSubcategoryById } from '@/lib/categories'
 import { providerDisplayName } from '@/lib/providerDisplayName'
+import { trackAttributionCta } from '@/lib/attribution/client'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -340,6 +341,10 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
     setCheckoutOpen(true)
     setCheckoutError('')
     setPlacedOrderId(null)
+    // P10: this is the CTA step of the chain (organic landing → CTA → service →
+    // paid order). Consent-gated and deduped per CTA per UTC day; a denied
+    // visitor sends nothing.
+    if (gig?.id) trackAttributionCta(`gig_order_cta:${gig.id}`)
     fetch('/api/wallet/balance', { credentials: 'same-origin' })
       .then((r) => r.json().catch(() => ({})))
       .then((d) => {

@@ -4,6 +4,9 @@ import { TEMPLATE_PACKS, getTemplatePack, getTemplatePackPriceCents } from '@/li
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey, recordPaymentIncident } from '@/lib/idempotency'
+import { readAttributionToken } from '@/lib/attribution/cookies'
+import { bindBusinessEvent } from '@/lib/attribution/engine'
+import { classifyProductCluster } from '@/lib/attribution/source'
 import { randomUUID } from 'crypto'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -283,6 +286,53 @@ export async function POST(request: NextRequest) {
       transactionId: result.transactionId,
       amountCents,
       context: { orderId, error: persistErr instanceof Error ? persistErr.message : String(persistErr) },
+    })
+  }
+
+  // ── P10 conversion attribution (trusted server binder) ────────────────────
+  // The gateway returned a captured payment for THIS request, so these are real
+  // paid-order events. Each subject is recorded exactly once (deterministic
+  // event_key) and a missing/denied attribution identity stores the purchase as
+  // an unknown source rather than inferring one. The binder never throws: a
+  // telemetry problem must never turn a successful charge into an error.
+  const attributionToken = readAttributionToken(request)
+  const templateItemsForAttribution = lineItems.filter((i) => i.type === 'template')
+  const serviceItemsForAttribution = lineItems.filter((i) => i.type === 'service')
+  const templateCents = templateItemsForAttribution.reduce((sum, i) => sum + i.unitAmountCents * i.quantity, 0)
+  const serviceCents = serviceItemsForAttribution.reduce((sum, i) => sum + i.unitAmountCents * i.quantity, 0)
+  const chargeEvidence = {
+    gateway: chargeGateway,
+    verification: 'gateway_charge_response',
+    gateway_status: result.status,
+    surface: 'catalogue_checkout',
+  }
+  if (templateItemsForAttribution.length > 0) {
+    const slugs = templateItemsForAttribution.map((i) => i.slug || '').filter(Boolean)
+    await bindBusinessEvent(db, {
+      eventType: 'order_paid',
+      subjectType: 'template_order',
+      subjectId: orderId,
+      amountCents: templateCents,
+      currency: 'usd',
+      cluster: classifyProductCluster(slugs.join(' ')),
+      productRef: `templates:${slugs.join('|')}`.slice(0, 200),
+      occurredAt: new Date().toISOString(),
+      token: attributionToken,
+      evidence: chargeEvidence,
+    })
+  }
+  if (serviceOrderRef && serviceItemsForAttribution.length > 0) {
+    await bindBusinessEvent(db, {
+      eventType: 'order_paid',
+      subjectType: 'order',
+      subjectId: serviceOrderRef,
+      amountCents: serviceCents,
+      currency: 'usd',
+      cluster: classifyProductCluster(serviceItemsForAttribution.map((i) => i.name).join(' ')),
+      productRef: `services:${serviceItemsForAttribution.map((i) => i.serviceId || '').join('|')}`.slice(0, 200),
+      occurredAt: new Date().toISOString(),
+      token: attributionToken,
+      evidence: chargeEvidence,
     })
   }
 

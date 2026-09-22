@@ -31,10 +31,12 @@ import {
   isDiscoveryQueryVariant,
   parseDiscoveryPage,
 } from '@/lib/marketplaceDiscoveryQuery'
+import { isTrackingQueryKey } from '@/lib/trackingParams'
 
 const readRepo = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
 
 const middleware = readRepo('middleware.ts')
+const trackingParams = readRepo('lib/trackingParams.ts')
 const landing = readRepo('app/marketplace/page.tsx')
 
 /** The exact list the retired landing metadata treated as noindex variants. */
@@ -118,7 +120,10 @@ describe('marketplace landing discovery-query noindex parity (market-host edge)'
     const robotsCall = middleware.indexOf('isDiscoveryVariantRequest(pathname, req.nextUrl.searchParams)')
     expect(stripCall).toBeGreaterThan(-1)
     expect(robotsCall).toBeGreaterThan(stripCall)
-    expect(middleware).toContain("key.toLowerCase().startsWith('utm_')")
+    // The `utm_*` rule lives in the shared edge-safe helper the middleware imports.
+    expect(trackingParams).toContain("normalized.startsWith('utm_')")
+    expect(isTrackingQueryKey('utm_source')).toBe(true)
+    expect(isTrackingQueryKey('country')).toBe(false)
   })
 
   it('applies the predicate on the market-host rewrite, once', () => {

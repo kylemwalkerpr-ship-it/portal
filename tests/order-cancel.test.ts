@@ -806,6 +806,36 @@ test('checkout: createPaidOrder initializes currency, escrow_amount, and money u
   })
 })
 
+/**
+ * P10 non-blocking telemetry at the paid-order choke point.
+ *
+ * `checkoutDb` exposes NO usable attribution surface (its `conversion_events`
+ * branch has an incomplete insert chain and the session table has no read chain),
+ * which is what a missing migration, a partial client or a down database looks
+ * like to the caller. Binding the attribution event must therefore report
+ * "not recorded" internally and MUST NOT reject: createPaidOrder runs after a
+ * captured payment, so a telemetry rejection here would fail a real paid order.
+ */
+test('checkout: an unusable attribution ledger can never fail a captured paid order', async () => {
+  const { createPaidOrder } = await import('@/lib/checkoutOrders')
+  const db = checkoutDb()
+  const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const order = await createPaidOrder(db, checkoutItem, {
+      paymentMethod: 'wallet',
+      actorId: 'cli-1',
+      skipSourceUpdate: true,
+      attributionToken: 'ledgerless-attribution-token-0123456789',
+    })
+    expect(order.id).toBe('order-1')
+  } finally {
+    errorSpy.mockRestore()
+  }
+  // The order row was still persisted exactly as before — the primary money
+  // behaviour is unchanged by the unavailable ledger.
+  expect(db.insertCalls[0]).toMatchObject({ client_id: 'cli-1', status: 'created', escrow_status: 'held' })
+})
+
 test('checkout: a schema missing currency/escrow_amount fails loudly (never silently strips)', async () => {
   const { createPaidOrder } = await import('@/lib/checkoutOrders')
 

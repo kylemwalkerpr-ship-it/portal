@@ -23,6 +23,7 @@ import MobileVisualViewport from '@/components/mobile/MobileVisualViewport'
 import MessengerHeaderEnhancer from '@/components/messaging/MessengerHeaderEnhancer'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
 import CookieConsentBanner from '@/components/CookieConsentBanner'
+import AttributionClient from '@/components/AttributionClient'
 // HreflangTags removed — portal is noindex sitewide and has no per-locale
 // URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
 // Canonical" flags. Re-introduce once we have real `/es/...` routes.
@@ -93,6 +94,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* GA4 is mounted globally but Google scripts are loaded only after
             explicit analytics consent. */}
         <GoogleAnalytics />
+        {/* P10 first-party attribution session (consent-gated; no identifier is
+            created unless the visitor has granted analytics consent). */}
+        <AttributionClient />
         {/* hreflang removed pending per-locale URL routes */}
         {/* Stale-chunk handler. After a deploy, the build's hashed JS
             chunks rotate but users + crawlers may hold cached HTML

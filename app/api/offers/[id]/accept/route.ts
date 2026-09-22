@@ -4,6 +4,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { debit, getOrCreateWallet, refundToWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
+import { readAttributionToken } from '@/lib/attribution/cookies'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { listCards } from '@/lib/payment-methods'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
@@ -112,6 +113,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'wallet',
         actorId: auth.profileId,
         acceptedAt,
+        attributionToken: readAttributionToken(req),
         // Let createPaidOrder run markSourcePaid, which flips the offer to
         // 'paid'. Without this the offer is stuck at 'accepted' forever
         // ("Payment in progress") even though the charge already cleared.
@@ -224,6 +226,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'saved_card',
         actorId: auth.profileId,
         acceptedAt,
+        attributionToken: readAttributionToken(req),
         // Let createPaidOrder run markSourcePaid, which flips the offer to
         // 'paid'. Without this the offer is stuck at 'accepted' forever
         // ("Payment in progress") even though the charge already cleared.
@@ -321,6 +324,10 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'new_card',
         actorId: auth.profileId,
         acceptedAt,
+        // P10: bind this paid order to the consented first-party attribution
+        // session when the browser presented one; otherwise it is recorded as an
+        // honestly unknown source.
+        attributionToken: readAttributionToken(req),
         // Let createPaidOrder run markSourcePaid, which flips the offer to
         // 'paid'. Without this the offer is stuck at 'accepted' forever
         // ("Payment in progress") even though the charge already cleared.
