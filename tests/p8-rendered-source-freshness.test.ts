@@ -6,7 +6,10 @@ jest.mock('@/lib/seoFactory/linkAudit', () => ({
   sanitizeDraftLinksLive: jest.fn(),
 }))
 
-import { auditRenderedExternalSources } from '@/lib/seoFactory/ship'
+import {
+  auditRenderedExternalSources,
+  assertRenderedExternalSourcesLive,
+} from '@/lib/seoFactory/ship'
 import { auditLinksLive } from '@/lib/seoFactory/linkAudit'
 
 const auditLinksLiveMock = auditLinksLive as jest.MockedFunction<typeof auditLinksLive>
@@ -28,14 +31,14 @@ describe('P8 rendered-source live verification', () => {
       } as any,
     ])
 
-    const findings = await auditRenderedExternalSources({
-      artifact: `const sources = [{ url: "${external}" }, { url: "${estate}" }]`,
-      knownLiveUrls: [estate],
-      citationContext: { region: 'US', topic: 'F-1 visa', keywords: ['f-1 visa'] },
-    })
+    await expect(
+      assertRenderedExternalSourcesLive({
+        artifact: `const sources = [{ url: "${external}" }, { url: "${estate}" }]`,
+        knownLiveUrls: [estate],
+        citationContext: { region: 'US', topic: 'F-1 visa', keywords: ['f-1 visa'] },
+      }),
+    ).rejects.toThrow(/Refusing ship: rendered caseworks page/)
 
-    expect(findings).toHaveLength(1)
-    expect(findings[0]?.severity).toBe('blocker')
     expect(auditLinksLiveMock).toHaveBeenCalledTimes(1)
     const [auditDoc] = auditLinksLiveMock.mock.calls[0]!
     expect(auditDoc).toContain(external)
@@ -45,7 +48,7 @@ describe('P8 rendered-source live verification', () => {
   it('passes when the authoritative live/retrieval audit verifies the rendered source set', async () => {
     auditLinksLiveMock.mockResolvedValue([])
     await expect(
-      auditRenderedExternalSources({
+      assertRenderedExternalSourcesLive({
         artifact: 'const sources = [{ url: "https://www.uscis.gov/working-in-the-united-states" }]',
         citationContext: { region: 'US', topic: 'work visa' },
       }),
@@ -53,17 +56,28 @@ describe('P8 rendered-source live verification', () => {
     expect(auditLinksLiveMock).toHaveBeenCalledTimes(1)
   })
 
-  it('pins the post-render blocker before the first Git write in shipContent', () => {
+  it('returns no findings and avoids a live call when rendered output has no external URLs', async () => {
+    await expect(
+      auditRenderedExternalSources({
+        artifact: 'const canonical = "https://legal.yousafeconsultancy.com/us/student-visas/"',
+      }),
+    ).resolves.toEqual([])
+    expect(auditLinksLiveMock).not.toHaveBeenCalled()
+  })
+
+  it('pins the post-render fail-closed gate before the first Git write in shipContent', () => {
     const source = readFileSync(join(process.cwd(), 'lib/seoFactory/ship.ts'), 'utf8')
     const shipStart = source.indexOf('export async function shipContent')
     const shipBody = source.slice(shipStart)
     const renderAt = shipBody.indexOf('renderTargetFile({')
     const auditAt = shipBody.indexOf('assertRenderedExternalSourcesLive({', renderAt)
-    const firstWriteAt = shipBody.indexOf('putRepoFile(', auditAt)
+    const masterGateAt = shipBody.indexOf('// ── Master gate stack', auditAt)
+    const firstWriteAt = shipBody.indexOf('putRepoFile(')
 
     expect(shipStart).toBeGreaterThanOrEqual(0)
     expect(renderAt).toBeGreaterThanOrEqual(0)
     expect(auditAt).toBeGreaterThan(renderAt)
+    expect(masterGateAt).toBeGreaterThan(auditAt)
     expect(firstWriteAt).toBeGreaterThan(auditAt)
   })
 })
