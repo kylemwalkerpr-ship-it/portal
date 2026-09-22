@@ -1415,3 +1415,30 @@ The same audit also exposed a SQL three-valued-logic gap: the `session_only` sto
 ### Gate
 
 P10 remains **IN_PROGRESS**. Program **PASS is NOT claimed**: instrumentation still must be deployed and a real production `order_paid` for `us_f1_opt` observed. A missing document referrer must remain `unknown/session_only`; the bootstrap request's own `Referer` is never acquisition evidence.
+
+## 2026-09-22 — P10 A6 production deployment + live gate evidence — IN_PROGRESS
+
+**Program state:** P10 remains **IN_PROGRESS**; **PASS is not claimed.** P9 remains **IN_PROGRESS / GATE OPEN** with **0 verified wins** and was not modified.
+
+### Release evidence
+
+- PR **#276** merged to `main` as `07fbc3a6cb81addbe132cfd79eb2996f99f56f32` after both required PR checks passed on exact head `173d1f3d84ee3b6f50757f2fdf71d8d1cbb0a598` (Focused Content Studio Review + Build and deploy Worker).
+- The main-branch **Apply SEO Factory Migrations** workflow succeeded. Its ledger preflight reported **69/69 baseline recorded, 1 pending**, then applied `20260922120000_p10_conversion_attribution.sql` and closed **1 applied / 76 skipped** with `source_git_sha=07fbc3a6...` and verified PostgreSQL runtime role.
+- The main-branch **Deploy YouSafe Portal** workflow succeeded through typecheck, unit tests, Next/OpenNext build, Cloudflare deploy, Worker secrets health, and post-deploy build-freshness smoke.
+- Primary local `main` was fast-forwarded after merge and is at **0 ahead / 0 behind** `origin/main` on `07fbc3a6...`.
+
+### Live fail-closed probes
+
+- Anonymous `POST https://portal.yousafeconsultancy.com/api/attribution/session` with same-origin `Origin` and **no consent choice** returned **200** with `consent='unknown'`, `tracking=false`, `attribution=null`, `source_class='unknown'`. The response only expires/clears attribution cookies; it does not create analytics identity.
+- A browser-style `POST /api/attribution/events` attempting `event_type='order_paid'` returned **422** with the server-observed-only conversion guard. Browser code still cannot declare a paid order.
+- Direct production Supabase verification confirms `conversion_attribution_sessions`, `conversion_attribution_links`, `conversion_events`, and `p10_conversion_chain_coverage` all exist.
+- After the safe probes, production counts remain **0 sessions / 0 links / 0 conversion events**. No synthetic event was inserted to manufacture gate evidence.
+
+### Post-deploy database advisor check
+
+- Supabase security advisors reported **no P10-table-specific security finding** for the new attribution tables/functions. The estate still has unrelated pre-existing advisor warnings (including legacy SECURITY DEFINER/search-path and other table-policy findings); those are not attributed to P10 here.
+- Performance advisors list the newly created P10 indexes as **unused** immediately after deployment because the attribution tables have zero rows/events. That is expected informational state at launch, not evidence to remove those indexes before traffic exists.
+
+### Gate
+
+The implementation/deployment gate is closed, but the **program outcome gate remains OPEN**. P10 can become PASS only after a **real production `order_paid` for `us_f1_opt`** is observed by the deployed instrumentation. If its source is not actually known, it must remain `session_only` or `unknown_source`; no source may be inferred to force attribution. Current production event count is **0**, so PASS remains impossible and is not claimed.
