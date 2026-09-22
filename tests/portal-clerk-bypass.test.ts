@@ -214,6 +214,25 @@ describe('portal middleware wiring', () => {
   const portalHandlerEnd = middleware.indexOf('const clerkHandler = clerkMiddleware(', portalHandlerStart)
   const portalHandler = middleware.slice(portalHandlerStart, portalHandlerEnd)
 
+  test('Clerk middleware is wired for optional networkless JWT verification', () => {
+    expect(clerkBody).toContain('jwtKey: process.env.CLERK_JWT_KEY || undefined')
+  })
+
+  test('cookie-jar materialization is lazy on ordinary protected traffic', () => {
+    expect(wrapper).not.toContain('const requestCookies = req.cookies.getAll()')
+    expect(wrapper).toContain('createLazyRequestCookieSnapshot(')
+  })
+
+  test('auth-independent APIs are evaluated before host-specific Clerk routing', () => {
+    const apiBypass = wrapper.indexOf('shouldBypassClerkForAuthIndependentApiRequest(')
+    const marketGuard = wrapper.indexOf('requestHostname(req) === MARKET_HOST')
+    const clerkFallback = wrapper.lastIndexOf('return clerkHandler(req, event)')
+
+    expect(apiBypass).toBeGreaterThan(-1)
+    expect(apiBypass).toBeLessThan(marketGuard)
+    expect(clerkFallback).toBeGreaterThan(apiBypass)
+  })
+
   test('the portal guard is wired into the delegated handler, not inline', () => {
     const portalGuard = wrapper.indexOf('requestHostname(req) === PORTAL_HOST')
     const bypassCall = wrapper.indexOf('shouldBypassClerkForPortalRequest(', portalGuard)

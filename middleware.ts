@@ -5,7 +5,12 @@ import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBy
 import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
 import { attributionCaptureCookies } from './lib/attribution/cookies'
 import {
+  createLazyRequestCookieSnapshot,
+  shouldBypassClerkForAuthIndependentApiRequest,
+} from './lib/authIndependentApiBypass'
+import {
   PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS,
+  isPortalAnonymousDocumentPath,
   shouldBypassClerkForPortalRequest,
 } from './lib/portalMiddlewareBypass'
 
@@ -562,10 +567,24 @@ const clerkHandler = clerkMiddleware(
   },
   {
     authorizedParties: AUTHORIZED_PARTIES.length > 0 ? AUTHORIZED_PARTIES : undefined,
+    jwtKey: process.env.CLERK_JWT_KEY || undefined,
   },
 )
 
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  const getRequestCookies = createLazyRequestCookieSnapshot(() => req.cookies.getAll())
+
+  if (
+    shouldBypassClerkForAuthIndependentApiRequest(
+      req.method,
+      req.nextUrl.pathname,
+      req.nextUrl.searchParams,
+      getRequestCookies,
+    )
+  ) {
+    return withCorsHeaders(NextResponse.next(), req)
+  }
+
   if (requestHostname(req) === MARKET_HOST) {
     const allowedCorsPreflight = isAllowedCorsPreflight(req)
     // The cookie jar is part of the eligibility contract: Clerk's cross-domain
@@ -579,7 +598,7 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
         req.nextUrl.pathname,
         req.nextUrl.searchParams,
         allowedCorsPreflight,
-        req.cookies.getAll(),
+        getRequestCookies(),
       )
     ) {
       return handleMarketHostRequest(req)
@@ -591,13 +610,16 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
   // whole eligibility contract — path allow-list, the `__client_uat` session
   // hint and Clerk's `__clerk*` handshake parameters — so this branch can never
   // widen itself into an auth path by accident.
-  if (requestHostname(req) === PORTAL_HOST) {
+  if (
+    requestHostname(req) === PORTAL_HOST &&
+    isPortalAnonymousDocumentPath(req.nextUrl.pathname)
+  ) {
     if (
       shouldBypassClerkForPortalRequest(
         req.nextUrl.pathname,
         req.nextUrl.searchParams,
         req.cookies.get('__client_uat')?.value,
-        req.cookies.getAll(),
+        getRequestCookies(),
       )
     ) {
       return handlePortalAnonymousDocumentRequest(req)
