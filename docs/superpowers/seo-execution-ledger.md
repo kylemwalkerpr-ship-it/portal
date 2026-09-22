@@ -1193,3 +1193,39 @@ The current P6 contract treats planner `source_slug` as a locator, not source UR
 
 ### Next
 P9 External authority is the next scheduling pointer. It is not started by this closeout and remains PENDING. CREATE remains frozen until P13.
+
+
+---
+
+## 2026-09-22 — P9 external-authority truth foundation live — IN_PROGRESS / GATE OPEN
+
+**Program state:** P9 is started and production-operational, but **PASS is not claimed**. Broad net-new CREATE remains frozen until P13. The P9 gate still requires at least one independently live-verified third-party backlink; current verified-win count is **0**.
+
+### Release and production evidence
+- Portal PR #274, `P9: enforce live external-authority win truth`, exact head `8315fdad28579b802a5e0975e7ed021a2fede220`, merged to `main` as `4993dbcf37f461c412ab29699b019714148e775b`.
+- PR checks: Content Studio Review run `35680029216` SUCCESS; Deploy YouSafe Portal PR-context run `35680029158` SUCCESS.
+- Exact-main production Deploy YouSafe Portal run `35680349016` SUCCESS through Typecheck, Unit tests, Next/OpenNext build, static incremental-cache population, Marketplace payload-budget gate, SEO audit guard, Cloudflare deployment, Worker secrets-health, and post-deploy studio/build-freshness smoke.
+- Production Supabase migration `p9_external_authority_truth` applied from the exact merged migration file `supabase/migrations/20260921120000_p9_external_authority_truth.sql`.
+
+### Truth contract now live
+- External backlink evidence is append-only; a target cannot become `won` from a status label or outreach row.
+- A win requires a destination-bound prospect, safe live third-party fetch, exact anchor-href proof, live/current YouSafe destination proof, persisted evidence, and `won_backlink_url` equal to the observed final third-party page URL.
+- Source verification uses bounded manual redirects, Cloudflare-compatible `resolve4`/`resolve6` public-DNS checks, response/body bounds, and fail-closed private/reserved-address handling.
+- Sent-like outreach records require truthful `sent_at`; admin operator provenance comes from authenticated server context; legacy `authority_score` values are explicitly internal priority, never DR/DA/Ahrefs/Moz.
+
+### Production state after reconciliation
+- `seo_backlink_targets`: **16**
+- historical `seo_backlink_outreach`: **14**
+- destination-bound P9 prospects: **2**
+- `seo_backlink_verifications`: **0**
+- `status='won'`: **0**
+- verified wins: **0**
+- Middlebury ISSS resource-page prospect: **qualified**; live recheck still shows a commercial Boundless citation for SEVIS-termination next steps, with YouSafe's F-1 status-violation guide as the intended destination.
+- Nottingham Students' Union council-tax page: **researching / resource_page**; live recheck found the page live but the earlier B0 dead-NUS-link premise is no longer present, so it was deliberately downgraded from broken-link outreach rather than preserving stale evidence.
+- **No external outreach was sent** and no prospect is represented as a backlink or win.
+
+### Validation
+Local final candidate: focused P9 3 suites / **103 tests PASS**; cross-phase migration/P1/P6 5 suites / **60 tests PASS**; full Jest **495 suites / 5,627 tests PASS** with 4 skipped; TypeScript PASS; `git diff --check` PASS; migration ledger/order/transaction-safety gates PASS; credential-backed `npm run build` PASS through Next 16.2.11 webpack and OpenNext Cloudflare packaging.
+
+### Gate
+P9 remains **IN_PROGRESS / GATE OPEN**. Engineering truth infrastructure and the first evidence-backed prospect queue are live. The remaining closeout dependency is external: obtain a legitimate citation/backlink, then run the production verifier and independently re-fetch the exact referring page. Until that happens, P9 must not be marked PASS.
