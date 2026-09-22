@@ -1,5 +1,5 @@
 # Content Studio — Evidence-led SEO Architecture
-Version CS-2026.09.22.4 · Master design specification · Implementation not started
+Version CS-2026.09.22.5 · Master design specification · Implementation not started
 Owner: Kyle · Architecture/release: GPT Sol · Executor: DeepSeek through the existing ds bridge.
 
 ## 1. Objective and authority
@@ -20,14 +20,17 @@ Inspected repository sources establish:
 - P1 deliberately removed browser access to content_jobs in favor of authenticated API polling. Do not restore anonymous table subscriptions.
 - P8 binds review to unchanged content and audits renderer-added sources before Git writes. Preserve this protection.
 
-Preserve these semantics, ownership.ts as the estate authority, existing evidence/history and current publication proofs. Replace the request-bound runner with durable execution, the large coordinating UI with route-level workspaces, and fragmented action checks with a common policy boundary. Do not transplant AsyncLocalStorage across processes: persist explicit execution identity and fence every write.
+Preserve the **invariants and evidence**, not the current implementation. The existing Content Studio UI, routes, request-bound runner, pipeline/core modules, stores, helpers, contracts and orchestration code are all replaceable if the successor proves equivalent-or-stronger ownership, evidence provenance, policy enforcement, durable execution, review binding, publication integrity, observability and rollback behavior. Existing evidence/history and current publication proofs must be migrated or reconciled without fabricating continuity. `ownership.ts` remains the current estate authority until a reviewed successor registry is proven and cut over; its implementation need not survive permanently.
+
+This design therefore permits a **full Content Studio replacement**, including a new control plane, job model, UI, semantic system and compute layer. Compatibility adapters are migration tools, not architectural obligations. No existing implementation receives grandfathered status merely because it already exists. Do not transplant AsyncLocalStorage across processes: persist explicit execution identity and fence every write.
 
 Existing UI comments exclude Marketplace publishing. Marketplace demand and commercial destinations remain intelligence inputs. Marketplace content publication is a separate explicitly commissioned adapter; do not silently enable it during this redesign.
 
 Alternatives assessed:
-1. Optimize the current Worker pipeline: least migration effort, but keeps CPU/import and request-lifetime coupling.
-2. Thin edge + durable state + Modal compute + common policy: recommended; preserves current TypeScript semantics while separating heavy work.
-3. Full Python rewrite/event-platform replacement: largest parity risk and operational burden; unnecessary initially.
+1. **Optimize the current Worker pipeline:** lowest migration effort, but retains request-lifecycle, CPU/import and legacy-complexity constraints. This is a fallback, not the target.
+2. **Full replacement architecture — preferred target:** thin authenticated edge, authoritative Postgres control plane, durable Modal execution, Semantic Fabric, bounded Jev decision intelligence, common policy/release kernel and a purpose-built War Room/editor UI. The current Content Studio may be completely retired after cutover evidence passes.
+3. **Staged compatibility bridge:** temporarily reuse proven TypeScript domain logic or adapters while the replacement runs in shadow/read-only/advisory modes. This reduces migration risk but is not required as the steady-state architecture.
+4. **Language/runtime reimplementation:** TypeScript, Python or mixed services are acceptable where they best fit. Language continuity is not an invariant; contract, data, policy, performance, security and release equivalence are.
 
 ## 3. Target topology
 ```mermaid
@@ -65,10 +68,12 @@ The diagram shows logical responsibilities, not permission for every runner to w
 - **Release service:** separate credential boundary; creates PRs only after authorization. No writer/research container has Git merge or deployment credentials. Sol retains merge authority.
 - **Official CI:** exact-head checks, protected-main merge and repository deployment. Modal code deployment also uses a reviewed official workflow; no local production deploy shortcut.
 
-Initially run the extracted, tested TypeScript domain code inside a Node-equipped Modal container, with a small Python Modal entrypoint invoking a bounded Node process. Build this shared domain package once from the same commit for edge-compatible policy helpers and Node runners. Keep Node-only compute imports out of edge bundles. Port individual workloads to Python only when measured value and contract-equivalence tests justify it.
+A compatibility bridge may initially run extracted, tested TypeScript domain logic inside a Node-equipped Modal container, but this is optional. Greenfield replacement components may be implemented directly in Python, TypeScript or a mixed runtime when A0/A1 evidence shows the cleaner boundary. The target architecture does **not** require preservation of the legacy pipeline, route handlers, UI composition, job schema or internal module layout. What must survive is the externally meaningful contract: authoritative identity/ownership, provenance, gate semantics, durable state, approvals, release fencing, observability, security and recoverability.
 
-### Layered responsibility model added in CS-2026.09.22.4
-The target topology is interpreted as seven cooperating layers rather than one AI pipeline: **source/evidence → estate truth → semantic understanding → deterministic eligibility → bounded decision → execution/release → outcome learning**. Sections 27–42 define the semantic/decision/learning layers in detail. They are additive to this topology: Postgres remains authoritative, Modal remains bounded compute, Jev remains advisory/bounded decision intelligence, and release authority remains separate.
+Any reused legacy module is treated as a temporary dependency with an explicit retirement decision. Any rewritten module must pass contract-equivalence fixtures plus migration, load, failure and rollback tests before it can replace the corresponding production path.
+
+### Layered responsibility model retained and strengthened in CS-2026.09.22.5
+The target topology is interpreted as seven cooperating layers rather than one AI pipeline: **source/evidence → estate truth → semantic understanding → deterministic eligibility → bounded decision → execution/release → outcome learning**. Sections 27–42 define the semantic/decision/learning layers in detail. They define the replacement topology: Postgres remains authoritative, Modal remains bounded compute, Jev remains advisory/bounded decision intelligence, and release authority remains separate. Legacy components may coexist temporarily during migration but are not part of the required end state.
 
 ## 4. Policy kernel and phase model
 Use one versioned policy evaluator and one authoritative database transition API. Models may recommend; policy decides permission. UI controls are explanatory projections of server capability decisions.
@@ -2629,8 +2634,8 @@ The operating objective is **not maximum pages, maximum tokens or maximum model 
 
 This is the intended mechanism for pursuing top-tier competitive search performance. It does not guarantee rankings and does not convert model confidence into search-engine truth.
 
-## 42. CS-2026.09.22.4 revision record and implementation handoff
-This revision deepens, but does not replace, CS-2026.09.22.3. It adds:
+## 42. CS-2026.09.22.5 revision record and implementation handoff
+This revision supersedes CS-2026.09.22.4 as the current design handoff. It retains the semantic architecture and makes explicit that the target may fully replace the existing Content Studio implementation. It adds/clarifies:
 - a binding Semantic Fabric and reviewed ontology;
 - canonical semantic identity and reader-job modelling;
 - qualified semantic facts with temporal/evidence state;
@@ -2648,9 +2653,12 @@ This revision deepens, but does not replace, CS-2026.09.22.3. It adds:
 - semantic security, ontology/vector poisoning controls;
 - persistence extensions and integration into A0–A7;
 - expanded adversarial/quality acceptance.
+- explicit full-replacement permission for the Content Studio implementation, while preserving evidence, policy, ownership, release and safety invariants;
+- compatibility adapters classified as temporary migration aids rather than mandatory steady-state architecture;
+- runtime/language continuity removed as an invariant; successor components are judged by contract, data, security, performance and recovery evidence.
 
 All previous authority order, P0–P13 phase/gate semantics, CREATE freeze, YMYL human-review requirements, Marketplace publication boundary, ownership authority, exact-head release controls, Cloudflare performance contract, source provenance and no-ranking-guarantee language remain binding unless a later explicitly authorized version changes them.
 
 Implementation begins only through bounded Sol packets against reconciled current state. A semantic feature is not "implemented" because a schema, prompt or notebook exists; acceptance requires the relevant A0–A7 evidence, production-safe persistence, tests, canary behavior and rollback path.
 
-CS-2026.09.22.4 is a documentation/design revision only. It does not connect providers, purchase compute, install MCPs, apply migrations, create schedules, publish content, unlock CREATE, perform outreach, merge code or deploy production by itself.
+CS-2026.09.22.5 is a documentation/design revision only. It does not connect providers, purchase compute, install MCPs, apply migrations, create schedules, publish content, unlock CREATE, perform outreach, merge code or deploy production by itself.
