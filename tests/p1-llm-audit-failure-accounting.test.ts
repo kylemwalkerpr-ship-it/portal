@@ -173,7 +173,7 @@ describe('P1 LLM audit failure accounting', () => {
     expect(mockRemediateVisibilityAudits).toHaveBeenCalledWith([])
   })
 
-  it('excludes failed stored rows from headline feed math AND remediation input', async () => {
+  it('keeps pre-P11 stored rows out of the P11 headline and remediation input', async () => {
     const rows = [
       { id: 'm1', query: 'study permit canada', fan_out: false, cited: true, share_of_voice: 1, flags: [], stage: 'visa' },
       { id: 'm2', query: 'student visa uk', fan_out: false, cited: false, share_of_voice: 0, flags: [], stage: 'visa' },
@@ -183,17 +183,16 @@ describe('P1 LLM audit failure accounting', () => {
 
     const feed = await loadVisibilityFeed(50)
 
-    expect(feed.total).toBe(2)
-    expect(feed.failed).toBe(1)
-    expect(feed.attempted).toBe(3)
-    expect(feed.cited).toBe(1)
-    expect(feed.shareOfVoice).toBe(50)
-    expect(feed.measurementState).toBe('measured')
-    const remediationRows = mockRemediateVisibilityAudits.mock.calls[0]?.[0] as Array<Record<string, unknown>>
-    expect(remediationRows.map((row) => row.query)).toEqual(['study permit canada', 'student visa uk'])
+    expect(feed.total).toBe(0)
+    expect(feed.failed).toBe(0)
+    expect(feed.attempted).toBe(0)
+    expect(feed.cited).toBe(0)
+    expect(feed.shareOfVoice).toBeNull()
+    expect(feed.measurementState).toBe('unavailable')
+    expect(mockRemediateVisibilityAudits).toHaveBeenCalledWith([])
   })
 
-  it('reports a feed containing only audit failures as unavailable rather than 0%', async () => {
+  it('keeps a pre-P11 failure-only feed outside the P11 denominator', async () => {
     const rows = [
       { id: 'f1', query: 'engine outage query', fan_out: false, cited: false, share_of_voice: 0, flags: ['audit_failed'] },
     ]
@@ -202,7 +201,7 @@ describe('P1 LLM audit failure accounting', () => {
     const feed = await loadVisibilityFeed(50)
 
     expect(feed.total).toBe(0)
-    expect(feed.failed).toBe(1)
+    expect(feed.failed).toBe(0)
     expect(feed.shareOfVoice).toBeNull()
     expect(feed.measurementState).toBe('unavailable')
     expect(mockRemediateVisibilityAudits).toHaveBeenCalledWith([])

@@ -33,7 +33,7 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { listRegistry, type OwnershipRow } from '@/lib/seoFactory/ownership'
+import { isAuthoritativeOwnershipRow, listRegistry, type OwnershipRow } from '@/lib/seoFactory/ownership'
 import {
   COMMISSIONED_PROVIDERS,
   LANE_DEFAULT_PIN,
@@ -236,6 +236,82 @@ export interface CitationAction {
 
 /** Aggregated per-query result across all engines in the matrix. */
 export type VisibilityMeasurementState = 'measured' | 'unavailable'
+
+export interface P11VisibilityReportRow {
+  audit_contract_version?: unknown
+  ownership_row_id?: unknown
+  audit_status?: unknown
+  stage?: unknown
+  created_at?: unknown
+  coverage?: unknown
+}
+
+export interface P11VisibilityReporting {
+  contractVersion: typeof P11_AUDIT_CONTRACT_VERSION
+  queryRows: number
+  attempted: number
+  successful: number
+  providerUnavailable: number
+  providerFailure: number
+  parseFailure: number
+  blocked: number
+  unknown: number
+  citedSuccessful: number
+  successfulWithAuthoritativeCitation: number
+  successfulWithOtherCurrentYouSafeCitation: number
+  successfulWithWrongOrRetiredYouSafeCitation: number
+  successfulWithCompetitorCitation: number
+  successfulWithNoExtractableCitation: number
+  shareOfVoice: number | null
+  measurementState: VisibilityMeasurementState
+  legacyRows: number
+  auditedAuthoritativeOwners: number
+  authoritativeOwnerCount: number
+  ownerCoveragePercent: number | null
+}
+function coverageCount(value: unknown, key: keyof GeoCoverageSummary): number {
+  if (!value || typeof value !== 'object') return 0
+  const n = Number((value as Record<string, unknown>)[key])
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
+}
+
+export function aggregateP11VisibilityReport(
+  rows: P11VisibilityReportRow[],
+  opts: { legacyRows: number; authoritativeOwnerCount: number },
+): P11VisibilityReporting {
+  const p11Rows = rows.filter((row) => row.audit_contract_version === P11_AUDIT_CONTRACT_VERSION)
+  const sum = (key: keyof GeoCoverageSummary) => p11Rows.reduce((total, row) => total + coverageCount(row.coverage, key), 0)
+  const attempted = sum('attempted')
+  const successful = sum('successful')
+  const citedSuccessful = sum('citedSuccessful')
+  const owners = new Set(
+    p11Rows.map((row) => Number(row.ownership_row_id)).filter((id) => Number.isInteger(id) && id > 0),
+  )
+  const authoritativeOwnerCount = Math.max(0, Math.floor(Number(opts.authoritativeOwnerCount) || 0))
+  return {
+    contractVersion: P11_AUDIT_CONTRACT_VERSION,
+    queryRows: p11Rows.length,
+    attempted,
+    successful,
+    providerUnavailable: sum('providerUnavailable'),
+    providerFailure: sum('providerFailure'),
+    parseFailure: sum('parseFailure'),
+    blocked: sum('blocked'),
+    unknown: sum('unknown'),
+    citedSuccessful,
+    successfulWithAuthoritativeCitation: sum('successfulWithAuthoritativeCitation'),
+    successfulWithOtherCurrentYouSafeCitation: sum('successfulWithOtherCurrentYouSafeCitation'),
+    successfulWithWrongOrRetiredYouSafeCitation: sum('successfulWithWrongOrRetiredYouSafeCitation'),
+    successfulWithCompetitorCitation: sum('successfulWithCompetitorCitation'),
+    successfulWithNoExtractableCitation: sum('successfulWithNoExtractableCitation'),
+    shareOfVoice: successful ? Math.round((citedSuccessful / successful) * 100) : null,
+    measurementState: successful ? 'measured' : 'unavailable',
+    legacyRows: Math.max(0, Math.floor(Number(opts.legacyRows) || 0)),
+    auditedAuthoritativeOwners: owners.size,
+    authoritativeOwnerCount,
+    ownerCoveragePercent: authoritativeOwnerCount ? Math.round((owners.size / authoritativeOwnerCount) * 100) : null,
+  }
+}
 
 export interface VisibilityAuditResult {
   query: string
@@ -1014,6 +1090,23 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   }
 }
 
+const P11_REPORTING_ROW_LIMIT = 5000
+
+async function exactVisibilityCount(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  contractVersion?: string,
+): Promise<number | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = supabase.from('seo_llm_visibility').select('id', { count: 'exact', head: true }).eq('fan_out', false)
+    if (contractVersion) query = query.eq('audit_contract_version', contractVersion)
+    const { count } = await query
+    return typeof count === 'number' ? count : null
+  } catch {
+    return null
+  }
+}
+
 export async function loadVisibilityFeed(limit = 50): Promise<{
   audits: Array<Record<string, unknown>>
   shareOfVoice: number | null
@@ -1023,79 +1116,95 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
   attempted: number
   failed: number
   byStage: Record<string, number>
+  reporting: P11VisibilityReporting
+  reportingTruncated: boolean
   remediations: import('./citationRemediation').CitationRemediation[]
 }> {
+  const emptyReporting = aggregateP11VisibilityReport([], { legacyRows: 0, authoritativeOwnerCount: 0 })
   try {
     const supabase = createSupabaseAdminClient()
-    // Base feed = prompt-audit bank only. Fan-out sub-query audits are a
-    // different population (they roll into the recent-50 window daily and
-    // would silently change what the headline share-of-voice means); they
-    // surface separately via loadVisibilityByCluster on the same GET.
-    const { data } = await supabase
-      .from('seo_llm_visibility')
-      .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,fan_out,cluster_id,source_field,competitor_domains,answer_format,confidence,flags,share_of_voice,top_competitor,competitor_share,created_at')
-      .eq('fan_out', false)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-    const rows = (data as Array<Record<string, unknown>>) || []
-    // Exclude audit_failed rows from read-side SoV (engine outage ≠ non-citation).
-    const measuredRows = rows.filter((row) => !isFailedVisibilityRow(row))
-    const cited = measuredRows.filter((r) => r.cited).length
+    const [{ data, error }, totalRows, p11RowsExact, registryRows] = await Promise.all([
+      supabase
+        .from('seo_llm_visibility')
+        .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,fan_out,competitor_domains,answer_format,confidence,flags,share_of_voice,top_competitor,competitor_share,created_at,audit_contract_version,ownership_row_id,authoritative_owner_url,audit_status,failure_reason,citation_extraction_status,raw_cited_urls,normalized_cited_urls,citation_classifications,competitor_cited_urls,coverage')
+        .eq('fan_out', false)
+        .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
+        .order('created_at', { ascending: false })
+        .limit(P11_REPORTING_ROW_LIMIT),
+      exactVisibilityCount(supabase),
+      exactVisibilityCount(supabase, P11_AUDIT_CONTRACT_VERSION),
+      listRegistry().catch(() => [] as OwnershipRow[]),
+    ])
+    if (error) throw error
+    const rows = ((data as Array<Record<string, unknown>>) || [])
+    const legacyRows = totalRows == null || p11RowsExact == null ? 0 : Math.max(0, totalRows - p11RowsExact)
+    const authoritativeOwnerCount = registryRows.filter(isAuthoritativeOwnershipRow).length
+    const reporting = aggregateP11VisibilityReport(rows as P11VisibilityReportRow[], {
+      legacyRows,
+      authoritativeOwnerCount,
+    })
+    const measuredRows = rows.filter((row) => coverageCount(row.coverage, 'successful') > 0)
     const byStage: Record<string, number> = {}
-    for (const r of measuredRows) {
-      const s = String(r.stage || 'untagged')
-      byStage[s] = (byStage[s] || 0) + 1
-      // Deterministic, prioritized fixes derived from the stored evidence —
-      // so the audit trail shows WHAT to do about a low share-of-voice, not
-      // just that it is low.
-      const sov = r.share_of_voice == null ? Number.NaN : Number(r.share_of_voice)
-      ;(r as Record<string, unknown>).actions = buildCitationActions({
-        shareOfVoice: Number.isFinite(sov) ? sov : r.cited ? 1 : 0,
-        topCompetitorDomain: r.top_competitor ? String(r.top_competitor) : null,
-        competitorShare: Number(r.competitor_share),
-        cited: Boolean(r.cited),
-        stage: r.stage ? String(r.stage) : null,
-        country: r.country ? String(r.country) : null,
+    for (const row of measuredRows) {
+      const stage = String(row.stage || 'untagged')
+      byStage[stage] = (byStage[stage] || 0) + 1
+      const sov = row.share_of_voice == null ? Number.NaN : Number(row.share_of_voice)
+      row.actions = buildCitationActions({
+        shareOfVoice: Number.isFinite(sov) ? sov : 0,
+        topCompetitorDomain: row.top_competitor ? String(row.top_competitor) : null,
+        competitorShare: Number(row.competitor_share),
+        cited: Boolean(row.cited),
+        stage: row.stage ? String(row.stage) : null,
+        country: row.country ? String(row.country) : null,
       })
     }
     let remediations: import('./citationRemediation').CitationRemediation[] = []
     try {
       const { remediateVisibilityAudits } = await import('./citationRemediation')
-      remediations = await remediateVisibilityAudits(measuredRows.map((r) => ({
-        id: r.id ? String(r.id) : null,
-        query: String(r.query || ''),
-        cited: Boolean(r.cited),
-        shareOfVoice: r.share_of_voice == null ? (r.cited ? 1 : 0) : Number(r.share_of_voice),
-        topCompetitor: r.top_competitor ? String(r.top_competitor) : null,
-        competitorShare: Number(r.competitor_share),
-        stage: r.stage ? String(r.stage) : null,
-        country: r.country ? String(r.country) : null,
-        actions: Array.isArray(r.actions) ? r.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
+      remediations = await remediateVisibilityAudits(measuredRows.map((row) => ({
+        id: row.id ? String(row.id) : null,
+        query: String(row.query || ''),
+        cited: Boolean(row.cited),
+        shareOfVoice: row.share_of_voice == null ? 0 : Number(row.share_of_voice),
+        topCompetitor: row.top_competitor ? String(row.top_competitor) : null,
+        competitorShare: Number(row.competitor_share),
+        stage: row.stage ? String(row.stage) : null,
+        country: row.country ? String(row.country) : null,
+        actions: Array.isArray(row.actions) ? row.actions as import('./citationRemediation').CitationRemediation['actions'] : null,
+        authoritativeOwnerUrl: row.authoritative_owner_url ? String(row.authoritative_owner_url) : null,
+        ownershipRowId: Number(row.ownership_row_id) || null,
+        competitorCitedUrls: Array.isArray(row.competitor_cited_urls) ? row.competitor_cited_urls.map(String) : [],
+        citationClassifications: Array.isArray(row.citation_classifications)
+          ? row.citation_classifications as import('./citationRemediation').CitationClassificationEvidence[]
+          : [],
       })))
       const byQuery = new Map(remediations.map((item) => [item.query.toLowerCase(), item]))
-      for (const r of measuredRows) {
-        const hit = byQuery.get(String(r.query || '').toLowerCase())
-        if (hit) (r as Record<string, unknown>).remediation = hit
+      for (const row of measuredRows) {
+        const hit = byQuery.get(String(row.query || '').toLowerCase())
+        if (hit) row.remediation = hit
       }
     } catch {
       remediations = []
     }
-    const total = measuredRows.length
-    const attempted = rows.length
-    const failed = attempted - total
     return {
-      audits: rows,
-      shareOfVoice: total ? Math.round((cited / total) * 100) : null,
-      measurementState: total ? 'measured' : 'unavailable',
-      cited,
-      total,
-      attempted,
-      failed,
+      audits: rows.slice(0, Math.max(1, limit)),
+      shareOfVoice: reporting.shareOfVoice,
+      measurementState: reporting.measurementState,
+      cited: reporting.citedSuccessful,
+      total: reporting.successful,
+      attempted: reporting.attempted,
+      failed: Math.max(0, reporting.attempted - reporting.successful),
       byStage,
+      reporting,
+      reportingTruncated: rows.length >= P11_REPORTING_ROW_LIMIT && (p11RowsExact == null || p11RowsExact > rows.length),
       remediations,
     }
   } catch {
-    return { audits: [], shareOfVoice: null, measurementState: 'unavailable', cited: 0, total: 0, attempted: 0, failed: 0, byStage: {}, remediations: [] }
+    return {
+      audits: [], shareOfVoice: null, measurementState: 'unavailable', cited: 0, total: 0,
+      attempted: 0, failed: 0, byStage: {}, reporting: emptyReporting,
+      reportingTruncated: false, remediations: [],
+    }
   }
 }
 
