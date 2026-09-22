@@ -207,16 +207,46 @@ describe('P1 LLM audit failure accounting', () => {
     expect(mockRemediateVisibilityAudits).toHaveBeenCalledWith([])
   })
 
-  it('topic evidence ignores a newer failed row and uses the newest measured observation', async () => {
+  it('keeps legacy topic evidence outside the P11 ranking denominator', async () => {
     const rows = [
-      { query: 'study permit canada', cited: false, share_of_voice: 0, flags: ['audit_failed'], top_competitor: null, competitor_share: null },
       { query: 'study permit canada', cited: true, share_of_voice: 1, flags: [], top_competitor: null, competitor_share: null },
     ]
     mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(() => rows))
 
-    const evidence = await loadLlmVisibilityEvidence('study permit canada')
+    await expect(loadLlmVisibilityEvidence('study permit canada')).resolves.toBeNull()
+  })
 
-    expect(evidence).toEqual({ cited: 1, total: 1, shareOfVoice: 1, topCompetitorDomain: null, competitorShare: null })
+  it('uses P11 successful provider attempts for topic evidence', async () => {
+    const rows = [{
+      query: 'study permit canada', audit_contract_version: 'p11-geo-v1', audit_status: 'success', fan_out: false,
+      cited: false, share_of_voice: 0.5, flags: [], top_competitor: 'example.com', competitor_share: 0.5,
+      coverage: { successful: 2, citedSuccessful: 1 },
+    }]
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(() => rows))
+
+    await expect(loadLlmVisibilityEvidence('study permit canada')).resolves.toEqual({
+      cited: 1, total: 2, shareOfVoice: 0.5, topCompetitorDomain: 'example.com', competitorShare: 0.5,
+    })
+  })
+
+  it('does not use fuzzy P11 query overlap as ranking evidence', async () => {
+    const rows = [{
+      query: 'study permit canada', audit_contract_version: 'p11-geo-v1', audit_status: 'success', fan_out: false,
+      coverage: { successful: 1, citedSuccessful: 1 }, top_competitor: null, competitor_share: null,
+    }]
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(() => rows))
+
+    await expect(loadLlmVisibilityEvidence('study permit')).resolves.toBeNull()
+  })
+
+  it('does not fall back to an older P11 success when the newest P11 observation is unavailable', async () => {
+    const rows = [
+      { query: 'study permit canada', audit_contract_version: 'p11-geo-v1', fan_out: false, audit_status: 'provider_unavailable', coverage: { successful: 0, citedSuccessful: 0 }, flags: ['audit_failed'] },
+      { query: 'study permit canada', audit_contract_version: 'p11-geo-v1', fan_out: false, audit_status: 'success', coverage: { successful: 1, citedSuccessful: 1 }, cited: true, share_of_voice: 1, flags: [] },
+    ]
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(() => rows))
+
+    await expect(loadLlmVisibilityEvidence('study permit canada')).resolves.toBeNull()
   })
 
   it('topic evidence is unavailable when matching history contains only failed audits', async () => {

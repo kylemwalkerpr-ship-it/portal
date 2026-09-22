@@ -6,6 +6,7 @@ const mockCreateSupabaseAdminClient = jest.fn()
 const mockRemediateVisibilityAudits = jest.fn()
 const mockLoadPlansDashboard = jest.fn()
 const mockLoadKnowledgeFeed = jest.fn()
+let mockGrokConfigured = false
 
 jest.mock('@/lib/contentAiProvider', () => ({
   generateContentText: (...args: unknown[]) => mockGenerateContentText(...args),
@@ -13,7 +14,7 @@ jest.mock('@/lib/contentAiProvider', () => ({
 
 jest.mock('@/lib/contentAiRegistry', () => ({
   COMMISSIONED_PROVIDERS: [
-    { pin: 'grok', isConfigured: () => false },
+    { pin: 'grok', isConfigured: () => mockGrokConfigured },
     { pin: 'deepseek-v41-flash', isConfigured: () => true },
   ],
   LANE_DEFAULT_PIN: 'grok',
@@ -79,6 +80,7 @@ function structuredAnswer(query: string) {
 describe('P11 ownership-bound GEO execution', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockGrokConfigured = false
     mockRemediateVisibilityAudits.mockResolvedValue([])
     mockLoadPlansDashboard.mockResolvedValue({ plans: [{ primary_term: 'forbidden adaptive query' }] })
     mockLoadKnowledgeFeed.mockResolvedValue({ items: [{ title: 'forbidden knowledge query' }] })
@@ -146,6 +148,29 @@ describe('P11 ownership-bound GEO execution', () => {
         expect.objectContaining({ classification: 'current_authoritative_owner' }),
       ]))
     }
+  })
+
+  it('uses successful provider attempts, not query rows, for the batch citation share', async () => {
+    const inserts: Array<Record<string, unknown>> = []
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(inserts, jest.fn()))
+    mockGrokConfigured = true
+    const target = selectStrategicAuditTargets(registryRows, 1)[0]
+    mockGenerateContentText.mockImplementation(async (args: { aiProvider?: string; prompt?: string }) => ({
+      text: args.aiProvider === 'grok'
+        ? JSON.stringify({ answer: 'Competitor answer', answerFormat: 'direct_answer', sources: [{ url: 'https://example.com/answer', domain: 'example.com', position: 1 }], confidence: 0.8, flags: [] })
+        : structuredAnswer(String(args.prompt || '')),
+      provider: args.aiProvider,
+      model: String(args.aiProvider || 'model'),
+    }))
+
+    const result = await runVisibilityAudits({ queries: [target.query], maxAudits: 1, maxEngines: 2 })
+
+    expect(result.total).toBe(1)
+    expect(result.cited).toBe(1)
+    expect(result.successfulProviderAttempts).toBe(2)
+    expect(result.citedSuccessfulProviderAttempts).toBe(1)
+    expect(result.shareOfVoice).toBe(50)
+    expect(inserts[0].coverage).toEqual(expect.objectContaining({ successful: 2, citedSuccessful: 1, shareOfVoice: 0.5 }))
   })
 
   it('blocks an explicit query with no authoritative strategic owner before any provider call', async () => {

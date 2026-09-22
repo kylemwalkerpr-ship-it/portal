@@ -935,6 +935,10 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   /** All attempted strategic query audits, including blocked/provider failures. */
   attempted: number
   failed: number
+  /** Successful provider attempts across the P11 batch — the citation-share denominator. */
+  successfulProviderAttempts: number
+  /** Successful provider attempts that cited a current YouSafe estate URL. */
+  citedSuccessfulProviderAttempts: number
   shareOfVoice: number | null
   measurementState: VisibilityMeasurementState
   engine: string
@@ -1056,6 +1060,8 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
   const attempted = audits.length
   const failed = attempted - measuredAudits.length
   const total = measuredAudits.length
+  const providerSuccessful = audits.reduce((sum, audit) => sum + (audit.p11?.coverage.successful ?? 0), 0)
+  const providerCitedSuccessful = audits.reduce((sum, audit) => sum + (audit.p11?.coverage.citedSuccessful ?? 0), 0)
   let remediations: import('./citationRemediation').CitationRemediation[] = []
   try {
     const { remediateVisibilityAudits } = await import('./citationRemediation')
@@ -1082,8 +1088,10 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     total,
     attempted,
     failed,
-    shareOfVoice: total ? Math.round((cited / total) * 100) : null,
-    measurementState: total ? 'measured' : 'unavailable',
+    successfulProviderAttempts: providerSuccessful,
+    citedSuccessfulProviderAttempts: providerCitedSuccessful,
+    shareOfVoice: providerSuccessful ? Math.round((providerCitedSuccessful / providerSuccessful) * 100) : null,
+    measurementState: providerSuccessful ? 'measured' : 'unavailable',
     engine,
     selected,
     remediations,
@@ -1221,56 +1229,36 @@ export async function loadLlmVisibilityEvidence(term?: string | null): Promise<L
     const supabase = createSupabaseAdminClient()
     const { data } = await supabase
       .from('seo_llm_visibility')
-      .select('query,cited,share_of_voice,top_competitor,competitor_share,flags,engines_json')
+      .select('query,audit_contract_version,audit_status,coverage,top_competitor,competitor_share,created_at')
+      .eq('fan_out', false)
+      .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
       .order('created_at', { ascending: false })
       .limit(200)
-    const rows = ((data as Array<Record<string, unknown>>) || []).filter((row) => !isFailedVisibilityRow(row))
-    // The daily cron re-audits the same canonical queries, so a single prompt
-    // accumulates one row per run (currently 14 copies each). Dedupe by
-    // normalized query, preferring the newest row (the DESC order already
-    // surfaces it first), so `total` means distinct topics — not 14 copies of
-    // the same prompt inflating the denominator.
-    const seen = new Set<string>()
-    const matches: Array<Record<string, unknown>> = []
-    for (const r of rows) {
-      const q = normalizeAuditQuery(String(r.query || ''))
-      if (!q || !(q === normalized || q.includes(normalized) || normalized.includes(q))) continue
-      if (seen.has(q)) continue
-      seen.add(q)
-      matches.push(r)
+    const rows = (data as Array<Record<string, unknown>>) || []
+
+    // Ranking evidence is intentionally exact-topic and latest-observation only.
+    // Legacy rows, fuzzy query overlaps, and an older successful run must never
+    // override a newer unavailable P11 observation.
+    const latest = rows.find((row) => normalizeAuditQuery(String(row.query || '')) === normalized)
+    if (!latest) return null
+
+    const successful = coverageCount(latest.coverage, 'successful')
+    if (successful <= 0 || latest.audit_status !== 'success') return null
+    const citedSuccessful = Math.min(successful, coverageCount(latest.coverage, 'citedSuccessful'))
+    const shareOfVoice = citedSuccessful / successful
+    const topCompetitorDomain = String(latest.top_competitor || '').trim() || null
+    const competitorShareRaw = Number(latest.competitor_share)
+    const competitorShare = topCompetitorDomain && Number.isFinite(competitorShareRaw)
+      ? competitorShareRaw
+      : null
+
+    return {
+      cited: citedSuccessful,
+      total: successful,
+      shareOfVoice,
+      topCompetitorDomain,
+      competitorShare,
     }
-    if (!matches.length) return null
-    const cited = matches.filter((r) => r.cited).length
-    const total = matches.length
-    // Prefer the stored per-row share. Legacy measured rows predating the v3
-    // column fall back to their cited boolean; unavailable rows were removed
-    // before de-duplication and never participate here.
-    const sovs = matches.map((r) => {
-      if (r.share_of_voice == null) return r.cited ? 1 : 0
-      const n = Number(r.share_of_voice)
-      return Number.isFinite(n) ? n : (r.cited ? 1 : 0)
-    })
-    const shareOfVoice = sovs.length ? sovs.reduce((a, b) => a + b, 0) / sovs.length : null
-    const compCounts = new Map<string, { n: number; share: number }>()
-    for (const r of matches) {
-      const d = String(r.top_competitor || '').trim()
-      if (!d) continue
-      const cur = compCounts.get(d) || { n: 0, share: 0 }
-      cur.n += 1
-      const cs = Number(r.competitor_share)
-      cur.share += Number.isFinite(cs) ? cs : 0
-      compCounts.set(d, cur)
-    }
-    let topCompetitorDomain: string | null = null
-    let competitorShare: number | null = null
-    for (const [d, v] of compCounts) {
-      const share = v.n ? v.share / v.n : 0
-      if (topCompetitorDomain == null || v.n > (compCounts.get(topCompetitorDomain)?.n ?? 0)) {
-        topCompetitorDomain = d
-        competitorShare = share
-      }
-    }
-    return { cited, total, shareOfVoice, topCompetitorDomain, competitorShare }
   } catch {
     return null
   }
