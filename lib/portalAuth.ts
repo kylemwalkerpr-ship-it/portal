@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
 import { headers as nextHeaders } from 'next/headers'
 import { extractCountryFromRequest } from './countryDetection'
+import type { NextRequest } from 'next/server'
 
 export type PortalUserContext = {
   db: ReturnType<typeof createSupabaseAdminClient>
@@ -58,11 +59,11 @@ async function backfillCountryFromIp(
   profile.country_source = 'ip'
 }
 
-export async function requirePortalUser(): Promise<
+export async function requirePortalUser(request?: NextRequest): Promise<
   | PortalUserContext
   | { error: string; status: 401 | 403 | 404 | 500 }
 > {
-  const clerkUserId = await getClerkUserId()
+  const clerkUserId = await getClerkUserId(request)
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 }
 
   const db = createSupabaseAdminClient()
