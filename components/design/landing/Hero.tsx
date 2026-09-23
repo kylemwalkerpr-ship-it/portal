@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import { T } from './tokens'
 import { Arrow, Shield, Scale, Lock, Coin } from './icons'
 
@@ -7,95 +7,9 @@ interface HeroProps {
   onSignup?: () => void
 }
 
-const MEDIA = 'https://media.yousafeconsultancy.com/hero'
-const V = '20260524'
-
-const A_POSTER = `${MEDIA}/student-working.poster.jpg?v=${V}`
-const A_H264   = `${MEDIA}/student-working.h264.mp4?v=${V}`
-const A_HEVC   = `${MEDIA}/student-working.hevc.mp4?v=${V}`
-const B_POSTER = `${MEDIA}/students-walking.poster.jpg?v=${V}`
-const B_H264   = `${MEDIA}/students-walking.h264.mp4?v=${V}`
-const B_HEVC   = `${MEDIA}/students-walking.hevc.mp4?v=${V}`
-
-const FADE_MS = 1200
-const HOLD_MS = 9500
-
 const MARKET_HOME = 'https://market.yousafeconsultancy.com/'
 
-function shouldSkipVideo(): boolean {
-  if (typeof window === 'undefined') return true
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
-  const saveData = (navigator as any).connection?.saveData
-  const slow = ['slow-2g', '2g', '3g'].includes((navigator as any).connection?.effectiveType)
-  const mobile = window.matchMedia?.('(max-width: 720px)')?.matches
-  return reducedMotion || saveData || slow || mobile
-}
-
 export default function Hero({ onSignup }: HeroProps) {
-  const videoARef = useRef<HTMLVideoElement>(null)
-  const videoBRef = useRef<HTMLVideoElement>(null)
-  const [active, setActive] = useState(0)
-  const [bothReady, setBothReady] = useState(false)
-  const [videoEnabled, setVideoEnabled] = useState(false)
-
-  // Determine whether video should load at all
-  useEffect(() => {
-    setVideoEnabled(!shouldSkipVideo())
-  }, [])
-
-  // IntersectionObserver: start preloading + playing when the hero enters viewport
-  useEffect(() => {
-    if (!videoEnabled) return
-    const a = videoARef.current
-    const b = videoBRef.current
-    if (!a) return
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          a.preload = 'auto'
-          if (b) b.preload = 'auto'
-          // Force the muted DOM *property* (the JSX `muted` attribute does not
-          // reliably set it) so the browser allows muted autoplay instead of
-          // blocking play() and overlaying a native play button on the poster.
-          a.muted = true; a.defaultMuted = true
-          if (b) { b.muted = true; b.defaultMuted = true }
-          a.play?.().catch(() => {})
-          b?.play?.().catch(() => {})
-          io.disconnect()
-        }
-      }
-    })
-    io.observe(a)
-    return () => io.disconnect()
-  }, [videoEnabled])
-
-  // Crossfade controller: only start once both videos have loadedData
-  useEffect(() => {
-    if (!videoEnabled || !bothReady) return
-    const id = setInterval(() => setActive(p => p ^ 1), HOLD_MS)
-    return () => clearInterval(id)
-  }, [videoEnabled, bothReady])
-
-  // Track readiness per layer
-  const readiness = useRef({ a: false, b: false })
-  const markReady = (which: 'a' | 'b') => {
-    readiness.current[which] = true
-    if (readiness.current.a && readiness.current.b) {
-      setBothReady(true)
-    }
-  }
-
-  const videoBaseStyle: React.CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
-    transition: `opacity ${FADE_MS}ms ease`,
-    zIndex: 1,
-  }
-
   return (
     <header
       className="ys-hero"
@@ -279,7 +193,7 @@ export default function Hero({ onSignup }: HeroProps) {
           /* NO overflow:hidden here — the floating card breaks out right */
         }}
       >
-        {/* Inner clip container for rounded video/image corners */}
+          {/* Inner clip container for rounded image corners */}
         <div
           style={{
             position: 'relative',
@@ -292,72 +206,20 @@ export default function Hero({ onSignup }: HeroProps) {
             boxShadow: '0 30px 80px rgba(15,23,42,0.18), 0 0 0 1px rgba(255,255,255,0.4) inset',
           }}
         >
-          {/* Video layers (desktop only) */}
-          {videoEnabled && (
-            <>
-              <video
-                ref={videoARef}
-                className="ys-bg-video"
-                poster={A_POSTER}
-                muted
-                loop
-                playsInline
-                preload="none"
-                controls={false}
-                disablePictureInPicture
-                controlsList="nofullscreen nodownload noremoteplayback noplaybackrate"
-                tabIndex={-1}
-                onLoadedData={(e) => { e.currentTarget.muted = true; markReady('a') }}
-                aria-hidden="true"
-                style={{
-                  ...videoBaseStyle,
-                  opacity: active === 0 ? 1 : 0,
-                }}
-              >
-                <source src={A_HEVC} type='video/mp4; codecs="hvc1"' />
-                <source src={A_H264} type="video/mp4" />
-              </video>
-              <video
-                ref={videoBRef}
-                className="ys-bg-video"
-                poster={B_POSTER}
-                muted
-                loop
-                playsInline
-                preload="none"
-                controls={false}
-                disablePictureInPicture
-                controlsList="nofullscreen nodownload noremoteplayback noplaybackrate"
-                tabIndex={-1}
-                onLoadedData={(e) => { e.currentTarget.muted = true; markReady('b') }}
-                aria-hidden="true"
-                style={{
-                  ...videoBaseStyle,
-                  opacity: active === 1 ? 1 : 0,
-                }}
-              >
-                <source src={B_HEVC} type='video/mp4; codecs="hvc1"' />
-                <source src={B_H264} type="video/mp4" />
-              </video>
-            </>
-          )}
-
-          {/* Poster fallback when video is skipped */}
-          {!videoEnabled && (
-            <img
-              src={A_POSTER}
-              alt="International student reviewing visa documents at a laptop"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
-                zIndex: 1,
-              }}
-            />
-          )}
+          <img
+            src="/hero-poster.jpg"
+            alt="International student reviewing visa documents at a laptop"
+            fetchPriority="high"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
+              zIndex: 1,
+            }}
+          />
 
           {/* Overlays */}
           <div
