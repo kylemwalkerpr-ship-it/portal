@@ -469,16 +469,14 @@ function formatProviderFailure(label: string, status: number, body: string): str
 }
 
 /**
- * Provider retries are opt-in. A retry consumes another Worker subrequest and
- * the ordered fallback chain already provides resilience for transient errors.
- * Set CONTENT_AI_RETRY=1 only on a plan with sufficient subrequest headroom.
+ * Preserve the established attempt budget: CONTENT_AI_RETRY unset allows four
+ * attempts, while a numeric value sets the maximum (with a floor of one).
  */
 async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  // Keep retries opt-in. CONTENT_AI_RETRY=1 matches the pipeline's one-retry
-  // contract (two attempts total); all unset/other values get one attempt.
-  // A single opt-in retry with backoff handles transient provider overloads
-  // without multiplying requests by default.
-  const maxAttempts = process.env.CONTENT_AI_RETRY === '1' ? 2 : 1
+  // Preserve the pre-existing CONTENT_AI_RETRY semantics: unset defaults to
+  // four attempts; a numeric value is the maximum attempt count, floored at 1.
+  const retryEnv = Number(process.env.CONTENT_AI_RETRY)
+  const maxAttempts = isNaN(retryEnv) ? 4 : Math.max(1, retryEnv)
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn()

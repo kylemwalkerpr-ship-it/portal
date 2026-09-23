@@ -163,11 +163,13 @@ describe('content AI · provider retry budget defaults', () => {
   const originalDeepSeekKey = process.env.DEEPSEEK_API_KEY
 
   beforeEach(() => {
+    jest.useFakeTimers()
     process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
     global.fetch = originalFetch
   })
 
   afterEach(() => {
+    jest.useRealTimers()
     global.fetch = originalFetch
     if (originalRetry == null) delete process.env.CONTENT_AI_RETRY
     else process.env.CONTENT_AI_RETRY = originalRetry
@@ -183,42 +185,78 @@ describe('content AI · provider retry budget defaults', () => {
     skipQualityContract: true,
   })
 
-  it('uses one attempt when CONTENT_AI_RETRY is unset', async () => {
+  const flushBackoffBeforeAsserting = async (
+    assertion: (pending: ReturnType<typeof generation>) => Promise<unknown>,
+  ) => {
+    const pending = generation()
+    const result = assertion(pending)
+    await jest.runAllTimersAsync()
+    await result
+  }
+
+  it('defaults to four attempts when CONTENT_AI_RETRY is unset', async () => {
     delete process.env.CONTENT_AI_RETRY
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      if (calls === 4) return new Response(JSON.stringify({
+        choices: [{ message: { content: 'A stable answer.' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).resolves.toMatchObject({ text: 'A stable answer.' }))
+    expect(calls).toBe(4)
+  })
+
+  it('CONTENT_AI_RETRY=1 allows exactly one attempt', async () => {
+    process.env.CONTENT_AI_RETRY = '1'
     let calls = 0
     global.fetch = jest.fn(async () => {
       calls++
       return new Response('temporary overload', { status: 503 })
     }) as typeof fetch
 
-    await expect(generation()).rejects.toThrow(/503/)
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/503/))
     expect(calls).toBe(1)
   })
 
-  it('CONTENT_AI_RETRY=1 opts into one retry (two attempts total)', async () => {
-    process.env.CONTENT_AI_RETRY = '1'
+  it('CONTENT_AI_RETRY=2 allows two attempts and succeeds on the second', async () => {
+    process.env.CONTENT_AI_RETRY = '2'
     let calls = 0
     global.fetch = jest.fn(async () => {
       calls++
-      if (calls === 1) return new Response('temporary overload', { status: 503 })
-      return new Response(JSON.stringify({
+      if (calls === 2) return new Response(JSON.stringify({
         choices: [{ message: { content: 'A stable answer.' }, finish_reason: 'stop' }],
       }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response('temporary overload', { status: 503 })
     }) as typeof fetch
 
-    await expect(generation()).resolves.toMatchObject({ text: 'A stable answer.' })
+    await flushBackoffBeforeAsserting((pending) => expect(pending).resolves.toMatchObject({ text: 'A stable answer.' }))
     expect(calls).toBe(2)
   })
 
-  it('does not retry subrequest-limit errors even when retry is enabled', async () => {
-    process.env.CONTENT_AI_RETRY = '1'
+  it('CONTENT_AI_RETRY=0 is floored at one attempt', async () => {
+    process.env.CONTENT_AI_RETRY = '0'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/503/))
+    expect(calls).toBe(1)
+  })
+
+  it('does not retry subrequest-limit errors even when multiple attempts are configured', async () => {
+    process.env.CONTENT_AI_RETRY = '2'
     let calls = 0
     global.fetch = jest.fn(async () => {
       calls++
       throw new Error('Too many subrequests by single Worker invocation')
     }) as typeof fetch
 
-    await expect(generation()).rejects.toThrow(/Too many subrequests/)
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/Too many subrequests/))
     expect(calls).toBe(1)
   })
 })
