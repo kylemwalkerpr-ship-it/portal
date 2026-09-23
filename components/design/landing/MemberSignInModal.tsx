@@ -26,7 +26,7 @@ const ROLES: Role[] = [
     secondary: 'Create account',
     icon: Cap,
     accent: T.indigo,
-    signInHref: 'https://portal.yousafeconsultancy.com/sign-in/student',
+    signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1',
     signUpHref: 'https://portal.yousafeconsultancy.com/sign-up/student',
     external: false,
   },
