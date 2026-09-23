@@ -8,14 +8,15 @@
     "architectureVersion",
     "executorPolicy",
     "workerBudget",
-    "phaseSnapshot"
+    "phaseSnapshot",
+    "a01Release"
   ],
   "properties": {
     "schemaVersion": {
       "const": "studio.delivery/1"
     },
     "architectureVersion": {
-      "const": "CS-2026.09.23.8"
+      "const": "CS-2026.09.23.9"
     },
     "executorPolicy": {
       "$ref": "#/$defs/executorPolicy"
@@ -292,6 +293,67 @@
           ]
         }
       }
+    },
+    "a01Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prNumber",
+        "mergedAtCommit",
+        "workflowId",
+        "workflowStatus",
+        "workerVersion",
+        "buildId",
+        "productionHealth",
+        "exactMainSmoke",
+        "broaderImplementationAuthorized"
+      ],
+      "properties": {
+        "prNumber": {
+          "const": 283
+        },
+        "mergedAtCommit": {
+          "const": "22c685e38d46367eec18332f264b7f1480d8305e"
+        },
+        "workflowId": {
+          "const": "35822388398"
+        },
+        "workflowStatus": {
+          "const": "SUCCEEDED"
+        },
+        "workerVersion": {
+          "const": "b5e39685-baa2-4789-acfa-10e7f990d2ad"
+        },
+        "buildId": {
+          "const": "LU03P9-X1WyePB7inlqsO"
+        },
+        "productionHealth": {
+          "const": "PASSED"
+        },
+        "exactMainSmoke": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "passed",
+            "total"
+          ],
+          "properties": {
+            "status": {
+              "const": "PASSED"
+            },
+            "passed": {
+              "const": 4
+            },
+            "total": {
+              "const": 4
+            }
+          }
+        },
+        "broaderImplementationAuthorized": {
+          "const": false
+        }
+      }
     }
   },
   "$defs": {
@@ -511,23 +573,21 @@
         "executor",
         "executorFamily",
         "modelResolution",
-        "effortCatalog",
-        "selectedEffort",
-        "selectionRationale",
-        "selectedEffortAccess",
+        "effortCapability",
+        "effortSelection",
         "transport",
         "orchestration",
         "automaticFallback",
-        "modelId",
         "maxConcurrentAgents",
         "writerConflictDomain",
         "reviewerIdentity",
         "requireIndependentReview",
-        "mergeAuthority"
+        "mergeAuthority",
+        "modelId"
       ],
       "properties": {
         "schemaVersion": {
-          "const": "studio.executor-policy/2"
+          "const": "studio.executor-policy/3"
         },
         "supervisor": {
           "const": "GPT_SOL"
@@ -564,60 +624,6 @@
               "minLength": 1
             }
           }
-        },
-        "effortCatalog": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "advertised",
-            "verifiedInEnvironment"
-          ],
-          "properties": {
-            "advertised": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
-              },
-              "uniqueItems": true,
-              "minItems": 1
-            },
-            "verifiedInEnvironment": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
-              },
-              "uniqueItems": true,
-              "minItems": 1
-            }
-          }
-        },
-        "selectedEffort": {
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ]
-        },
-        "selectionRationale": {
-          "type": "string",
-          "minLength": 1
-        },
-        "selectedEffortAccess": {
-          "const": "VERIFIED"
         },
         "transport": {
           "const": "RDC_CODEX_CLI"
@@ -674,23 +680,187 @@
           "type": "string",
           "minLength": 1,
           "description": "Deprecated compatibility projection; when present it must equal modelResolution.resolvedModelId."
+        },
+        "effortCapability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "advertised",
+            "verifiedInEnvironment",
+            "probeMode",
+            "probeResults",
+            "catalogRefreshObservation",
+            "explicitInvocationCompleted"
+          ],
+          "properties": {
+            "advertised": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "verifiedInEnvironment": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "probeMode": {
+              "const": "STRICT_READ_ONLY_ONE_SHOT"
+            },
+            "probeResults": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "effort",
+                  "result",
+                  "exitCode"
+                ],
+                "properties": {
+                  "effort": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ]
+                  },
+                  "result": {
+                    "const": "OK"
+                  },
+                  "exitCode": {
+                    "const": 0
+                  }
+                }
+              }
+            },
+            "catalogRefreshObservation": {
+              "enum": [
+                "SUCCEEDED",
+                "TIMEOUT_WITH_EXPLICIT_INVOCATION_SUCCESS"
+              ]
+            },
+            "explicitInvocationCompleted": {
+              "type": "boolean"
+            }
+          }
+        },
+        "effortSelection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "taskAdmission"
+          ],
+          "properties": {
+            "mode": {
+              "const": "LOWEST_SUFFICIENT_PER_TASK_ADMISSION"
+            },
+            "taskAdmission": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "selectedEffort",
+                    "selectionRationale",
+                    "selectedEffortAccess"
+                  ],
+                  "properties": {
+                    "selectedEffort": {
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
+                    "selectionRationale": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "selectedEffortAccess": {
+                      "const": "VERIFIED"
+                    }
+                  }
+                }
+              ]
+            }
+          }
         }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "selectedEffort": {
-                "const": "low"
+              "effortSelection": {
+                "properties": {
+                  "taskAdmission": {
+                    "type": "object",
+                    "properties": {
+                      "selectedEffort": {
+                        "const": "low"
+                      }
+                    }
+                  }
+                }
               }
             }
           },
           "then": {
             "properties": {
-              "effortCatalog": {
+              "effortCapability": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "low" }
+                    "contains": {
+                      "const": "low"
+                    }
+                  },
+                  "probeResults": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "effort": {
+                          "const": "low"
+                        },
+                        "result": {
+                          "const": "OK"
+                        },
+                        "exitCode": {
+                          "const": 0
+                        }
+                      },
+                      "required": [
+                        "effort",
+                        "result",
+                        "exitCode"
+                      ]
+                    }
                   }
                 }
               }
@@ -700,17 +870,49 @@
         {
           "if": {
             "properties": {
-              "selectedEffort": {
-                "const": "medium"
+              "effortSelection": {
+                "properties": {
+                  "taskAdmission": {
+                    "type": "object",
+                    "properties": {
+                      "selectedEffort": {
+                        "const": "medium"
+                      }
+                    }
+                  }
+                }
               }
             }
           },
           "then": {
             "properties": {
-              "effortCatalog": {
+              "effortCapability": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "medium" }
+                    "contains": {
+                      "const": "medium"
+                    }
+                  },
+                  "probeResults": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "effort": {
+                          "const": "medium"
+                        },
+                        "result": {
+                          "const": "OK"
+                        },
+                        "exitCode": {
+                          "const": 0
+                        }
+                      },
+                      "required": [
+                        "effort",
+                        "result",
+                        "exitCode"
+                      ]
+                    }
                   }
                 }
               }
@@ -720,17 +922,49 @@
         {
           "if": {
             "properties": {
-              "selectedEffort": {
-                "const": "high"
+              "effortSelection": {
+                "properties": {
+                  "taskAdmission": {
+                    "type": "object",
+                    "properties": {
+                      "selectedEffort": {
+                        "const": "high"
+                      }
+                    }
+                  }
+                }
               }
             }
           },
           "then": {
             "properties": {
-              "effortCatalog": {
+              "effortCapability": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "high" }
+                    "contains": {
+                      "const": "high"
+                    }
+                  },
+                  "probeResults": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "effort": {
+                          "const": "high"
+                        },
+                        "result": {
+                          "const": "OK"
+                        },
+                        "exitCode": {
+                          "const": 0
+                        }
+                      },
+                      "required": [
+                        "effort",
+                        "result",
+                        "exitCode"
+                      ]
+                    }
                   }
                 }
               }
@@ -740,17 +974,49 @@
         {
           "if": {
             "properties": {
-              "selectedEffort": {
-                "const": "xhigh"
+              "effortSelection": {
+                "properties": {
+                  "taskAdmission": {
+                    "type": "object",
+                    "properties": {
+                      "selectedEffort": {
+                        "const": "xhigh"
+                      }
+                    }
+                  }
+                }
               }
             }
           },
           "then": {
             "properties": {
-              "effortCatalog": {
+              "effortCapability": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "xhigh" }
+                    "contains": {
+                      "const": "xhigh"
+                    }
+                  },
+                  "probeResults": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "effort": {
+                          "const": "xhigh"
+                        },
+                        "result": {
+                          "const": "OK"
+                        },
+                        "exitCode": {
+                          "const": 0
+                        }
+                      },
+                      "required": [
+                        "effort",
+                        "result",
+                        "exitCode"
+                      ]
+                    }
                   }
                 }
               }
@@ -760,17 +1026,49 @@
         {
           "if": {
             "properties": {
-              "selectedEffort": {
-                "const": "max"
+              "effortSelection": {
+                "properties": {
+                  "taskAdmission": {
+                    "type": "object",
+                    "properties": {
+                      "selectedEffort": {
+                        "const": "max"
+                      }
+                    }
+                  }
+                }
               }
             }
           },
           "then": {
             "properties": {
-              "effortCatalog": {
+              "effortCapability": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "max" }
+                    "contains": {
+                      "const": "max"
+                    }
+                  },
+                  "probeResults": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "effort": {
+                          "const": "max"
+                        },
+                        "result": {
+                          "const": "OK"
+                        },
+                        "exitCode": {
+                          "const": 0
+                        }
+                      },
+                      "required": [
+                        "effort",
+                        "result",
+                        "exitCode"
+                      ]
+                    }
                   }
                 }
               }
