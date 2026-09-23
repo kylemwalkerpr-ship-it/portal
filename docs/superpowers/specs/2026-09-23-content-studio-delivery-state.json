@@ -355,21 +355,35 @@
         "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
       ],
       "codeClaimedAt": "2026-09-23",
-      "deploymentStatus": "UNKNOWN",
-      "deploymentEvidenceRefs": [],
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/35720015561",
+        "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/35720015755",
+        "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/35822388398"
+      ],
       "programGateStatus": "IN_PROGRESS",
       "gateEvidenceRefs": [
         "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
       ],
       "blockers": [
         {
-          "id": "p11-delivery-reconciliation",
-          "kind": "EVIDENCE_RECONCILIATION",
-          "description": "Older row records passing local code/tests but outstanding merge, migration, deployment and live proof; newer code-completion report does not prove delivery.",
+          "id": "p11-provider-evidence",
+          "kind": "EXTERNAL_OUTCOME",
+          "description": "No successful provider attempt or measured citation evidence is present; current P11 observation has 0 successful attempts and shareOfVoice=null/unavailable.",
           "owner": null,
-          "closesWith": "Reconcile exact commits, CI, migration receipts, production deployment and required current GEO observations.",
+          "closesWith": "Record successful commissioned-provider attempts and satisfy the canonical live GEO evidence gate.",
           "evidenceRefs": [
-            "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+            "https://github.com/kylemwalkerpr-ship-it/portal/blob/22c685e38d46367eec18332f264b7f1480d8305e/docs/superpowers/seo-parity-matrix.md"
+          ]
+        },
+        {
+          "id": "p11-status-summary-discrepancy",
+          "kind": "EVIDENCE_RECONCILIATION",
+          "description": "Authenticated lightweight /api/seo-engine/status reports zero query, legacy, and owner counters while DB and detailed /api/seo-engine/llm-visibility report one P11 row and 267 legacy rows.",
+          "owner": null,
+          "closesWith": "Root-cause and correct the lightweight summary path, then reconcile it against production DB and detailed endpoint.",
+          "evidenceRefs": [
+            "https://github.com/kylemwalkerpr-ship-it/portal/blob/22c685e38d46367eec18332f264b7f1480d8305e/docs/superpowers/seo-parity-matrix.md"
           ]
         }
       ],
