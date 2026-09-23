@@ -31,7 +31,7 @@ const ROLES: Role[] = [
     Icon: Cap,
     accent: T.indigo,
     accentSoft: T.indigoSoft,
-    signInHref: `${PORTAL}/sign-in/student`,
+    signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1',
     signUpHref: `${PORTAL}/sign-up/student`,
     signUpLabel: 'Create account',
   },

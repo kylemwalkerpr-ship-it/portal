@@ -5,8 +5,10 @@ import { useUser, useClerk } from '@clerk/nextjs'
 import { F } from './tokens'
 import styles from './MarketplaceAuthNav.module.css'
 import { AuthNavSkeleton } from './MarketplaceRouteSkeleton'
+import { getSafeMarketplaceSignInReturnTo, MARKETPLACE_RETURN_TO_QUERY, MARKETPLACE_SIGN_IN_QUERY } from '@/lib/marketplaceSignInHandoff'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 
 interface MarketplaceAuthNavProps {
   signUpHref: string
@@ -82,6 +84,21 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
   }, [open])
 
   React.useEffect(() => {
+    if (!isLoaded || typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    if (url.searchParams.get(MARKETPLACE_SIGN_IN_QUERY) !== '1') return
+
+    const returnTo = getSafeMarketplaceSignInReturnTo(url.searchParams.get(MARKETPLACE_RETURN_TO_QUERY))
+    url.searchParams.delete(MARKETPLACE_SIGN_IN_QUERY)
+    url.searchParams.delete(MARKETPLACE_RETURN_TO_QUERY)
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    clerk.openSignIn({
+      forceRedirectUrl: returnTo || `${PORTAL_URL}/dashboard`,
+      signUpUrl: `${PORTAL_URL}/sign-up/student`,
+    })
+  }, [clerk, isLoaded])
+
+  React.useEffect(() => {
     // MarketplaceShell owns the hamburger drawer state. Keep this account
     // component decoupled while making the two overlays mutually exclusive:
     // whenever the shell toggle enters aria-expanded=true, close this popover.
@@ -129,7 +146,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
             unsafeMetadata: { requestedRole: 'client', signupSource: 'marketplace_join' },
             forceRedirectUrl: `${PORTAL_URL}/dashboard`,
             fallbackRedirectUrl: `${PORTAL_URL}/dashboard`,
-            signInUrl: `${PORTAL_URL}/sign-in/student`,
+            signInUrl: `${MARKET_HOME_URL}?ys_sign_in=1`,
           })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 700,
@@ -229,8 +246,8 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
                 setOpen(false)
                 // Let Clerk clear the session before redirecting. Navigating
                 // first races middleware and can make logout appear broken.
-                clerk.signOut({ redirectUrl: PORTAL_URL }).catch(() => {
-                  window.location.replace(PORTAL_URL)
+                clerk.signOut({ redirectUrl: MARKET_HOME_URL }).catch(() => {
+                  window.location.replace(MARKET_HOME_URL)
                 })
               }}
             >
@@ -243,4 +260,3 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
     </div>
   )
 }
-
