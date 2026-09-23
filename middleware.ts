@@ -4,6 +4,8 @@ import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
 import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
 import { attributionCaptureCookies } from './lib/attribution/cookies'
+import { createMarketplaceSignInHandoffUrl, getSafeMarketplaceSignInReturnTo, shouldRedirectLegacyStudentSignIn } from './lib/marketplaceSignInHandoff'
+import { clientUatMeansSignedIn, requestNeedsClerkHandoffState } from './lib/clerkHandoffState'
 import { getMarketplaceTemplatesRedirectUrl } from './lib/marketplaceTemplatesRedirect'
 import {
   createLazyRequestCookieSnapshot,
@@ -584,6 +586,28 @@ const clerkHandler = clerkMiddleware(
 
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
   const getRequestCookies = createLazyRequestCookieSnapshot(() => req.cookies.getAll())
+
+  // Retire the anonymous portal landing and the public student sign-in page.
+  // Keep active Clerk protocol URLs and signed-in root behavior on Clerk's path.
+  if (requestHostname(req) === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD')) {
+    const { pathname, searchParams } = req.nextUrl
+    const cookies = getRequestCookies()
+    const handoffInProgress = requestNeedsClerkHandoffState(pathname, searchParams, cookies)
+    const signedInHint = clientUatMeansSignedIn(req.cookies.get('__client_uat')?.value)
+
+    if (pathname === '/' && !handoffInProgress && !signedInHint) {
+      const marketHome = new URL(`/${req.nextUrl.search}`, `https://${MARKET_HOST}`)
+      return withCorsHeaders(NextResponse.redirect(marketHome, { status: 302 }), req)
+    }
+
+    if (shouldRedirectLegacyStudentSignIn(pathname, searchParams) && !handoffInProgress && !signedInHint) {
+      const returnTo = getSafeMarketplaceSignInReturnTo(searchParams.get('return_to'))
+      return withCorsHeaders(
+        NextResponse.redirect(createMarketplaceSignInHandoffUrl(returnTo), { status: 302 }),
+        req,
+      )
+    }
+  }
 
   if (
     shouldBypassClerkForAuthIndependentApiRequest(
