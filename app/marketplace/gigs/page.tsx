@@ -5,6 +5,7 @@ import { GigsDiscoveryQueryGate } from '@/components/marketplace/GigsDiscoveryQu
 import { CATEGORIES } from '@/lib/categories'
 import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   assertMarketplaceBuildEstateNonEmpty,
@@ -48,6 +49,7 @@ export const metadata: Metadata = {
     description:
       'Compare active immigration, document-preparation and tenancy services on YouSafe Marketplace.',
     type: 'website',
+    images: [MARKETPLACE_OG_IMAGE],
   },
 }
 

@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation'
 import { CATEGORIES, resolveCategoryOrSubcategory } from '@/lib/categories'
 import { countActiveGigsForCategory } from '@/lib/marketplaceCategoryCounts'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
 import { getCategoryEditorial } from '@/lib/categoryEditorial'
 
@@ -57,7 +58,7 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
     title,
     description,
     alternates: { canonical: canonicalUrl },
-    openGraph: { url: canonicalUrl, title, description, type: 'website' },
+    openGraph: { url: canonicalUrl, title, description, type: 'website', images: allowIndex ? [MARKETPLACE_OG_IMAGE] : undefined },
     robots: allowIndex
       ? { index: true, follow: true }
       : { index: false, follow: true },

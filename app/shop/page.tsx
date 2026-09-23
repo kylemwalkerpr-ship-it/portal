@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import FilesShop from './FilesShop'
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
 const CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     type: 'website',
     siteName: 'YouSafe Consultancy',
+    images: [MARKETPLACE_OG_IMAGE],
   },
 }
 

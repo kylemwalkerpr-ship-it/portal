@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { MarketplaceProvidersIndex } from '@/components/marketplace/MarketplaceProvidersIndex'
 import { ProvidersIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/providers')
@@ -12,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     alternates: { canonical: canonicalUrl },
-    openGraph: { url: canonicalUrl, title, description, type: 'website' },
+    openGraph: { url: canonicalUrl, title, description, type: 'website', images: [MARKETPLACE_OG_IMAGE] },
     robots: { index: true, follow: true },
   }
 }

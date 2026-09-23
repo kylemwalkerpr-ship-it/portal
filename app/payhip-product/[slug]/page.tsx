@@ -6,6 +6,7 @@ import {
   getPayhipBatches24Product,
   getPayhipBatches24RelatedProducts,
 } from '@/lib/payhipBatches24'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
 const MARKET = 'https://market.yousafeconsultancy.com'
 const PAYHIP = 'https://shop.yousafeconsultancy.com/b'
@@ -38,7 +39,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: product.name,
       description,
       siteName: 'YouSafe Consultancy',
-      images: [{ url: product.imageUrl, width: 1200, height: 800, alt: product.imageAlt }],
+      images: [
+        { url: product.imageUrl, width: 1200, height: 800, alt: product.imageAlt },
+        MARKETPLACE_OG_IMAGE,
+      ],
     },
     twitter: {
       card: 'summary_large_image',
