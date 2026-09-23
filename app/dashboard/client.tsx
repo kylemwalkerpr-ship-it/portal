@@ -15,7 +15,7 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
 const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
 import { IntakeTodoBanner } from '@/components/marketplace/IntakeTodoBanner'
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
 export default function DashboardClient({ role, status, userName, userId, expectedRole, errorState }) {
@@ -96,13 +96,13 @@ export default function DashboardClient({ role, status, userName, userId, expect
     // forces a hard navigation in that scenario; the promise then resolves
     // into a navigated-away tab so the late resolution is harmless.
     const watchdog = window.setTimeout(() => {
-      window.location.replace(PORTAL_URL)
+      window.location.replace(MARKET_HOME_URL)
     }, 3000)
 
-    signOut({ redirectUrl: PORTAL_URL })
+    signOut({ redirectUrl: MARKET_HOME_URL })
       .catch(() => {
         // If Clerk rejects before navigating, force the bounce ourselves.
-        window.location.replace(PORTAL_URL)
+        window.location.replace(MARKET_HOME_URL)
       })
       // Clear the watchdog if signOut resolves normally — Clerk will
       // navigate, but if it doesn't (e.g. an empty redirectUrl edge case)
