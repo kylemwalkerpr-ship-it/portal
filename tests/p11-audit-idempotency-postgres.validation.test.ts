@@ -2,7 +2,7 @@
  * DISPOSABLE VALIDATION HARNESS — NOT FOR MERGE.
  * Requires a fresh PostgreSQL 16 database with PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE.
  * Runs the exact p11AuditCommand implementation through a deliberately narrow
- * PostgREST-shaped adapter backed by psql. It never calls a real provider.
+ * PostgREST-shaped adapter backed by psql as service_role. It never calls a real provider.
  */
 import { execFile, execFileSync } from 'node:child_process'
 import { NextRequest } from 'next/server'
@@ -49,7 +49,8 @@ function psql(sql: string): { rows: Row[]; stderr: string } {
 }
 
 function psqlAsync(sql: string): Promise<string> {
-  const args = ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-c', sql]
+  const serviceRoleTransaction = `begin; set local role service_role; ${sql}; commit;`
+  const args = ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-c', serviceRoleTransaction]
   return new Promise((resolve, reject) => {
     execFile('psql', args, { encoding: 'utf8', env: process.env }, (error, stdout, stderr) => {
       if (error) {
@@ -128,6 +129,17 @@ function scalar(sql: string): string {
     encoding: 'utf8', env: process.env,
   }).trim()
   return output
+}
+
+function executeAsRole(role: 'anon' | 'authenticated' | 'service_role', sql: string): { stdout: string; stderr: string } {
+  try {
+    const stdout = execFileSync('psql', ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-c', `begin; set local role ${role}; ${sql}; rollback;`], {
+      encoding: 'utf8', env: process.env,
+    })
+    return { stdout, stderr: '' }
+  } catch (error: any) {
+    return { stdout: String(error?.stdout || ''), stderr: String(error?.stderr || error?.message || 'psql failed') }
+  }
 }
 
 const actor = profileP11Actor('11111111-1111-4111-8111-111111111111')
@@ -250,16 +262,49 @@ postgresDescribe('P11 #289 PostgreSQL lifecycle (disposable PG16 only)', () => {
     expect(callbacks).toBe(1)
   })
 
-  it('keeps new tables inaccessible to client roles and available only to service_role', () => {
+  it('denies client reads and writes while service_role can read and mutate both tables', () => {
     for (const table of ['seo_llm_audit_commands', 'seo_llm_audit_provider_claims']) {
       expect(scalar(`select relrowsecurity from pg_class where oid = 'public.${table}'::regclass`)).toBe('t')
       expect(scalar(`select has_table_privilege('anon', 'public.${table}', 'select') or has_table_privilege('authenticated', 'public.${table}', 'select')`)).toBe('f')
       expect(scalar(`select has_table_privilege('service_role', 'public.${table}', 'select')`)).toBe('t')
       expect(scalar(`select count(*) from pg_policies where schemaname='public' and tablename='${table}' and 'service_role'=any(roles)`)).toBe('1')
     }
-    expect(psql('set role anon; select * from public.seo_llm_audit_commands').stderr).toMatch(/ERROR:\s+42501:/)
-    expect(psql('set role authenticated; select * from public.seo_llm_audit_provider_claims').stderr).toMatch(/ERROR:\s+42501:/)
-    expect(psql('set role service_role; select count(*) from public.seo_llm_audit_commands').stderr).toBe('')
+    const deniedStatements: Record<string, string[]> = {
+      seo_llm_audit_commands: [
+        'select * from public.seo_llm_audit_commands',
+        "insert into public.seo_llm_audit_commands (actor_scope, idempotency_key, request_hash, request_json, run_id) values ('system:p11-boundary', 'denied-' || gen_random_uuid()::text, 'hash', '{}'::jsonb, gen_random_uuid())",
+        "update public.seo_llm_audit_commands set error = 'denied' where false",
+        'delete from public.seo_llm_audit_commands where false',
+      ],
+      seo_llm_audit_provider_claims: [
+        'select * from public.seo_llm_audit_provider_claims',
+        'insert into public.seo_llm_audit_provider_claims (command_id, query_ordinal, provider_pin) values (gen_random_uuid(), 0, \'denied\')',
+        "update public.seo_llm_audit_provider_claims set status = 'failed' where false",
+        'delete from public.seo_llm_audit_provider_claims where false',
+      ],
+    }
+    for (const role of ['anon', 'authenticated'] as const) {
+      for (const statements of Object.values(deniedStatements)) {
+        for (const statement of statements) {
+          expect(executeAsRole(role, statement).stderr).toMatch(/ERROR:\s+42501:/)
+        }
+      }
+    }
+
+    const serviceRoleLifecycle = executeAsRole('service_role', `
+      insert into public.seo_llm_audit_commands (id, actor_scope, idempotency_key, request_hash, request_json, run_id)
+      values ('22222222-2222-4222-8222-222222222222', 'system:p11-boundary', 'role-boundary-key', 'hash', '{}'::jsonb, '33333333-3333-4333-8333-333333333333');
+      select count(*) from public.seo_llm_audit_commands where id = '22222222-2222-4222-8222-222222222222';
+      update public.seo_llm_audit_commands set error = 'updated by service role' where id = '22222222-2222-4222-8222-222222222222';
+      insert into public.seo_llm_audit_provider_claims (command_id, query_ordinal, provider_pin)
+      values ('22222222-2222-4222-8222-222222222222', 99001, 'role-boundary-provider');
+      select count(*) from public.seo_llm_audit_provider_claims where command_id = '22222222-2222-4222-8222-222222222222';
+      update public.seo_llm_audit_provider_claims set status = 'failed' where command_id = '22222222-2222-4222-8222-222222222222' and query_ordinal = 99001;
+      delete from public.seo_llm_audit_provider_claims where command_id = '22222222-2222-4222-8222-222222222222';
+      delete from public.seo_llm_audit_commands where id = '22222222-2222-4222-8222-222222222222';
+    `)
+    expect(serviceRoleLifecycle.stderr).toBe('')
+    expect(serviceRoleLifecycle.stdout.trim().split(/\s+/)).toEqual(['1', '1'])
   })
 
   it('runs the real route POST through PostgreSQL lifecycle with auth and provider behavior mocked', async () => {

@@ -36,4 +36,3 @@ alter table public.seo_llm_visibility enable row level security;
 create policy "Engine v2 full access" on public.seo_llm_visibility for all using (true) with check (true);
 grant usage on schema public to anon, authenticated, service_role;
 grant all privileges on public.seo_llm_visibility to anon, authenticated;
-
