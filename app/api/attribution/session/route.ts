@@ -25,7 +25,7 @@
  * verification, and handoff is disabled entirely when no signing secret is set.
  */
 import { fail, ok } from '@/lib/apiEnvelope'
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getSupabaseAdminClient } from '@/lib/supabase'
 import {
   ATTRIBUTION_COOKIE,
   ATTRIBUTION_HANDOFF_COOKIE,
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
         // A service-role client is created ONLY to withdraw an identity this
         // browser already had. A visitor who has granted nothing never causes an
         // analytics database client to be constructed for them.
-        const revoked = await revokeAttributionSession(createSupabaseAdminClient(), {
+        const revoked = await revokeAttributionSession(getSupabaseAdminClient(), {
           token: existing,
           reason: 'consent_withdrawn',
         })
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
   }
 
   // Consent is granted: this is the only branch that may create an identity.
-  const db = createSupabaseAdminClient()
+  const db = getSupabaseAdminClient()
 
   // ── 2. Classify the visit (browser-observed navigation evidence only) ─────
   const landing = body.landing && typeof body.landing === 'object' && !Array.isArray(body.landing)
