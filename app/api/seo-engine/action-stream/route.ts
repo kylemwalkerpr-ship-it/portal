@@ -3,6 +3,7 @@ import { ingestKnowledge, recordEngineRun } from '@/lib/seoEngine/knowledge'
 import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
 import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
+import { admitP11AuditCommand, executeP11AuditCommand, profileP11Actor, validP11IdempotencyKey, type P11AuditRequest, type P11CommandContext } from '@/lib/seoEngine/p11AuditCommand'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -44,6 +45,23 @@ export async function POST(request: Request) {
   }
 
   const kind: ActionKind = body.kind === 'plan' ? 'plan' : body.kind === 'llm' ? 'llm' : 'ingest'
+  const idempotencyKey = request.headers.get('Idempotency-Key')
+  if (kind === 'llm') {
+    if (!validP11IdempotencyKey(idempotencyKey)) return new Response(JSON.stringify({ error: 'A valid Idempotency-Key header (8–200 printable ASCII characters) is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+    const auditRequest: P11AuditRequest = {
+      queries: Array.isArray(body.queries) ? body.queries.map(String) : undefined,
+      engineLabel: body.engineLabel ? String(body.engineLabel) : undefined,
+      maxAudits: body.maxAudits != null ? Number(body.maxAudits) : 4,
+    }
+    try {
+      const admission = await admitP11AuditCommand(profileP11Actor(auth.profileId), idempotencyKey, auditRequest)
+      if (admission.kind === 'conflict') {
+        return new Response(JSON.stringify({ error: 'Idempotency key was already used with a different request' }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+      }
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unable to inspect audit command' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    }
+  }
 
   const encoder = new TextEncoder()
   let closed = false
@@ -137,34 +155,51 @@ export async function POST(request: Request) {
             result: { plans, count: plans.length, persisted: persisted ?? plans.length, persistErrors: persistErrors || [], pair },
           })
         } else {
-          const result = await runVisibilityAudits({
-            queries: Array.isArray(body.queries) ? (body.queries as string[]) : undefined,
+          const auditRequest: P11AuditRequest = {
+            queries: Array.isArray(body.queries) ? body.queries.map(String) : undefined,
             engineLabel: body.engineLabel ? String(body.engineLabel) : undefined,
             maxAudits: body.maxAudits != null ? Number(body.maxAudits) : 4,
-            maxEngines: 2,
-            onProgress,
-          })
-          await recordEngineRun(
-            'manual',
-            result.total ? 'success' : 'partial',
-            {
-              kind: 'llm',
-              cited: result.cited,
-              total: result.total,
-              // Provider-attempt counters: the shareOfVoice denominator is
-              // successful provider attempts, never query rows — persisted
-              // here so the recorded run can't contradict the SSE summary.
-              successfulProviderAttempts: result.successfulProviderAttempts,
-              citedSuccessfulProviderAttempts: result.citedSuccessfulProviderAttempts,
-              shareOfVoice: result.shareOfVoice,
-              attempted: result.attempted,
-              failed: result.failed,
-              measurementState: result.measurementState,
-              selected: (result.selected || []).map((s) => s.query),
+          }
+          const outcome = await executeP11AuditCommand({
+            actor: profileP11Actor(auth.profileId),
+            idempotencyKey: idempotencyKey!,
+            request: auditRequest,
+            run: async (command) => {
+              const result = await runVisibilityAudits({ ...command.request, command, maxEngines: 2, onProgress })
+              await recordEngineRun(
+                'manual',
+                result.total ? 'success' : 'partial',
+                {
+                  kind: 'llm',
+                  cited: result.cited,
+                  total: result.total,
+                  // Provider-attempt counters: the shareOfVoice denominator is
+                  // successful provider attempts, never query rows — persisted
+                  // here so the recorded run can't contradict the SSE summary.
+                  successfulProviderAttempts: result.successfulProviderAttempts,
+                  citedSuccessfulProviderAttempts: result.citedSuccessfulProviderAttempts,
+                  shareOfVoice: result.shareOfVoice,
+                  attempted: result.attempted,
+                  failed: result.failed,
+                  measurementState: result.measurementState,
+                  selected: (result.selected || []).map((s) => s.query),
+                },
+                [],
+                'admin',
+              )
+              return result
             },
-            [],
-            'admin',
-          )
+          })
+          if (outcome.kind === 'conflict') {
+            send({ type: 'error', error: 'Idempotency key was already used with a different request', status: 409 })
+            return
+          }
+          if (outcome.kind === 'pending') {
+            emitStep('wait', 'This audit command is already running or has an ambiguous provider attempt; it will not be invoked again.', outcome.command.id)
+            send({ type: 'done', kind, commandId: outcome.command.id, status: outcome.command.status, recoverable: true, summary: 'Audit command is still recoverable; reconnect using the same Idempotency-Key.' })
+            return
+          }
+          const result = outcome.result as Awaited<ReturnType<typeof runVisibilityAudits>>
           const shareLabel = result.shareOfVoice == null ? 'unavailable' : `${result.shareOfVoice}%`
           // Lead with the named provider-attempt denominator; legacy query
           // counts stay as a separate clause so 1/1 queries with 1/2 provider
@@ -173,7 +208,7 @@ export async function POST(request: Request) {
             ? `LLM audit: ${result.citedSuccessfulProviderAttempts}/${result.successfulProviderAttempts} successful provider attempts cited the estate (${shareLabel}); ${result.cited}/${result.total} measured queries cited`
             : `LLM audit: ${result.cited}/${result.total} measured queries cited the estate (${shareLabel})`
           emitStep('done', summary, result.failed ? `${result.failed} failed audit(s) excluded` : undefined)
-          send({ type: 'done', kind, summary, result })
+          send({ type: 'done', kind, commandId: outcome.command.id, replayed: outcome.replayed === true, summary, result })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error'

@@ -48,6 +48,7 @@ import { mergeInterlinkLists, preferRegionInterlinks, type StudioInterlink } fro
 import type { DepthRescueStats } from '@/lib/seoFactory/depthRescue'
 import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
 import { consumeSseStream, describeGenerationFailure } from '@/lib/seoFactory/sse'
+import { getOrCreateP11ActionKey, P11_UI_KEY_NAMESPACES, settleP11ActionKey } from '@/lib/seoEngine/p11UiIdempotencyKey'
 import { verifyStampMessage } from '@/lib/seoFactory/verifyStampMessage'
 import SeoIntelligenceDashboard, { type OppRow, type SeoIntelCluster, type SeoIntelHandle, type SeoIntelStats } from './seo-intelligence-dashboard'
 import EditorSeoIntelPanel from './editor-seo-intel-panel'
@@ -5996,6 +5997,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // finalizes the job row (checkpointed → 'drafting' resumable, empty → failed)
   // when the client disconnect lands.
   const genAbortRef = React.useRef<AbortController | null>(null)
+  const llmAuditCommandKeyRef = React.useRef<string | null>(null)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -7758,11 +7760,15 @@ const controller = new AbortController()
     const controller = new AbortController()
     const timeoutMs = kind === 'ingest' || kind === 'llm' ? 180_000 : 90_000
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const llmCommandKey = kind === 'llm'
+      ? (llmAuditCommandKeyRef.current || (llmAuditCommandKeyRef.current = getOrCreateP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, () => crypto.randomUUID())))
+      : null
+    let llmCommandCompleted = false
     try {
       const res = await fetch('/api/seo-engine/action-stream', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(llmCommandKey ? { 'Idempotency-Key': llmCommandKey } : {}) },
         body: JSON.stringify({
           kind,
           limit: kind === 'plan' ? 20 : 10,
@@ -7775,6 +7781,7 @@ const controller = new AbortController()
         signal: controller.signal,
       })
       if (!res.ok || !res.body) {
+        if (kind === 'llm') settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, 'http_error')
         const data = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(data.error || `Engine action returned ${res.status}`)
       }
@@ -7793,6 +7800,11 @@ const controller = new AbortController()
         } else if (ev.type === 'done') {
           summary = String((ev as { summary?: string }).summary || 'Engine action complete')
           if (kind === 'llm') {
+            llmCommandCompleted = !(ev as { recoverable?: boolean }).recoverable
+            settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, llmCommandCompleted ? 'completed' : 'recoverable')
+            if (llmCommandCompleted) llmAuditCommandKeyRef.current = null
+          }
+          if (kind === 'llm') {
             const rem = (ev as { result?: { remediations?: CitationRemediation[] } }).result?.remediations
             if (Array.isArray(rem)) {
               setAeoRemediations(rem)
@@ -7800,9 +7812,16 @@ const controller = new AbortController()
             }
           }
         } else if (ev.type === 'error') {
+          if (kind === 'llm') settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, 'transport_error')
           throw new Error(String(ev.error || 'Engine action failed'))
         }
       })
+      if (kind === 'llm' && !llmCommandCompleted) {
+        settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, 'pending')
+      }
+      if (llmCommandCompleted) {
+        llmAuditCommandKeyRef.current = null
+      }
       if (!summary && kind === 'ingest') {
         setEngineTrace((prev) => [...prev, { seq: 9000, phase: 'fallback', message: 'Stream ended before done — finishing ingest without live tape…', tone: 'warn' }])
         const fb = await fetch('/api/seo-engine/knowledge', {
@@ -7819,6 +7838,7 @@ const controller = new AbortController()
       if (summary) setActionNotice(summary)
       await fetchEngineStatus()
     } catch (e) {
+      if (kind === 'llm') settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.stream, 'transport_error')
       const timedOut = e instanceof Error && e.name === 'AbortError'
       const timeoutHint = kind === 'ingest'
         ? 'hung feeds were skipped'
