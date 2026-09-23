@@ -41,6 +41,25 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: "P11 #289 disposable PostgreSQL lifecycle validation"
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: postgres
+          P11_PG_LIFECYCLE: '1'
+        run: |
+          set -euo pipefail
+          cleanup() { psql -v ON_ERROR_STOP=1 -f tests/sql/p11-audit-idempotency-teardown.sql; }
+          trap cleanup EXIT
+          psql -v ON_ERROR_STOP=1 -f tests/sql/p11-audit-idempotency-bootstrap.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260922130000_p11_geo_visibility_truth.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260923120000_p11_audit_idempotency.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260923120000_p11_audit_idempotency.sql
+          npx jest --ci --runInBand --runTestsByPath tests/p11-audit-idempotency-postgres.validation.test.ts
+
       - name: Execution lease PostgreSQL lifecycle
         env:
           PGHOST: 127.0.0.1
