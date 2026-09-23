@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigsDiscoveryQueryGate } from '@/components/marketplace/GigsDiscoveryQueryGate'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
 // TRUE SSG — no `dynamic`, no ISR window, and the URL query string is never
 // parsed on the server.
@@ -31,6 +32,7 @@ export const metadata: Metadata = {
     description:
       'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.',
     type: 'website',
+    images: [MARKETPLACE_OG_IMAGE],
   },
 }
 

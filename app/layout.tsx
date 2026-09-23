@@ -123,15 +123,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body style={{ overflowX: 'clip' }}>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>
         {/* SDK version pinning: the clerk-js script URL is pinned to
-            an exact patch via the NEXT_PUBLIC_CLERK_JS_VERSION env var
-            (set in wrangler.toml). Without it, Clerk injects the
+            exact patch via NEXT_PUBLIC_CLERK_JS_VERSION, supplied to both
+            the CI build and wrangler runtime config. Without it, Clerk injects the
             major-version alias `/npm/@clerk/clerk-js@6/...` which
-            returns 307 → 6.12.1, flagging EVERY page that loads the
+            returns 307 → 6.32.0, flagging EVERY page that loads the
             SDK as "page-has-redirected-JS" in Ahrefs (~11.5k rows,
             ~71% of total issue volume). Bump the env var when
-            upgrading @clerk/nextjs to a newer clerk-js minor; the
-            package.json lockfile is the source of truth for which
-            version to pin. */}
+            upgrading @clerk/nextjs; update both pinned values together. */}
         <ClerkProvider
           afterSignOutUrl={PORTAL_URL}
           signInUrl="/sign-in/student"

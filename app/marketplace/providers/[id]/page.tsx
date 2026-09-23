@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { SellerProfilePage } from '@/components/marketplace/SellerProfilePage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import {
   assertMarketplaceEstateNonEmpty,
   assertMarketplaceServiceRoleAuthority,
@@ -220,6 +221,7 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
       title,
       description: description || `Browse fixed-price services from ${name} on YouSafe Marketplace.`,
       type: 'profile',
+      images: allowIndex ? [MARKETPLACE_OG_IMAGE] : undefined,
     },
   }
 }

@@ -4,6 +4,7 @@ import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
 import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
 import { attributionCaptureCookies } from './lib/attribution/cookies'
+import { getMarketplaceTemplatesRedirectUrl } from './lib/marketplaceTemplatesRedirect'
 import {
   createLazyRequestCookieSnapshot,
   shouldBypassClerkForAuthIndependentApiRequest,
@@ -289,6 +290,16 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
 
   if (pathname === '/sitemap.xml' || pathname === '/sitemap.xml/') {
     return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+  }
+
+  // Historical public template URLs go straight to the File Shop in one hop.
+  // The helper drops tracking keys while retaining other query parameters.
+  const templatesDestination = getMarketplaceTemplatesRedirectUrl(new URL(req.url))
+  if (templatesDestination) {
+    return withCorsHeaders(
+      withAttributionCapture(NextResponse.redirect(templatesDestination, { status: 301 }), req),
+      req,
+    )
   }
 
   if (req.nextUrl.searchParams.size > 0) {

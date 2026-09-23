@@ -5,6 +5,7 @@ import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import { LEGACY_GIG_SLUG_REDIRECTS, resolveLegacyGigRedirect } from '@/lib/gigSlugRedirects'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
@@ -230,7 +231,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         title,
         description,
         type: 'website',
-        images: cover ? [cover] : undefined,
+        images: cover ? [cover, MARKETPLACE_OG_IMAGE] : [MARKETPLACE_OG_IMAGE],
       },
       twitter: { card: 'summary_large_image', title, description, images: cover ? [cover] : undefined },
       robots: { index: true, follow: true },

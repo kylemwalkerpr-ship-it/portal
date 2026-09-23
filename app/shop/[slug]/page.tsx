@@ -12,6 +12,7 @@ import {
   getPayhipBatch1Commercial,
   getPayhipBatch1CrossSells,
 } from '@/lib/payhipBatch1Commercial'
+import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
 const SHOP_CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 
@@ -48,9 +49,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description,
       type: 'website',
       siteName: 'YouSafe Consultancy',
-      images: commercial
-        ? [{ url: commercial.cover.imageUrl, width: 1200, height: 800, alt: commercial.cover.alt }]
-        : undefined,
+      images: [
+        ...(commercial ? [{ url: commercial.cover.imageUrl, width: 1200, height: 800, alt: commercial.cover.alt }] : []),
+        MARKETPLACE_OG_IMAGE,
+      ],
     },
   }
 }
