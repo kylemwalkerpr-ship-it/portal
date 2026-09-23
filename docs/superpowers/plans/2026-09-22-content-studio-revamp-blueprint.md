@@ -1,8 +1,8 @@
 # Content Studio Revamp Implementation Blueprint
 
-**Version CS-2026.09.22.6 / blueprint 1.0 · Design handoff; implementation blocked.**
+**Version CS-2026.09.23.7 / blueprint 1.1 · Design handoff; implementation blocked.**
 
-> For agentic workers: preserve the existing Sol → Remote Desktop Commander → ds → authorized executor contract. DeepSeek is the design default; Grok or another executor requires an explicit packet grant and verified availability. Do not replace the harness. Use the execution-plan workflow task by task after program and A0 gates close. This blueprint authorizes no implementation, provider connection, schema application, outreach, merge or deployment.
+> Execution policy: Sol → native Codex Luna subagents, reasoning effort high. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a separate reviewer inspects the candidate. No automatic DeepSeek/Grok/Freebuff fallback. Use scoped implementation packets after the canonical program and A0 entry gates; this documentation update itself commissions no runtime, migration or deployment.
 
 **Goal:** build an evidence-governed SEO operating system that chooses useful interventions across YouSafe's estate, publishes safely, directs readers to relevant Marketplace supply and measures mature outcomes.
 
@@ -10,7 +10,7 @@
 
 **Tech stack:** existing TypeScript/Next.js/OpenNext control UI; Supabase/Postgres private control state; Modal Python orchestration with pinned Node domain executables; TypeSafe Jev over HTTPS; existing GitHub Actions deployment. Current versions, extensions, credentials, account limits and exact workflow IDs are discovered in A0 and committed as verified non-secret configuration.
 
-**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.22.6. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
+**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.23.7. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
 
 ## 1. Authority, evidence and start condition
 
@@ -22,6 +22,8 @@ Read in order: current authorization, applicable AGENTS.md, Supervisor Arc 33465
 - [ ] Broad CREATE remains frozen until the program's cluster authorization and per-action checks allow it.
 
 No synthetic event/backlink, model assertion, browser badge or handoff summary closes a phase. Design approval is separate from operational approval. Unavailable capabilities are `BLOCKED_CONFIGURATION` with a recovery owner; they are never guessed. No automatic paid upgrade.
+
+**Current code/gate clarification (2026-09-23):** P0–P11 code is complete to PASS per Kyle. Current main `3d916b09671ab726de2fc1aa3b87f79e7712c6ac` still carries matrix blob `0d2e1f5ed78adaf48334f87a21caa9a602e398cd`: P9–P11 program gates IN_PROGRESS and P12–P13 PENDING. Use architecture §8.1.1 and the delivery schema to record code evidence, deployment and external blockers separately; reconcile the older P11 pending-delivery row before asserting its production state. Do not repeat completed phase code or close outcome gates by renaming status.
 
 **Review focus:** a valid-looking stale object; two concurrent writers for one intent; external success followed by local timeout; a current-looking wrong-jurisdiction fact; a provider outage misreported as zero. Packets below test each explicitly.
 
@@ -57,7 +59,7 @@ flowchart TD
 | Release workflow | Protected GitHub environment + installation-scoped App key; permit transition role | Model-selected credentials, direct-main content writes, candidate modification after review |
 | Independent verifier | Bounded public fetch and provider deployment read credentials | Trusting a webhook or successful job as proof of live content |
 
-A0 chooses the exact network endpoints and credentials from real account evidence. The production ingestion plane uses service credentials and works without a chat or Mac session. MCP is the scoped agent investigation plane; its results cross the same validation/evidence boundary. Chat connector access is not inherited by ds or Modal.
+A0 chooses the exact network endpoints and credentials from real account evidence. The production ingestion plane uses service credentials and works without a chat or Mac session. MCP is the scoped agent investigation plane; its results cross the same validation/evidence boundary. Chat connector access is not inherited by Luna subagents or Modal.
 
 ## 3. Proposed module/file map
 
@@ -332,7 +334,7 @@ All 50 requested variable keys remain in the normative registry and strict snaps
 
 For each `IntegrationBinding`: approved provider/server origin, transport, pinned package/image or verified URL, secret reference, executor host, account/property/repo scope, negotiated protocol version, discovered tools/schema hashes, allowed operations, timeout, rate/cost cap, data rights and last valid probe.
 
-Order: verify official source → configure only the authorized existing ds client → initialize/tools-list → persist schemas → bounded read probe on known authorized resource → validate/ingest into source envelope → compare with direct API/export fixture → test expiry/schema drift/pagination/timeout/unauthorized write → Sol enables the binding. Tool discovery cannot grant a write; retrieved content cannot change the tool allowlist. Production credentials never copy chat OAuth tokens. No generic agent MCP proxy sits inside the Worker.
+Order: verify official source → configure only the authorized Codex Luna subagent's scoped MCP client → initialize/tools-list → persist schemas → bounded read probe on known authorized resource → validate/ingest into source envelope → compare with direct API/export fixture → test expiry/schema drift/pagination/timeout/unauthorized write → Sol enables the binding. Tool discovery cannot grant a write; retrieved content cannot change the tool allowlist. Production credentials never copy chat OAuth tokens. No generic agent MCP proxy sits inside the Worker.
 
 Each MCP observation carries tool/server/schema version, input hash, output artifact, actual account scope, timestamp and source-run ID. A conversational answer or tool success without saved provenance cannot satisfy a gate. Schema changes disable the affected adapter until fixtures pass under a new version.
 
@@ -485,8 +487,10 @@ Target tests live in `tests/content-studio-v3/` and `tests/sql/`; target worker 
 
 ~~~typescript
 interface ImplementationPacket {
-  packetId: string; revision: number; architectureVersion: "CS-2026.09.22.6";
+  packetId: string; revision: number; architectureVersion: "CS-2026.09.23.7";
   architectureSha256: string; blueprintSha256: string;
+  executorPolicy: ExecutorPolicy; phaseEvidenceRefs: string[]; // canonical schema, no local copy
+  workerBudgetEvidenceRefs: string[]; independentReviewerAgentId: string | null;
   repository: string; worktreeAbsolutePath: string; verifiedBaseSha: string;
   objective: string; allowedPaths: string[]; excludedJobs: string[];
   dependencyEvidenceIds: string[]; interfacesConsumed: string[]; interfacesProduced: string[];
@@ -497,7 +501,7 @@ interface ImplementationPacket {
 }
 ~~~
 
-The packet is a scoped work instruction, not a permission escalation. A timeout first reconciles the existing bridge/job/worktree/PR state; it does not spawn a duplicate executor. Independent parallel tasks use disjoint worktrees/conflict domains only when explicitly granted. Heavy implementation/tests stay with the authorized executor; Sol owns architecture, steering, independent review and final merge decisions. Models/accounts are probed, not assumed available.
+The packet is a scoped work instruction, not a permission escalation. A timeout first reconciles the existing Codex agent/job/worktree/PR state; it does not spawn a duplicate executor. Independent parallel tasks use disjoint worktrees/conflict domains only when explicitly granted. Heavy implementation/tests stay with the authorized executor; Sol owns architecture, steering, independent review and final merge decisions. Models/accounts are probed, not assumed available.
 
 ### 13.2 Cutover and rollback ledger
 
@@ -510,3 +514,49 @@ Proposed shadow duration is cohort completion plus 7 days of representative reco
 This document supplies the topology, schemas, method boundaries, source consumption, budgets, failure rules, UI journeys and dependency packets. Account IDs, live schema mapping and measured thresholds that require real operational evidence are explicitly A0 exits. There is no safe way to replace those probes with guessed constants or a claim of 100% guaranteed execution.
 
 The architecture/blueprint become an implementable release plan only when the canonical program and A0 gates are satisfied, the packet contains actual verified configuration, and Sol accepts its evidence. Publication/ranking/conversion outcomes remain separately measured. No production code was changed by authoring this blueprint.
+
+
+## 15. v7 Worker, runtime and executor implementation delta
+
+Use architecture §§6.7–6.9, 7.2.1 and 8.1.1 as normative additions. The delivery contract is `docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json`; the dated phase snapshot and current executor policy are `2026-09-23-content-studio-delivery-state.json` alongside it. These are documentation/configuration contracts, not applied migrations.
+
+### 15.1 Schema mapping additions
+
+| Logical mapping | Required constraint / consumer |
+|---|---|
+| Phase evidence events + current projection | project+phase; immutable source/proof refs; separate code/deployment/program status; never writable as an alternate gate |
+| StudioRunEnvelope → existing run authority | project+run 1:1, actor issuer/subject server-derived, unique actor-scoped command key + request hash; no parallel generic job scheduler |
+| studio_run_events → existing sequenced domain events where available | unique(project,run,sequence), append+projection transaction, gap replay, redacted detail artifact; do not reuse transport delivery receipts as progress |
+| executor policy in ImplementationPacket | CODEX_LUNA, high, CODEX_SUBAGENTS, no automatic fallback, actual model ID/capacity, disjoint writer paths, independent reviewer |
+| route budget evidence registry | build/route/auth cohort/cache/key state, telemetry source/window/count/coverage, CPU p95/p99/max, resource outcomes, bytes/subrequests, release verdict |
+
+No `actor_email` in Queue messages or permission keys. Canonical schemas generate validator/types/UI projections in A1. Legacy Run/content lifecycle decoders remain readable. Do not silently rename production tables to these logical names.
+
+### 15.2 First runtime slices and order
+
+After program entry and all A0 prerequisites, implement A1 contracts/policy/permit kernel, then A2 durable commands, events, artifacts and budgets. A2.4 is the **Ingest canary**: adapt both legacy action-stream and knowledge entry points to the same admitted run; remove disconnect-triggered whole-ingest retry; persist per-source checkpoints; add reconnectable Tape over existing UI. Prove one effective result under lost response, double-click, reconnect and worker crash. Migrate Planner (A2.5), then GSC sync/scoring (A2.6); migrate the remaining §6.9 actions in scoped packets after their dependencies pass. This runtime sequence precedes broad UI replacement and changes no public hostname initially.
+
+Target additions, subject to A0 path reconciliation: `lib/contentStudioV3/runtime/{runEnvelope,runEvents,actionRegistry}.ts`; `lib/contentStudioV3/auth/{verifySession,authorizeAction}.ts`; `workers/studio-control/` only if the measured runtime split is selected; `workers/content_studio/transport/` for commissioned delivery adapters; `tests/content-studio-v3/{reconnect,auth-cpu-contract,queue-recovery}.test.ts`. No fake test should assert CPU from a mocked timer: real deployed telemetry supplies performance evidence.
+
+Modal/Postgres outbox is the default. A Queue option gets its own capability record, measured canary, retry/ack/redrive contract and operation budget; it does not bypass the same stage RPC/fence. Transport fallback is configured and observable, with a single dispatch owner. Production artifact verification and backups still depend on Modal, so running one task on Queues is not full Modal outage independence.
+
+### 15.3 Acceptance additions
+
+| ID | Required proof | First dependent packet |
+|---|---|---|
+| T25 | Anonymous public/static and protected-denial, signed-in non-admin/admin/cross-project, cold/warm/rotated key paths meet total invocation CPU targets; no auth/role bypass or private cache leak | A0.2 baseline; A2.4/A5 promotion |
+| T26 | Lost 202 or repeated Tape/SSE disconnect reuses original run/key; same key+different bytes returns409; no legacy knowledge fallback executes again | A2.4 |
+| T27 | Sequenced event replay detects gaps, rejects cross-project reads, shows real terminal/cancel state after browser close; no false published badge | A2.4/A5.2 |
+| T28 | If Queue enabled: crash at send/ack/DB boundaries, duplicate delivery, expired retention, DLQ/redrive and quota exhaustion remain recoverable with one authority and real cost | Queue canary |
+| T29 | Code PASS + gate IN_PROGRESS remains blocked for dependent publication/CREATE; user-confirmed code evidence is labelled; no phase reset or fake external proof | A1.1/A1.2 |
+| T30 | Packet admits Luna/high only; unavailable capability blocks, writer/reviewer IDs differ; shared schema conflicts serialize; model substitution is rejected | Every refactor packet |
+
+Performance must include auth and framework overhead, max supported input, per-cohort statistics and telemetry coverage. An observed request ≥10ms or resource-limit outcome holds Free-plan promotion. Lower payload/work bounds or change the measured runtime boundary; never skip auth or rely on provider burst tolerance. Keep error1027/request quotas and error1102/resource outcomes separate. Local timing and a green unit suite do not certify Cloudflare CPU.
+
+### 15.4 Sol/Luna operating contract
+
+Sol verifies the available Codex model registry and pins Luna with high reasoning effort in every assignment. Initial concurrency ≤3 and no more than available slots; one writer per conflict domain; dependencies serialize. Separate reviewer can use the same Luna model family but must be a distinct agent and independently inspect evidence; Sol remains responsible for acceptance. Runtime generation/Jev/Modal provider bindings are not replaced with interactive coding subagents.
+
+Each packet names objective, base SHA, worktree, allowed/excluded paths, predecessor evidence, model+effort, tests, CPU evidence requirements, publication authority, review owner and next checkpoint. If the tool cannot grant Luna/high, report BLOCKED_CAPABILITY and continue independent authorized documentation/review only; never switch to the old harness. Preserve current external sessions and jobs. User-facing updates distinguish code ready, deployed, externally verified and program closed.
+
+The prior kickoff handoff's unconditional A0 operational probes while the global program gate remained closed were inconsistent with v6. Corrected handoff begins with source/document/readiness reconciliation; operational A0 and code wait for applicable entry authorization. A narrowly scoped exception must be explicit and preserve every publication/SEO gate.

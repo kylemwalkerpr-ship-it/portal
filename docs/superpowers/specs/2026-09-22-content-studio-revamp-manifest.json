@@ -1,64 +1,61 @@
 {
-  "schemaVersion": "studio.architecture-manifest/1",
-  "architectureVersion": "CS-2026.09.22.6",
-  "designStatus": "APPROVED",
-  "implementationStatus": "BLOCKED",
+  "architectureVersion": "CS-2026.09.23.7",
+  "date": "2026-09-23",
   "repository": "kylemwalkerpr-ship-it/portal",
   "branch": "content-studio-revamp",
-  "sourceHead": "8dfcbcd17c0afe381b2e5a47209131602b6c1770",
-  "programEvidence": {
-    "mainSha": "4b0a310f22a43e532c2f16ce08df3897d760caf4",
-    "parityBlobSha": "0d2e1f5ed78adaf48334f87a21caa9a602e398cd",
-    "states": {
-      "P0": "PASS",
-      "P1": "PASS",
-      "P2": "PASS",
-      "P3": "PASS",
-      "P4": "PASS",
-      "P5": "PASS",
-      "P6": "PASS",
-      "P7": "PASS",
-      "P8": "PASS",
-      "P9": "IN_PROGRESS",
-      "P10": "IN_PROGRESS",
-      "P11": "IN_PROGRESS",
-      "P12": "PENDING",
-      "P13": "PENDING"
-    },
-    "isLiveProbe": false
-  },
-  "hashDomain": "sha256-exact-file-bytes",
+  "parentCommit": "c23ed7e4c687eeca59933e46e1e37e796afea681",
+  "programEvidenceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac",
   "files": [
     {
       "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
-      "localFilename": "Content-Studio-SEO-Architecture.md",
-      "bytes": 237791,
-      "sha256": "b35a9da4a2a86323ac4f7e6658a158ec331e2c95a70279ca097310a63ce30042"
+      "bytes": 258090,
+      "sha256": "b93a5a412f1a3c8f3ce0b65c04c1ce0ec7caa75dada9526a9dfa6eabdc3d361c"
     },
     {
       "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
-      "localFilename": "Content-Studio-Implementation-Blueprint.md",
-      "bytes": 78119,
-      "sha256": "1782a0096685d3868b1939246265eb81b47fdf727913f049eda11b92fd3e7007"
+      "bytes": 85347,
+      "sha256": "3e02c19260388e13ee42e92f2c9e27f39dbb2757fb77043ec611b3850f1bfc39"
     },
     {
       "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
-      "localFilename": "Content-Studio-Final-Architecture-Audit.md",
-      "bytes": 13036,
-      "sha256": "14e03adda23350e05be0065e5b2d42410f561153459c18b9ea50dab7e2882471"
+      "bytes": 16939,
+      "sha256": "398df9477f6e8bebd3949e92dda6d79ac6aeb770e02e6a945a2cc40707230e0e"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
+      "bytes": 11764,
+      "sha256": "36305be29777cec3e14932fc6d5bfd1e704f0ee1239c81327a1d37777967ee1e"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
+      "bytes": 14995,
+      "sha256": "2390c76cf88e17b16fb111d9aef67e3a0eda7b82f4573eddd73cf1df98de78f7"
+    },
+    {
+      "path": "docs/superpowers/content-studio-execution-policy.md",
+      "bytes": 3408,
+      "sha256": "006dd8a88aad12c5cc4576215bdd79162111c4cff1d31a04db259a4348b28738"
+    },
+    {
+      "path": "docs/superpowers/content-studio-kickoff.md",
+      "bytes": 4055,
+      "sha256": "560b255f8ffd909f4bd3380242a6771f198026a09272f29830d0f17fbe2287ac"
     },
     {
       "path": "docs/superpowers/content-studio-revamp.md",
-      "localFilename": "Content-Studio-Revamp-Pointer.md",
-      "bytes": 1263,
-      "sha256": "cc7feee2f15eacca06964a71b62d64a1880f3c1adfb0c1296abcaa3ab5a9c22b"
+      "bytes": 903,
+      "sha256": "b0c17d47217c2d7c0c59360e9d77c5399738984b192f4d0f5d9a6e1cb896081a"
     }
   ],
-  "selfDigestExcluded": true,
-  "executionRequires": [
-    "Current canonical program closure",
-    "Explicit Sol implementation packet",
-    "Required A0 exits",
-    "Scoped review and operational authorization"
-  ]
+  "validation": {
+    "schema": "PASS",
+    "state": "PASS",
+    "negativeFixtures": 9,
+    "phaseSeparation": "PASS",
+    "sections": 28,
+    "uniqueInterfaces": 28,
+    "variables": 50,
+    "runtimePerformance": "UNVERIFIED"
+  },
+  "note": "Hashes cover file bytes, not this manifest itself. Runtime performance UNVERIFIED; no gate promotion."
 }

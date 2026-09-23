@@ -1,3 +1,39 @@
+# Content Studio — v7 architecture amendment audit
+
+Date: 23 September 2026. Input: CS-2026.09.22.6 at `c23ed7e4c687eeca59933e46e1e37e796afea681`. Corrected design: **CS-2026.09.23.7**.
+
+**Verdict: documentation amendment ready; runtime performance UNVERIFIED and implementation entry still gated.** No code, database migration, provider provisioning, production probe, phase promotion or deployment was performed by this amendment.
+
+## Evidence and decisions
+
+The attached Sol conversation (`Pasted markdown(1).md`) was read in full. It is an investigation source, not fresh runtime proof. Current Portal main was read at `3d916b09671ab726de2fc1aa3b87f79e7712c6ac`; parity blob `0d2e1f5ed78adaf48334f87a21caa9a602e398cd` preserves open outcomes. The user's P0–P11 code-PASS correction is retained separately. A read-only Luna/high review assessed the worker boundary; the primary author checked and integrated its findings.
+
+| Finding | Correction | Required implementation proof |
+|---|---|---|
+| F21: async framework advice could replace Modal with a second scheduler | Retain Modal primary; one Postgres run authority; Queue optional IDs-only transport or measured bounded canary | Account capability, idempotency, durable acknowledgement, retention recovery and quota tests |
+| F22: endpoint-only CPU measurements can omit auth/SSR costs | Total invocation budget; public allowlist vs protected routes; Clerk verification and current scope checks; cohort-specific telemetry | T25 and A0.6 measurements; all observed invocations <10ms, target percentiles and zero resource errors |
+| F23: SSE disconnect may relaunch ingestion | Durable admission, same-key recovery, sequenced stored Tape events; remove legacy synchronous fallback | T26/T27 dropped response, disconnect, replay and concurrent retry tests |
+| F24: generic execution status confused with editorial lifecycle | One-to-one StudioRunEnvelope and append-only event projection; content_jobs and seo_engine_runs retain separate meanings | Mapping/cutover evidence and no duplicate run authority |
+| F25: old executor defaults conflict with user direction | Sol supervises; native Luna/high executes; independent review; no provider fallback | T30 packet/capability checks; existing external jobs untouched |
+| F26: code PASS confused with gate PASS and kickoff bypassed program hold | Separate code/deployment/program fields; provenance and typed blockers; read-only kickoff until eligible | T29; P11 delivery reconciliation; no automatic gate promotion |
+
+## Verification scope
+
+Document checks validate JSON Schema and its dated state fixture, required phase keys, Luna/high constants, prohibition of fallback, architecture section/interface uniqueness and preservation of the 50 requested variables. Negative fixtures reject wrong executor/effort, unknown fields, missing phases and mismatched phase keys. A valid code-PASS/gate-IN_PROGRESS fixture is intentionally accepted; runtime eligibility must still use canonical gate evidence. Schema validation is not an authorization engine.
+
+The v6 findings F01–F20 below remain applicable and preserved as historical audit evidence. Their dates and source pins are not newly verified production facts. New runtime T25–T30 tests are specified, not executed. CPU targets, account quotas, auth costs, current P11 delivery and operational A0 exits remain unverified unless separately evidenced.
+
+## Official references consulted
+
+- https://developers.cloudflare.com/workers/platform/limits/
+- https://developers.cloudflare.com/queues/platform/limits/
+- https://developers.cloudflare.com/queues/platform/pricing/
+- https://developers.cloudflare.com/workflows/reference/limits/
+- https://clerk.com/docs/reference/backend/authenticate-request
+- https://clerk.com/docs/guides/sessions/manual-jwt-verification
+
+## Historical v6 audit (preserved; superseded only by explicit v7 corrections)
+
 # Content Studio — final architecture audit
 
 **Audit date:** 22 September 2026. **Input:** CS-2026.09.22.5. **Corrected design:** CS-2026.09.22.6.

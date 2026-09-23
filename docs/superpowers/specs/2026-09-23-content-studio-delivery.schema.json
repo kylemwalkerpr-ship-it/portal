@@ -1,0 +1,557 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Content Studio delivery evidence and executor policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "architectureVersion",
+    "executorPolicy",
+    "workerBudget",
+    "phaseSnapshot"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "studio.delivery/1"
+    },
+    "architectureVersion": {
+      "const": "CS-2026.09.23.7"
+    },
+    "executorPolicy": {
+      "$ref": "#/$defs/executorPolicy"
+    },
+    "workerBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpuTargetExclusiveMs",
+        "p95TargetMs",
+        "p99TargetMs",
+        "performanceStatus",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "cpuTargetExclusiveMs": {
+          "const": 10
+        },
+        "p95TargetMs": {
+          "const": 2.5
+        },
+        "p99TargetMs": {
+          "const": 5
+        },
+        "performanceStatus": {
+          "enum": [
+            "UNVERIFIED",
+            "PASS",
+            "FAIL",
+            "INSUFFICIENT_EVIDENCE"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "performanceStatus": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidenceRefs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "phaseSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "P0",
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5",
+        "P6",
+        "P7",
+        "P8",
+        "P9",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "properties": {
+        "P0": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P0"
+                }
+              }
+            }
+          ]
+        },
+        "P1": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P1"
+                }
+              }
+            }
+          ]
+        },
+        "P2": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P2"
+                }
+              }
+            }
+          ]
+        },
+        "P3": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P3"
+                }
+              }
+            }
+          ]
+        },
+        "P4": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P4"
+                }
+              }
+            }
+          ]
+        },
+        "P5": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P5"
+                }
+              }
+            }
+          ]
+        },
+        "P6": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P6"
+                }
+              }
+            }
+          ]
+        },
+        "P7": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P7"
+                }
+              }
+            }
+          ]
+        },
+        "P8": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P8"
+                }
+              }
+            }
+          ]
+        },
+        "P9": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P9"
+                }
+              }
+            }
+          ]
+        },
+        "P10": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P10"
+                }
+              }
+            }
+          ]
+        },
+        "P11": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P11"
+                }
+              }
+            }
+          ]
+        },
+        "P12": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P12"
+                }
+              }
+            }
+          ]
+        },
+        "P13": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "const": "P13"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "codeStatus",
+        "codeEvidenceBasis",
+        "codeEvidenceRefs",
+        "codeClaimedAt",
+        "deploymentStatus",
+        "deploymentEvidenceRefs",
+        "programGateStatus",
+        "gateEvidenceRefs",
+        "blockers",
+        "verifiedAt",
+        "reportedAt",
+        "sourceCommit"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+            "P4",
+            "P5",
+            "P6",
+            "P7",
+            "P8",
+            "P9",
+            "P10",
+            "P11",
+            "P12",
+            "P13"
+          ]
+        },
+        "codeStatus": {
+          "enum": [
+            "PENDING",
+            "IN_PROGRESS",
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ]
+        },
+        "codeEvidenceBasis": {
+          "enum": [
+            "REPOSITORY_VERIFIED",
+            "USER_CONFIRMED",
+            "BOTH",
+            "UNVERIFIED"
+          ]
+        },
+        "codeEvidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "codeClaimedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deploymentStatus": {
+          "enum": [
+            "NOT_DEPLOYED",
+            "DEPLOYED",
+            "PARTIAL",
+            "UNKNOWN"
+          ]
+        },
+        "deploymentEvidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "programGateStatus": {
+          "enum": [
+            "PENDING",
+            "IN_PROGRESS",
+            "PASS",
+            "ACCEPTED_EXCEPTION",
+            "BLOCKED_EXTERNAL",
+            "FAIL"
+          ]
+        },
+        "gateEvidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "description",
+              "owner",
+              "closesWith",
+              "evidenceRefs"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "EXTERNAL_OUTCOME",
+                  "PROVIDER_ACCESS",
+                  "DELIVERY",
+                  "OBSERVATION_WINDOW",
+                  "CODE",
+                  "EVIDENCE_RECONCILIATION"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "owner": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "closesWith": {
+                "type": "string"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "verifiedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reportedAt": {
+          "type": "string"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "codeStatus": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "codeEvidenceRefs": {
+                "minItems": 1
+              },
+              "codeEvidenceBasis": {
+                "enum": [
+                  "REPOSITORY_VERIFIED",
+                  "USER_CONFIRMED",
+                  "BOTH"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "programGateStatus": {
+                "enum": [
+                  "PASS",
+                  "ACCEPTED_EXCEPTION"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "gateEvidenceRefs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "executorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "supervisor",
+        "executor",
+        "reasoningEffort",
+        "transport",
+        "automaticFallback",
+        "modelId",
+        "maxConcurrentAgents",
+        "requireIndependentReview",
+        "mergeAuthority"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "studio.executor-policy/1"
+        },
+        "supervisor": {
+          "const": "GPT_SOL"
+        },
+        "executor": {
+          "const": "CODEX_LUNA"
+        },
+        "reasoningEffort": {
+          "const": "high"
+        },
+        "transport": {
+          "const": "CODEX_SUBAGENTS"
+        },
+        "automaticFallback": {
+          "const": false
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxConcurrentAgents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "requireIndependentReview": {
+          "const": true
+        },
+        "mergeAuthority": {
+          "const": "GPT_SOL"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,352 @@
+{
+  "schemaVersion": "studio.delivery/1",
+  "architectureVersion": "CS-2026.09.23.7",
+  "executorPolicy": {
+    "schemaVersion": "studio.executor-policy/1",
+    "supervisor": "GPT_SOL",
+    "executor": "CODEX_LUNA",
+    "reasoningEffort": "high",
+    "transport": "CODEX_SUBAGENTS",
+    "automaticFallback": false,
+    "modelId": "gpt-6-luna",
+    "maxConcurrentAgents": 3,
+    "requireIndependentReview": true,
+    "mergeAuthority": "GPT_SOL"
+  },
+  "workerBudget": {
+    "cpuTargetExclusiveMs": 10,
+    "p95TargetMs": 2.5,
+    "p99TargetMs": 5,
+    "performanceStatus": "UNVERIFIED",
+    "evidenceRefs": []
+  },
+  "phaseSnapshot": {
+    "P0": {
+      "phase": "P0",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "UNKNOWN",
+      "deploymentEvidenceRefs": [],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P1": {
+      "phase": "P1",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P2": {
+      "phase": "P2",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P3": {
+      "phase": "P3",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P4": {
+      "phase": "P4",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P5": {
+      "phase": "P5",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P6": {
+      "phase": "P6",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P7": {
+      "phase": "P7",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P8": {
+      "phase": "P8",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "PASS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P9": {
+      "phase": "P9",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "IN_PROGRESS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [
+        {
+          "id": "p9-live-backlink",
+          "kind": "EXTERNAL_OUTCOME",
+          "description": "No verified live third-party backlink win recorded.",
+          "owner": null,
+          "closesWith": "Independent live backlink verification meeting the canonical P9 gate.",
+          "evidenceRefs": [
+            "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+          ]
+        }
+      ],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P10": {
+      "phase": "P10",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "DEPLOYED",
+      "deploymentEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "programGateStatus": "IN_PROGRESS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [
+        {
+          "id": "p10-real-order-paid",
+          "kind": "EXTERNAL_OUTCOME",
+          "description": "Required real production order_paid event for us_f1_opt is absent.",
+          "owner": null,
+          "closesWith": "Real qualified production event and canonical gate verification; no synthetic gate credit.",
+          "evidenceRefs": [
+            "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+          ]
+        }
+      ],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P11": {
+      "phase": "P11",
+      "codeStatus": "PASS",
+      "codeEvidenceBasis": "BOTH",
+      "codeEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md",
+        "user-confirmation:2026-09-23:P0-P11-code-complete-PASS"
+      ],
+      "codeClaimedAt": "2026-09-23",
+      "deploymentStatus": "UNKNOWN",
+      "deploymentEvidenceRefs": [],
+      "programGateStatus": "IN_PROGRESS",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [
+        {
+          "id": "p11-delivery-reconciliation",
+          "kind": "EVIDENCE_RECONCILIATION",
+          "description": "Older row records passing local code/tests but outstanding merge, migration, deployment and live proof; newer code-completion report does not prove delivery.",
+          "owner": null,
+          "closesWith": "Reconcile exact commits, CI, migration receipts, production deployment and required current GEO observations.",
+          "evidenceRefs": [
+            "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+          ]
+        }
+      ],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P12": {
+      "phase": "P12",
+      "codeStatus": "PENDING",
+      "codeEvidenceBasis": "UNVERIFIED",
+      "codeEvidenceRefs": [],
+      "codeClaimedAt": null,
+      "deploymentStatus": "UNKNOWN",
+      "deploymentEvidenceRefs": [],
+      "programGateStatus": "PENDING",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    },
+    "P13": {
+      "phase": "P13",
+      "codeStatus": "PENDING",
+      "codeEvidenceBasis": "UNVERIFIED",
+      "codeEvidenceRefs": [],
+      "codeClaimedAt": null,
+      "deploymentStatus": "UNKNOWN",
+      "deploymentEvidenceRefs": [],
+      "programGateStatus": "PENDING",
+      "gateEvidenceRefs": [
+        "https://github.com/kylemwalkerpr-ship-it/portal/blob/3d916b09671ab726de2fc1aa3b87f79e7712c6ac/docs/superpowers/seo-parity-matrix.md"
+      ],
+      "blockers": [],
+      "verifiedAt": "2026-09-23",
+      "reportedAt": "2026-09-23",
+      "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
+    }
+  }
+}

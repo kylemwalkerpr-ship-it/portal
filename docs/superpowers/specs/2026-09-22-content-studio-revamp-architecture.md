@@ -1,10 +1,10 @@
 # Content Studio Revamp — Master Architecture (Strangler Migration)
 
-**Version CS-2026.09.22.6** · Normative master design · **Astra design audit: APPROVED; implementation remains BLOCKED**
-Owner: Kyle · Architecture and release authority: GPT Sol · Default heavy executor: DeepSeek through the existing ds bridge
-Supersedes CS-2026.09.22.5 at architecture branch head `8dfcbcd17c0afe381b2e5a47209131602b6c1770`, exact input SHA-256 `93d64ed33b40fa2e459b1d9f172e1cf8fb1b775bbdc404529713364766ee8e30`. Earlier revisions are historical. `docs/superpowers/content-studio-revamp.md` remains a non-normative pointer. This file is the sole normative architecture; the companion `docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md` translates it into implementation packets without independent policy authority. The audit record is `docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md`.
+**Version CS-2026.09.23.7** · Normative master design · **Astra design audit: APPROVED; implementation remains BLOCKED**
+Owner: Kyle · Architecture and release authority: GPT Sol · Refactor executors: Luna Codex subagents at high reasoning effort
+Supersedes CS-2026.09.22.6 at architecture branch head `c23ed7e4c687eeca59933e46e1e37e796afea681`, exact input SHA-256 `b35a9da4a2a86323ac4f7e6658a158ec331e2c95a70279ca097310a63ce30042`. Earlier revisions are historical. `docs/superpowers/content-studio-revamp.md` remains a non-normative pointer. This file is the sole normative architecture; the companion `docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md` translates it into implementation packets without independent policy authority. The audit record is `docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md`.
 
-Approval means the design corrections are accepted for the gated implementation sequence. It is not a claim that live capabilities, reviewer availability, phase outcomes, runtime safety or account budgets have passed. Sol retains implementation supervision and merge authority; DeepSeek executes through the existing bridge, with Grok only when granted and available.
+Approval means the design corrections are accepted for the gated implementation sequence. It is not a claim that live capabilities, reviewer availability, phase outcomes, runtime safety or account budgets have passed. Sol retains implementation supervision and merge authority; Luna Codex subagents at high reasoning effort execute the refactor. Sol delegates bounded packets and independently reviews integration; no DeepSeek, Grok or Freebuff fallback is authorized for this refactor.
 
 Changing this document is **not** implementation. Nothing here connects providers, creates accounts, provisions Modal, applies migrations, seeds data, installs MCPs, schedules jobs, publishes content, unlocks CREATE, performs outreach, merges code or deploys production. Implementation starts only through bounded Sol packets after the required A0 exits in §24.
 
@@ -35,14 +35,16 @@ Build an intelligence-led editorial operating system that improves qualified aud
 The end-state architecture is a **strangler migration**: a thin Cloudflare/OpenNext control and read plane, authoritative durable Supabase/Postgres control state, a Modal durable compute plane, a single Semantic Fabric, a bounded Jev decision plane, an independent release/merge authority, and selective replacement or retirement of legacy subsystems after demonstrated parity. The current system is the **migration source and safety baseline, not a permanent dependency** — and not something to be discarded in a clean-sheet rewrite (§3).
 
 ### 1.2 Authority order
-Current human authorization → repository `AGENTS.md` and approved design → Supervisor Arc v2026.09.21.1 → SEO Brief and the current repository parity matrix → this document. Conflicts block the affected action. This document does not amend phase thresholds and does not authorize broad CREATE, outreach, destructive action, merges or deployments by itself.
+Current human authorization → repository `AGENTS.md` and approved design → Supervisor Arc current Luna execution policy → SEO Brief and the current repository parity matrix → this document. Conflicts block the affected action. This document does not amend phase thresholds and does not authorize broad CREATE, outreach, destructive action, merges or deployments by itself.
 
 ### 1.3 Current-state honesty (binding)
 - Audit source: v5 at `8dfcbcd17c0afe381b2e5a47209131602b6c1770`, hash above; Hjarni 34785 matched its exact bytes. This revision changes documentation only.
-- Current program evidence read on 2026-09-22: Portal `main` rechecked at `4b0a310f22a43e532c2f16ce08df3897d760caf4`, `docs/superpowers/seo-parity-matrix.md`, blob `0d2e1f5ed78adaf48334f87a21caa9a602e398cd`. **P0–P8 are recorded PASS; P9, P10 and P11 are IN_PROGRESS; P12–P13 are PENDING.** P11 implementation is in progress and does not claim the production/live-observation gate passed. P9 records zero independently verified backlink wins. P10 implementation/migration/deployment is recorded complete, but the program gate awaits a real production `order_paid` for `us_f1_opt`; the recorded production event count is zero. This is verification of repository records, not a new live production probe.
+- Historical v6 program evidence read on 2026-09-22: Portal `main` rechecked at `4b0a310f22a43e532c2f16ce08df3897d760caf4`, `docs/superpowers/seo-parity-matrix.md`, blob `0d2e1f5ed78adaf48334f87a21caa9a602e398cd`. **P0–P8 are recorded PASS; P9, P10 and P11 are IN_PROGRESS; P12–P13 are PENDING.** P11 implementation is in progress and does not claim the production/live-observation gate passed. P9 records zero independently verified backlink wins. P10 implementation/migration/deployment is recorded complete, but the program gate awaits a real production `order_paid` for `us_f1_opt`; the recorded production event count is zero. This is verification of repository records, not a new live production probe.
 - The incoming handoff's “P10 passed/closed; only P11–P13 remain” conflicts with that matrix and is not adopted. Hjarni SEO Brief 34332 still contains older P8/P9 checkpoints. Do not rewrite their historical evidence or silently advance phases. Re-pin the canonical matrix at execution start and resolve any new discrepancy before acting.
 - Architecture authoring/review is permitted now. Content Studio implementation, including operational A0 probes/provisioning, starts only after the remaining canonical SEO phase gates close and Sol opens the corresponding packet. A0 reconciliation exits then gate A1–A7. P13 completion is not a universal CREATE permit: each cluster and each action still requires explicit eligibility.
 - Live schema, effective privileges, extensions, account entitlements, reviewer capacity, billing, Cloudflare telemetry, and provider credentials remain **A0_UNVERIFIED**. Historical repository counts in §4 are dated v5 evidence, not a refreshed inventory.
+
+**v7 current-state amendment (2026-09-23):** Kyle confirms P0–P11 code complete to PASS; distinguish code acceptance from deployment and external/outcome gates. Current main was re-pinned to `3d916b09671ab726de2fc1aa3b87f79e7712c6ac`; the matrix blob is unchanged and retains P9/P10/P11 IN_PROGRESS. §8.1.1 defines provenance and remaining evidence. Do not redo accepted code merely because a program gate is open. This revision updates documentation and executor standing orders; it starts no refactor job or production mutation.
 
 ### 1.4 Scope boundaries
 - Do not touch `MARKET-PORTAL-AUTH-HANDOFF-1102` or sibling jobs/worktrees; other lanes own them.
@@ -620,6 +622,53 @@ The admission model reserves request capacity for interactive use and safe state
 - Targets may be revised only with measured evidence and Sol approval. Raising plan limits is never the primary remedy.
 - **Independent kill switches** (separate flags, separately owned, tested) stop: new dispatch/enqueue, Modal runners, release-permit issuance, and outbound notifications. Stopping one never requires stopping the others. Kill switch state is visible in Operations and in every run's audit trail.
 
+### 6.7 Authenticated and anonymous requests: one measured CPU envelope
+
+**Target on the verified Workers Free account: total request CPU strictly below 10 ms.** The proposed promotion budgets remain p95 ≤2.5 ms and p99 ≤5 ms; every observed request must be below 10 ms, with zero `exceededCpu`, `exceededMemory` or 1102 outcomes. These are release acceptance requirements, not a claim about today's app or a guarantee for every future request. Measure the entire invocation, including middleware/auth, routing, validation, JSON parsing/serialization and framework work. Wall time is separate; timing `fetch()` or a handler with `performance.now()` is not Cloudflare CPU evidence.
+
+| Request cohort | Permitted fast path | Required protection and measurement |
+|---|---|---|
+| Anonymous public static asset/page | Explicit public-route allowlist; static asset delivery before unnecessary framework/auth initialization | Only content already public; report actual Worker invocation/cache route; never bypass a protected route because a cookie is missing |
+| Anonymous Studio API/page request | Bounded denial or existing sign-in redirect | API returns 401; page redirect preserves validated local return path; no provider call, private projection or heavy import |
+| Authenticated non-admin | Verify session, then deny unauthorized Studio scope | 403, no private object disclosure; supported client/provider roles tested separately |
+| Authorized Studio admin | Verify session once per trust boundary, check current project/action permission, one bounded DB transition/read, respond | No per-request full user/profile hydration; `private, no-store`; server derives actor identity; mutation origin/CSRF protection |
+| Invalid/expired/wrong issuer/audience/authorized party token | Supported verifier rejects | 401 or bounded session recovery; no repeated automatic job submission |
+| Unknown signing key / key rotation / revoked privilege | Bounded key refresh and current authorization check | Single-flight refresh with finite timeout; failure closes access; cold key-cache path included in CPU and latency evidence |
+
+Use the installed Clerk SDK's supported verification path with pinned issuer, allowed algorithms, expiry/not-before, audience where required and authorized-party checks appropriate to this app. Cache only public verification keys according to the supported refresh/rotation contract; never cache a successful authorization result as a global user decision. Request-local reuse avoids verifying the same token repeatedly in one boundary. A downstream private Worker must verify its own authenticated service capability or session; browser-supplied role/actor headers are never trusted. Do not replace Clerk with homemade JWT decoding. JWT validity alone does not prove current admin/project permission: check the authoritative permission projection within its documented revocation bound, and recheck sensitive transitions transactionally.
+
+Keep the existing Portal hostname and entry paths during the first runtime split. Route only the approved Studio API prefix to a small dedicated control Worker if measured OpenNext/SSR/auth overhead cannot meet the budget. Verify exact same-origin routing, cookie/path/SameSite behavior, Clerk authorized parties, preflight, signed-in redirects and deployment ownership. A separate Worker does not itself create a larger HTTP CPU allowance. Public shell/static caching is allowed only after proving it contains no private HTML, cookies or user state; user data remains authorized and uncached. Conditional requests/304 still authenticate before returning private metadata.
+
+Bound normal control routes to one DB RPC/query after verification, ≤5 external subrequests including key refresh/redirects, and ≤2 simultaneous outbound connections (stricter than provider ceilings). Exceptional routes need an explicit measured budget. Validate actual streamed input bytes before parsing; 64 KiB command and 48 KiB draft-chunk caps are ceilings, not proof of CPU safety—lower per-route limits when profiling requires it. Persisted list/event projections must also meet CPU limits at maximum allowed bytes. Prefer stored counts and indexed keyset pages to per-request aggregations or full-estate scans. Rate-limit abusive denial/refresh paths without creating a second heavy synchronous workflow.
+
+Test each cohort separately across warm/cold isolates, warm/cold/rotated keys, response/cache states, maximum supported payload, reconnect, logout/login, and 401/403/429/503 outcomes. Include Portal HTML/RSC/data requests touched by the Studio journey; a fast API cannot hide slow signed-in SSR. Use the existing 24-hour/10,000-request canary and staging load window, with at least 200 labelled requests per applicable cohort and 30 forced cold/key-refresh cases in staging. A statistically inadequate cohort is INSUFFICIENT, not PASS. Report source, sample coverage, dropped/sampled logs, build/route/role and observed maximum; sampled telemetry cannot establish an absolute maximum for unseen traffic. If account telemetry cannot prove a required field, acceptance remains blocked on that field.
+
+### 6.8 Selecting from the Sol runtime audit
+
+Accepted: split control from execution; preserve the Portal shell first; migrate Ingest → Planner → GSC before other heavy actions; reuse the existing policy/lease/evidence core; remove SSE-disconnect fallback re-execution; keep `content_jobs` as content lifecycle and `seo_engine_runs` as analysis results. Durable execution has one authority. The attachment's line counts and failure traces are reported investigation findings pending current-repo reproduction, not fresh production measurements.
+
+**Modal remains the primary execution plane for this architecture.** Cloudflare Queues is an optional delivery adapter or a separately approved bounded deterministic canary, not a second run authority or an automatic replacement for Modal. The Queue product page advertises a larger consumer envelope while general Workers/account configuration has plan-specific restrictions; verify the actual workspace deployment, supported configuration and observed limits before relying on them. Do not copy `cpu_ms=300000` into the Free HTTP Worker. Workflows Free's published per-step 10 ms CPU is not a heavy-compute escape hatch. `maxDuration`, a longer frontend timeout and `waitUntil()` do not make request-owned jobs durable.
+
+For a commissioned Queue adapter: commit run+stage+outbox first; an off-request dispatcher sends only `{eventId, projectId, runId, stageId, inputHash, authorityEpoch}` (≤2 KiB, no credentials, draft or actor email). Reconcile ambiguous sends by the durable event ID. A consumer validates the binding/project/epoch and atomically deduplicates and claims via Postgres; it never trusts the message as authorization. Ack only after a durable receipt/checkpoint or durable downstream dispatch intent; a crash after ack is recoverable from that intent. Duplicate/redelivered messages may cause extra physical attempts but at most one effective stage transition. Configure explicit bounded retries and DLQ; the DB retains redrive/error evidence beyond queue retention. Inspect current authority/lease before redrive, never replay a completed or cancelled stage blindly.
+
+Free Queue documentation currently lists 10,000 operations/day and 24-hour retention. A simple delivered message normally uses write+read+delete operations; retries/DLQ add cost, so 10,000 operations is not 10,000 jobs. Propose an 80% operational admission ceiling after other account usage, reserve recovery headroom and reconcile DB due work before message expiry. The already-defined Modal outbox dispatcher remains the default when Queue capability is uncommissioned; transport changes require one fenced owner and cannot dispatch a second concurrent copy under another authority. A pull consumer is another transport option, not an HTTP CPU increase.
+
+### 6.9 Action placement and first proof
+
+| Action | Placement | Closure evidence |
+|---|---|---|
+| Status, progress, history, calibration/health reads | Thin control projection | Auth/anon CPU matrix, bounded bytes, no compute dispatch on GET |
+| Ingest | Modal durable run; first migration canary | Per-source checkpoints; DB/provider call counts; interruption/reconnect does not submit again |
+| Planner; GSC sync/suggestions/scoring | Modal, migrated in that order | Bounded persisted inputs; no 10,000-row synchronous job scan; original analytical truth preserved |
+| Single URL verification and deterministic repair | Background by default; any synchronous exception requires full CPU proof | Bounded fetch/redirect/body policy; no provider exception bypasses auth or SSRF defenses |
+| LLM audit, reaudit, site health, research/brief, generation, interlinks | Modal resource class | Lease/fence, stage budget, source/contract parity, bounded retry and cancellation |
+| PR, merge, deploy, publication | Isolated release workflow + official GitHub Actions | Existing permit/CI/Sol/live-proof chain; no release credentials in general compute |
+
+The Tape reads persisted events by `(runId, sequence)`. Browser reconnect uses the same run ID and last sequence. If submission timed out before a run ID reached the browser, lookup/retry with the original actor-scoped idempotency key; never mint a new key automatically. `POST /api/seo-engine/knowledge` and `/action-stream` must not remain alternate execution entrances after Ingest cutover: route both through the same admitted run or explicitly retire the write path. Test lost 202, double-click, refresh, closed browser, repeated SSE disconnect, stale event, cancellation race and process death. A cancel request is not proof that an already-issued external mutation was undone; reconcile uncertain writes before claiming completion.
+
+Primary references checked 2026-09-23: [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Queue limits](https://developers.cloudflare.com/queues/platform/limits/), [Queue pricing](https://developers.cloudflare.com/queues/platform/pricing/), [Workflow limits](https://developers.cloudflare.com/workflows/reference/limits/), [Clerk authenticateRequest](https://clerk.com/docs/reference/backend/authenticate-request), [Clerk verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification). Account probes and production performance remain unverified.
+
+
 ## 7. Durable execution runtime
 
 ### 7.1 Command path (the only accepted write shape)
@@ -677,6 +726,49 @@ interface IntentReservation {
 ```
 Every stage uses `(runId, stageName, inputHash, policyVersion)` idempotency plus a **monotonic fencing token**. A worker must present the current token and an unexpired lease for **every** state change. Duplicate spawns may compute redundantly but can never commit stale results or release twice.
 
+### 7.2.1 One run authority, including operational actions
+
+`Run` remains the business/content workflow aggregate. Its existing editorial `state` is not reused as the execution status of an Ingest or GSC task. `StudioRunEnvelope` is the one execution projection joined 1:1 by project/run, not a competing scheduler. Map it to the existing durable run authority in A0.3; `studio_runs` is the proposed physical name only if no equivalent authority exists. `content_jobs` retains content lifecycle and `seo_engine_runs` retains analytical results.
+
+```typescript
+type StudioActionKind = "INGEST" | "PLAN" | "GSC_SYNC" | "GSC_SCORE" | "LLM_AUDIT" |
+  "RESEARCH" | "BRIEF" | "GENERATE" | "REAUDIT" | "SITE_HEALTH_AUDIT" |
+  "SITE_HEALTH_REPAIR" | "VERIFY_URL" | "INTERLINK_SWEEP" | "PUBLISH";
+interface StudioRunEnvelope {
+  schemaVersion: "studio.run-envelope/1";
+  projectId: string; runId: string; actionKind: StudioActionKind;
+  actor: { issuer: string; subject: string; authorizationEvidenceId: string };
+  requestHash: string; idempotencyKey: string; authorityEpoch: number;
+  status: "QUEUED" | "RUNNING" | "CANCEL_REQUESTED" | "CANCELLED" |
+    "RETRY_WAIT" | "SUCCEEDED" | "FAILED" | "BLOCKED" | "SUPERSEDED";
+  contentJobId: string | null; seoEngineRunId: string | null;
+  cancelRequestedAt: string | null; createdAt: string; startedAt: string | null;
+  finishedAt: string | null; lastEventSequence: number;
+  inputRef: string; resultRef: string | null; errorClass: string | null;
+}
+interface StudioRunEvent {
+  schemaVersion: "studio.run-event/1";
+  projectId: string; runId: string; sequence: number; stageId: string | null;
+  attemptId: string | null; fence: number | null; createdAt: string;
+  phase: string; messageCode: string; detailRef: string | null;
+  progress: { completed: number; total: number | null; unit: string } | null;
+}
+interface ExecutorPolicy {
+  schemaVersion: "studio.executor-policy/1";
+  supervisor: "GPT_SOL"; executor: "CODEX_LUNA"; reasoningEffort: "high";
+  transport: "CODEX_SUBAGENTS"; automaticFallback: false;
+  modelId: string; maxConcurrentAgents: number;
+  requireIndependentReview: true; mergeAuthority: "GPT_SOL";
+}
+```
+
+Unique command admission key is project+verified issuer/subject+idempotency key; same key/different request hash returns 409. The request hash binds action, subject/input and expected versions; authorization is rechecked on retries. Actor email is optional display metadata only and is omitted from dispatch. The server persists actor identity after verification; consumers authenticate their own service identity and re-read the authorized run. Operator read/status/events/cancel endpoints enforce project, role and object scope independently.
+
+Reuse the existing sequenced domain-event log if suitable; otherwise add one append-only `studio_run_events` relation, unique(project,run,sequence). Outbox delivery receipts remain separate from user-facing stage progress. Append the event and current projection atomically under the common run/stage lock order. Server sequence is monotonic; the client deduplicates and detects gaps, then requests the missing range. A completed execution run does not itself mean content was published or live-verified. Generic actions do not fabricate a `contentJobId`; publication continues to require `PublicationProof`.
+
+Implementation executor policy is development-time authority, not a production generation provider. Luna chat subagents are never a persistent backend dependency. Each agent receives exact model ID returned by the available Codex registry, `reasoningEffort=high`, pinned base/worktree, bounded paths, dependencies, acceptance and prohibited side effects. Missing Luna/high capability yields BLOCKED_CAPABILITY, with no silent fallback to DeepSeek, Grok or Freebuff. Start with ≤3 concurrent workers (and never above available capacity), one writer per conflict domain, independent reviewer identity, and Sol integration/merge. Existing external sessions remain untouched.
+
+
 ### 7.3 Execution identity across processes (AsyncLocalStorage replacement)
 - Process-local `AsyncLocalStorage` (used by the current pipeline context) is **derived convenience state, not authority**. It cannot be transplanted across request → dispatcher → Modal container boundaries.
 - Crossing a process boundary requires an explicit, persisted execution identity: `runId`, `stageId`, `attemptId`, `fence`, `policyVersion`, `contractHash`, `inputHash`, plus the actor/service identity.
@@ -728,6 +820,40 @@ Three gate families:
 - **Release gates:** contract/body/artifact/owner/source validity, review, CI, deployment and live proof.
 
 A refresh does not require pretending P9–P13 are complete. P13 CREATE requires predecessor closure under the canonical matrix, P12 expansion evidence and a cluster-scoped unlock. A regression in an applicable earlier gate invalidates pending dependent permissions.
+
+### 8.1.1 Phase code acceptance and program closure are separate
+
+User correction recorded 2026-09-23: **P0–P11 implementation/code work is complete to PASS; remaining IN_PROGRESS states primarily reflect external or operational acceptance blockers.** Do not describe this as missing code, repeat completed implementation or mark the program closed. At Portal main `3d916b09671ab726de2fc1aa3b87f79e7712c6ac`, the parity blob remains `0d2e1f5ed78adaf48334f87a21caa9a602e398cd`: P0–P8 PASS, P9/P10/P11 IN_PROGRESS, P12/P13 PENDING. P9/P10 deployment is recorded; the older P11 row records passing local code/tests but a pending merge/migration/deployment/live gate. The user's newer code-completion report is retained with provenance; it does not fabricate newer production proof. Reconcile P11's delivery facts against current CI/migration/deployment records before calling every remaining blocker external-only.
+
+| Phase | Code status | Current recorded program gate | Remaining proof |
+|---|---|---|---|
+| P0–P8 | PASS; accepted repository history | PASS | Preserve invariants and reopen only on demonstrated regression |
+| P9 | PASS; implementation/production record plus user confirmation | IN_PROGRESS | Independently verified live third-party backlink; no outreach is authorized here |
+| P10 | PASS; implementation/production record plus user confirmation | IN_PROGRESS | Required real production business event; never manufacture a test conversion as proof |
+| P11 | PASS; passing code/test checkpoint and user confirmation | IN_PROGRESS | Reconcile newer delivery evidence, then required current live GEO observations; provider coverage limits remain explicit |
+| P12–P13 | Not reported complete | PENDING | Validation and separately eligible cluster expansion |
+
+```typescript
+type PhaseCodeStatus = "PENDING" | "IN_PROGRESS" | "PASS" | "FAIL" | "UNKNOWN";
+type ProgramGateStatus = "PENDING" | "IN_PROGRESS" | "PASS" | "ACCEPTED_EXCEPTION" | "BLOCKED_EXTERNAL" | "FAIL";
+interface PhaseEvidenceState {
+  phase: "P0" | "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P7" | "P8" | "P9" | "P10" | "P11" | "P12" | "P13";
+  codeStatus: PhaseCodeStatus;
+  codeEvidenceBasis: "REPOSITORY_VERIFIED" | "USER_CONFIRMED" | "BOTH" | "UNVERIFIED";
+  codeEvidenceRefs: string[]; codeClaimedAt: string | null;
+  deploymentStatus: "NOT_DEPLOYED" | "DEPLOYED" | "PARTIAL" | "UNKNOWN";
+  deploymentEvidenceRefs: string[];
+  programGateStatus: ProgramGateStatus; gateEvidenceRefs: string[];
+  blockers: { id: string; kind: "EXTERNAL_OUTCOME" | "PROVIDER_ACCESS" | "DELIVERY" | "OBSERVATION_WINDOW" | "CODE" | "EVIDENCE_RECONCILIATION";
+    description: string; owner: string | null; closesWith: string; evidenceRefs: string[] }[];
+  verifiedAt: string | null; reportedAt: string; sourceCommit: string;
+}
+```
+
+Persist append-only phase evidence events and a single current projection keyed by project+phase. This projects the canonical parity ledger, not a second editable gate authority. UI badges read **Code PASS · Gate IN_PROGRESS · blocker**. `codeStatus=PASS` alone cannot satisfy a policy/release/CREATE gate; empty proof remains unverified. A user-confirmed code status may be displayed with that label while exact CI evidence is reconciled. Explicit exceptions must name scope, authority and evidence; a free-text status or architecture edit cannot create one.
+
+The companion machine-readable delivery schema defines executor policy and phase fields. A1 generates runtime validation and UI types from it and keeps existing schema readers; no database migration is applied by this documentation revision.
+
 
 ### 8.2 P0–P13 traceability
 | Phase | Preserved gate | Studio enforcement and acceptance |
@@ -1011,7 +1137,7 @@ Bounded nightly reconciliation verifies: every active strategic route has a curr
 | `S2_RERANKER` | Cross-encoder relevance, claim↔passage, query↔answer-unit reranking | GPU only when measured benefit over CPU/embedding ranking justifies cost. |
 | `S3_SMALL_MODEL` | Extraction/classification rules and Jev cannot do | Quantized small model; batch/offline first. |
 | `S4_LARGER_LOCAL` | Difficult competitor decomposition / semantic synthesis | Explicit escalation budget; never default. |
-| `S5_FRONTIER_OR_HUMAN` | Hard research, architecture, ambiguous legal/editorial cases | DeepSeek/Grok/Sol/qualified human under existing authority. |
+| `S5_FRONTIER_OR_HUMAN` | Hard research, architecture, ambiguous legal/editorial cases | commissioned production model/Sol/qualified human under existing authority. |
 
 Escalation records the failed/insufficient lower tier and the expected value of the higher tier. **CPU-first / delta-first**: incremental hashing and dependency reuse mean unchanged artifacts/models/ontology never recompute.
 
@@ -1078,7 +1204,7 @@ Jev runs server-side in Modal, never in the browser; it writes no prose and hold
 **D1 diagnosis:** `MISSING_ANSWER`, `STALE_FACT`, `TECHNICAL_EXCLUSION`, `OWNER_COLLISION`, `WEAK_INTERNAL_AUTHORITY`, `WEAK_EXTERNAL_AUTHORITY`, `CTR_PACKAGING`, `COMMERCIAL_PATH`, `INSUFFICIENT_EVIDENCE`, `OTHER/ESCALATE`.
 **D2 intervention:** only exact canonical action identifiers from §15.2 intersected with the current policy eligibility set. Legacy names `LINK`, `REPAIR`, `CONVERSION`, `CREATE` and `CONSOLIDATE_RECOMMENDATION` are prohibited on this interface; their importer mappings must be explicit, and ambiguous generic CREATE is rejected.
 **D3 priority band:** deterministic queue policy, not a Jev call in v6. Safety/incident class first, then observation debt, then evidence-ready interventions in a versioned portfolio. Within each lane use due time, validated opportunity band, cost band and stable ID; expose all components. A future learned ranker requires a separate benchmark and promotion.
-**D4 executor route:** deterministic capability/cost registry in v6. Route exact parsing/validation to rules, batch semantics to the commissioned Modal resource class, difficult research/execution to DeepSeek (Grok only if granted/available), architecture/arbitration to Sol, and consequential approval to a qualified human. Never pay to run a lower-tier model for a task known to require human expertise. Capability availability/cost evidence selects among permitted alternatives; there is no silent provider substitution.
+**D4 executor route:** deterministic capability/cost registry in v6. Route exact parsing/validation to rules, batch semantics to the commissioned Modal resource class, difficult production research to a commissioned model or qualified human; development/refactor work to Luna Codex subagents at high effort, architecture/arbitration to Sol, and consequential approval to a qualified human. Never pay to run a lower-tier model for a task known to require human expertise. Capability availability/cost evidence selects among permitted alternatives; there is no silent provider substitution.
 **D5 abstention/escalation:** deterministic wrapper around every decision family; never ask a model to decide whether deterministic policy may be ignored.
 **D6 commercial target:** Jev may rank only 2–5 already validated relevant active offers, plus `ABSTAIN`. Zero valid offers is `BLOCKED_NO_RELEVANT_SUPPLY`; one valid offer is selected deterministically. It cannot repair missing supply by guessing.
 
@@ -1251,8 +1377,8 @@ A strategic cluster view showing, with explicit source windows: query families b
 ## 16. Source and data fabric
 
 ### 16.1 Two integration planes, one evidence boundary
-- **Production plane:** scheduled/event-triggered Modal adapters call approved provider APIs or ingest authenticated exports; they persist evidence through the same validated ingestion boundary. Production must function without an open chat, a Mac, an interactive OAuth prompt or a Sol/DeepSeek session.
-- **Agent plane:** Sol/DeepSeek use explicitly granted MCP tools for bounded investigation and implementation. MCP output becomes product evidence only after an ingest job validates, versions and stores it. A chat tool result is not a durable production feed.
+- **Production plane:** scheduled/event-triggered Modal adapters call approved provider APIs or ingest authenticated exports; they persist evidence through the same validated ingestion boundary. Production must function without an open chat, a Mac, an interactive OAuth prompt or a Sol/Luna chat session.
+- **Agent plane:** Sol/Luna use explicitly granted MCP tools for bounded investigation and implementation. MCP output becomes product evidence only after an ingest job validates, versions and stores it. A chat tool result is not a durable production feed.
 - **Shared contract:** provider response → immutable raw artifact within license limits → schema/identity/completeness validation → normalized observations → reconciled estate snapshot → eligible opportunities → sealed contract → reviewed publication → live verification → outcome measurement. No external text writes ownership or gate PASS directly.
 
 Use direct APIs for repeatable production batches; use MCP for task-driven research and diagnostics. A production MCP client is allowed only when non-interactive auth, transport, tool schema and lifecycle are explicitly commissioned. Never route every scheduled import through an LLM.
@@ -1292,7 +1418,7 @@ All retrieved web/competitor/user content is **data only**:
 ### 16.5 MCP commissioning contract (`IntegrationBinding`, define once)
 For each approved binding record: server id, official source/repository, pinned package/image or verified remote URL, transport, client location, auth secret reference, account/project scope, discovered tool names and schemas, schema hash, allowed operations, timeout, quotas, cost ceiling, retention and last successful probe. Commit only non-secret configuration and schema fixtures.
 
-Commission in order: verify official endpoint/package/license and pin a reviewed release → configure the existing ds bridge client for the specific run with only needed tools → `initialize`/version negotiation + `tools/list`, persist schemas → one bounded read probe against an authorized known property/repo, verifying identity and scope → route results through the ingest contract and compare with the direct API/export fixture → test token expiry, schema change, pagination, timeout and unauthorized-write denial → activate only after Sol reviews mapping/probe artifacts. Version changes replay fixtures before promotion.
+Commission in order: verify official endpoint/package/license and pin a reviewed release → configure the authorized Codex subagent's task-scoped MCP access with only needed tools; verify actual availability rather than copying chat credentials → `initialize`/version negotiation + `tools/list`, persist schemas → one bounded read probe against an authorized known property/repo, verifying identity and scope → route results through the ingest contract and compare with the direct API/export fixture → test token expiry, schema change, pagination, timeout and unauthorized-write denial → activate only after Sol reviews mapping/probe artifacts. Version changes replay fixtures before promotion.
 
 Existing tool availability in any environment is **not** proof of executor access; the production service uses its own credentials and never copies human chat tokens into Modal.
 
@@ -1580,7 +1706,7 @@ Rules: a module or persistence authority with no A0.4 disposition may not be dep
 - Within A3, prefer: ontology/identity types and schema → deterministic extraction + existing owner joins → multi-grain embeddings → hybrid retrieval → reranking/relation classification → coverage/information gain → opportunity object → Jev shadow → UI projections → outcome feedback. **Do not begin with autonomous article generation.**
 - Additive migrations first; verify role grants and the ledger after official application; backfill only observed facts (missing legacy evidence stays missing); never switch runners mid-attempt.
 - Shadow execution has no publication, outreach or owner authority.
-- Every Sol packet states: task id/revision, absolute worktree, verified base, objective, scope/exclusions, dependencies, interfaces consumed, acceptance, source references, capabilities, checkpoint conditions and recovery record. DeepSeek performs heavy investigation/build/test through the existing harness; Sol reviews design, a representative first change and the final candidate. No replacement harness, no duplicate jobs after a timeout (reconcile first).
+- Every Sol packet states: task id/revision, absolute worktree, verified base, objective, scope/exclusions, dependencies, interfaces consumed, acceptance, source references, capabilities, checkpoint conditions and recovery record. Luna Codex subagents at high effort perform investigation, refactor and verification in disjoint bounded worktrees; a separate Luna reviewer inspects critical changes and Sol independently reviews design, a representative first change and the final candidate. Use the native Codex subagent mechanism; do not route this refactor through ds, DeepSeek, Grok or Freebuff. Reconcile existing agent/task state before retrying a timeout.
 - Where two model families participate, prefer cross-family review; no model is the sole auditor of its own substantive implementation. Sol holds architecture review and final merge authority.
 - Release path remains: branch → PR → required checks → authorized merge → official deployment → source-proven live acceptance.
 
@@ -1661,6 +1787,8 @@ These are additions to the existing repository suites, not a replacement. Every 
 55. Excellent soft metrics cannot override CREATE freeze, owner collision, unsupported YMYL claims, fabricated trust, false urgency or a failed release gate.
 56. Canonical-hash parity: the Node/TypeScript serializer is the only canon; Python/Modal transports opaque JSON and never re-canonicalizes. A shared fixture corpus must round-trip to byte-identical lowercase 64-hex hashes, and any drift fails release (Rule N3).
 
+Additional v7 cases T25–T30 are defined in blueprint §15.3 and are binding: auth/anon/cold-key CPU cohorts; lost-submit/reconnect idempotency; sequenced Tape; optional Queue recovery/retention; code/gate separation; Luna/high packet admission.
+
 ### 25.2 Performance and scale benchmarks (representative data, not empty tables)
 Semantic parse/embedding/rerank throughput and p95 latency; Postgres exact KNN vs ANN recall/latency at expected row counts; hybrid retrieval latency with jurisdiction/tenant filters; graph-neighbourhood and opportunity-list response sizes; incremental recomputation ratio after a single-section or single-source change; Modal cold/warm batch cost and monthly forecast under realistic cadence; Jev decision latency/error/retry/abstention; and confirmation that semantic matrices never execute in the Cloudflare request path (route budgets per §6.6).
 
@@ -1684,7 +1812,7 @@ Verify TypeSafe/Jev account and model access; Modal workspace, plan, billing tel
 - No one of the 50 fields replaces claim support, jurisdiction, ownership, trust review, canonical health, source freshness, verified authority, privacy or business-outcome evidence.
 
 ### 26.2 Source procurement and execution ownership
-Sol commissions each source and confirms account entitlement; DeepSeek implements and verifies adapters through the existing bridge. This specification purchases nothing and assumes no working credentials. Providers are wired per §16.2; the Modal analyzer parses Markdown/HTML **once per artifact hash** and computes all deterministic metrics from the shared AST/tokenization (model calls only for ambiguous semantics; Jev is never used for simple counts).
+Sol commissions each source and confirms account entitlement; Luna Codex subagents at high effort implement and verify adapters under Sol's scoped packets. This specification purchases nothing and assumes no working credentials. Providers are wired per §16.2; the Modal analyzer parses Markdown/HTML **once per artifact hash** and computes all deterministic metrics from the shared AST/tokenization (model calls only for ambiguous semantics; Jev is never used for simple counts).
 
 ### 26.3 Registry: definition, acquisition, grain and missing-data behavior
 Refresh values are proposed policy defaults. "Revision" invalidates immediately on changed input bytes or analyzer version; "render" means the actual target artifact, not only editor text; TTL is retrieval age, never permission to treat an old window as current.
@@ -1878,12 +2006,15 @@ This is a documentation/design revision only. It does not connect providers, pur
 
 Additional official references checked for v6: [TypeSafe API](https://docs.typesafe.ai/api), [models](https://docs.typesafe.ai/models), [confidence](https://docs.typesafe.ai/confidence); [Modal Volumes](https://modal.com/docs/guide/volumes), [billing](https://modal.com/docs/guide/billing), [egress](https://modal.com/docs/guide/network-egress-billing), [pricing](https://modal.com/pricing); [Cloudflare limits](https://developers.cloudflare.com/workers/platform/limits/); [pgvector](https://github.com/pgvector/pgvector); [Postgres constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [locking](https://www.postgresql.org/docs/current/explicit-locking.html); [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security). Account probes remain outstanding.
 
+### 27.4.2 CS-2026.09.23.7 Worker and executor amendment
+The supplied Sol conversation was read in full. Adopted the durable submission/Tape recovery model, explicit Ingest-first migration, Clerk/anon CPU matrix, conservative Queue option and separate execution/lifecycle schemas. Preserved Modal as primary compute and Postgres as sole run authority. Added code/deployment/program evidence separation for the user's P0–P11 code-PASS correction. Luna Codex subagents at high effort replace the legacy development executor narrative. A read-only Luna high-effort review confirmed the run-authority and duplicate-dispatch risks; this is a design review, not production performance proof.
+
 ### 27.5 Maintenance
 Keep this version identical in Notion, Hjarni and its Markdown handoff. Amend only by explicit version increment with a recorded reason. Never silently overwrite Supervisor Arc or SEO Brief gates, and never let a later document fragment reintroduce a second normative block for the same interface.
 
 ## 28. DO NOT IMPLEMENT UNTIL PROGRAM AND A0 GATES EXIT — binding checklist
 
-Implementation (code, schema, provisioning, adapters, UI, scheduling or any production-affecting change) **must not start** until every item below is checked with recorded evidence. Partial A0 exits gate only their dependent work; the A0.1–A0.7 exits as a whole are the precondition for starting A1–A7.
+Program entry and A0.1–A0.7 evidence gate the start of implementation. The checklist distinguishes pre-build design/evidence from controls that can only be tested after their implementing packet exists: kill switches, runtime behavior, reviewer supply and backup restore must be proven before dependent production activation, not claimed implemented during document normalization. Follow the blueprint's dependency exits; no circular requirement to build A2 before permission to build A1.
 
 - [ ] **A0.1 Document normalization complete** — one section sequence confirmed; §27.3 re-check against the raw audit artifact recorded; no duplicate/contradicting normative blocks remain anywhere in the repository documentation; `docs/superpowers/content-studio-revamp.md` is archived or reduced to a superseded pointer, leaving this file as the sole master architecture.
 - [ ] **`main` and P0–P13 re-pinned** at implementation start, with the parity matrix state recorded; all phase statuses cited only as dated evidence; P9/P10 outcome gates remain open at the audit snapshot.
@@ -1904,4 +2035,4 @@ Implementation (code, schema, provisioning, adapters, UI, scheduling or any prod
 - [ ] **Data rights and retention are approved by Sol before collection** — source/provider licensing, consent, PII handling and retention are reviewed before any collector is enabled (§26.5).
 - [ ] **Backup/restore path is proven** — an approved separate backup destination exists and a restore drill has succeeded; a missing destination or failed restore blocks production activation (§9.4).
 
-If any box is unchecked, the correct action is to complete A0 or record a blocker — never to begin implementation, relax a gate, or substitute an assumption for evidence.
+An unchecked prerequisite blocks its dependent packet or activation. Record its owner and required proof; do not relax a gate or substitute assumed evidence. Existing program entry restrictions remain in force unless Kyle explicitly authorizes a scoped exception.
