@@ -16,6 +16,7 @@
 import {
   deleteAiSetting,
   getAiSettings,
+  getAiVaultCacheScope,
   setAiSetting,
 } from '@/lib/aiKeyVault'
 import {
@@ -335,6 +336,44 @@ export async function refreshSuperGrokToken(refreshToken: string): Promise<Token
   return tokensFromResponse({ ...json, refresh_token: asString(json.refresh_token) || refreshToken })
 }
 
+
+const oauthRefreshFlights = new Map<string, Promise<SuperGrokAccess | null>>()
+
+async function refreshAccessTokenSingleFlight(
+  refreshToken: string,
+  updatedBy: 'oauth-refresh' | 'oauth-401-refresh',
+): Promise<SuperGrokAccess | null> {
+  const scope = typeof getAiVaultCacheScope === 'function' ? getAiVaultCacheScope() : 'default'
+  const key = scope + '\u0000' + refreshToken
+  const current = oauthRefreshFlights.get(key)
+  if (current) return current
+
+  const pending = (async () => {
+    try {
+      const tokens = await refreshSuperGrokToken(refreshToken)
+      await persistTokens(tokens, updatedBy)
+      return {
+        accessToken: tokens.access_token,
+        expiresAt: tokens.expires_at,
+        authMode: 'supergrok' as const,
+      }
+    } catch (err) {
+      const prefix = updatedBy === 'oauth-401-refresh' ? 'forced ' : ''
+      console.warn(
+        '[superGrok] ' + prefix + 'refresh failed — not reusing the stale access token',
+        err instanceof Error ? err.message : err,
+      )
+      return null
+    }
+  })()
+  oauthRefreshFlights.set(key, pending)
+  try {
+    return await pending
+  } finally {
+    if (oauthRefreshFlights.get(key) === pending) oauthRefreshFlights.delete(key)
+  }
+}
+
 /**
  * Grok CLI parity: interactive SuperGrok session wins over a console API key.
  * `XAI_API_KEY` (Worker secret / vault `xai-…` key) is fallback only.
@@ -367,28 +406,18 @@ export function overlayGrokAuth(
  * continue using a locally-fresh access token without needless refreshes.
  */
 export async function forceRefreshSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {
+  // A server-side 401 must bypass the warm cache so a rotated/disconnected
+  // credential is observed before attempting a refresh.
   const settings = await getAiSettings(true)
   const refresh = settings.xai_oauth_refresh_token?.trim() || ''
   if (!refresh) return null
-  try {
-    const tokens = await refreshSuperGrokToken(refresh)
-    await persistTokens(tokens, 'oauth-401-refresh')
-    return {
-      accessToken: tokens.access_token,
-      expiresAt: tokens.expires_at,
-      authMode: 'supergrok',
-    }
-  } catch (err) {
-    console.warn(
-      '[superGrok] forced refresh after 401 failed',
-      err instanceof Error ? err.message : err,
-    )
-    return null
-  }
+  return refreshAccessTokenSingleFlight(refresh, 'oauth-401-refresh')
 }
 
 export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {
-  const settings = await getAiSettings(true)
+  // Normal generation reuses the short-lived settings cache populated by the
+  // same vault refresh. Expiry is still checked on every call.
+  const settings = await getAiSettings()
   const access = settings.xai_oauth_access_token?.trim() || ''
   const refresh = settings.xai_oauth_refresh_token?.trim() || ''
   const expiresAt = Number(settings.xai_oauth_expires_at || 0)
@@ -396,22 +425,19 @@ export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | nu
   if (access && isAccessTokenFresh(expiresAt)) {
     return { accessToken: access, expiresAt, authMode: 'supergrok' }
   }
-  if (!refresh) {
-    // Expired access with no refresh — do not keep minting 403s from a
-    // previous SuperGrok session. Let XAI_API_KEY / vault take over.
-    return null
+  if (!refresh) return null
+
+  // Refresh-required state gets one forced reread so an external
+  // disconnect/reconnect is observed before exchanging credentials.
+  const latest = await getAiSettings(true)
+  const latestAccess = latest.xai_oauth_access_token?.trim() || ''
+  const latestRefresh = latest.xai_oauth_refresh_token?.trim() || ''
+  const latestExpiresAt = Number(latest.xai_oauth_expires_at || 0)
+  if (latestAccess && isAccessTokenFresh(latestExpiresAt)) {
+    return { accessToken: latestAccess, expiresAt: latestExpiresAt, authMode: 'supergrok' }
   }
-  try {
-    const tokens = await refreshSuperGrokToken(refresh)
-    await persistTokens(tokens, 'oauth-refresh')
-    return { accessToken: tokens.access_token, expiresAt: tokens.expires_at, authMode: 'supergrok' }
-  } catch (err) {
-    console.warn(
-      '[superGrok] refresh failed — not reusing the stale access token',
-      err instanceof Error ? err.message : err,
-    )
-    return null
-  }
+  if (!latestRefresh) return null
+  return refreshAccessTokenSingleFlight(latestRefresh, 'oauth-refresh')
 }
 
 export async function disconnectSuperGrok(): Promise<void> {

@@ -329,6 +329,9 @@ describe('ensureDraftDefaultSettings — legacy defaults stay reselection-requir
       { key: 'default_provider', value: 'baseten-deepseek' },
       { key: 'provider_order', value: JSON.stringify(['openai', 'grok']) },
     ])
+    // The fixture changes persisted settings directly. Refresh the TTL cache
+    // as a separate isolate or force-read would after an external edit.
+    await buildVaultEnvOverrides(true)
     await ensureDraftDefaultSettings('test')
 
     const writes = mockModule.__upserts().filter((u) => u.table === 'ai_settings')

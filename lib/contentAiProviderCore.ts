@@ -44,6 +44,7 @@ import {
   type ContentProviderAdapter,
   type StudioLane,
 } from './contentAiRegistry'
+import { resolveSupabaseKey } from './supabaseKey'
 
 /** Default output budget — long-form guides need ~2k words (~3–4k tokens). */
 const DEFAULT_MAX_TOKENS = 8192
@@ -263,7 +264,7 @@ type OpenAiCompat = {
  * the overlay first so vault keys win over Worker secrets, then falls back to
  * process.env — existing deployments keep working untouched.
  */
-let vaultOverlay: Record<string, string> | null = null
+let vaultOverlay: { scope: string; values: Record<string, string> } | null = null
 
 /**
  * Caller-injected overlay (explicit operator/test injection via
@@ -272,18 +273,37 @@ let vaultOverlay: Record<string, string> | null = null
  * `setVaultOverlay(null)`. Production code never injects an overlay; vault
  * refreshes only update the vault-derived layer.
  */
-let injectedVaultOverlay: Record<string, string> | null = null
+let injectedVaultOverlay: { scope: string; values: Record<string, string> } | null = null
 
 /** Replace the active vault overlay (explicit injection; see above). */
 export function setVaultOverlay(overlay: Record<string, string> | null): void {
-  injectedVaultOverlay = overlay
-  vaultOverlay = overlay
+  if (!overlay) {
+    injectedVaultOverlay = null
+    vaultOverlay = null
+    return
+  }
+  const scope = currentAiVaultScope()
+  injectedVaultOverlay = { scope, values: overlay }
+  vaultOverlay = { scope, values: overlay }
 }
 
 /** Merge keys into the vault-derived overlay without marking them injected. */
 function mergeVaultOverlay(overlay: Record<string, string>): void {
-  vaultOverlay = { ...(vaultOverlay || {}), ...overlay }
+  const scope = currentAiVaultScope()
+  const base = vaultOverlay?.scope === scope
+    ? vaultOverlay.values
+    : injectedVaultOverlay?.scope === scope ? injectedVaultOverlay.values : {}
+  vaultOverlay = { scope, values: { ...base, ...overlay } }
 }
+
+function currentAiVaultScope(): string {
+  return JSON.stringify([
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    resolveSupabaseKey() ?? '',
+  ])
+}
+
+const vaultRefreshFlights = new Map<string, Promise<string[]>>()
 
 /**
  * Refresh the AI Key Vault overlay from Supabase (lib/aiKeyVault). Returns the
@@ -291,6 +311,20 @@ function mergeVaultOverlay(overlay: Record<string, string>): void {
  * unreachable — the chain then continues on env vars only).
  */
 export async function refreshAiVault(): Promise<string[]> {
+  const scope = currentAiVaultScope()
+  const current = vaultRefreshFlights.get(scope)
+  if (current) return current
+
+  const pending = refreshAiVaultForScope(scope)
+  vaultRefreshFlights.set(scope, pending)
+  try {
+    return await pending
+  } finally {
+    if (vaultRefreshFlights.get(scope) === pending) vaultRefreshFlights.delete(scope)
+  }
+}
+
+async function refreshAiVaultForScope(scope: string): Promise<string[]> {
   try {
     const vault = await import('@/lib/aiKeyVault')
     // Persist/migrate the drafting default before building the overlay. If the
@@ -302,7 +336,7 @@ export async function refreshAiVault(): Promise<string[]> {
     } catch {
       /* settings persist is best-effort */
     }
-    const overlay = await vault.buildVaultEnvOverrides(true)
+    const overlay = await vault.buildVaultEnvOverrides()
     try {
       if (typeof vault.getAiSettings === 'function') {
         const { ensureSuperGrokAccessToken, overlayGrokAuth } = await import('@/lib/xaiSuperGrokOAuth')
@@ -318,14 +352,17 @@ export async function refreshAiVault(): Promise<string[]> {
         oauthErr instanceof Error ? oauthErr.message : oauthErr,
       )
     }
-    vaultOverlay = injectedVaultOverlay ? { ...overlay, ...injectedVaultOverlay } : overlay
-    return Object.keys(vaultOverlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
+    const injected = injectedVaultOverlay?.scope === scope ? injectedVaultOverlay.values : null
+    const values = injected ? { ...overlay, ...injected } : overlay
+    vaultOverlay = { scope, values }
+    return Object.keys(values).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
   } catch (e) {
     console.warn(
       '[contentAi] vault overlay unavailable (is ai_provider_keys migrated?) — env vars only',
       e instanceof Error ? e.message : e,
     )
-    vaultOverlay = injectedVaultOverlay
+    const injected = injectedVaultOverlay?.scope === scope ? injectedVaultOverlay.values : {}
+    vaultOverlay = { scope, values: injected }
     return []
   }
 }
@@ -340,7 +377,9 @@ export async function withVaultEnv<T>(
 ): Promise<T> {
   const prev = vaultOverlay
   await refreshAiVault()
-  vaultOverlay = { ...vaultOverlay, ...extra }
+  const scope = currentAiVaultScope()
+  const current = vaultOverlay?.scope === scope ? vaultOverlay.values : {}
+  vaultOverlay = { scope, values: { ...current, ...extra } }
   try {
     return await fn()
   } finally {
@@ -349,13 +388,14 @@ export async function withVaultEnv<T>(
 }
 
 function env(name: string): string {
-  if (vaultOverlay) {
-    const v = (vaultOverlay[name] || '').trim()
+  const overlay = vaultOverlay?.scope === currentAiVaultScope() ? vaultOverlay.values : null
+  if (overlay) {
+    const v = (overlay[name] || '').trim()
     if (v) return v
     // Global default model (ai_settings.default_model) applies to the
     // OpenAI-compatible endpoints admins tune most.
     if (name === 'OPENAI_MODEL' || name === 'CUSTOM_AI_MODEL') {
-      const dm = (vaultOverlay['CONTENT_AI_DEFAULT_MODEL'] || '').trim()
+      const dm = (overlay['CONTENT_AI_DEFAULT_MODEL'] || '').trim()
       if (dm) return dm
     }
   }
@@ -434,11 +474,11 @@ function formatProviderFailure(label: string, status: number, body: string): str
  * Set CONTENT_AI_RETRY=1 only on a plan with sufficient subrequest headroom.
  */
 async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  // Retry by default with exponential backoff; set CONTENT_AI_RETRY=0 to disable.
-  // NVIDIA 550B-class models (Nemotron) routinely hit transient 503 capacity
-  // limits — 3 retries with growing backoff gives the worker time to drain.
-  const retryEnv = Number(process.env.CONTENT_AI_RETRY)
-  const maxAttempts = isNaN(retryEnv) ? 4 : Math.max(1, retryEnv)
+  // Keep retries opt-in. CONTENT_AI_RETRY=1 matches the pipeline's one-retry
+  // contract (two attempts total); all unset/other values get one attempt.
+  // A single opt-in retry with backoff handles transient provider overloads
+  // without multiplying requests by default.
+  const maxAttempts = process.env.CONTENT_AI_RETRY === '1' ? 2 : 1
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn()
@@ -1021,7 +1061,10 @@ async function grokOpenResponses(
     if (refreshed?.accessToken) {
       try { await res.body?.cancel() } catch { /* best effort */ }
       apiKey = refreshed.accessToken
-      const overlay = { ...(vaultOverlay || {}) }
+      const scope = currentAiVaultScope()
+      const overlay = vaultOverlay?.scope === scope
+        ? { ...vaultOverlay.values }
+        : injectedVaultOverlay?.scope === scope ? { ...injectedVaultOverlay.values } : {}
       mergeVaultOverlay(overlayGrokAuth(overlay, refreshed))
       res = await post(baseURL, apiKey, false)
     }

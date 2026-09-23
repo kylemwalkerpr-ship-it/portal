@@ -270,50 +270,125 @@ export function maskKey(key: string): string {
 }
 
 // ── Cached vault reads (short TTL — keys change rarely, chain hits often) ──
-const VAULT_TTL_MS = 45_000
-let vaultCache: VaultKeyRow[] | null = null
-let vaultCacheAt = 0
-let settingsCache: AiSettings | null = null
-let settingsCacheAt = 0
+export const AI_VAULT_TTL_MS = 45_000
+
+type ReadCache<T> = {
+  value: T | null
+  cachedAt: number
+  generation: number
+  normalFlight: Promise<T> | null
+  forceFlight: Promise<T> | null
+}
+
+type ScopedReadCache = {
+  vault: ReadCache<VaultKeyRow[]>
+  settings: ReadCache<AiSettings>
+}
+
+const scopedReadCaches = new Map<string, ScopedReadCache>()
+
+export function getAiVaultCacheScope(): string {
+  return JSON.stringify([
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    resolveSupabaseKey() ?? '',
+  ])
+}
+
+function newReadCache<T>(): ReadCache<T> {
+  return { value: null, cachedAt: 0, generation: 0, normalFlight: null, forceFlight: null }
+}
+
+function scopedReadCache(scope = getAiVaultCacheScope()): ScopedReadCache {
+  let cache = scopedReadCaches.get(scope)
+  if (!cache) {
+    cache = { vault: newReadCache<VaultKeyRow[]>(), settings: newReadCache<AiSettings>() }
+    scopedReadCaches.set(scope, cache)
+  }
+  return cache
+}
+
+function invalidateReadCache<T>(cache: ReadCache<T>): void {
+  cache.generation++
+  cache.value = null
+  cache.cachedAt = 0
+  cache.normalFlight = null
+  cache.forceFlight = null
+}
+
+async function cachedRead<T>(
+  cache: ReadCache<T>,
+  force: boolean,
+  fallback: T,
+  load: () => Promise<T>,
+): Promise<T> {
+  if (!force && cache.value !== null && Date.now() - cache.cachedAt < AI_VAULT_TTL_MS) {
+    return cache.value
+  }
+  const existing = force
+    ? cache.forceFlight || cache.normalFlight
+    : cache.forceFlight || cache.normalFlight
+  if (existing) return existing
+
+  const generation = cache.generation
+  let flight: Promise<T>
+  flight = (async () => {
+    try {
+      const value = await load()
+      if (cache.generation !== generation) {
+        return cachedRead(cache, force, fallback, load)
+      }
+      cache.value = value
+      cache.cachedAt = Date.now()
+      return value
+    } catch {
+      return cache.value ?? fallback
+    } finally {
+      if (force) {
+        if (cache.forceFlight === flight) cache.forceFlight = null
+      } else if (cache.normalFlight === flight) {
+        cache.normalFlight = null
+      }
+    }
+  })()
+  if (force) cache.forceFlight = flight
+  else cache.normalFlight = flight
+  return flight
+}
 
 export async function getVaultKeys(force = false): Promise<VaultKeyRow[]> {
-  if (!force && vaultCache && Date.now() - vaultCacheAt < VAULT_TTL_MS) {
-    return vaultCache
-  }
-  const { data, error } = await sb()
-    .from('ai_provider_keys')
-    .select('provider, api_key, base_url, model, enabled, updated_by, updated_at')
-    .eq('enabled', true)
-    .order('provider')
-  if (error) {
-    console.warn('[aiKeyVault] read failed (vault may not be migrated yet)', error.message)
-    return vaultCache ?? []
-  }
-  vaultCache = (data || []) as VaultKeyRow[]
-  vaultCacheAt = Date.now()
-  return vaultCache
+  const cache = scopedReadCache().vault
+  return cachedRead(cache, force, [], async () => {
+    const { data, error } = await sb()
+      .from('ai_provider_keys')
+      .select('provider, api_key, base_url, model, enabled, updated_by, updated_at')
+      .eq('enabled', true)
+      .order('provider')
+    if (error) {
+      console.warn('[aiKeyVault] read failed (vault may not be migrated yet)', error.message)
+      throw new Error(error.message)
+    }
+    return (data || []) as VaultKeyRow[]
+  })
 }
 
 export async function getAiSettings(force = false): Promise<AiSettings> {
-  if (!force && settingsCache && Date.now() - settingsCacheAt < VAULT_TTL_MS) {
-    return settingsCache
-  }
-  const { data, error } = await sb()
-    .from('ai_settings')
-    .select('key, value')
-  if (error) {
-    console.warn('[aiKeyVault] settings read failed', error.message)
-    return settingsCache ?? {}
-  }
-  const out: AiSettings = {}
-  for (const row of data || []) {
-    if (row && typeof row.key === 'string') {
-      out[row.key as keyof AiSettings] = String(row.value)
+  const cache = scopedReadCache().settings
+  return cachedRead(cache, force, {}, async () => {
+    const { data, error } = await sb()
+      .from('ai_settings')
+      .select('key, value')
+    if (error) {
+      console.warn('[aiKeyVault] settings read failed', error.message)
+      throw new Error(error.message)
     }
-  }
-  settingsCache = out
-  settingsCacheAt = Date.now()
-  return out
+    const out: AiSettings = {}
+    for (const row of data || []) {
+      if (row && typeof row.key === 'string') {
+        out[row.key as keyof AiSettings] = String(row.value)
+      }
+    }
+    return out
+  })
 }
 
 /**
@@ -407,7 +482,7 @@ export async function upsertVaultKey(
     .select('provider, api_key, base_url, model, enabled, updated_by, updated_at')
     .single()
   if (error) throw new Error(error.message)
-  vaultCache = null // bust TTL so the chain sees the new key immediately
+  invalidateReadCache(scopedReadCache().vault) // same-isolate key rotation is immediate
   return data as VaultKeyRow
 }
 
@@ -416,7 +491,7 @@ export async function deleteVaultKey(providerId: string): Promise<void> {
   if (!def) throw new Error(`Unknown provider: ${providerId}`)
   const { error } = await sb().from('ai_provider_keys').delete().eq('provider', def.id)
   if (error) throw new Error(error.message)
-  vaultCache = null
+  invalidateReadCache(scopedReadCache().vault)
 }
 
 /** Delete every vault key so only Worker env secrets remain active. */
@@ -427,7 +502,7 @@ export async function purgeAllVaultKeys(): Promise<number> {
     .neq('provider', '__none__')
     .select('provider')
   if (error) throw new Error(error.message)
-  vaultCache = null
+  invalidateReadCache(scopedReadCache().vault)
   return (data || []).length
 }
 
@@ -440,7 +515,7 @@ export async function purgeGroupVaultKeys(providerIds: string[]): Promise<number
     .in('provider', providerIds)
     .select('provider')
   if (error) throw new Error(error.message)
-  vaultCache = null
+  invalidateReadCache(scopedReadCache().vault)
   return (data || []).length
 }
 
@@ -455,7 +530,8 @@ export function isLiveDefaultProvider(value: string): boolean {
   return isExactCommissionedPin(String(value || '').trim())
 }
 
-let draftDefaultsEnsured = false
+const draftDefaultsEnsured = new Set<string>()
+const draftDefaultsInFlight = new Map<string, Promise<void>>()
 
 /**
  * Normalize the persisted provider order to the two commissioned pins.
@@ -466,12 +542,24 @@ let draftDefaultsEnsured = false
  * pin through the settings route.
  */
 export async function ensureDraftDefaultSettings(updatedBy = 'draft-default'): Promise<void> {
-  if (draftDefaultsEnsured) return
-  draftDefaultsEnsured = true
-  const settings = await getAiSettings(true)
-  const nextOrder = commissionedProviderOrder(settings.provider_order)
-  if (nextOrder !== settings.provider_order) {
-    await setAiSetting('provider_order', nextOrder, updatedBy)
+  const scope = getAiVaultCacheScope()
+  if (draftDefaultsEnsured.has(scope)) return
+  const current = draftDefaultsInFlight.get(scope)
+  if (current) return current
+
+  const pending = (async () => {
+    const settings = await getAiSettings()
+    const nextOrder = commissionedProviderOrder(settings.provider_order)
+    if (nextOrder !== settings.provider_order) {
+      await setAiSetting('provider_order', nextOrder, updatedBy)
+    }
+    draftDefaultsEnsured.add(scope)
+  })()
+  draftDefaultsInFlight.set(scope, pending)
+  try {
+    await pending
+  } finally {
+    if (draftDefaultsInFlight.get(scope) === pending) draftDefaultsInFlight.delete(scope)
   }
 }
 
@@ -544,14 +632,14 @@ export async function setAiSetting(key: string, value: string, updatedBy = 'admi
       { onConflict: 'key' },
     )
   if (error) throw new Error(error.message)
-  settingsCache = null
+  invalidateReadCache(scopedReadCache().settings)
 }
 
 export async function deleteAiSetting(key: string): Promise<void> {
   if (!key.trim()) throw new Error('Setting key required')
   const { error } = await sb().from('ai_settings').delete().eq('key', key.trim())
   if (error) throw new Error(error.message)
-  settingsCache = null
+  invalidateReadCache(scopedReadCache().settings)
 }
 
 /**

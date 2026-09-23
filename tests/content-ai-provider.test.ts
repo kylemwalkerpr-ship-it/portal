@@ -156,3 +156,69 @@ describe('content AI · continuation restart guard (regression)', () => {
     }
   })
 })
+
+describe('content AI · provider retry budget defaults', () => {
+  const originalFetch = global.fetch
+  const originalRetry = process.env.CONTENT_AI_RETRY
+  const originalDeepSeekKey = process.env.DEEPSEEK_API_KEY
+
+  beforeEach(() => {
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    global.fetch = originalFetch
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    if (originalRetry == null) delete process.env.CONTENT_AI_RETRY
+    else process.env.CONTENT_AI_RETRY = originalRetry
+    if (originalDeepSeekKey == null) delete process.env.DEEPSEEK_API_KEY
+    else process.env.DEEPSEEK_API_KEY = originalDeepSeekKey
+  })
+
+  const generation = () => generateContentText({
+    aiProvider: 'deepseek-v41-flash',
+    exclusive: true,
+    system: 'Write one sentence.',
+    prompt: 'Return a short answer.',
+    skipQualityContract: true,
+  })
+
+  it('uses one attempt when CONTENT_AI_RETRY is unset', async () => {
+    delete process.env.CONTENT_AI_RETRY
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await expect(generation()).rejects.toThrow(/503/)
+    expect(calls).toBe(1)
+  })
+
+  it('CONTENT_AI_RETRY=1 opts into one retry (two attempts total)', async () => {
+    process.env.CONTENT_AI_RETRY = '1'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      if (calls === 1) return new Response('temporary overload', { status: 503 })
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'A stable answer.' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+
+    await expect(generation()).resolves.toMatchObject({ text: 'A stable answer.' })
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry subrequest-limit errors even when retry is enabled', async () => {
+    process.env.CONTENT_AI_RETRY = '1'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      throw new Error('Too many subrequests by single Worker invocation')
+    }) as typeof fetch
+
+    await expect(generation()).rejects.toThrow(/Too many subrequests/)
+    expect(calls).toBe(1)
+  })
+})
