@@ -32,7 +32,7 @@ import AttributionClient from '@/components/AttributionClient'
 // block requests to fonts.gstatic.com, so next/font/google hard-crashes.
 // The CSS variables (--font-inter etc.) are defined in :root in globals.css.
 
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 
 export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
@@ -131,7 +131,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             ~71% of total issue volume). Bump the env var when
             upgrading @clerk/nextjs; update both pinned values together. */}
         <ClerkProvider
-          afterSignOutUrl={PORTAL_URL}
+          afterSignOutUrl={MARKET_HOME_URL}
           signInUrl="/sign-in/student"
           signUpUrl="/sign-up/student"
         >

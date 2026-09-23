@@ -15,7 +15,7 @@ import { useClerk } from '@clerk/nextjs'
 
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 
 export default function AdminSectionClient() {
   const { signOut } = useClerk()
@@ -25,10 +25,10 @@ export default function AdminSectionClient() {
     if (loggingOut.current) return
     loggingOut.current = true
     const watchdog = window.setTimeout(() => {
-      window.location.replace(PORTAL_URL)
+      window.location.replace(MARKET_HOME_URL)
     }, 3000)
-    signOut({ redirectUrl: PORTAL_URL })
-      .catch(() => window.location.replace(PORTAL_URL))
+    signOut({ redirectUrl: MARKET_HOME_URL })
+      .catch(() => window.location.replace(MARKET_HOME_URL))
       .finally(() => window.clearTimeout(watchdog))
   }, [signOut])
 
