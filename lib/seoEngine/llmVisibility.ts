@@ -1255,13 +1255,14 @@ export async function loadVisibilityStatusSummary(): Promise<VisibilityStatusSum
   try {
     const supabase = getSupabaseAdminClient()
     // One narrow row replaces the deep feed's audits[0] headline read.
-    const latestPromise = (supabase
+    const latestPromise = Promise.resolve(supabase
       .from('seo_llm_visibility')
       .select('query,created_at')
       .eq('fan_out', false)
       .eq('audit_contract_version', P11_AUDIT_CONTRACT_VERSION)
       .order('created_at', { ascending: false })
-      .limit(1) as unknown as Promise<{ data: Array<Record<string, unknown>> | null; error: unknown }>).catch(
+      .limit(1) as unknown as PromiseLike<{ data: Array<Record<string, unknown>> | null; error: unknown }>
+    ).catch(
       () => ({ data: null, error: null }),
     )
     const [dataResult, totalRows, p11RowsExact, registryRows, latestRes] = await Promise.all([
