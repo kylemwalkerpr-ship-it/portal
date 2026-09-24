@@ -19,6 +19,7 @@ import AdminRankingModel from './admin-ranking-model'
 import { StudioModelHostSelect } from './studio-model-host-select'
 import { DEFAULT_DRAFT_PIN } from '@/lib/contentAiCatalog'
 import { FUNNEL_ACTION_LABELS } from '@/lib/seoEngine/rankingModel'
+import { getOrCreateP11ActionKey, P11_UI_KEY_NAMESPACES, settleP11ActionKey } from '@/lib/seoEngine/p11UiIdempotencyKey'
 
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -121,6 +122,8 @@ const btnGhost: React.CSSProperties = {
 }
 
 export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
+  const llmAuditKeyRef = React.useRef<string | null>(null)
+  const llmFanOutKeyRef = React.useRef<string | null>(null)
   const [tab, setTab] = React.useState<TabKey>('lifecycle')
   const [lifecycle, setLifecycle] = React.useState<Record<string, unknown>[] | null>(null)
   const [knowledge, setKnowledge] = React.useState<{ items: Array<Record<string, unknown>>; sources: Array<Record<string, unknown>> } | null>(null)
@@ -267,14 +270,23 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const runLlmAudit = async () => {
     setBusy(true); setError(null)
     try {
-      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 10 }) })
+      const key = llmAuditKeyRef.current || (llmAuditKeyRef.current = getOrCreateP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.single, () => crypto.randomUUID()))
+      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ maxAudits: 10 }) })
       const data = await res.json()
-      if (!data.ok) throw new Error(data.error || 'audit failed')
+      if (!res.ok || !data.ok || data.recoverable) {
+        settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.single, data.recoverable ? 'recoverable' : 'http_error')
+        throw new Error(data.recoverable
+          ? 'This audit is still in progress or has an ambiguous provider attempt. Retry to recover its state.'
+          : data.error || `Audit returned ${res.status}`)
+      }
+      settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.single, 'completed')
+      llmAuditKeyRef.current = null
       const shareLabel = data.shareOfVoice == null ? 'unavailable' : `${data.shareOfVoice}%`
       flash(`LLM audit: ${data.cited}/${data.total} measured queries cited the estate (${shareLabel} share of voice)`)
       recordResult(true, 'LLM audit', `${data.cited}/${data.total} measured queries cited the estate · ${shareLabel} share of voice${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
       await loadAll()
     } catch (e) {
+      settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.single, 'transport_error')
       const msg = e instanceof Error ? e.message : 'LLM audit failed'
       setError(msg)
       recordResult(false, 'LLM audit', msg)
@@ -286,14 +298,23 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
   const runFanOutAudit = async () => {
     setBusy(true); setError(null)
     try {
-      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fanOut: true, planLimit: 10, maxPerPlan: 6, maxAudits: 18 }) })
+      const key = llmFanOutKeyRef.current || (llmFanOutKeyRef.current = getOrCreateP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.fanOut, () => crypto.randomUUID()))
+      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ fanOut: true, planLimit: 10, maxPerPlan: 6, maxAudits: 18 }) })
       const data = await res.json()
-      if (!data.ok) throw new Error(data.error || 'fan-out audit failed')
+      if (!res.ok || !data.ok || data.recoverable) {
+        settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.fanOut, data.recoverable ? 'recoverable' : 'http_error')
+        throw new Error(data.recoverable
+          ? 'This audit is still in progress or has an ambiguous provider attempt. Retry to recover its state.'
+          : data.error || `Fan-out audit returned ${res.status}`)
+      }
+      settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.fanOut, 'completed')
+      llmFanOutKeyRef.current = null
       const shareLabel = data.shareOfVoice == null ? 'unavailable' : `${data.shareOfVoice}%`
       flash(`Fan-out audit: ${data.cited}/${data.total} measured sub-queries across ${data.clusters} clusters cited the estate (${shareLabel})`)
       recordResult(true, 'Fan-out audit', `${data.cited}/${data.total} measured sub-queries across ${data.clusters ?? 0} clusters cited the estate · ${shareLabel}${data.failed ? ` · ${data.failed} failed (excluded)` : ''}`)
       await loadAll()
     } catch (e) {
+      settleP11ActionKey(sessionStorage, P11_UI_KEY_NAMESPACES.fanOut, 'transport_error')
       const msg = e instanceof Error ? e.message : 'fan-out audit failed'
       setError(msg)
       recordResult(false, 'Fan-out audit', msg)
