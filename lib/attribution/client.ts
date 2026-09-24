@@ -11,7 +11,6 @@
  *    fingerprint. The attribution identity cookie is httpOnly by design.
  */
 import {
-  ANALYTICS_CONSENT_COOKIE,
   ATTRIBUTION_SOURCE_COOKIE,
   type AnalyticsConsent,
 } from './contract'
@@ -91,12 +90,16 @@ export async function bootstrapAttribution(): Promise<AttributionBootstrapResult
   if (typeof window === 'undefined') return { consent: 'unknown', tracking: false, requested: false }
   const consent = readClientConsent()
   writeConsentCookie(consent)
+  // Unknown consent must not send even a first-party analytics payload. A
+  // denied choice sends only the withdrawal signal needed to revoke a prior
+  // consented attribution identity.
+  if (consent === 'unknown') return { consent, tracking: false, requested: false }
   try {
     const response = await fetch('/api/attribution/session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({
+      body: JSON.stringify(consent === 'denied' ? { consent } : {
         consent,
         landing: { host: window.location.hostname, path: window.location.pathname },
         referrer: document.referrer || null,
