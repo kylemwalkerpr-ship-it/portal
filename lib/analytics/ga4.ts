@@ -6,9 +6,11 @@
  * - cross-domain linker for the active YouSafe host estate
  * - optional conversion event helpers (call from real hooks only — do not invent fires)
  *
- * Consent: consultancy/landing hosts fire gtag with no banner today. Portal has no
- * consent pattern either, so we match that behavior (no DNT gate invented here).
+ * Consent: the shared Portal/Market app loads GA only after explicit acceptance
+ * of the estate-wide analytics cookie; P10 collection follows the same choice.
  */
+
+import { parseAnalyticsConsentCookie } from './consent'
 
 export const GA4_FALLBACK_MEASUREMENT_ID = 'G-FTKZCVNW4B'
 
@@ -83,6 +85,8 @@ function getBrowserGtag(): GtagFn | undefined {
 }
 
 function callGtag(...args: unknown[]) {
+  if (typeof document === 'undefined') return
+  if (parseAnalyticsConsentCookie(document.cookie) !== 'granted') return
   const gtag = getBrowserGtag()
   if (!gtag) return
   gtag(...args)

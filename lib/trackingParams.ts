@@ -23,6 +23,9 @@ export const TRACKING_QUERY_KEYS: ReadonlySet<string> = new Set([
   'mc_cid',
   'mc_eid',
   '_ga',
+  // Google cross-domain linker parameter: leave it untouched at the edge so GA4
+  // can consume it after explicit consent, then remove it in the browser.
+  // '_gl' is intentionally not a server-redirect key.
   // P10 cross-domain attribution handoff. Captured into a short-lived first-party
   // cookie under explicit granted consent and then removed, so a handoff URL can
   // never become an indexable tracking variant of a canonical page.

@@ -11,11 +11,11 @@
  *    fingerprint. The attribution identity cookie is httpOnly by design.
  */
 import {
-  ANALYTICS_CONSENT_COOKIE,
   ATTRIBUTION_SOURCE_COOKIE,
   type AnalyticsConsent,
 } from './contract'
 import { parseConsent } from './source'
+import { parseAnalyticsConsentCookie, serializeAnalyticsConsentCookie } from '@/lib/analytics/consent'
 
 export const CONSENT_STORAGE_KEY = 'yousafe:cookie-consent'
 export const CONSENT_CHANGE_EVENT = 'yousafe:cookie-consent-change'
@@ -43,25 +43,42 @@ function readCookieFromDocument(name: string): string | null {
   return null
 }
 
-/** Consent is read from the banner's localStorage record, then the server-readable cookie. */
+/**
+ * Read the estate-wide consent cookie first. A prior portal-only explicit choice
+ * is migrated once so returning visitors keep their saved preference, then its
+ * host-scoped storage is removed so the six-month expiry is respected.
+ */
 export function readClientConsent(): AnalyticsConsent {
   if (typeof window === 'undefined') return 'unknown'
+  const shared = parseAnalyticsConsentCookie(document.cookie)
+  if (shared) return shared
+
+  let legacy: AnalyticsConsent = 'unknown'
   try {
-    const stored = window.localStorage.getItem(CONSENT_STORAGE_KEY)
-    if (stored) return parseConsent(stored)
+    legacy = parseConsent(window.localStorage.getItem(CONSENT_STORAGE_KEY))
   } catch {
-    // Storage unavailable (privacy mode) — fall through to the cookie.
+    // Storage can be unavailable in privacy modes.
   }
-  const cookie = readCookieFromDocument(ANALYTICS_CONSENT_COOKIE)
-  return cookie ? parseConsent(cookie) : 'unknown'
+  if (legacy === 'unknown') {
+    const oldCookie = readCookieFromDocument('yousafe_consent')
+    if (oldCookie) legacy = parseConsent(oldCookie)
+  }
+  if (legacy !== 'unknown') {
+    writeConsentCookie(legacy)
+    try { window.localStorage.removeItem(CONSENT_STORAGE_KEY) } catch {}
+    document.cookie = 'yousafe_consent=; Path=/; Max-Age=0; SameSite=Lax; Secure'
+  }
+  return legacy
 }
 
-/** Mirror the banner choice into a server-readable cookie so middleware can honour it. */
+/** Write the shared six-month choice so every YouSafe subdomain sees it. */
 export function writeConsentCookie(value: AnalyticsConsent) {
   if (typeof document === 'undefined') return
-  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-  const maxAge = value === 'unknown' ? 0 : 60 * 60 * 24 * 180
-  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+  let cookie = serializeAnalyticsConsentCookie(value)
+  if (window.location.protocol !== 'https:') {
+    cookie = cookie.replace('; Domain=.yousafeconsultancy.com', '').replace('; Secure', '')
+  }
+  document.cookie = cookie
 }
 
 /**
@@ -72,19 +89,21 @@ export function writeConsentCookie(value: AnalyticsConsent) {
 export async function bootstrapAttribution(): Promise<AttributionBootstrapResult> {
   if (typeof window === 'undefined') return { consent: 'unknown', tracking: false, requested: false }
   const consent = readClientConsent()
-  writeConsentCookie(consent)
+  // Do not refresh Max-Age on ordinary visits: the six-month window is measured
+  // from the user's explicit choice. This minimal consent-only request lets the
+  // server clear any expired attribution identity without recording a visit.
   try {
     const response = await fetch('/api/attribution/session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({
+      body: JSON.stringify(consent === 'granted' ? {
         consent,
         landing: { host: window.location.hostname, path: window.location.pathname },
         referrer: document.referrer || null,
         handoff: readCookieFromDocument('yousafe_attr_handoff'),
         campaign: readCookieFromDocument(ATTRIBUTION_SOURCE_COOKIE),
-      }),
+      } : { consent }),
     })
     const payload = (await response.json().catch(() => null)) as
       | { data?: { tracking?: boolean; attribution?: { source_class?: string } } }

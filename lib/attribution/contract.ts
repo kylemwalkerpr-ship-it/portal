@@ -24,7 +24,7 @@ export const ATTRIBUTION_COOKIE = 'yousafe_attr'
 /** Short-lived cookie carrying a signed cross-domain handoff token (readable by our JS). */
 export const ATTRIBUTION_HANDOFF_COOKIE = 'yousafe_attr_handoff'
 /** Server-readable mirror of the analytics consent choice made in the banner. */
-export const ANALYTICS_CONSENT_COOKIE = 'yousafe_consent'
+export const ANALYTICS_CONSENT_COOKIE = 'yousafe-analytics-consent'
 /** Short-lived cookie carrying a consent-gated campaign capture past the 301. */
 export const ATTRIBUTION_SOURCE_COOKIE = 'yousafe_attr_source'
 
