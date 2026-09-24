@@ -101,6 +101,9 @@ export default function GoogleAnalytics() {
 
     const onConsent = (event: Event) => {
       const value = (event as CustomEvent<string>).detail
+      if (value !== 'granted') {
+        window.gtag?.('consent', 'update', { analytics_storage: 'denied' })
+      }
       setConsent(value === 'granted' ? 'granted' : 'denied')
     }
 
