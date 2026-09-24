@@ -85,7 +85,8 @@ export default function GoogleAnalytics() {
   const [consent, setConsent] = useState<Consent>(null)
 
   useEffect(() => {
-    setConsent(readClientConsent() === 'granted' ? 'granted' : readClientConsent() === 'denied' ? 'denied' : null)
+    const savedConsent = readClientConsent()
+    setConsent(savedConsent === 'granted' || savedConsent === 'denied' ? savedConsent : null)
 
     const onConsent = (event: Event) => {
       const value = (event as CustomEvent<string>).detail
