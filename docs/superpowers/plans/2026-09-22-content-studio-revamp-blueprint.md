@@ -2,7 +2,7 @@
 
 **Version CS-2026.09.24.1 / blueprint 1.2 · Staged A0 and scoped build entry open; action/release gates unchanged.**
 
-> Execution policy under contract `2026.09.23.7-rdc1`: Sol → Luna family through `RDC_CODEX_CLI`, with a task-selected supported effort after exact model/effort re-resolution, recorded rationale and verified selected-effort access. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a distinct reviewer inspects the candidate. Native nested tools and separate CLI sessions are distinct, and a CLI session is not a native child. No automatic provider-family fallback. Use scoped A0 and dependency-ordered implementation packets under architecture §24.1; this documentation update itself commissions no provider call, migration, merge or deployment.
+> Execution policy under contract `2026.09.23.7-rdc1`: Sol → current `gpt-6-luna` through `RDC_CODEX_CLI`, with a task-selected supported effort after exact model/effort re-resolution, recorded rationale and verified selected-effort access. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a distinct reviewer inspects the candidate. Native nested tools and separate CLI sessions are distinct, and a CLI session is not a native child. No automatic provider-family fallback. Use scoped A0 and dependency-ordered implementation packets under architecture §24.1; this documentation update itself commissions no provider call, migration, merge or deployment.
 
 **Goal:** build an evidence-governed SEO operating system that chooses useful interventions across YouSafe's estate, publishes safely, directs readers to relevant Marketplace supply and measures mature outcomes.
 
