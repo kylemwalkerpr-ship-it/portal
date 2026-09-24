@@ -10,6 +10,29 @@ describe('auth-independent API Clerk bypass', () => {
     expect(shouldBypassClerkForAuthIndependentApiRequest('GET', '/api/payments/config/other', search(), [])).toBe(false)
   })
 
+  test('bypasses only the anonymous attribution collector methods', () => {
+    expect(shouldBypassClerkForAuthIndependentApiRequest('GET', '/api/attribution/session', search(), [])).toBe(true)
+    expect(shouldBypassClerkForAuthIndependentApiRequest('POST', '/api/attribution/session', search(), [])).toBe(true)
+    expect(shouldBypassClerkForAuthIndependentApiRequest('POST', '/api/attribution/events', search(), [])).toBe(true)
+
+    expect(shouldBypassClerkForAuthIndependentApiRequest('PATCH', '/api/attribution/session', search(), [])).toBe(false)
+    expect(shouldBypassClerkForAuthIndependentApiRequest('GET', '/api/attribution/events', search(), [])).toBe(false)
+    expect(shouldBypassClerkForAuthIndependentApiRequest('POST', '/api/attribution/events/other', search(), [])).toBe(false)
+  })
+
+  test('attribution bypass still fails closed for Clerk protocol and handoff state', () => {
+    expect(
+      shouldBypassClerkForAuthIndependentApiRequest(
+        'POST', '/api/attribution/session', search('__clerk_ticket=abc'), [],
+      ),
+    ).toBe(false)
+    expect(
+      shouldBypassClerkForAuthIndependentApiRequest(
+        'POST', '/api/attribution/events', search(), [{ name: '__clerk_handshake', value: 'jwt' }],
+      ),
+    ).toBe(false)
+  })
+
   test('a normal signed-in session does not make an auth-independent response require Clerk', () => {
     expect(
       shouldBypassClerkForAuthIndependentApiRequest(

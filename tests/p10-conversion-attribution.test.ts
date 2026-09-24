@@ -27,7 +27,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+jest.mock('@/lib/supabase', () => {
+  const createSupabaseAdminClient = jest.fn()
+  return {
+    createSupabaseAdminClient,
+    getSupabaseAdminClient: jest.fn(() => createSupabaseAdminClient()),
+  }
+})
 jest.mock('@/lib/portalAuth', () => ({
   requireAdminUser: jest.fn(),
   requirePortalUser: jest.fn(),
