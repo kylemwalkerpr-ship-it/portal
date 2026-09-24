@@ -71,9 +71,11 @@ describe('GA4 client wiring helpers', () => {
 
   it('forwards page_view and conversion helpers to window.gtag when present', () => {
     const gtag = jest.fn()
-    const root = globalThis as unknown as { window?: { gtag?: typeof gtag } }
+    const root = globalThis as unknown as { window?: { gtag?: typeof gtag }; document?: Document }
     const prev = root.window
+    const prevDocument = root.document
     root.window = { gtag }
+    root.document = { cookie: 'yousafe-analytics-consent=accepted' } as Document
     try {
       trackPageView('/shop/gigs?q=f1', 'G-FTKZCVNW4B')
       trackGenerateLead({ value: 1 })
@@ -82,6 +84,8 @@ describe('GA4 client wiring helpers', () => {
     } finally {
       if (prev === undefined) delete root.window
       else root.window = prev
+      if (prevDocument === undefined) delete root.document
+      else root.document = prevDocument
     }
 
     expect(gtag).toHaveBeenCalledWith('event', 'page_view', {
