@@ -62,16 +62,26 @@ function GoogleLinkerUrlCleaner({
     }
 
     let requested = false
-    const fallback = window.setTimeout(cleanAddressBar, 2500)
-    const poll = window.setInterval(() => {
+    let completed = false
+    let poll = 0
+    const finish = () => {
+      if (completed) return
+      completed = true
+      window.clearTimeout(fallback)
+      window.clearInterval(poll)
+      cleanAddressBar()
+    }
+    const fallback = window.setTimeout(finish, 2500)
+    poll = window.setInterval(() => {
       if (requested || typeof window.gtag !== 'function') return
       requested = true
       // The GA config is queued before this get callback. It gets the chance to
       // consume Google's incoming linker value before the URL is shortened.
-      window.gtag('get', measurementId, 'client_id', cleanAddressBar)
+      window.gtag('get', measurementId, 'client_id', finish)
     }, 50)
 
     return () => {
+      completed = true
       window.clearTimeout(fallback)
       window.clearInterval(poll)
     }
