@@ -76,4 +76,35 @@ describe('GET /api/seo-engine/status — P11 latest metadata', () => {
       latestAt: '2026-09-22T11:00:00Z',
     }))
   })
+
+  it('preserves unavailable measurement state in the status response', async () => {
+    const { loadVisibilityStatusSummary } = jest.requireMock('@/lib/seoEngine/llmVisibility') as {
+      loadVisibilityStatusSummary: jest.Mock
+    }
+    loadVisibilityStatusSummary.mockResolvedValueOnce({
+      cited: 0, total: 0, attempted: 2, failed: 2, shareOfVoice: null,
+      measurementState: 'unavailable',
+      reporting: {
+        contractVersion: 'p11-geo-v1', queryRows: 1, legacyRows: 267,
+        attempted: 2, successful: 0, providerFailure: 1, providerUnavailable: 1,
+        citedSuccessful: 0, shareOfVoice: null, measurementState: 'unavailable',
+        auditedAuthoritativeOwners: 1, authoritativeOwnerCount: 67,
+      },
+      reportingTruncated: false, latest: null, summaryMode: true,
+    })
+
+    const response = await GET(new Request('https://portal.example/api/seo-engine/status') as any)
+    const body = await response.json()
+
+    expect(body.llmVisibility).toEqual(expect.objectContaining({
+      total: 0, cited: 0, attempted: 2, failed: 2,
+      shareOfVoice: null, measurementState: 'unavailable',
+      reporting: expect.objectContaining({
+        queryRows: 1, legacyRows: 267, attempted: 2, successful: 0,
+        providerFailure: 1, providerUnavailable: 1, citedSuccessful: 0,
+        shareOfVoice: null, measurementState: 'unavailable',
+        authoritativeOwnerCount: 67,
+      }),
+    }))
+  })
 })

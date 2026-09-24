@@ -2,13 +2,7 @@
  * P11 auth-CPU remediation — /api/seo-engine/status must not pay deep
  * visibility/remediation computation just to render a health summary.
  *
- * Evidence reconfirmed: the status route calls `loadVisibilityFeed(50)`, which
- * fetches up to `P11_REPORTING_ROW_LIMIT` (5000) wide rows (30+ columns incl.
- * citation_classifications arrays), 2 exact head-counts and the full ownership
- * registry, then builds per-row citation actions and runs the remediation
- * generator — all to render ~10 aggregate numbers in the status JSON.
- *
- * Contract under test: a new `loadVisibilityStatusSummary()` reads only the
+ * Contract under test: `loadVisibilityStatusSummary()` reads only the
  * reporting aggregates (narrow P11 columns + the same two exact counts + the
  * authoritative-owner count), with:
  *  - NO wide-row fetch (no snippet/citations/classifications columns),
@@ -21,6 +15,7 @@
 
 const mockCreateSupabaseAdminClient = jest.fn()
 const mockRemediateVisibilityAudits = jest.fn()
+const mockListRegistry = jest.fn(async () => [{ is_authoritative: true }, { is_authoritative: true }])
 
 jest.mock('@/lib/supabase', () => ({
   createSupabaseAdminClient: () => mockCreateSupabaseAdminClient(),
@@ -45,7 +40,7 @@ jest.mock('@/lib/seoFactory/ownership', () => ({
     market: 'https://market.yousafeconsultancy.com',
   },
   isAuthoritativeOwnershipRow: (row: Record<string, unknown>) => row.is_authoritative === true,
-  listRegistry: jest.fn(async () => [{ is_authoritative: true }, { is_authoritative: true }]),
+  listRegistry: () => mockListRegistry(),
 }))
 
 import { loadVisibilityStatusSummary } from '@/lib/seoEngine/llmVisibility'
@@ -55,6 +50,13 @@ type Selected = { columns: string; limit: number | null }
 type LatestCandidates = {
   legacy: Array<Record<string, unknown>>
   p11: Array<Record<string, unknown>>
+}
+
+type FakeSupabaseOptions = {
+  totalRows?: number
+  p11RowsExact?: number
+  latestError?: Error
+  primaryError?: Error
 }
 
 const P11_ROW_COLUMNS = [
@@ -70,6 +72,7 @@ function fakeSupabase(
   rows: Array<Record<string, unknown>>,
   selections: Selected[],
   latest: LatestCandidates = { legacy: [], p11: [] },
+  options: FakeSupabaseOptions = {},
 ) {
   return {
     from(table: string) {
@@ -78,9 +81,11 @@ function fakeSupabase(
           const entry: Selected = { columns, limit: null }
           selections.push(entry)
           let latestIsP11 = false
+          let countIsP11 = false
           const chain: Record<string, unknown> = {}
           chain.eq = (...args: unknown[]) => {
             if (columns === 'query,created_at' && args[0] === 'audit_contract_version') latestIsP11 = true
+            if (opts?.count === 'exact' && args[0] === 'audit_contract_version') countIsP11 = true
             return chain
           }
           chain.order = () => chain
@@ -88,19 +93,23 @@ function fakeSupabase(
             entry.limit = n
             return chain
           }
-          // Real supabase-js PostgrestBuilder implements the full promise
-          // interface; the summary's latest-row read uses .catch().
-          chain.catch = (onRejected: unknown) => chain
-          chain.then = (resolve: (value: unknown) => unknown) => {
+          chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => {
             if (opts?.count === 'exact' && opts?.head) {
-              return Promise.resolve({ data: null, error: null, count: 4 }).then(resolve)
+              return Promise.resolve({
+                data: null, error: null,
+                count: countIsP11 ? (options.p11RowsExact ?? 1) : (options.totalRows ?? 268),
+              }).then(resolve, reject)
+            }
+            if (columns === 'query,created_at' && options.latestError) return Promise.reject(options.latestError).then(resolve, reject)
+            if (columns === 'audit_contract_version,ownership_row_id,coverage' && options.primaryError) {
+              return Promise.reject(options.primaryError).then(resolve, reject)
             }
             const data = columns.includes('coverage')
               ? rows
               : columns === 'query,created_at'
                 ? (latestIsP11 ? latest.p11 : latest.legacy)
                 : []
-            return Promise.resolve({ data, error: null }).then(resolve)
+            return Promise.resolve({ data, error: null }).then(resolve, reject)
           }
           return chain
         },
@@ -126,35 +135,50 @@ describe('loadVisibilityStatusSummary — status-summary vs deep-feed split', ()
   beforeEach(() => {
     jest.clearAllMocks()
     mockRemediateVisibilityAudits.mockResolvedValue([])
+    mockListRegistry.mockResolvedValue([{ is_authoritative: true }, { is_authoritative: true }])
   })
 
-  it('returns the same reporting aggregates as the deep feed without any deep computation', async () => {
+  it('assimilates a then-only PostgrestBuilder and returns the observed unavailable cohort without deep computation', async () => {
     const selections: Selected[] = []
-    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase([measuredP11Row], selections))
+    mockListRegistry.mockResolvedValue(Array.from({ length: 67 }, () => ({ is_authoritative: true })))
+    const unavailableP11Row = {
+      audit_contract_version: 'p11-geo-v1', ownership_row_id: 1,
+      coverage: {
+        attempted: 2, successful: 0, citedSuccessful: 0,
+        providerUnavailable: 1, providerFailure: 1, parseFailure: 0, blocked: 0, unknown: 0,
+        successfulWithAuthoritativeCitation: 0, successfulWithOtherCurrentYouSafeCitation: 0,
+        successfulWithWrongOrRetiredYouSafeCitation: 0, successfulWithCompetitorCitation: 0,
+        successfulWithNoExtractableCitation: 0, shareOfVoice: null,
+      },
+    }
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase([unavailableP11Row], selections, {
+      legacy: [{ query: 'legacy', created_at: '2026-09-22T12:00:00Z' }], p11: [],
+    }))
 
     const summary = await loadVisibilityStatusSummary()
 
     expect(summary.reporting).toEqual(expect.objectContaining({
       contractVersion: 'p11-geo-v1',
-      attempted: 2,
-      successful: 1,
-      citedSuccessful: 1,
-      shareOfVoice: 100,
-      measurementState: 'measured',
-      auditedAuthoritativeOwners: 1,
-      authoritativeOwnerCount: 2,
-      ownerCoveragePercent: 50,
+      queryRows: 1, attempted: 2, successful: 0,
+      providerFailure: 1, providerUnavailable: 1, citedSuccessful: 0,
+      shareOfVoice: null, measurementState: 'unavailable',
+      legacyRows: 267, auditedAuthoritativeOwners: 1,
+      authoritativeOwnerCount: 67, ownerCoveragePercent: 1,
     }))
-    expect(summary.cited).toBe(1)
-    expect(summary.total).toBe(1)
+    expect(summary.cited).toBe(0)
+    expect(summary.total).toBe(0)
     expect(summary.attempted).toBe(2)
-    expect(summary.shareOfVoice).toBe(100)
-    expect(summary.measurementState).toBe('measured')
+    expect(summary.failed).toBe(2)
+    expect(summary.shareOfVoice).toBeNull()
+    expect(summary.measurementState).toBe('unavailable')
 
     // No wide-row fetch: the P11 read must select a narrow aggregate column
     // set — never the deep-feed column list with snippet/citations/classifications.
     const p11Read = selections.find((s) => s.columns.includes('coverage'))
     expect(p11Read).toBeDefined()
+    // Four query builders total: narrow rows, two exact counts, latest metadata.
+    // This is unchanged by thenable assimilation; no deep feed query is added.
+    expect(selections).toHaveLength(4)
     for (const deepColumn of ['snippet', 'cited_urls', 'citation_classifications', 'brand_mentions']) {
       expect(p11Read!.columns).not.toContain(deepColumn)
     }
@@ -167,28 +191,59 @@ describe('loadVisibilityStatusSummary — status-summary vs deep-feed split', ()
   })
 
   it('falls back to the empty unavailable report when the summary read fails', async () => {
-    mockCreateSupabaseAdminClient.mockReturnValue({
-      from() {
-        return {
-          select() {
-            return {
-              eq: () => ({
-                order: () => ({
-                  limit: () => Promise.reject(new Error('db down')),
-                }),
-              }),
-            }
-          },
-        }
-      },
-    })
+    const selections: Selected[] = []
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase([], selections, undefined, {
+      primaryError: new Error('summary reporting query failed'),
+    }))
 
     const summary = await loadVisibilityStatusSummary()
 
     expect(summary.measurementState).toBe('unavailable')
     expect(summary.shareOfVoice).toBeNull()
-    expect(summary.reporting.measurementState).toBe('unavailable')
+    expect(summary.reporting).toEqual(expect.objectContaining({
+      queryRows: 0, legacyRows: 0, attempted: 0, successful: 0,
+      citedSuccessful: 0, shareOfVoice: null, measurementState: 'unavailable',
+    }))
+    // All-zero fields remain explicitly unavailable; they are never measured-empty evidence.
+    expect(summary.reporting.measurementState).not.toBe('measured')
     expect(summary.summaryMode).toBe(true)
+  })
+
+  it('keeps valid reporting when only the latest-metadata read fails', async () => {
+    const selections: Selected[] = []
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase([measuredP11Row], selections, undefined, {
+      latestError: new Error('latest query timeout'),
+    }))
+
+    const summary = await loadVisibilityStatusSummary()
+
+    expect(summary.reporting).toEqual(expect.objectContaining({
+      queryRows: 1, attempted: 2, successful: 1, citedSuccessful: 1,
+      measurementState: 'measured', shareOfVoice: 100,
+    }))
+    expect(summary.latest).toBeNull()
+  })
+
+  it('stays unavailable when both reporting and latest-metadata reads fail', async () => {
+    const selections: Selected[] = []
+    mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase([], selections, undefined, {
+      primaryError: new Error('summary reporting query failed'),
+      latestError: new Error('latest query timeout'),
+    }))
+
+    const summary = await loadVisibilityStatusSummary()
+
+    expect(summary.measurementState).toBe('unavailable')
+    expect(summary.shareOfVoice).toBeNull()
+    expect(summary.reporting).toEqual(expect.objectContaining({
+      queryRows: 0, attempted: 0, successful: 0, citedSuccessful: 0,
+      shareOfVoice: null, measurementState: 'unavailable',
+    }))
+    expect(summary.latest).toBeNull()
+    expect(mockRemediateVisibilityAudits).not.toHaveBeenCalled()
+    for (const deepColumn of ['snippet', 'cited_urls', 'citation_classifications', 'brand_mentions']) {
+      expect(selections.some((selection) => selection.columns.includes(deepColumn))).toBe(false)
+    }
   })
 
   it('uses the newest P11 row for latest query metadata, never a newer legacy row', async () => {
