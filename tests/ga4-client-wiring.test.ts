@@ -104,7 +104,7 @@ describe('GA4 client wiring helpers', () => {
     expect(src).toContain("from 'next/script'")
     expect(src).toContain('afterInteractive')
     expect(src).toContain('cleanGoogleLinkerHref')
-    expect(src).toContain("consent !== 'granted'")
+    expect(src).toContain("effectiveConsent !== 'granted'")
     expect(src).toContain('id="google-analytics"')
   })
 })
