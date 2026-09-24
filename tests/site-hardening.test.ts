@@ -23,7 +23,8 @@ describe('site hardening', () => {
     expect(banner).toContain('privacy-policy')
     expect(analytics).toContain('yousafe:cookie-consent-change')
     expect(analytics).toContain('yousafe-analytics-consent')
-    expect(analytics).toContain("consent !== 'granted'")
+    expect(analytics).toContain("consent === 'granted'")
+    expect(analytics).toContain("effectiveConsent !== 'granted'")
   })
 
   it('publishes a real business contact address on the public marketplace', () => {
