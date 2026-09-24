@@ -1,8 +1,8 @@
 # Content Studio Revamp Implementation Blueprint
 
-**Version CS-2026.09.23.8 / blueprint 1.1 · A0.1 documentation-integrity/executor-policy correction; implementation blocked.**
+**Version CS-2026.09.24.1 / blueprint 1.2 · Staged A0 and scoped build entry open; action/release gates unchanged.**
 
-> Execution policy under contract `2026.09.23.7-rdc1`: Sol → Luna family through `RDC_CODEX_CLI`, with a task-selected supported effort after exact model/effort re-resolution, recorded rationale and verified selected-effort access. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a distinct reviewer inspects the candidate. Native nested tools and separate CLI sessions are distinct, and a CLI session is not a native child. No automatic provider-family fallback. Use scoped implementation packets after the canonical program and A0 entry gates; this documentation update itself commissions no runtime, migration or deployment.
+> Execution policy under contract `2026.09.23.7-rdc1`: Sol → Luna family through `RDC_CODEX_CLI`, with a task-selected supported effort after exact model/effort re-resolution, recorded rationale and verified selected-effort access. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a distinct reviewer inspects the candidate. Native nested tools and separate CLI sessions are distinct, and a CLI session is not a native child. No automatic provider-family fallback. Use scoped A0 and dependency-ordered implementation packets under architecture §24.1; this documentation update itself commissions no provider call, migration, merge or deployment.
 
 **Goal:** build an evidence-governed SEO operating system that chooses useful interventions across YouSafe's estate, publishes safely, directs readers to relevant Marketplace supply and measures mature outcomes.
 
@@ -10,18 +10,18 @@
 
 **Tech stack:** existing TypeScript/Next.js/OpenNext control UI; Supabase/Postgres private control state; Modal Python orchestration with pinned Node domain executables; TypeSafe Jev over HTTPS; existing GitHub Actions deployment. Current versions, extensions, credentials, account limits and exact workflow IDs are discovered in A0 and committed as verified non-secret configuration.
 
-**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.23.8. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
+**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.24.1. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
 
 ## 1. Authority, evidence and start condition
 
 Read in order: current authorization, applicable AGENTS.md, Supervisor Arc 33465, SEO Brief 34332, current main parity matrix, canonical architecture, this blueprint, then only the current packet's source files. The audit read main `4b0a310f22a43e532c2f16ce08df3897d760caf4`: P0–P8 recorded PASS; P9/P10/P11 IN_PROGRESS; P12/P13 PENDING. P9 has zero verified wins; P10's deployed instrumentation is not its real-outcome gate. Re-pin on execution start; do not reuse this snapshot as a live unlock.
 
-- [ ] Sol verifies the canonical SEO program has closed its remaining gates and explicitly opens Studio implementation.
+- [ ] Sol records the 2026-09-24 staged-entry authorization, re-pins current main and opens a bounded A0.2 packet; open P9–P13 statuses remain unchanged and action-specific.
 - [ ] A0.1–A0.7 produce the evidence listed below; downstream packets wait for their actual dependencies.
 - [ ] Every production mutation has its own scoped authorization, exact-head review/checks and official workflow.
 - [ ] Broad CREATE remains frozen until the program's cluster authorization and per-action checks allow it.
 
-While program gates remain open, the explicitly authorized A0.1 scope permits documentation-integrity repair and read-only readiness reconciliation only. It does not authorize operational A0.2–A0.7, application implementation, database/provider/account probes, deployment, CREATE/publication, phase promotion or gate bypass. Operational A0 and implementation remain entry-gated unless separately explicitly authorized.
+A0.1 is released; scoped read-only A0.2–A0.7 and dependency-ordered A1–A7 code/test packets may now be admitted by Sol under §24.1. A0.2 must ingest existing Worker 1102/CPU/subrequest incidents and open PR evidence before proposing a cutover. P9–P11 outcome truth, P12 activation validation and P13 cluster-specific CREATE remain binding; code readiness grants no production mutation, provider/spend, merge/deployment, publication or phase promotion. Record each blocked dependent action explicitly rather than treating an open unrelated outcome as a global engineering stop.
 
 No synthetic event/backlink, model assertion, browser badge or handoff summary closes a phase. Design approval is separate from operational approval. Unavailable capabilities are `BLOCKED_CONFIGURATION` with a recovery owner; they are never guessed. No automatic paid upgrade.
 
@@ -563,4 +563,4 @@ Sol re-resolves the available Luna model ID and advertised effort catalog at eve
 
 Each packet names objective, base SHA, worktree, allowed/excluded paths, predecessor evidence, exact model+selected effort, advertised and verified effort catalogs, `RDC_CODEX_CLI` transport, native-nested versus separate-CLI orchestration, tests, CPU evidence requirements, publication authority, review owner and next checkpoint. If the selected Luna model or effort cannot be verified, report `BLOCKED_CAPABILITY` and do not switch provider families. Preserve current external sessions and jobs. User-facing updates distinguish code ready, deployed, externally verified and program closed.
 
-The prior kickoff handoff's unconditional A0 operational probes while the global program gate remained closed were inconsistent with v6. Corrected handoff begins with source/document/readiness reconciliation; operational A0 and code wait for applicable entry authorization. A narrowly scoped exception must be explicit and preserve every publication/SEO gate.
+Historical v6/v8 global program-entry hold is superseded by the 2026-09-24 staged-entry authorization. First reconcile source/document/readiness and existing Worker incident evidence, then admit A0.2 with read-only scope. Every production action, release and CREATE still waits for its separate applicable permission and evidence.
