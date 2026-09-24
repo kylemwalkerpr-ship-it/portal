@@ -156,3 +156,107 @@ describe('content AI · continuation restart guard (regression)', () => {
     }
   })
 })
+
+describe('content AI · provider retry budget defaults', () => {
+  const originalFetch = global.fetch
+  const originalRetry = process.env.CONTENT_AI_RETRY
+  const originalDeepSeekKey = process.env.DEEPSEEK_API_KEY
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key'
+    global.fetch = originalFetch
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+    global.fetch = originalFetch
+    if (originalRetry == null) delete process.env.CONTENT_AI_RETRY
+    else process.env.CONTENT_AI_RETRY = originalRetry
+    if (originalDeepSeekKey == null) delete process.env.DEEPSEEK_API_KEY
+    else process.env.DEEPSEEK_API_KEY = originalDeepSeekKey
+  })
+
+  const generation = () => generateContentText({
+    aiProvider: 'deepseek-v41-flash',
+    exclusive: true,
+    system: 'Write one sentence.',
+    prompt: 'Return a short answer.',
+    skipQualityContract: true,
+  })
+
+  const flushBackoffBeforeAsserting = async (
+    assertion: (pending: ReturnType<typeof generation>) => Promise<unknown>,
+  ) => {
+    const pending = generation()
+    const result = assertion(pending)
+    await jest.runAllTimersAsync()
+    await result
+  }
+
+  it('defaults to four attempts when CONTENT_AI_RETRY is unset', async () => {
+    delete process.env.CONTENT_AI_RETRY
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      if (calls === 4) return new Response(JSON.stringify({
+        choices: [{ message: { content: 'A stable answer.' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).resolves.toMatchObject({ text: 'A stable answer.' }))
+    expect(calls).toBe(4)
+  })
+
+  it('CONTENT_AI_RETRY=1 allows exactly one attempt', async () => {
+    process.env.CONTENT_AI_RETRY = '1'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/503/))
+    expect(calls).toBe(1)
+  })
+
+  it('CONTENT_AI_RETRY=2 allows two attempts and succeeds on the second', async () => {
+    process.env.CONTENT_AI_RETRY = '2'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      if (calls === 2) return new Response(JSON.stringify({
+        choices: [{ message: { content: 'A stable answer.' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).resolves.toMatchObject({ text: 'A stable answer.' }))
+    expect(calls).toBe(2)
+  })
+
+  it('CONTENT_AI_RETRY=0 is floored at one attempt', async () => {
+    process.env.CONTENT_AI_RETRY = '0'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      return new Response('temporary overload', { status: 503 })
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/503/))
+    expect(calls).toBe(1)
+  })
+
+  it('does not retry subrequest-limit errors even when multiple attempts are configured', async () => {
+    process.env.CONTENT_AI_RETRY = '2'
+    let calls = 0
+    global.fetch = jest.fn(async () => {
+      calls++
+      throw new Error('Too many subrequests by single Worker invocation')
+    }) as typeof fetch
+
+    await flushBackoffBeforeAsserting((pending) => expect(pending).rejects.toThrow(/Too many subrequests/))
+    expect(calls).toBe(1)
+  })
+})
