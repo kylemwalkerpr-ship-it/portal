@@ -97,6 +97,25 @@ describe('GA4 client wiring helpers', () => {
     expect(gtag).toHaveBeenCalledWith('event', 'sign_up', { method: 'clerk' })
   })
 
+  it('does not send analytics events after consent is rejected', () => {
+    const gtag = jest.fn()
+    const root = globalThis as unknown as { window?: { gtag?: typeof gtag }; document?: Document }
+    const prevWindow = root.window
+    const prevDocument = root.document
+    root.window = { gtag }
+    root.document = { cookie: 'yousafe-analytics-consent=rejected' } as Document
+    try {
+      trackPageView('/marketplace')
+      trackGenerateLead({ method: 'form' })
+      expect(gtag).not.toHaveBeenCalled()
+    } finally {
+      if (prevWindow === undefined) delete root.window
+      else root.window = prevWindow
+      if (prevDocument === undefined) delete root.document
+      else root.document = prevDocument
+    }
+  })
+
   it('mounts GoogleAnalytics from the shared root layout (market + portal)', () => {
     const layout = readFileSync(join(__dirname, '../app/layout.tsx'), 'utf8')
     expect(layout).toContain("import GoogleAnalytics from '@/components/GoogleAnalytics'")
