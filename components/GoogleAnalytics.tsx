@@ -64,6 +64,7 @@ function GoogleLinkerUrlCleaner({
     let requested = false
     let completed = false
     let poll = 0
+    let fallback = 0
     const finish = () => {
       if (completed) return
       completed = true
@@ -71,7 +72,7 @@ function GoogleLinkerUrlCleaner({
       window.clearInterval(poll)
       cleanAddressBar()
     }
-    const fallback = window.setTimeout(finish, 2500)
+    fallback = window.setTimeout(finish, 2500)
     poll = window.setInterval(() => {
       if (requested || typeof window.gtag !== 'function') return
       requested = true
