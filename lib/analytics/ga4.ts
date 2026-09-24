@@ -10,6 +10,8 @@
  * of the estate-wide analytics cookie; P10 collection follows the same choice.
  */
 
+import { parseAnalyticsConsentCookie } from './consent'
+
 export const GA4_FALLBACK_MEASUREMENT_ID = 'G-FTKZCVNW4B'
 
 /** Cross-domain linker domains for the active YouSafe estate (one GA4 property). */
@@ -83,6 +85,8 @@ function getBrowserGtag(): GtagFn | undefined {
 }
 
 function callGtag(...args: unknown[]) {
+  if (typeof document === 'undefined') return
+  if (parseAnalyticsConsentCookie(document.cookie) !== 'granted') return
   const gtag = getBrowserGtag()
   if (!gtag) return
   gtag(...args)
