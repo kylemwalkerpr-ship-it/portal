@@ -3,6 +3,7 @@ import { createSupabaseAdminClient, getSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
 import { headers as nextHeaders } from 'next/headers'
 import { extractCountryFromRequest } from './countryDetection'
+import { getVerifiedPrimaryEmail, profileEmailMatchesExactly } from './clerkVerifiedEmail'
 import type { NextRequest } from 'next/server'
 
 export type PortalUserContext = {
@@ -98,11 +99,7 @@ export async function requirePortalUser(request?: NextRequest): Promise<
     try {
       const clerk = await clerkClient()
       const clerkUser = await clerk.users.getUser(clerkUserId)
-      const clerkEmail = (
-        clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress
-        ?? clerkUser.emailAddresses[0]?.emailAddress
-        ?? ''
-      ).trim().toLowerCase()
+      const clerkEmail = getVerifiedPrimaryEmail(clerkUser)
 
       if (clerkEmail) {
         let byEmail = await db
@@ -119,7 +116,7 @@ export async function requirePortalUser(request?: NextRequest): Promise<
             .maybeSingle()
         }
 
-        if (byEmail.data) {
+        if (byEmail.data && profileEmailMatchesExactly(byEmail.data.email, clerkEmail)) {
           // The email was obtained from Clerk's verified primary email. Relink
           // the existing row even when it contains an older Clerk ID; this is
           // the case that otherwise traps deep links in /sign-in/admin loops.
@@ -169,10 +166,7 @@ export async function requirePortalUser(request?: NextRequest): Promise<
     try {
       const client = await clerkClient()
       const clerkUser = await client.users.getUser(clerkUserId)
-      const clerkEmail =
-        clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ||
-        clerkUser.emailAddresses[0]?.emailAddress ||
-        ''
+      const clerkEmail = getVerifiedPrimaryEmail(clerkUser)
       if (clerkEmail) {
         profile.email = clerkEmail
         await db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)

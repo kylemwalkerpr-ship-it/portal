@@ -1,6 +1,7 @@
 import { getClerkUserId } from './auth'
 import { createSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
+import { getVerifiedPrimaryEmail } from './clerkVerifiedEmail'
 
 export type StudentAuth =
   | { error: string; status: 401 | 403 | 404 }
@@ -49,10 +50,7 @@ export async function getCurrentStudent(): Promise<StudentAuth> {
     try {
       const client = await clerkClient()
       const clerkUser = await client.users.getUser(clerkUserId)
-      const clerkEmail =
-        clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ||
-        clerkUser.emailAddresses[0]?.emailAddress ||
-        ''
+      const clerkEmail = getVerifiedPrimaryEmail(clerkUser)
       if (clerkEmail) {
         profile.email = clerkEmail
         // Backfill silently — don't block the response if it fails
