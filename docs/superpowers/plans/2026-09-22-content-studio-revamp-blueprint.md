@@ -21,7 +21,7 @@ Read in order: current authorization, applicable AGENTS.md, Supervisor Arc 33465
 - [ ] Every production mutation has its own scoped authorization, exact-head review/checks and official workflow.
 - [ ] Broad CREATE remains frozen until the program's cluster authorization and per-action checks allow it.
 
-A0.1 is released; scoped read-only A0.2–A0.7 and dependency-ordered A1–A7 code/test packets may now be admitted by Sol under §24.1. A0.2 must ingest existing Worker 1102/CPU/subrequest incidents and open PR evidence before proposing a cutover. P9–P11 outcome truth, P12 activation validation and P13 cluster-specific CREATE remain binding; code readiness grants no production mutation, provider/spend, merge/deployment, publication or phase promotion. Record each blocked dependent action explicitly rather than treating an open unrelated outcome as a global engineering stop.
+A0.1 is released; scoped A0.2–A0.7 discovery/read-only baselines and dependency-ordered A1–A7 code/test packets may now be admitted by Sol under §24.1. A0.2 must ingest existing Worker 1102/CPU/subrequest incidents and open PR evidence before proposing a cutover. P9–P11 outcome truth, P12 activation validation and P13 cluster-specific CREATE remain binding; code readiness grants no production mutation, provider/spend, merge/deployment, publication or phase promotion. Record each blocked dependent action explicitly rather than treating an open unrelated outcome as a global engineering stop.
 
 No synthetic event/backlink, model assertion, browser badge or handoff summary closes a phase. Design approval is separate from operational approval. Unavailable capabilities are `BLOCKED_CONFIGURATION` with a recovery owner; they are never guessed. No automatic paid upgrade.
 
