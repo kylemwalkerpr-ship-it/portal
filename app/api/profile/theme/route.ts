@@ -1,8 +1,9 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { PortalThemeId, THEME_IDS, DEFAULT_THEME } from '@/lib/portalThemes'
+import type { NextRequest } from 'next/server'
 
-export async function GET() {
-  const ctx = await requirePortalUser()
+export async function GET(request: NextRequest) {
+  const ctx = await requirePortalUser(request)
   if ('error' in ctx) {
     return Response.json({ error: ctx.error }, { status: ctx.status })
   }
@@ -25,8 +26,8 @@ export async function GET() {
   return Response.json({ theme })
 }
 
-export async function PATCH(req: Request) {
-  const ctx = await requirePortalUser()
+export async function PATCH(req: NextRequest) {
+  const ctx = await requirePortalUser(req)
   if ('error' in ctx) {
     return Response.json({ error: ctx.error }, { status: ctx.status })
   }

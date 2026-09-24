@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
+import type { NextRequest } from 'next/server'
 
 const GIG_SELECT =
   'id, slug, title, status, gig_status_reason, provider_id, provider_type, ' +
@@ -52,8 +53,8 @@ async function enrichGigs(db: any, gigs: any[]) {
   })
 }
 
-export async function GET(_req: Request) {
-  const auth = await requireAdminUser()
+export async function GET(request: NextRequest) {
+  const auth = await requireAdminUser(request)
   if ('error' in auth) return fail(auth.error, auth.status)
 
   const warnings: string[] = []

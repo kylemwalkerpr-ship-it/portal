@@ -1,9 +1,10 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { DEFAULT_PLATFORM_SETTINGS } from '@/lib/platformConfig'
+import type { NextRequest } from 'next/server'
 
-async function requireAdmin() {
-  const clerkUserId = await getClerkUserId()
+async function requireAdmin(request: NextRequest) {
+  const clerkUserId = await getClerkUserId(request)
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 as const }
 
   const db = createSupabaseAdminClient()
@@ -17,8 +18,8 @@ async function requireAdmin() {
   return { db, adminProfileId: profile.id }
 }
 
-export async function GET() {
-  const auth = await requireAdmin()
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin(request)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db } = auth
 

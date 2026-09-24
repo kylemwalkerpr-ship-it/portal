@@ -1,11 +1,12 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import type { NextRequest } from 'next/server'
 
 const VALID_ROLES = new Set(['client', 'student', 'consultant', 'attorney', 'support', 'admin'])
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
-async function requireAdmin() {
-  const clerkUserId = await getClerkUserId()
+async function requireAdmin(request: NextRequest) {
+  const clerkUserId = await getClerkUserId(request)
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 as const }
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
@@ -23,8 +24,8 @@ function laneSegment(role: string): string {
   return role // consultant, attorney, support
 }
 
-export async function POST(req: Request) {
-  const auth = await requireAdmin()
+export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const secretKey = process.env.CLERK_SECRET_KEY
@@ -92,8 +93,8 @@ export async function POST(req: Request) {
   })
 }
 
-export async function GET() {
-  const auth = await requireAdmin()
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin(request)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const secretKey = process.env.CLERK_SECRET_KEY
