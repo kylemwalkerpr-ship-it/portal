@@ -103,6 +103,8 @@ describe('GA4 client wiring helpers', () => {
     const src = readFileSync(join(__dirname, '../components/GoogleAnalytics.tsx'), 'utf8')
     expect(src).toContain("from 'next/script'")
     expect(src).toContain('afterInteractive')
+    expect(src).toContain('cleanGoogleLinkerHref')
+    expect(src).toContain("consent !== 'granted'")
     expect(src).toContain('id="google-analytics"')
   })
 })
