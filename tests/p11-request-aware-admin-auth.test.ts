@@ -113,7 +113,11 @@ describe('requirePortalUser email backfill is not a floating promise', () => {
       users: {
         getUser: jest.fn(async () => ({
           primaryEmailAddressId: 'e1',
-          emailAddresses: [{ id: 'e1', emailAddress: 'Admin@Example.com' }],
+          emailAddresses: [{
+            id: 'e1',
+            emailAddress: 'Admin@Example.com',
+            verification: { status: 'verified' },
+          }],
         })),
       },
     })
@@ -127,9 +131,7 @@ describe('requirePortalUser email backfill is not a floating promise', () => {
     for (let i = 0; i < 50 && backfillUpdate.mock.calls.length === 0; i++) {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
-    // Casing is preserved exactly as Clerk reports the primary email (same
-    // semantics as before — the recovery path lowercases; this backfill does not).
-    expect(backfillUpdate).toHaveBeenCalledWith({ email: 'Admin@Example.com' })
+    expect(backfillUpdate).toHaveBeenCalledWith({ email: 'admin@example.com' })
 
     // The update is still in flight: requirePortalUser must NOT have resolved.
     // A `void db...` floating promise would have returned the context here.

@@ -5,6 +5,7 @@ import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeAuthLane, normalizeSelfServiceLane, type AuthLane, type SelfServiceLane } from '@/lib/roleLanes'
 import { dashboardRedirectFor, resolveProvisionedSelfServiceLane } from '@/lib/dashboardRolePolicy'
+import { getVerifiedPrimaryEmail, profileEmailMatchesExactly } from '@/lib/clerkVerifiedEmail'
 import { normalizeVertical } from '@/lib/platformConfig'
 import DashboardClient from './client'
 
@@ -38,10 +39,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
   try {
     const clerk = await currentUser()
     if (clerk && clerk.id === userId) {
-      const email =
-        clerk.emailAddresses.find((entry) => entry.id === clerk.primaryEmailAddressId)?.emailAddress
-        ?? clerk.emailAddresses[0]?.emailAddress
-        ?? ''
+      const email = getVerifiedPrimaryEmail(clerk) ?? ''
       const metadata = (clerk.unsafeMetadata ?? {}) as Record<string, unknown>
       const metadataRole = metadata.requestedRole ?? metadata.role
       return {
@@ -62,7 +60,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
     })
     if (!res.ok) return { email: '', fullName: '', requestedRole: null }
     const user = await res.json()
-    const email = user.email_addresses?.[0]?.email_address ?? ''
+    const email = getVerifiedPrimaryEmail(user) ?? ''
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
     const metadataRole = user.unsafe_metadata?.requestedRole ?? user.unsafe_metadata?.role
     return {
@@ -207,7 +205,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
       .eq('role', 'admin')
       .maybeSingle()
 
-    if (adminByEmail) {
+    if (adminByEmail && profileEmailMatchesExactly(adminByEmail.email, clerkData.email)) {
       if (profile && profile.id !== adminByEmail.id && profile.clerk_user_id === userId) {
         await db.from('profiles').update({ clerk_user_id: null }).eq('id', profile.id).eq('clerk_user_id', userId)
       }
@@ -259,7 +257,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
       .ilike('email', clerkData.email.trim())
       .maybeSingle()
 
-    if (existingByEmail) {
+    if (existingByEmail && profileEmailMatchesExactly(existingByEmail.email, clerkData.email)) {
       const shouldRelink =
         existingByEmail.clerk_user_id !== userId &&
         (existingByEmail.role === requestedRole || existingByEmail.role === 'admin')
