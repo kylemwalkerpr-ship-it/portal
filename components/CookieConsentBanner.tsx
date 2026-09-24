@@ -53,7 +53,6 @@ export default function CookieConsentBanner() {
 
   return (
     <>
-      {settingsButton}
       <aside
         role="dialog"
         aria-label="Cookie preferences"
