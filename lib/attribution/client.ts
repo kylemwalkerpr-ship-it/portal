@@ -89,23 +89,21 @@ export function writeConsentCookie(value: AnalyticsConsent) {
 export async function bootstrapAttribution(): Promise<AttributionBootstrapResult> {
   if (typeof window === 'undefined') return { consent: 'unknown', tracking: false, requested: false }
   const consent = readClientConsent()
-  writeConsentCookie(consent)
-  // Unknown consent must not send even a first-party analytics payload. A
-  // denied choice sends only the withdrawal signal needed to revoke a prior
-  // consented attribution identity.
-  if (consent === 'unknown') return { consent, tracking: false, requested: false }
+  // Do not refresh Max-Age on ordinary visits: the six-month window is measured
+  // from the user's explicit choice. This minimal consent-only request lets the
+  // server clear any expired attribution identity without recording a visit.
   try {
     const response = await fetch('/api/attribution/session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify(consent === 'denied' ? { consent } : {
+      body: JSON.stringify(consent === 'granted' ? {
         consent,
         landing: { host: window.location.hostname, path: window.location.pathname },
         referrer: document.referrer || null,
         handoff: readCookieFromDocument('yousafe_attr_handoff'),
         campaign: readCookieFromDocument(ATTRIBUTION_SOURCE_COOKIE),
-      }),
+      } : { consent }),
     })
     const payload = (await response.json().catch(() => null)) as
       | { data?: { tracking?: boolean; attribution?: { source_class?: string } } }
