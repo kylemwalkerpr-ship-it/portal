@@ -1,3 +1,7 @@
+# Content Studio — 2026-09-24 staged-entry audit amendment
+
+User direction opens bounded A0.2–A0.7 and dependency-ordered construction under architecture §24.1 without closing P9–P13. A0.1 remains released; P9–P11 outcomes, P12 validation/activation, P13 cluster-specific CREATE, Worker CPU, YMYL, owner/slug and separate production release gates remain unchanged. This amendment is document-policy evidence only; no runtime, database, provider, merge, deploy, publication or gate PASS is claimed. Historic v8 audit below is retained as dated evidence; its entry-blocked verdict is superseded for engineering entry only.
+
 # Content Studio — v8 A0.1 documentation-integrity audit
 
 Date: 23 September 2026. Input: historical CS-2026.09.23.7 at `2af720e8290c67806f335da746f91af35dd2c5f6`. Corrected design: **CS-2026.09.23.8**.
@@ -120,7 +124,7 @@ Current main was re-pinned to `4b0a310f22a43e532c2f16ce08df3897d760caf4`. Its pa
 
 ## Outstanding operational evidence — intentionally not invented
 
-Sol's later A0 packets must prove: remaining program closures; current repository/route/workflow target map; effective live DB schema/migration ledger/roles/extensions and capacity; complete legacy disposition; every release/maintenance/direct-main sink; actual Cloudflare telemetry/account limits; provider credentials/entitlements/retention; Modal Volume/gateway/readback/backup/restore behavior and account billing; TypeSafe account/model availability; qualified reviewer supply; source/release/end-to-end canaries. Missing evidence blocks only dependent work after the global program start condition; no fabricated IDs, settings, thresholds or signatures are substituted.
+Sol's later A0 packets must prove: current program statuses without claiming closure; current repository/route/workflow target map; effective live DB schema/migration ledger/roles/extensions and capacity; complete legacy disposition; every release/maintenance/direct-main sink; actual Cloudflare telemetry/account limits; provider credentials/entitlements/retention; Modal Volume/gateway/readback/backup/restore behavior and account billing; TypeSafe account/model availability; qualified reviewer supply; source/release/end-to-end canaries. Missing evidence blocks only dependent work under the 2026-09-24 staged-entry rule; no fabricated IDs, settings, thresholds or signatures are substituted.
 
 ## Documentation verification
 

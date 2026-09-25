@@ -1,57 +1,57 @@
 {
-  "architectureVersion": "CS-2026.09.23.8",
-  "date": "2026-09-23",
+  "architectureVersion": "CS-2026.09.24.1",
+  "date": "2026-09-24",
   "repository": "kylemwalkerpr-ship-it/portal",
-  "branch": "docs/a01-content-studio-integrity-20260923",
-  "parentCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac",
-  "baseCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac",
-  "programEvidenceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac",
-  "sourceCommit": "2af720e8290c67806f335da746f91af35dd2c5f6",
+  "branch": "docs/content-studio-entry-unlock-20260924",
+  "parentCommit": "edbdcac311968beaf20d086c9e6d1bc598bf9db4",
+  "baseCommit": "edbdcac311968beaf20d086c9e6d1bc598bf9db4",
+  "programEvidenceCommit": "edbdcac311968beaf20d086c9e6d1bc598bf9db4",
+  "sourceCommit": "22c685e38d46367eec18332f264b7f1480d8305e",
   "sourceArchitectureCommit": "2af720e8290c67806f335da746f91af35dd2c5f6",
   "supersedes": {
-    "architectureVersion": "CS-2026.09.23.7",
-    "sourceCommit": "2af720e8290c67806f335da746f91af35dd2c5f6"
+    "architectureVersion": "CS-2026.09.23.8",
+    "sourceCommit": "22c685e38d46367eec18332f264b7f1480d8305e"
   },
   "files": [
     {
       "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
-      "bytes": 261540,
-      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+      "bytes": 266139,
+      "sha256": "9370cde8691fcad2bcbb7fad66c0d35e562a058e6051c13c90efac14540b500f"
     },
     {
       "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
-      "bytes": 87157,
-      "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+      "bytes": 87384,
+      "sha256": "49b4c279c8bc824add1a2f069bd58056de1ffeac95a9b1c4c7d6bb969aefd27b"
     },
     {
       "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
-      "bytes": 22100,
-      "sha256": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525"
+      "bytes": 22752,
+      "sha256": "035b79876aa199312b7e868373dc009f03eec6fe91aa7c4b5ce896677e9b6f9f"
     },
     {
       "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
-      "bytes": 18712,
-      "sha256": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b"
+      "bytes": 19784,
+      "sha256": "2c3b1d0b30114b6855b1a47faddeec10aa09990f6ed60d464875e7f28dba00e1"
     },
     {
       "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
-      "bytes": 15976,
-      "sha256": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e"
+      "bytes": 16392,
+      "sha256": "4722cae09f54451aee153b086e0d05e88f6228b982c145bf9073ac3091853cf2"
     },
     {
       "path": "docs/superpowers/content-studio-execution-policy.md",
-      "bytes": 5369,
-      "sha256": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f"
+      "bytes": 5801,
+      "sha256": "5ab8ee138d8f4d00098e727e2c2e61401582f9bbf8ef823bd6360c00094c85fc"
     },
     {
       "path": "docs/superpowers/content-studio-kickoff.md",
-      "bytes": 5138,
-      "sha256": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5"
+      "bytes": 5369,
+      "sha256": "01fcb1ae8389bec2e8edad9770973c4ef884ef006f5726d142c45986818b1b6d"
     },
     {
       "path": "docs/superpowers/content-studio-revamp.md",
-      "bytes": 1752,
-      "sha256": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df"
+      "bytes": 2099,
+      "sha256": "dbda7d359e582a7d85705d2007c4341ab629bb7624b87f571c6d215408c513f5"
     }
   ],
   "validation": {
@@ -66,7 +66,7 @@
     "historicalPhaseSnapshotUnchanged": "PASS",
     "historicalWorkerBudgetUnchanged": "PASS",
     "runtimePerformance": "UNVERIFIED",
-    "validatorLimitation": "No local Draft 2020-12 validator package was available in the candidate worktree; no dependency was installed; JSON parsing plus bounded standards-faithful structural and negative-fixture checks used."
+    "validatorLimitation": "Full Draft 2020-12 validation unavailable in local worktree; run independent bounded checks and negative fixtures before marking PASS."
   },
-  "note": "Hashes cover file bytes, not this manifest itself. Runtime performance UNVERIFIED; no gate promotion."
+  "note": "Exact byte hashes exclude this manifest. Staged A0/build entry is authorized, independent P9-P13 outcome/action gates remain open; Worker CPU UNVERIFIED. Candidate docs are unmerged."
 }
