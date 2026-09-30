@@ -65,7 +65,7 @@ describe('YQAA launcher does not cover chat send controls', () => {
   test('cache-busts assistant.js so phones pick up the still launcher', () => {
     const widget = read('components/ChatWidget.tsx')
     const yara = read('public/yara.js')
-    expect(widget).toContain("script.src = '/assistant.js?v=ysa-launcher-still-2'")
-    expect(yara).toContain('assistant.js?v=ysa-launcher-still-2')
+    expect(widget).toContain("script.src = '/assistant.js?v=ysa-handoff-routing-1'")
+    expect(yara).toContain('assistant.js?v=ysa-handoff-routing-1')
   })
 })

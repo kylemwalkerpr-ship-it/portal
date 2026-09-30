@@ -171,6 +171,15 @@
   function inLive() {
     return !!(support && support.conversationId && support.status !== 'resolved' && support.status !== 'closed')
   }
+  function supportOwnsConversation() {
+    if (!inLive()) return false
+    var mode = String((support && support.mode) || '').toLowerCase()
+    if (mode === 'explicit' || mode === 'required' || mode === 'active') return true
+    // Legacy automatic handoffs may still be sitting in localStorage after the
+    // routing repair. While they are only waiting in a queue, keep YQAA usable.
+    var status = String((support && support.status) || '').toLowerCase()
+    return ['waiting_for_agent', 'queued', 'waiting', 'pending'].indexOf(status) === -1
+  }
   function currentProgressStage() {
     var elapsed = Math.max(0, Date.now() - progressStartedAt)
     var stage = PROGRESS_STAGES[0]
@@ -397,8 +406,10 @@
     history.forEach(function (m) { if (m.id) seen[m.id] = true })
     remote.forEach(function (m) {
       if (!m || !m.id || seen[m.id] || m.sender_type === 'visitor') return
+      if (m.sender_type === 'agent' && support) support.mode = 'active'
       history.push({ id: m.id, role: m.sender_type === 'agent' ? 'agent' : m.sender_type === 'system' ? 'system' : 'assistant', content: m.body || '', senderName: m.sender_name || null, ts: m.created_at ? new Date(m.created_at).getTime() : Date.now() })
     })
+    if (support) save(cfg.supportKey, support)
     persist()
   }
   async function pollSupport() {
@@ -457,7 +468,7 @@
     startProgress(!!retryExisting)
     render()
     try {
-      if (inLive()) {
+      if (supportOwnsConversation()) {
         var live = await fetchJsonWithNetworkRecovery(cfg.supportApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, conversationId: support.conversationId, topic: support.topic || location.hostname, visitor: contact }) })
         if (!live.res.ok) throw Object.assign(new Error(live.data.error || 'Support is temporarily unreachable'), { retryable: true })
         mergeRemote(live.data.messages || [])
@@ -467,7 +478,7 @@
         var data = result.data
         if (!result.res.ok) throw Object.assign(new Error(data.error || 'YQAA is temporarily unavailable.'), { retryable: data.retryable !== false, marketplaceRecommendation: data.marketplaceRecommendation || null })
         if (data.handoff && data.handoff.conversationId) {
-          support = { conversationId: data.handoff.conversationId, status: data.handoff.status || 'waiting_for_agent', queue: data.handoff.queue || null, topic: location.hostname }
+          support = { conversationId: data.handoff.conversationId, status: data.handoff.status || 'waiting_for_agent', queue: data.handoff.queue || null, topic: location.hostname, mode: data.handoff.kind || (requestAgent ? 'explicit' : 'legacy') }
           save(cfg.supportKey, support)
           history.push({ role: 'system', content: data.reply || "I'm connecting you to live support.", ts: Date.now() })
           startPolling()

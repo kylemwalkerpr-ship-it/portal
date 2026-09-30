@@ -198,6 +198,7 @@ export async function POST(req: Request) {
           status: handoff.status,
           queue: handoff.queue,
           apiUrl: handoff.apiUrl,
+          kind: 'explicit',
         },
         reply:
           "I'm connecting you to a live support agent. They'll join the chat as soon as someone is available — feel free to share more context here in the meantime.",
@@ -254,15 +255,15 @@ export async function POST(req: Request) {
           safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
           webResearchStatus = safety.answer ? 'verified' : 'insufficient'
         } else {
-          safety = { answer: false, reason: 'web_evidence_insufficient_handoff' }
+          safety = { answer: false, reason: 'web_evidence_insufficient' }
           webResearchStatus = 'insufficient'
         }
       } catch {
-        safety = { answer: false, reason: 'web_research_failed_handoff' }
+        safety = { answer: false, reason: 'web_research_failed' }
         webResearchStatus = 'failed'
       }
     }
-    if (!safety.answer) {
+    if (!safety.answer && safety.reason === 'high_stakes_handoff') {
       const viewer = await boundedViewerSnapshot()
       const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
       try {
@@ -276,7 +277,7 @@ export async function POST(req: Request) {
             ? 'This request needs individualized professional advice. I am connecting you to support for a qualified person to review it.'
             : 'I could not verify enough public evidence to answer this safely. I am connecting you to support.',
           provider: 'handoff',
-          handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl },
+          handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl, kind: 'required' },
           retryable: false,
         })
       } catch {
@@ -288,11 +289,19 @@ export async function POST(req: Request) {
       }
     }
 
-    const systemKnowledge = await buildCentralAssistantKnowledge({
+    const baseSystemKnowledge = await buildCentralAssistantKnowledge({
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
       curatedChunks: publicEvidence,
     })
+    const evidenceLimit = safety.answer ? '' : [
+      '# CURRENT TURN EVIDENCE LIMIT',
+      `Evidence check: ${safety.reason.replace(/_handoff$/, '')}.`,
+      `Live web research: ${webResearchStatus}.`,
+      'This evidence limitation is not, by itself, a reason to create a human-support handoff.',
+      'Continue helping through YQAA. Give the most useful general answer supported by canonical/public evidence. If a current or YouSafe-specific fact cannot be verified, say that plainly and give the closest verified self-service next step. Do not invent specifics or claim freshness, certainty, eligibility, or outcomes that the evidence does not support.',
+    ].join('\n')
+    const systemKnowledge = evidenceLimit ? `${baseSystemKnowledge}\n\n${evidenceLimit}` : baseSystemKnowledge
     const modelStartedAt = Date.now()
     const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
