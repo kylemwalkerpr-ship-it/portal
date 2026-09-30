@@ -240,3 +240,43 @@ export async function callSystemSuperGrok(
 export function resetSystemAssistantAuthCache(): void {
   authCache = null
 }
+
+/** One bounded xAI Responses web call using the same Grok/SuperGrok auth as answers. */
+export async function callSystemSuperGrokWebSearch(
+  question: string,
+  allowedDomains?: string[],
+): Promise<{ text: string; citations: string[]; webSearchCalls: number }> {
+  let auth = await resolveCachedAuth()
+  const request = () => postJsonWithRetry(
+    `${auth.baseURL}/responses`,
+    {
+      method: 'POST',
+      headers: headersFor(auth),
+      body: JSON.stringify({
+        model: auth.model,
+        input: [
+          { role: 'system', content: 'Research this public general question using web search. Summarize only verifiable facts from the requested jurisdiction. Cite source URLs. Do not give personalized legal advice or infer private facts.' },
+          { role: 'user', content: question },
+        ],
+        tools: [{ type: 'web_search', ...(allowedDomains?.length ? { filters: { allowed_domains: allowedDomains.slice(0, 5) } } : {}) }],
+        reasoning: { effort: 'low' },
+        max_output_tokens: 900,
+        store: false,
+      }),
+    },
+    12_000,
+    1,
+  )
+  let result = await request()
+  if (AUTH_FAILURE_STATUS.has(result.response.status)) {
+    authCache = null
+    auth = await resolveCachedAuth(true)
+    result = await request()
+  }
+  if (!result.response.ok || result.text.length > 65_536) throw new Error(`Web research failed (${result.response.status})`)
+  const data = JSON.parse(result.text) as Record<string, any>
+  const text = parseResponsesContent(result.text).slice(0, 5000)
+  const citations = Array.isArray(data.citations) ? data.citations.filter((url: unknown): url is string => typeof url === 'string') : []
+  const webSearchCalls = Number(data.usage?.server_side_tool_usage?.web_search_calls ?? data.usage?.server_side_tool_usage_details?.web_search_calls ?? 0)
+  return { text, citations, webSearchCalls: Number.isFinite(webSearchCalls) ? webSearchCalls : 0 }
+}
