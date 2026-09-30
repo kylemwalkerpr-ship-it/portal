@@ -134,8 +134,9 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     expect(applyYqaaSafetyPolicy(context, clear).answer).toBe(false)
     const citedWeb = { id: 'web', title: 'Official web source', body: 'Authoritative current public information.', source: 'https://www.hud.gov/guide', sourceUrl: 'https://www.hud.gov/guide', sourceKey: 'xai:web_search', site: 'official-web' }
     expect(applyYqaaSafetyPolicy({ ...context, evidence: [citedWeb, ...context.evidence] }, clear)).toEqual({ answer: true, reason: 'jev_advisory_clear' })
+    const uncitedEvidence = { ...citedWeb, sourceKey: 'database' } as any
     expect(applyYqaaSafetyPolicy({ ...context, evidence: [
-      { ...citedWeb, sourceKey: 'database' }, ...context.evidence,
+      uncitedEvidence, ...context.evidence,
     ] }, clear).answer).toBe(false)
   })
 
