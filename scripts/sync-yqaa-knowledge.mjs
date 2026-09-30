@@ -107,34 +107,32 @@ await rest('yqaa_knowledge_ingestion_runs?on_conflict=run_id', {
 
 try {
   for (const batch of batches(sources, 100)) {
-    await rest('yqaa_knowledge_sources?on_conflict=source_key', {
+    await rest('yqaa_knowledge_sources_staging?on_conflict=ingestion_run_id,source_key', {
       method: 'POST',
       body: batch,
       prefer: 'resolution=merge-duplicates,return=minimal',
-    })
-  }
-
-  for (const sourceBatch of batches(sources, 80)) {
-    const keys = sourceBatch.map((row) => `"${row.source_key.replaceAll('"', '')}"`).join(',')
-    await rest(`yqaa_knowledge_chunks?source_key=in.(${encodeURIComponent(keys)})`, {
-      method: 'DELETE',
-      prefer: 'return=minimal',
     })
   }
 
   for (const batch of batches(chunks, 80)) {
-    await rest('yqaa_knowledge_chunks?on_conflict=chunk_key', {
+    await rest('yqaa_knowledge_chunks_staging?on_conflict=ingestion_run_id,chunk_key', {
       method: 'POST',
       body: batch,
       prefer: 'resolution=merge-duplicates,return=minimal',
     })
   }
 
+  // The finalizer validates the staged counts and replaces the visible corpus
+  // in one database transaction. Upload failures leave the prior snapshot intact.
   const finalized = await rest('rpc/finalize_yqaa_knowledge_ingestion', {
     method: 'POST',
     body: { p_run_id: manifest.run_id },
     prefer: 'return=representation',
   })
+
+  if (finalized?.status === 'rejected') {
+    throw new Error(`YQAA ingestion run ${manifest.run_id} was superseded by ${finalized.problem?.run_id || 'a newer run'}`)
+  }
 
   console.log(JSON.stringify({
     ok: true,
@@ -145,7 +143,7 @@ try {
     finalized,
   }, null, 2))
 } catch (error) {
-  await rest(`yqaa_knowledge_ingestion_runs?run_id=eq.${encodeURIComponent(manifest.run_id)}`, {
+  await rest(`yqaa_knowledge_ingestion_runs?run_id=eq.${encodeURIComponent(manifest.run_id)}&status=eq.running`, {
     method: 'PATCH',
     body: {
       status: 'failed',
