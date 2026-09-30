@@ -15,10 +15,10 @@ import { enforceCanonicalMarketCoverage } from '@/lib/assistantNetworkAuthority'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
-import { selectYqaaKnowledge, shouldUseDeepNetworkKnowledge } from '@/lib/messengerSiteKnowledge'
 import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
+import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -215,24 +215,31 @@ export async function POST(req: Request) {
 
   try {
     const knowledgeStartedAt = Date.now()
-    const knowledgePromise = buildCentralAssistantKnowledge({
+    const pageContext = [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings]
+      .filter(Boolean)
+      .join(' ')
+    const evidencePack = await loadYqaaEvidence({
+      query: lastUser.content,
+      hostname: inquiryOrigin.hostname,
+      pageContext,
+      limit: 12,
+    })
+    const publicEvidence = evidencePack.chunks
+    const systemKnowledge = await buildCentralAssistantKnowledge({
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
+      curatedChunks: publicEvidence,
     })
-    const systemKnowledge = await knowledgePromise
     const knowledgeMs = Date.now() - knowledgeStartedAt
 
-    const publicEvidence = selectYqaaKnowledge({
+    const advisoryContext = {
       query: lastUser.content,
-      deep: shouldUseDeepNetworkKnowledge(lastUser.content),
       hostname: inquiryOrigin.hostname,
-      pageContext: [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings].filter(Boolean).join(' '),
-      limit: 8,
-    })
-    const advisoryContext = { query: lastUser.content, hostname: inquiryOrigin.hostname, evidence: publicEvidence }
+      evidence: publicEvidence,
+    }
     const triggers = yqaaJevTriggers(advisoryContext)
     const jevStartedAt = Date.now()
-    const jev = triggers.length ? await requestJevAdvisory(advisoryContext) : { available: false as const, reason: 'not_configured' as const }
+    const jev = await requestJevAdvisory(advisoryContext)
     const jevMs = Date.now() - jevStartedAt
     const safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     if (!safety.answer) {
@@ -288,6 +295,11 @@ export async function POST(req: Request) {
       jevFailureReason: 'reason' in jev ? jev.reason : null,
       jevTriggers: triggers,
       safetyReason: safety.reason,
+      knowledgeSource: evidencePack.source,
+      retrievalConfidence: Number(evidencePack.retrievalConfidence.toFixed(3)),
+      knowledgeFreshEnough: evidencePack.freshEnough,
+      knowledgeSites: evidencePack.sites,
+      evidenceChunks: publicEvidence.length,
     })
 
     return withCors(
