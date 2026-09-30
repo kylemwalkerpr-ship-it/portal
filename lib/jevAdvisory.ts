@@ -18,13 +18,13 @@ export type JevContext = {
 }
 
 const JEV_TIMEOUT_MS = 1400
-const JEV_MAX_EVIDENCE = 3
-const JEV_MAX_EXCERPT_CHARS = 260
+const JEV_MAX_EVIDENCE = 12
+const JEV_MAX_EXCERPT_CHARS = 600
 const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
 const JEV_MODEL = 'jev-latest'
 const JEV_INSTRUCTIONS = 'Give bounded advisory judgments about public evidence only. Do not draft a visitor answer, make legal decisions, request private data, or override deterministic safety policy.'
 
-function advisoryQuestion(value: string): string {
+export function sanitizeYqaaPublicQuestion(value: string): string {
   return String(value || '')
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted contact]')
     .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted contact]')
@@ -33,6 +33,9 @@ function advisoryQuestion(value: string): string {
     .replace(/\bBearer\s+\S+/gi, '[redacted secret]')
     .replace(/\b(?:sk|pk)[_-][A-Za-z0-9._-]{8,}\b/gi, '[redacted secret]')
     .replace(/\bAKIA[0-9A-Z]{16}\b/gi, '[redacted secret]')
+    .replace(/\b(?:passport|account|order|case|application|receipt|reference)\s*(?:number|no\.?|#|id)?\s*[:#-]?\s*[A-Z0-9-]{5,}\b/gi, '[redacted identifier]')
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[redacted identifier]')
+    .replace(/https?:\/\/\S+/gi, '[redacted URL]')
     .slice(0, 2000)
 }
 
@@ -46,6 +49,37 @@ function explicitMarkets(query: string): Set<string> {
   return result
 }
 
+const MARKET_JURISDICTION: Record<string, string> = {
+  usa: 'united states', canada: 'canada', uk: 'united kingdom', australia: 'australia',
+}
+
+function normalizedJurisdiction(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.toLowerCase().replace(/[^a-z]/g, '')
+  if (['usa', 'us', 'unitedstates', 'unitedstatesofamerica', 'america'].includes(normalized)) return 'usa'
+  if (['canada', 'canadian'].includes(normalized)) return 'canada'
+  if (['uk', 'gb', 'greatbritain', 'britain', 'unitedkingdom'].includes(normalized)) return 'uk'
+  if (['australia', 'australian'].includes(normalized)) return 'australia'
+  return null
+}
+
+function hasJurisdictionEvidence(ctx: JevContext, market: string): boolean {
+  return ctx.evidence.some((item) => {
+    const evidence = item as KnowledgeChunk & { jurisdiction?: string; sourceKey?: string }
+    if (normalizedJurisdiction(item.site) === market || normalizedJurisdiction(evidence.jurisdiction) === market) return true
+    // Web research only admits bounded evidence with citations from the official domains.
+    return evidence.sourceKey === 'xai:web_search' && Boolean(item.sourceUrl || item.source) &&
+      normalizedJurisdiction(evidence.jurisdiction) === market
+  })
+}
+
+function hasCitationLinkedWebEvidence(ctx: JevContext): boolean {
+  return ctx.evidence.some((item) => {
+    const evidence = item as KnowledgeChunk & { sourceKey?: string }
+    return evidence.sourceKey === 'xai:web_search' && Boolean(item.sourceUrl || item.source)
+  })
+}
+
 export function yqaaJevTriggers(ctx: JevContext): JevTrigger[] {
   const q = ctx.query
   const triggers: JevTrigger[] = []
@@ -53,8 +87,11 @@ export function yqaaJevTriggers(ctx: JevContext): JevTrigger[] {
   const evidenceSites = new Set(ctx.evidence.map((item) => item.site).filter(Boolean))
   const markets = explicitMarkets(q)
   if (ctx.evidence.length >= 2 && evidenceSites.size > 1 && /\b(conflict|contradict|different|inconsistent)\b/i.test(q)) triggers.push('conflicting_evidence')
-  if (ctx.evidence.filter((item) => (item.score || 0) > 0).length <= 1) triggers.push('low_evidence')
-  const individualizedHighStakes = /\b(legal advice|what are my chances|will i (?:win|be approved|get a visa)|should i (?:appeal|apply|sue)|court deadline|evict(?:ed|ion)|deport(?:ed|ation)|removal order|criminal charge|arrest(?:ed)?|immigration status|custody dispute|restraining order)\b/i.test(q)
+  const hasUsableEvidence = ctx.evidence.some((item) =>
+    item.body.trim().length > 0 && Boolean(item.site || item.sourceUrl || item.source),
+  )
+  if (!hasUsableEvidence) triggers.push('low_evidence')
+  const individualizedHighStakes = /\b(?:give me legal advice|advise me legally|what are my chances|will i (?:win|be approved|get a visa)|should i (?:appeal|apply|sue)|my (?:eviction|deportation|removal order|criminal charge|immigration status|custody dispute|restraining order)|i (?:was|am|have been) (?:evicted|deported|arrested))\b/i.test(q)
     || /\b(?:court|hearing|trial|lawsuit|case)\b.{0,60}\b(?:deadline|due date|respond|response|appeal|file|filing|custody|order)\b/i.test(q)
     || /\b(?:deadline|due date|respond|response|appeal|file|filing)\b.{0,60}\b(?:court|hearing|trial|lawsuit|case)\b/i.test(q)
     || /\b(?:can i|should i|will i|what should i do|do i qualify|what are my chances)\b.{0,100}\b(?:visa|permit|immigration|refus(?:al|ed)|appeal|removal order|criminal charge|eviction|custody dispute)\b/i.test(q)
@@ -76,7 +113,7 @@ function boundedPayload(ctx: JevContext, triggers: JevTrigger[]) {
   }))
   return {
     state: {
-      question: advisoryQuestion(ctx.query),
+      question: sanitizeYqaaPublicQuestion(ctx.query),
       trustedSite: knowledgeSiteForHost(ctx.hostname),
       triggers,
       publicEvidence: evidence,
@@ -210,10 +247,29 @@ export function applyYqaaSafetyPolicy(ctx: JevContext, result: JevResult): { ans
   const triggers = yqaaJevTriggers(ctx)
   if (triggers.includes('high_stakes')) return { answer: false, reason: 'high_stakes_handoff' }
   if (triggers.includes('low_evidence')) return { answer: false, reason: 'low_evidence_handoff' }
-  if (triggers.includes('conflicting_evidence')) return { answer: false, reason: 'conflicting_evidence_handoff' }
-  if (triggers.length > 0 && !result.available) return { answer: false, reason: 'jev_unavailable_handoff' }
-  if (result.available && (result.advisory.needsHandoff || result.advisory.conflict || !result.advisory.sufficient || result.advisory.confidence < 0.55)) {
+  const explicit = explicitMarkets(ctx.query)
+  if (explicit.size > 1) return { answer: false, reason: 'jurisdiction_mismatch_handoff' }
+  const explicitMarket = explicit.size === 1 ? [...explicit][0] : null
+  const matchingJurisdictionEvidence = Boolean(explicitMarket && hasJurisdictionEvidence(ctx, explicitMarket))
+  if (!result.available) {
+    if (explicitMarket && !matchingJurisdictionEvidence) return { answer: false, reason: 'jurisdiction_evidence_missing_handoff' }
+    const unresolvedTriggers = triggers.filter((trigger) =>
+      trigger !== 'cross_jurisdiction' || !matchingJurisdictionEvidence,
+    )
+    if (unresolvedTriggers.length) return { answer: false, reason: 'jev_unavailable_handoff' }
+    return { answer: true, reason: 'deterministic_policy_clear' }
+  }
+  if (explicitMarket && result.advisory.market !== explicitMarket) {
+    return { answer: false, reason: 'jurisdiction_mismatch_handoff' }
+  }
+  if (explicitMarket && !matchingJurisdictionEvidence) return { answer: false, reason: 'jurisdiction_evidence_missing_handoff' }
+  if (triggers.includes('conflicting_evidence') &&
+      !(hasCitationLinkedWebEvidence(ctx) && result.advisory.sufficient && !result.advisory.conflict &&
+        !result.advisory.needsHandoff && result.advisory.confidence >= 0.7)) {
+    return { answer: false, reason: 'conflicting_evidence_handoff' }
+  }
+  if (result.advisory.needsHandoff || result.advisory.conflict || !result.advisory.sufficient || result.advisory.confidence < 0.7) {
     return { answer: false, reason: 'jev_or_evidence_handoff' }
   }
-  return { answer: true, reason: result.available ? 'jev_advisory_clear' : 'deterministic_policy_clear' }
+  return { answer: true, reason: 'jev_advisory_clear' }
 }

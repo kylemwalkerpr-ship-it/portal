@@ -19,6 +19,7 @@ import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/li
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
+import { researchYqaaPublicWeb } from '@/lib/yqaaWebResearch'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -224,15 +225,10 @@ export async function POST(req: Request) {
       pageContext,
       limit: 12,
     })
-    const publicEvidence = evidencePack.chunks
-    const systemKnowledge = await buildCentralAssistantKnowledge({
-      latestUserMessage: lastUser.content,
-      origin: inquiryOrigin,
-      curatedChunks: publicEvidence,
-    })
+    let publicEvidence = evidencePack.chunks
     const knowledgeMs = Date.now() - knowledgeStartedAt
 
-    const advisoryContext = {
+    let advisoryContext = {
       query: lastUser.content,
       hostname: inquiryOrigin.hostname,
       evidence: publicEvidence,
@@ -240,8 +236,32 @@ export async function POST(req: Request) {
     const triggers = yqaaJevTriggers(advisoryContext)
     const jevStartedAt = Date.now()
     const jev = await requestJevAdvisory(advisoryContext)
-    const jevMs = Date.now() - jevStartedAt
-    const safety = applyYqaaSafetyPolicy(advisoryContext, jev)
+    let jevMs = Date.now() - jevStartedAt
+    let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
+    let webEvidenceCount = 0
+    let webResearchStatus: 'skipped' | 'verified' | 'insufficient' | 'failed' = 'skipped'
+    if (safety.reason !== 'high_stakes_handoff' &&
+        (!safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
+      try {
+        const webChunks = await researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname)
+        webEvidenceCount = webChunks.length
+        if (webChunks.length) {
+          publicEvidence = [...webChunks, ...evidencePack.chunks].slice(0, 12)
+          advisoryContext = { ...advisoryContext, evidence: publicEvidence }
+          const secondJevStartedAt = Date.now()
+          const secondJev = await requestJevAdvisory(advisoryContext)
+          jevMs += Date.now() - secondJevStartedAt
+          safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
+          webResearchStatus = safety.answer ? 'verified' : 'insufficient'
+        } else {
+          safety = { answer: false, reason: 'web_evidence_insufficient_handoff' }
+          webResearchStatus = 'insufficient'
+        }
+      } catch {
+        safety = { answer: false, reason: 'web_research_failed_handoff' }
+        webResearchStatus = 'failed'
+      }
+    }
     if (!safety.answer) {
       const viewer = await boundedViewerSnapshot()
       const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
@@ -252,26 +272,38 @@ export async function POST(req: Request) {
           topic: 'yqaa-safety-handoff',
         })
         return withCors(req, {
-          reply: 'This question needs a qualified person to review the details. I can share general information, but I will not guess or make a decision for your situation. I am connecting you to support.',
+          reply: safety.reason === 'high_stakes_handoff'
+            ? 'This request needs individualized professional advice. I am connecting you to support for a qualified person to review it.'
+            : 'I could not verify enough public evidence to answer this safely. I am connecting you to support.',
           provider: 'handoff',
           handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl },
           retryable: false,
         })
       } catch {
         return withCors(req, {
-          reply: 'This question needs a qualified person to review the details. I cannot verify a safe answer or connect to support right now. Please retry the handoff or contact YouSafe Support directly.',
+          reply: 'I could not verify enough public evidence or connect to support right now. Please retry the handoff or contact YouSafe Support directly.',
           provider: 'safety-handoff-unavailable',
           retryable: true,
         }, { status: 503 })
       }
     }
 
+    const systemKnowledge = await buildCentralAssistantKnowledge({
+      latestUserMessage: lastUser.content,
+      origin: inquiryOrigin,
+      curatedChunks: publicEvidence,
+    })
     const modelStartedAt = Date.now()
     const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
-    const finalText = pricingGuard.text
+    const webCitations = publicEvidence.filter((chunk) => chunk.sourceKey === 'xai:web_search')
+      .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
+    const missingCitations = webCitations.filter((url) => !pricingGuard.text.includes(url))
+    const finalText = missingCitations.length
+      ? `${pricingGuard.text}\n\nSources: ${missingCitations.map((url) => `[${new URL(url).hostname}](${url})`).join(', ')}`
+      : pricingGuard.text
     const totalMs = Date.now() - requestStartedAt
 
     if (guarded.corrected) {
@@ -300,6 +332,8 @@ export async function POST(req: Request) {
       knowledgeFreshEnough: evidencePack.freshEnough,
       knowledgeSites: evidencePack.sites,
       evidenceChunks: publicEvidence.length,
+      webEvidenceCount,
+      webResearchStatus,
     })
 
     return withCors(

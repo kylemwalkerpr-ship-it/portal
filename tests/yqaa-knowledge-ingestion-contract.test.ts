@@ -39,15 +39,21 @@ describe('YQAA atomic ingestion contract', () => {
 
   test('newer eligible runs supersede older finalizers before any live replacement', () => {
     const lock = migration.indexOf("perform pg_advisory_xact_lock(hashtextextended('yqaa_knowledge_ingestion', 0));")
-    const newerLookup = migration.indexOf("status in ('running', 'completed')")
+    const newerLookup = migration.indexOf('select newer.run_id')
     const liveDelete = migration.indexOf('delete from public.yqaa_knowledge_chunks;')
     const liveSourcesDelete = migration.indexOf('delete from public.yqaa_knowledge_sources;')
+    const newerPredicate = migration.slice(newerLookup, liveDelete)
 
     expect(lock).toBeGreaterThanOrEqual(0)
     expect(newerLookup).toBeGreaterThan(lock)
     expect(liveDelete).toBeGreaterThan(newerLookup)
     expect(liveSourcesDelete).toBeGreaterThan(liveDelete)
-    expect(migration).toMatch(/\(started_at, run_id\) > \(v_started_at, p_run_id\)/)
+    expect(newerPredicate).toMatch(/\(newer\.started_at, newer\.run_id\) > \(v_started_at, p_run_id\)/)
+    expect(newerPredicate).toMatch(/newer\.status = 'completed'\s+or\s+\(\s*newer\.status = 'running'/)
+    expect(newerPredicate).toMatch(/coalesce\(newer\.source_count, 0\) > 0/)
+    expect(newerPredicate).toMatch(/coalesce\(newer\.chunk_count, 0\) > 0/)
+    expect(newerPredicate).toMatch(/from public\.yqaa_knowledge_sources_staging as staged_sources\s+where staged_sources\.ingestion_run_id = newer\.run_id\s*\) = newer\.source_count/)
+    expect(newerPredicate).toMatch(/from public\.yqaa_knowledge_chunks_staging as staged_chunks\s+where staged_chunks\.ingestion_run_id = newer\.run_id\s*\) = newer\.chunk_count/)
     expect(migration).toContain("'superseded_by_newer_run'")
   })
 
@@ -65,7 +71,7 @@ describe('YQAA atomic ingestion contract', () => {
   test('finalizer serialization is acquired before run reads and the newer-run decision', () => {
     const lock = migration.indexOf("perform pg_advisory_xact_lock(hashtextextended('yqaa_knowledge_ingestion', 0));")
     const currentRunRead = migration.indexOf('from public.yqaa_knowledge_ingestion_runs\n   where run_id = p_run_id')
-    const newerRunRead = migration.indexOf("status in ('running', 'completed')")
+    const newerRunRead = migration.indexOf('select newer.run_id')
 
     expect(lock).toBeGreaterThanOrEqual(0)
     expect(currentRunRead).toBeGreaterThan(lock)
