@@ -1,0 +1,67 @@
+name: Sync YQAA Knowledge Index
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yqaa-knowledge-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install crawler CA bundle
+        run: python -m pip install --disable-pip-version-check certifi
+
+      - name: Crawl public YouSafe estate
+        run: python scripts/yqaa_exhaustive_crawl.py
+
+      - name: Validate crawl manifest
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          p=pathlib.Path('.yqaa-kb-crawl/manifest.json')
+          d=json.loads(p.read_text())
+          print(json.dumps({
+            'run_id': d.get('run_id'),
+            'source_count': d.get('source_count'),
+            'chunk_count': d.get('chunk_count'),
+            'coverage': d.get('coverage'),
+          }, indent=2))
+          if int(d.get('source_count') or 0) < 1500:
+              raise SystemExit('refusing undersized YQAA knowledge snapshot')
+          PY
+
+      - name: Sync service-role-only YQAA knowledge index
+        run: node scripts/sync-yqaa-knowledge.mjs --dir .yqaa-kb-crawl
+
+      - name: Upload crawl manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yqaa-knowledge-manifest
+          path: |
+            .yqaa-kb-crawl/manifest.json
+            .yqaa-kb-crawl/crawl.log
+          if-no-files-found: warn
+          retention-days: 14

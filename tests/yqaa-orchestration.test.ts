@@ -262,7 +262,11 @@ describe('YQAA public chat privacy boundary', () => {
     let capturedSystem = ''
     const getClerkUserId = jest.fn(async () => 'private-viewer')
     jest.doMock('@/lib/auth', () => ({ getClerkUserId }))
-    jest.doMock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
+    jest.doMock('@/lib/supabase', () => ({
+      createSupabaseAdminClient: jest.fn(),
+      getSupabaseAdminClient: jest.fn(),
+      isServiceRoleAchieved: () => false,
+    }))
     jest.doMock('@/lib/liveKnowledge', () => ({ fetchLiveKnowledge: jest.fn(async () => null) }))
     jest.doMock('@/lib/yqaaGeneration', () => ({
       generateYqaaAnswer: jest.fn(async (system: string) => { capturedSystem = system; return { text: 'A safe public answer.', provider: 'deepseek-v41-flash', model: 'deepseek-flash', fallback: true } }),

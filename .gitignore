@@ -82,3 +82,6 @@ glm*
 _scratch_student.tok
 scripts/_fix-awkward-gig-titles.mjs
 supabase/.temp/
+
+# Generated YQAA knowledge crawl artifacts (large, reproducible, never commit)
+.yqaa-kb-crawl/

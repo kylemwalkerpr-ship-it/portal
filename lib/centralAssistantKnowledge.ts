@@ -139,18 +139,21 @@ export async function buildCentralAssistantKnowledge(opts: {
   latestUserMessage: string
   origin: AssistantOrigin
   db?: any
+  curatedChunks?: KnowledgeChunk[]
 }): Promise<string> {
   const deepNetwork = shouldUseDeepNetworkKnowledge(opts.latestUserMessage)
   const authorityContext = buildAuthoritativeNetworkContext(opts.latestUserMessage)
-  const curatedPromise: Promise<KnowledgeChunk[]> = Promise.resolve().then(() =>
-    selectYqaaKnowledge({
-      query: opts.latestUserMessage,
-      deep: deepNetwork,
-      hostname: opts.origin.hostname,
-      pageContext: [opts.origin.pathname, opts.origin.title, opts.origin.headings].filter(Boolean).join(' '),
-      limit: 8,
-    }),
-  ).catch(() => [])
+  const curatedPromise: Promise<KnowledgeChunk[]> = Array.isArray(opts.curatedChunks)
+    ? Promise.resolve(opts.curatedChunks)
+    : Promise.resolve().then(() =>
+        selectYqaaKnowledge({
+          query: opts.latestUserMessage,
+          deep: deepNetwork,
+          hostname: opts.origin.hostname,
+          pageContext: [opts.origin.pathname, opts.origin.title, opts.origin.headings].filter(Boolean).join(' '),
+          limit: 8,
+        }),
+      ).catch(() => [])
 
   const [curatedChunks, liveKnowledge] = await Promise.all([
     curatedPromise,
