@@ -1,0 +1,19 @@
+{
+  "supervisor_probe_id": "cs-modal-mounted-volume-supervisor-probe-20260930-v2",
+  "script_sha256": "f3be90d227a0945fddbd0ca3c1fb913282d726286b77d9ebda5faaeed0be9706",
+  "logic_sha256": "f5aaa56b0fddb1eef961d9caa861de608d1f25ae92e49f5b2829b7ec9de45fdf",
+  "command": [
+    "modal",
+    "run",
+    "--env",
+    "content-studio-staging",
+    "scripts/content-studio/modal_storage_proof.py"
+  ],
+  "preflight_previous_app_state": "stopped",
+  "preflight_previous_app_tasks": 0,
+  "preflight_volume_root": [],
+  "started_unix": 1790757910.568602,
+  "exit_code": 1,
+  "finished_unix": 1790758083.747267,
+  "wall_seconds": 173.17866492271423
+}

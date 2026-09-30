@@ -1,0 +1,7 @@
+✓ Initialized. View run at 
+https://modal.com/apps/kylemwalkerpr-ship-it/content-studio-staging/ap-wWX6Saii4
+NQGj86njKbLG0
+Stopping app - uncaught exception raised locally: InvalidError("Function's `scaledown_window` must be between 2 and 3600 (inclusive).").
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Function's `scaledown_window` must be between 2 and 3600 (inclusive).        │
+╰──────────────────────────────────────────────────────────────────────────────╯

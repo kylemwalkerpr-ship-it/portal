@@ -1,0 +1,73 @@
+✓ Initialized. View run at 
+https://modal.com/apps/kylemwalkerpr-ship-it/content-studio-staging/ap-FaTVtACXL
+KTlsqK4HpKsyY
+✓ Created objects.
+├── 🔨 Created mount 
+│   /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p
+│   roof-20260930/scripts/content-studio/modal_storage_proof.py
+├── 🔨 Created mount PythonPackage:modal_storage_proof_logic
+├── 🔨 Created function write_artifact.
+├── 🔨 Created function cleanup_artifact.
+├── 🔨 Created function read_artifact.
+└── 🔨 Created function verify_absent.
+Stopping app - user stopped from CLI.
+PROOF_RECEIPT {"app_id": "ap-FaTVtACXLKTlsqK4HpKsyY", "artifact_path": "proofs/modal-storage-proof/8efda853-9fcb-4853-87e1-8fa7d84b913a.bin", "cleanup": {"removed": true}, "cleanup_error": "RemoteError: ", "cleanup_status": "failed", "environment": "content-studio-staging", "expected_sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4", "expected_size_bytes": 46, "finished_unix": 1790759153.775828, "proof_error": "RemoteError: ", "proof_id": "8efda853-9fcb-4853-87e1-8fa7d84b913a", "proof_passed": false, "read": {"sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4", "size_bytes": 46}, "started_unix": 1790759034.78194, "volume_name": "content-studio-artifacts", "volume_object_id": "vo-60ER3JIn6BfxIMHhYlUmpa", "volume_version": 1, "write": {"created_dirs": ["/mnt/artifacts/proofs", "/mnt/artifacts/proofs/modal-storage-proof"], "sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4", "size_bytes": 46}}
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof.py:96 in main       │
+│                                                                              │
+│    95 │   │   record["app_id"] = app.app_id                                  │
+│ ❱  96 │   │   record.update(run_proof(                                       │
+│    97 │   │   │   relative_path,                                             │
+│                                                                              │
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof_logic.py:135 in     │
+│ run_proof                                                                    │
+│                                                                              │
+│   134 │   │   │   record["cleanup_status"] = "passed"                        │
+│ ❱ 135 │   │   │   record["absence_check"] = absence_check(relative_path)     │
+│   136 │   │   │   if not record["absence_check"]["own_path_missing"]:        │
+│                                                                              │
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof.py:102 in <lambda>  │
+│                                                                              │
+│   101 │   │   │   lambda path, dirs: cleanup_artifact.remote(path, dirs),    │
+│ ❱ 102 │   │   │   lambda path: verify_absent.remote(path),                   │
+│   103 │   │   ))                                                             │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_object.py:46 in wrapped                                           │
+│                                                                              │
+│    45 │   │   await self.hydrate()                                           │
+│ ❱  46 │   │   return await method(self, *args, **kwargs)                     │
+│    47                                                                        │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:1893 in remote                                       │
+│                                                                              │
+│   1892 │   │                                                                 │
+│ ❱ 1893 │   │   return await self._call_function(args, kwargs)                │
+│   1894                                                                       │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:1830 in _call_function                               │
+│                                                                              │
+│   1829 │   │                                                                 │
+│ ❱ 1830 │   │   return await invocation.run_function()                        │
+│   1831                                                                       │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:484 in run_function                                  │
+│                                                                              │
+│    483 │   │   │   if await_response.output.result.status in TERMINAL_STATUS │
+│ ❱  484 │   │   │   │   return await _process_result(                         │
+│    485 │   │   │   │   │   await_response.output.result, await_response.outp │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_utils/function_utils.py:574 in _process_result                    │
+│                                                                              │
+│   573 │   │                                                                  │
+│ ❱ 574 │   │   raise RemoteError(result.exception)                            │
+│   575                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+RemoteError

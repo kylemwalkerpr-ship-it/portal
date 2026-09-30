@@ -1,0 +1,389 @@
+✓ Initialized. View run at 
+https://modal.com/apps/kylemwalkerpr-ship-it/content-studio-staging/ap-xCeWJTEqI
+igwuScWGCxmXr
+✓ Created objects.
+├── 🔨 Created mount 
+│   /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p
+│   roof-20260930/scripts/content-studio/modal_storage_proof.py
+├── 🔨 Created function write_artifact.
+├── 🔨 Created function read_artifact.
+├── 🔨 Created function cleanup_artifact.
+└── 🔨 Created function verify_absent.
+Traceback (most recent call last):
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+Traceback (most recent call last):
+Runner failed with exception: ModuleNotFoundError("No module named 'modal_storage_proof_logic'")
+  File "/pkg/modal/_runtime/task_lifecycle_manager.py", line 84, in handle_task_lifecycle_exception
+    yield
+  File "/pkg/modal/_container_entrypoint.py", line 362, in hydrate_function
+    service = get_function_service(function_def, _client)
+  File "/pkg/modal/_container_entrypoint.py", line 340, in get_function_service
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+  File "/pkg/modal/_runtime/user_code_imports.py", line 509, in import_single_function_service
+    module = importlib.import_module(function_def.module_name)
+  File "/usr/local/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "/root/modal_storage_proof.py", line 10, in <module>
+    from modal_storage_proof_logic import (
+    ...<10 lines>...
+    )
+ModuleNotFoundError: No module named 'modal_storage_proof_logic'
+Stopping app - user stopped from CLI.
+PROOF_RECEIPT {"app_id": "ap-xCeWJTEqIigwuScWGCxmXr", "artifact_path": "proofs/modal-storage-proof/eb0b8f60-d57f-4a39-8ac8-a65f1ae66750.bin", "cleanup_error": "ConflictError: function fu-05KCUKWbP6iZQUl8SEmLgk is stopped", "cleanup_status": "failed", "environment": "content-studio-staging", "expected_sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4", "expected_size_bytes": 46, "finished_unix": 1790758083.192512, "proof_error": "RemoteError: ", "proof_id": "eb0b8f60-d57f-4a39-8ac8-a65f1ae66750", "proof_passed": false, "started_unix": 1790757914.1694741, "volume_name": "content-studio-artifacts", "volume_object_id": "vo-60ER3JIn6BfxIMHhYlUmpa", "volume_version": 1}
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof.py:96 in main       │
+│                                                                              │
+│    95 │   │   record["app_id"] = app.app_id                                  │
+│ ❱  96 │   │   record.update(run_proof(                                       │
+│    97 │   │   │   relative_path,                                             │
+│                                                                              │
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof_logic.py:133 in     │
+│ run_proof                                                                    │
+│                                                                              │
+│   132 │   │   try:                                                           │
+│ ❱ 133 │   │   │   record["cleanup"] = cleanup(relative_path, created_dirs)   │
+│   134 │   │   │   record["cleanup_status"] = "passed"                        │
+│                                                                              │
+│ /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-modal-storage-p │
+│ roof-20260930/scripts/content-studio/modal_storage_proof.py:101 in <lambda>  │
+│                                                                              │
+│   100 │   │   │   lambda path: read_artifact.remote(path),                   │
+│ ❱ 101 │   │   │   lambda path, dirs: cleanup_artifact.remote(path, dirs),    │
+│   102 │   │   │   lambda path: verify_absent.remote(path),                   │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_object.py:46 in wrapped                                           │
+│                                                                              │
+│    45 │   │   await self.hydrate()                                           │
+│ ❱  46 │   │   return await method(self, *args, **kwargs)                     │
+│    47                                                                        │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:1893 in remote                                       │
+│                                                                              │
+│   1892 │   │                                                                 │
+│ ❱ 1893 │   │   return await self._call_function(args, kwargs)                │
+│   1894                                                                       │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:1812 in _call_function                               │
+│                                                                              │
+│   1811 │   │   if self._input_plane_url:                                     │
+│ ❱ 1812 │   │   │   invocation = await _InputPlaneInvocation.create(          │
+│   1813 │   │   │   │   self,                                                 │
+│                                                                              │
+│ /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packa │
+│ ges/modal/_functions.py:452 in create                                        │
+│                                                                              │
+│    451 │   │   metadata = await client.get_input_plane_metadata(input_plane_ │
+│ ❱  452 │   │   response = await stub.AttemptStart(request, metadata=metadata │
+│    453 │   │   attempt_token = response.attempt_token                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ConflictError: function fu-05KCUKWbP6iZQUl8SEmLgk is stopped

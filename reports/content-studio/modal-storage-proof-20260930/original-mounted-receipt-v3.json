@@ -1,0 +1,32 @@
+{
+  "app_id": "ap-FaTVtACXLKTlsqK4HpKsyY",
+  "artifact_path": "proofs/modal-storage-proof/8efda853-9fcb-4853-87e1-8fa7d84b913a.bin",
+  "cleanup": {
+    "removed": true
+  },
+  "cleanup_error": "RemoteError: ",
+  "cleanup_status": "failed",
+  "environment": "content-studio-staging",
+  "expected_sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+  "expected_size_bytes": 46,
+  "finished_unix": 1790759153.775828,
+  "proof_error": "RemoteError: ",
+  "proof_id": "8efda853-9fcb-4853-87e1-8fa7d84b913a",
+  "proof_passed": false,
+  "read": {
+    "sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+    "size_bytes": 46
+  },
+  "started_unix": 1790759034.78194,
+  "volume_name": "content-studio-artifacts",
+  "volume_object_id": "vo-60ER3JIn6BfxIMHhYlUmpa",
+  "volume_version": 1,
+  "write": {
+    "created_dirs": [
+      "/mnt/artifacts/proofs",
+      "/mnt/artifacts/proofs/modal-storage-proof"
+    ],
+    "sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+    "size_bytes": 46
+  }
+}

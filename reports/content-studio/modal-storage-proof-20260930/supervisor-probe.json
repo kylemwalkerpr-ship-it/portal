@@ -1,0 +1,17 @@
+{
+  "supervisor_probe_id": "cs-modal-mounted-volume-supervisor-probe-20260930-v1",
+  "script_sha256": "78f0a7adb80428f04c83efb0be699f0ed6fd28321ab8ea968b8611cd97a5ece6",
+  "command": [
+    "modal",
+    "run",
+    "--env",
+    "content-studio-staging",
+    "scripts/content-studio/modal_storage_proof.py"
+  ],
+  "reconciliation_apps": [],
+  "reconciliation_volume_root": [],
+  "started_unix": 1790756434.6008608,
+  "exit_code": 1,
+  "finished_unix": 1790756438.4903219,
+  "wall_seconds": 3.889461040496826
+}

@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/content-studio/tests",
+        "-p",
+        "test_modal_storage_proof.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "output": "test_artifact_path_accepts_uuid_and_rejects_traversal (test_modal_storage_proof.ModalStorageProofTests.test_artifact_path_accepts_uuid_and_rejects_traversal) ... ok\ntest_cleanup_removes_own_artifact_and_only_empty_writer_created_dirs (test_modal_storage_proof.ModalStorageProofTests.test_cleanup_removes_own_artifact_and_only_empty_writer_created_dirs) ... ok\ntest_real_run_proof_cleanup_failure_is_reported (test_modal_storage_proof.ModalStorageProofTests.test_real_run_proof_cleanup_failure_is_reported) ... ok\ntest_real_run_proof_happy_path_returns_complete_record_and_orders_callbacks (test_modal_storage_proof.ModalStorageProofTests.test_real_run_proof_happy_path_returns_complete_record_and_orders_callbacks) ... ok\ntest_real_run_proof_hash_mismatch_fails_and_cleans (test_modal_storage_proof.ModalStorageProofTests.test_real_run_proof_hash_mismatch_fails_and_cleans) ... ok\ntest_real_run_proof_reader_failure_invokes_cleanup (test_modal_storage_proof.ModalStorageProofTests.test_real_run_proof_reader_failure_invokes_cleanup) ... ok\ntest_remote_functions_package_helper_on_the_shared_image (test_modal_storage_proof.ModalStorageProofTests.test_remote_functions_package_helper_on_the_shared_image) ... ok\ntest_remote_resource_limits_keep_supported_scaledown_minimum (test_modal_storage_proof.ModalStorageProofTests.test_remote_resource_limits_keep_supported_scaledown_minimum) ... ok\ntest_sha256_matches_known_payload (test_modal_storage_proof.ModalStorageProofTests.test_sha256_matches_known_payload) ... ok\ntest_staged_script_imports_helper_from_only_the_staged_sources (test_modal_storage_proof.ModalStorageProofTests.test_staged_script_imports_helper_from_only_the_staged_sources) ... ok\ntest_writer_cleanup_removes_only_empty_directories_it_created (test_modal_storage_proof.ModalStorageProofTests.test_writer_cleanup_removes_only_empty_directories_it_created) ... ok\ntest_writer_failure_still_runs_scoped_cleanup (test_modal_storage_proof.ModalStorageProofTests.test_writer_failure_still_runs_scoped_cleanup) ... ok\n\n----------------------------------------------------------------------\nRan 12 tests in 0.066s\n\nOK\n"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3",
+        "-m",
+        "py_compile",
+        "scripts/content-studio/modal_storage_proof.py",
+        "scripts/content-studio/modal_storage_proof_logic.py",
+        "scripts/content-studio/tests/test_modal_storage_proof.py"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": ""
+    }
+  ]
+}

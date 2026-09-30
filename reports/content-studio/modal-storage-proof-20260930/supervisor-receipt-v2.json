@@ -1,0 +1,57 @@
+{
+  "status": "blocked_remote_module_packaging",
+  "supervisor_probe": {
+    "supervisor_probe_id": "cs-modal-mounted-volume-supervisor-probe-20260930-v2",
+    "script_sha256": "f3be90d227a0945fddbd0ca3c1fb913282d726286b77d9ebda5faaeed0be9706",
+    "logic_sha256": "f5aaa56b0fddb1eef961d9caa861de608d1f25ae92e49f5b2829b7ec9de45fdf",
+    "command": [
+      "modal",
+      "run",
+      "--env",
+      "content-studio-staging",
+      "scripts/content-studio/modal_storage_proof.py"
+    ],
+    "preflight_previous_app_state": "stopped",
+    "preflight_previous_app_tasks": 0,
+    "preflight_volume_root": [],
+    "started_unix": 1790757910.568602,
+    "exit_code": 1,
+    "finished_unix": 1790758083.747267,
+    "wall_seconds": 173.17866492271423
+  },
+  "mounted_proof_receipt": {
+    "app_id": "ap-xCeWJTEqIigwuScWGCxmXr",
+    "artifact_path": "proofs/modal-storage-proof/eb0b8f60-d57f-4a39-8ac8-a65f1ae66750.bin",
+    "cleanup_error": "ConflictError: function fu-05KCUKWbP6iZQUl8SEmLgk is stopped",
+    "cleanup_status": "failed",
+    "environment": "content-studio-staging",
+    "expected_sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+    "expected_size_bytes": 46,
+    "finished_unix": 1790758083.192512,
+    "proof_error": "RemoteError: ",
+    "proof_id": "eb0b8f60-d57f-4a39-8ac8-a65f1ae66750",
+    "proof_passed": false,
+    "started_unix": 1790757914.1694741,
+    "volume_name": "content-studio-artifacts",
+    "volume_object_id": "vo-60ER3JIn6BfxIMHhYlUmpa",
+    "volume_version": 1
+  },
+  "post_probe_apps": [
+    {
+      "app_id": "ap-xCeWJTEqIigwuScWGCxmXr",
+      "state": "stopped",
+      "tasks": 0
+    },
+    {
+      "app_id": "ap-wWX6Saii4NQGj86njKbLG0",
+      "state": "stopped",
+      "tasks": 0
+    }
+  ],
+  "post_probe_volume_root": [],
+  "app_stop_command": "modal app stop --env content-studio-staging --yes ap-xCeWJTEqIigwuScWGCxmXr",
+  "app_stop_exit_code": 0,
+  "local_tests_passed": 10,
+  "full_a07_closed": false,
+  "next_fix": "Explicit image.add_local_python_source(\"modal_storage_proof_logic\") per official project-structure docs; no automatic rerun."
+}

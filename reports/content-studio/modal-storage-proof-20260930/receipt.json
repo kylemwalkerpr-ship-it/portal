@@ -1,0 +1,162 @@
+{
+  "status": "partial_mounted_write_commit_reload_readback_cleanup_proven_final_mounted_absence_interrupted",
+  "supervisor_probe": {
+    "supervisor_probe_id": "cs-modal-mounted-volume-supervisor-probe-20260930-v3",
+    "script_sha256": "7a663337ba005b5ea8bf3eb4dcfabcba570c86f401a9045dca77ab493697299f",
+    "logic_sha256": "f5aaa56b0fddb1eef961d9caa861de608d1f25ae92e49f5b2829b7ec9de45fdf",
+    "command": [
+      "modal",
+      "run",
+      "--env",
+      "content-studio-staging",
+      "scripts/content-studio/modal_storage_proof.py"
+    ],
+    "preflight_prior_apps_stopped_tasks0": [
+      "ap-wWX6Saii4NQGj86njKbLG0",
+      "ap-xCeWJTEqIigwuScWGCxmXr"
+    ],
+    "preflight_volume_root": [],
+    "deadline_seconds": 120,
+    "started_unix": 1790759030.771062,
+    "deadline_exceeded": true,
+    "deadline_app_reconciliation": [
+      {
+        "app_id": "ap-FaTVtACXLKTlsqK4HpKsyY",
+        "description": "content-studio-modal-volume-proof",
+        "state": "ephemeral",
+        "tasks": "1",
+        "created_at": "2026-09-30 05:03:54-04:00",
+        "stopped_at": null
+      },
+      {
+        "app_id": "ap-xCeWJTEqIigwuScWGCxmXr",
+        "description": "content-studio-modal-volume-proof",
+        "state": "stopped",
+        "tasks": "0",
+        "created_at": "2026-09-30 04:45:14-04:00",
+        "stopped_at": "2026-09-30 04:48:05-04:00"
+      },
+      {
+        "app_id": "ap-wWX6Saii4NQGj86njKbLG0",
+        "description": "content-studio-modal-volume-proof",
+        "state": "stopped",
+        "tasks": "0",
+        "created_at": "2026-09-30 04:20:38-04:00",
+        "stopped_at": "2026-09-30 04:20:40-04:00"
+      }
+    ],
+    "deadline_stopped_app_id": "ap-FaTVtACXLKTlsqK4HpKsyY",
+    "app_stop_exit_code": 0,
+    "exit_code": 1,
+    "finished_unix": 1790759155.2976892,
+    "wall_seconds": 124.5266273021698
+  },
+  "mounted_proof_receipt": {
+    "app_id": "ap-FaTVtACXLKTlsqK4HpKsyY",
+    "artifact_path": "proofs/modal-storage-proof/8efda853-9fcb-4853-87e1-8fa7d84b913a.bin",
+    "cleanup": {
+      "removed": true
+    },
+    "cleanup_error": "RemoteError: ",
+    "cleanup_status": "failed",
+    "environment": "content-studio-staging",
+    "expected_sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+    "expected_size_bytes": 46,
+    "finished_unix": 1790759153.775828,
+    "proof_error": "RemoteError: ",
+    "proof_id": "8efda853-9fcb-4853-87e1-8fa7d84b913a",
+    "proof_passed": false,
+    "read": {
+      "sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+      "size_bytes": 46
+    },
+    "started_unix": 1790759034.78194,
+    "volume_name": "content-studio-artifacts",
+    "volume_object_id": "vo-60ER3JIn6BfxIMHhYlUmpa",
+    "volume_version": 1,
+    "write": {
+      "created_dirs": [
+        "/mnt/artifacts/proofs",
+        "/mnt/artifacts/proofs/modal-storage-proof"
+      ],
+      "sha256": "0f32893e3367ec89311d9358b7e520cf9ee73fbb3c72feab2d35d515a60719e4",
+      "size_bytes": 46
+    }
+  },
+  "post_probe_apps": [
+    {
+      "app_id": "ap-FaTVtACXLKTlsqK4HpKsyY",
+      "state": "stopped",
+      "tasks": 0
+    },
+    {
+      "app_id": "ap-xCeWJTEqIigwuScWGCxmXr",
+      "state": "stopped",
+      "tasks": 0
+    },
+    {
+      "app_id": "ap-wWX6Saii4NQGj86njKbLG0",
+      "state": "stopped",
+      "tasks": 0
+    }
+  ],
+  "post_probe_volume_root": [],
+  "cleanup_file_and_created_empty_dirs_absent_on_cli": true,
+  "final_mounted_reload_absence_verified": false,
+  "local_tests_passed": 12,
+  "planned_spend_ceiling_usd": 0.25,
+  "actual_billed_spend_usd": null,
+  "full_a07_closed": false,
+  "prior_canonical_jobs": [
+    "cs-modal-mounted-volume-proof-20260930-v1",
+    "cs-modal-mounted-volume-proof-repair-20260930-v1",
+    "cs-modal-proof-orchestration-result-revision-20260930-v1",
+    "cs-modal-proof-helper-packaging-revision-20260930-v1"
+  ],
+  "post_probe_reconciliation": [
+    {
+      "command": [
+        "modal",
+        "app",
+        "list",
+        "--env",
+        "content-studio-staging",
+        "--json"
+      ],
+      "exit_code": 0,
+      "stdout": "[\n  {\n    \"app_id\": \"ap-FaTVtACXLKTlsqK4HpKsyY\",\n    \"description\": \"content-studio-modal-volume-proof\",\n    \"state\": \"stopped\",\n    \"tasks\": \"0\",\n    \"created_at\": \"2026-09-30 05:03:54-04:00\",\n    \"stopped_at\": \"2026-09-30 05:05:57-04:00\"\n  },\n  {\n    \"app_id\": \"ap-xCeWJTEqIigwuScWGCxmXr\",\n    \"description\": \"content-studio-modal-volume-proof\",\n    \"state\": \"stopped\",\n    \"tasks\": \"0\",\n    \"created_at\": \"2026-09-30 04:45:14-04:00\",\n    \"stopped_at\": \"2026-09-30 04:48:05-04:00\"\n  },\n  {\n    \"app_id\": \"ap-wWX6Saii4NQGj86njKbLG0\",\n    \"description\": \"content-studio-modal-volume-proof\",\n    \"state\": \"stopped\",\n    \"tasks\": \"0\",\n    \"created_at\": \"2026-09-30 04:20:38-04:00\",\n    \"stopped_at\": \"2026-09-30 04:20:40-04:00\"\n  }\n]\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "modal",
+        "volume",
+        "ls",
+        "--env",
+        "content-studio-staging",
+        "--json",
+        "content-studio-artifacts",
+        "/"
+      ],
+      "exit_code": 0,
+      "stdout": "[]\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "modal",
+        "volume",
+        "ls",
+        "--env",
+        "content-studio-staging",
+        "--json",
+        "content-studio-artifacts",
+        "proofs/modal-storage-proof/8efda853-9fcb-4853-87e1-8fa7d84b913a.bin"
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 No such file or directory                                                    \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n"
+    }
+  ],
+  "original_receipt_path": "original-mounted-receipt-v3.json"
+}

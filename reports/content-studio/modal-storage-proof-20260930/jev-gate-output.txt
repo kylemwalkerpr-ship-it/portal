@@ -1,0 +1,2 @@
+exit_code=1
+jevctl: TypeSafe API key is unavailable (env or macOS Keychain)
