@@ -8,10 +8,11 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 minify = true
 
-# Required runtime secrets. Values are never committed to this file; Wrangler
-# only validates that the named secret binding exists for the Worker.
+# Required runtime secret names for Wrangler type generation and local checks.
+# Values are never committed here. The production workflow separately fails
+# before deploy if the required TypeSafe key is not synchronized.
 [secrets]
-required = ["CLERK_JWT_KEY"]
+required = ["CLERK_JWT_KEY", "TYPESAFE_API_KEY", "SUPABASE_SERVICE_ROLE_JWT", "SUPABASE_SERVICE_ROLE_KEY"]
 
 # ── CPU & Subrequest Limits ─────────────────────────────────────────────
 # This Worker currently deploys on the Cloudflare Workers Free plan. Do NOT
@@ -43,6 +44,8 @@ directory = ".open-next/assets"
 binding = "ASSETS"
 
 [vars]
+YQAA_PRIMARY_PROVIDER = "grok"
+YQAA_FALLBACK_PROVIDER = "deepseek-v41-flash"
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsucG9ydGFsLnlvdXNhZmVjb25zdWx0YW5jeS5jb20k"
 CLERK_AUTHORIZED_PARTIES = "https://portal.yousafeconsultancy.com,https://market.yousafeconsultancy.com"
 # Pin the clerk-js SDK to an exact patch so the browser loads it from
@@ -101,6 +104,8 @@ AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
 #   DEEPSEEK_API_KEY — Content Studio commissioned provider: DeepSeek V4.1 Flash
 #                      (first-party api.deepseek.com/v1 only; no base-url/model
 #                      override for this pin).
+#   TYPESAFE_API_KEY  — YQAA advisory judgment through the first-party
+#                      api.typesafe.ai/v1/systemone endpoint. Server-only.
 #   GITHUB_TOKEN     — GitHub PAT for shipContent (PRs, merges, deploys)
 #   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)
 #   CLOUDFLARE_AI_TOKEN      — General chat fallback AI (lib/chatProvider.ts)

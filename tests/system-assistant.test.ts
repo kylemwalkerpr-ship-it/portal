@@ -27,11 +27,11 @@ describe('system-wide assistant origin context', () => {
     )
 
     expect(origin.hostname).toBe('legal.yousafeconsultancy.com')
-    expect(origin.pathname).toBe('/actual-caseworks-page')
-    expect(origin.pageText).toBe('Visible legal article text')
+    expect(origin.pathname).toBeNull()
+    expect(origin.pageText).toBeNull()
   })
 
-  it('keeps portal route context but strips rendered private dashboard content', async () => {
+  it('strips portal route and rendered private dashboard context', async () => {
     const { normalizeAssistantOrigin } = await import('@/lib/centralAssistantKnowledge')
     const req = new Request('https://portal.yousafeconsultancy.com/api/chat', {
       method: 'POST',
@@ -49,9 +49,29 @@ describe('system-wide assistant origin context', () => {
     )
 
     expect(origin.hostname).toBe('portal.yousafeconsultancy.com')
-    expect(origin.pathname).toBe('/orders/private-order')
+    expect(origin.pathname).toBeNull()
+    expect(origin.url).toBeNull()
     expect(origin.pageText).toBeNull()
     expect(origin.headings).toBeNull()
+  })
+
+  it('strips authenticated Marketplace routes even on the public catalog host', async () => {
+    const { normalizeAssistantOrigin } = await import('@/lib/centralAssistantKnowledge')
+    const req = new Request('https://market.yousafeconsultancy.com/api/chat', {
+      method: 'POST',
+      headers: { Origin: 'https://market.yousafeconsultancy.com' },
+    })
+    const origin = normalizeAssistantOrigin({
+      url: 'https://market.yousafeconsultancy.com/dashboard/orders/private-order',
+      pathname: '/dashboard/orders/private-order',
+      title: 'Private order details',
+      pageText: 'Private buyer and offer data',
+    }, req)
+    expect(origin.hostname).toBe('market.yousafeconsultancy.com')
+    expect(origin.pathname).toBeNull()
+    expect(origin.url).toBeNull()
+    expect(origin.title).toBeNull()
+    expect(origin.pageText).toBeNull()
   })
 })
 
