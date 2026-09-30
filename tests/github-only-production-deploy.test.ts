@@ -74,6 +74,10 @@ describe('GitHub-only production deployment contract', () => {
     expect(workflow).toContain('node scripts/prepare-worker-secrets.mjs')
     expect(workflow).toContain('WORKER_SECRETS_FILE')
     expect(workflow).toContain('$GITHUB_ENV')
+    expect(workflow).toContain('TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}')
+    expect(workflow).toMatch(/Verify required YQAA Jev credential[\s\S]*?test -n "\$TYPESAFE_API_KEY"/)
+    expect(read('scripts/prepare-worker-secrets.mjs')).toContain('TYPESAFE_API_KEY: () => env.TYPESAFE_API_KEY')
+    expect(read('wrangler.toml')).toContain('"TYPESAFE_API_KEY"')
   })
 
   test('a fully failed deploy attempt loop exits red', () => {

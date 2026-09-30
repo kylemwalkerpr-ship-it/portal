@@ -13,6 +13,9 @@ export interface KnowledgeChunk {
   title: string
   body: string
   source: string
+  site?: string
+  sourceUrl?: string
+  repository?: string
   score?: number
 }
 
@@ -36,6 +39,63 @@ const KB_DIR_CANDIDATES = [
 
 /** In-process cache of curated KB files (mtime-insensitive for v1). */
 let cachedChunks: KnowledgeChunk[] | null = null
+let cachedCoreChunks: KnowledgeChunk[] | null = null
+
+const CORE_FILES = new Set([
+  'network-authority.md', 'brand-identity.md', 'platform.md',
+  'offers-orders-escrow.md', 'policies-ymyl.md', 'faq.md',
+])
+const SITES = new Set(['main', 'usa', 'canada', 'uk', 'australia', 'caseworks', 'market', 'support'])
+const REPOSITORY_BY_SITE: Record<string, string> = {
+  main: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+  usa: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+  canada: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+  uk: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+  australia: 'kylemwalkerpr-ship-it/yousafe-consultancy',
+  caseworks: 'kylemwalkerpr-ship-it/caseworks',
+  market: 'kylemwalkerpr-ship-it/portal',
+  support: 'kylemwalkerpr-ship-it/support-saas',
+}
+const SITE_BY_HOST: Record<string, string> = {
+  'yousafeconsultancy.com': 'main', 'www.yousafeconsultancy.com': 'main',
+  'usa.yousafeconsultancy.com': 'usa', 'ca.yousafeconsultancy.com': 'canada',
+  'uk.yousafeconsultancy.com': 'uk', 'au.yousafeconsultancy.com': 'australia',
+  'legal.yousafeconsultancy.com': 'caseworks', 'market.yousafeconsultancy.com': 'market',
+  'portal.yousafeconsultancy.com': 'market', 'support.yousafeconsultancy.com': 'support',
+}
+
+export function knowledgeSiteForHost(hostname?: string | null): string | null {
+  return SITE_BY_HOST[String(hostname || '').toLowerCase().replace(/:\d+$/, '')] || null
+}
+
+export function explicitKnowledgeSites(query: string): string[] {
+  const q = String(query || '')
+  const found: string[] = []
+  const rules: Array<[string, RegExp]> = [
+    ['australia', /\b(australia|australian|subclass\s*(?:500|485))\b/i],
+    ['canada', /\b(canada|canadian|ircc|pgwp)\b/i],
+    ['uk', /\b(united kingdom|britain|british|ukvi|\buk\b)\b/i],
+    ['usa', /\b(united states|america|american|uscis|\busa\b|\bu\.?s\.?\b|f-?1\s+visa)\b/i],
+  ]
+  for (const [site, pattern] of rules) if (pattern.test(q)) found.push(site)
+  return found
+}
+
+function trustedSourceUrl(value: unknown, site: unknown): string | undefined {
+  if (typeof value !== 'string' || typeof site !== 'string' || !SITES.has(site)) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || knowledgeSiteForHost(url.hostname) !== site) return undefined
+    const host = url.hostname.toLowerCase()
+    // Public catalog content lives on Market. Never ingest authenticated portal
+    // pages or private listing/order routes from either Marketplace host.
+    if (host === 'portal.yousafeconsultancy.com') return undefined
+    if (site === 'market' && /^\/(?:dashboard|orders|messages|inbox|wallet|account|checkout|settings)(?:\/|$)/i.test(url.pathname)) return undefined
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch { return undefined }
+}
 
 function splitMarkdownSections(raw: string, fileId: string, source: string): KnowledgeChunk[] {
   const text = String(raw || '').trim()
@@ -61,8 +121,9 @@ function splitMarkdownSections(raw: string, fileId: string, source: string): Kno
  * Load curated site KB from disk. Safe for Workers / Next: missing dir → [].
  * Exported for unit tests.
  */
-export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
-  if (!dirOverride && cachedChunks) return cachedChunks
+export function loadCuratedKbChunks(dirOverride?: string, coreOnly = false): KnowledgeChunk[] {
+  if (!dirOverride && coreOnly && cachedCoreChunks) return cachedCoreChunks
+  if (!dirOverride && !coreOnly && cachedChunks) return cachedChunks
   const dirs = dirOverride ? [dirOverride] : KB_DIR_CANDIDATES
   const chunks: KnowledgeChunk[] = []
   for (const dir of dirs) {
@@ -70,22 +131,27 @@ export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
       if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue
       const files = fs
         .readdirSync(dir)
-        .filter((f) => /\.(md|txt|json)$/i.test(f))
+        .filter((f) => coreOnly ? CORE_FILES.has(f) : /\.(md|txt|json)$/i.test(f))
         .sort()
       for (const file of files) {
         const full = path.join(dir, file)
         const raw = fs.readFileSync(full, 'utf8')
         if (/\.json$/i.test(file)) {
           try {
-            const parsed = JSON.parse(raw) as Array<{ id?: string; title?: string; body?: string }>
+            const parsed = JSON.parse(raw) as Array<{ id?: string; title?: string; body?: string; site?: string; repository?: string; sourceUrl?: string }>
             if (Array.isArray(parsed)) {
               for (const row of parsed) {
                 if (!row?.body) continue
+                const sourceUrl = trustedSourceUrl(row.sourceUrl, row.site)
+                if (!sourceUrl || row.repository !== REPOSITORY_BY_SITE[row.site]) continue
                 chunks.push({
-                  id: String(row.id || `${file}-${chunks.length}`),
-                  title: String(row.title || file),
+                  id: String(row.id || `${file}-${chunks.length}`).slice(0, 240),
+                  title: String(row.title || file).slice(0, 240),
                   body: String(row.body).slice(0, 4000),
-                  source: `content/messenger-kb/${file}`,
+                  source: sourceUrl,
+                  site: row.site,
+                  sourceUrl,
+                  repository: row.repository.slice(0, 200),
                 })
               }
             }
@@ -106,13 +172,21 @@ export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
       )
     }
   }
-  if (!dirOverride) cachedChunks = chunks
+  if (!dirOverride) {
+    if (coreOnly) cachedCoreChunks = chunks
+    else cachedChunks = chunks
+  }
   return chunks
 }
 
 /** Reset in-process KB cache (tests). */
 export function resetMessengerKbCache(): void {
   cachedChunks = null
+  cachedCoreChunks = null
+}
+
+export function loadCuratedCoreKbChunks(dirOverride?: string): KnowledgeChunk[] {
+  return loadCuratedKbChunks(dirOverride, true)
 }
 
 const STOP = new Set([
@@ -169,6 +243,54 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
     }
   }
   return top.slice(0, limit)
+}
+
+const DEEP_QUERY_RE = /\b(visa|immigration|study permit|student visa|f-?1|pgwp|work permit|sponsorship|sponsor|refusal|appeal|asylum|removal|deport|citizenship|green card|permanent residence|subclass\s*\d+|genuine student|admission|university|college|statement of purpose|\bsop\b|credential|wes\b|resume|cv\b|job search|housing|tenant|tenancy|landlord|deposit|legal|lawyer|attorney|court|deadline|canada|australia|united kingdom|\buk\b|united states|\busa?\b|price|pricing|cost|package|service|caseworks|marketplace|support)\b/i
+
+export function shouldUseDeepNetworkKnowledge(query: string): boolean {
+  const q = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!q || /^(hi|hello|hey|hiya|good (morning|afternoon|evening)|thanks|thank you)[!.?\s]*$/.test(q)) return false
+  if (/\b(who are you|what is yousafe|tell me about (?:yousafe|this company)|about yousafe consultancy|how does yousafe work)\b/.test(q)) return false
+  return DEEP_QUERY_RE.test(q)
+}
+
+/** Shared public YQAA corpus selection. Origin affinity only breaks ties; explicit destinations rank first. */
+export function selectYqaaKnowledge(opts: {
+  query: string
+  deep: boolean
+  hostname?: string | null
+  pageContext?: string | null
+  limit?: number
+  kbDir?: string
+}): KnowledgeChunk[] {
+  const pool = opts.deep ? loadCuratedKbChunks(opts.kbDir) : loadCuratedCoreKbChunks(opts.kbDir)
+  const requestedSites = explicitKnowledgeSites(opts.query)
+  const originSite = knowledgeSiteForHost(opts.hostname)
+  const pageTokens = tokenizeQuery(String(opts.pageContext || '').slice(0, 1200)).slice(0, 12)
+  const limit = Math.max(1, Math.min(12, opts.limit || 8))
+  const ranked = rankChunks(pool, opts.query, Math.min(pool.length, limit * 3))
+  const scored = ranked.map((chunk, index) => {
+    let score = chunk.score || 0
+    if (chunk.site && requestedSites.includes(chunk.site)) score += 18
+    if (!requestedSites.length && chunk.site && chunk.site === originSite) score += 3
+    if (pageTokens.length) {
+      const haystack = `${chunk.title}\n${chunk.body}`.toLowerCase()
+      score += Math.min(4, pageTokens.filter((token) => haystack.includes(token)).length * 0.5)
+    }
+    if (!chunk.site) score += 2 // canonical network-wide core material
+    return { ...chunk, score, _explicitJurisdiction: Boolean(chunk.site && requestedSites.includes(chunk.site)), _index: index }
+  })
+  scored.sort((a, b) => Number(b._explicitJurisdiction) - Number(a._explicitJurisdiction) || (b.score || 0) - (a.score || 0) || a._index - b._index)
+  const picked = scored.slice(0, limit).map(({ _explicitJurisdiction: _ignoredJurisdiction, _index: _ignoredIndex, ...chunk }) => chunk)
+  const canonical = pool.filter((chunk) => /network-authority/i.test(chunk.id + chunk.source))
+  for (const chunk of canonical) {
+    if (!picked.some((item) => item.id === chunk.id)) {
+      if (requestedSites.length && picked.length >= limit && picked.some((item) => item.site && requestedSites.includes(item.site))) continue
+      if (picked.length >= limit) picked.pop()
+      picked.push({ ...chunk, score: (chunk.score || 0) + 1 })
+    }
+  }
+  return picked.slice(0, limit)
 }
 
 function clip(s: unknown, n: number): string {

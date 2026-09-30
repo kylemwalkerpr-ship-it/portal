@@ -37,6 +37,11 @@ export async function POST(req: Request) {
   // 1) Secret presence on the Worker
   const requiredSecrets: Array<{ name: string; label: string; why: string }> = [
     {
+      name: 'TYPESAFE_API_KEY',
+      label: 'TypeSafe Jev advisory key',
+      why: 'Without it production YQAA cannot run the configured bounded advisory transport.',
+    },
+    {
       name: 'CLERK_SECRET_KEY',
       label: 'Clerk secret key',
       why: 'Without it every request is treated as signed-out (session-token-and-uat-missing) and profile email recovery returns empty.',

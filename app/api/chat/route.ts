@@ -14,14 +14,17 @@ import {
 import { enforceCanonicalMarketCoverage } from '@/lib/assistantNetworkAuthority'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
-import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
+import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
+import { selectYqaaKnowledge, shouldUseDeepNetworkKnowledge } from '@/lib/messengerSiteKnowledge'
+import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
+import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
+import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
 const VIEWER_CONTEXT_BUDGET_MS = 1_500
 
 type ViewerSnapshot = {
-  context: string
   visitor: SupportVisitor | null
   role: string | null
 }
@@ -74,7 +77,7 @@ function asVisitor(input: unknown): SupportVisitor | null {
 async function loadViewerSnapshot(): Promise<ViewerSnapshot> {
   try {
     const clerkUserId = await getClerkUserId()
-    if (!clerkUserId) return { context: '', visitor: null, role: null }
+    if (!clerkUserId) return { visitor: null, role: null }
 
     const db = createSupabaseAdminClient()
     const { data: profile } = await db
@@ -82,24 +85,17 @@ async function loadViewerSnapshot(): Promise<ViewerSnapshot> {
       .select('full_name, email, role, status')
       .eq('clerk_user_id', clerkUserId)
       .maybeSingle()
-    if (!profile) return { context: '', visitor: null, role: null }
+    if (!profile) return { visitor: null, role: null }
 
     const name = profile.full_name?.trim() || null
     const email = profile.email?.trim() || null
     const role = profile.role === 'client' ? 'student' : profile.role
-    const bits = [
-      name ? `Name: ${name}` : null,
-      role ? `Role: ${role}` : null,
-      profile.status ? `Account status: ${profile.status}` : null,
-    ].filter(Boolean)
-
     return {
-      context: bits.length > 0 ? `\n\n# CURRENT VIEWER\n${bits.join('\n')}` : '',
       visitor: { name, email, phone: null },
       role: role || null,
     }
   } catch {
-    return { context: '', visitor: null, role: null }
+    return { visitor: null, role: null }
   }
 }
 
@@ -110,7 +106,7 @@ async function boundedViewerSnapshot(): Promise<ViewerSnapshot> {
       loadViewerSnapshot(),
       new Promise<ViewerSnapshot>((resolve) => {
         timer = setTimeout(
-          () => resolve({ context: '', visitor: null, role: null }),
+          () => resolve({ visitor: null, role: null }),
           VIEWER_CONTEXT_BUDGET_MS,
         )
       }),
@@ -181,10 +177,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const viewerPromise = boundedViewerSnapshot()
-
   if (wantsAgent) {
-    const viewer = await viewerPromise
+    const viewer = await boundedViewerSnapshot()
     const incomingVisitor = asVisitor(body.visitor)
     const topic = typeof body.topic === 'string' && body.topic.trim()
       ? body.topic.trim()
@@ -210,7 +204,12 @@ export async function POST(req: Request) {
         retryable: false,
       })
     } catch (err) {
-      console.error('[system-assistant] escalation failed', err instanceof Error ? err.message : err)
+      console.error('[system-assistant] escalation failed', err instanceof Error ? err.message.slice(0, 160) : 'unknown')
+      return withCors(req, {
+        reply: 'I could not connect you to support just now. I will not guess about this request. Please retry the handoff or contact YouSafe Support directly.',
+        provider: 'handoff-unavailable',
+        retryable: true,
+      }, { status: 503 })
     }
   }
 
@@ -220,13 +219,52 @@ export async function POST(req: Request) {
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
     })
-    const [systemKnowledge, viewer] = await Promise.all([knowledgePromise, viewerPromise])
+    const systemKnowledge = await knowledgePromise
     const knowledgeMs = Date.now() - knowledgeStartedAt
 
+    const publicEvidence = selectYqaaKnowledge({
+      query: lastUser.content,
+      deep: shouldUseDeepNetworkKnowledge(lastUser.content),
+      hostname: inquiryOrigin.hostname,
+      pageContext: [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings].filter(Boolean).join(' '),
+      limit: 8,
+    })
+    const advisoryContext = { query: lastUser.content, hostname: inquiryOrigin.hostname, evidence: publicEvidence }
+    const triggers = yqaaJevTriggers(advisoryContext)
+    const jevStartedAt = Date.now()
+    const jev = triggers.length ? await requestJevAdvisory(advisoryContext) : { available: false as const, reason: 'not_configured' as const }
+    const jevMs = Date.now() - jevStartedAt
+    const safety = applyYqaaSafetyPolicy(advisoryContext, jev)
+    if (!safety.answer) {
+      const viewer = await boundedViewerSnapshot()
+      const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+      try {
+        const handoff = await escalateToSupport({
+          message: lastUser.content,
+          visitor: handoffVisitor,
+          topic: 'yqaa-safety-handoff',
+        })
+        return withCors(req, {
+          reply: 'This question needs a qualified person to review the details. I can share general information, but I will not guess or make a decision for your situation. I am connecting you to support.',
+          provider: 'handoff',
+          handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl },
+          retryable: false,
+        })
+      } catch {
+        return withCors(req, {
+          reply: 'This question needs a qualified person to review the details. I cannot verify a safe answer or connect to support right now. Please retry the handoff or contact YouSafe Support directly.',
+          provider: 'safety-handoff-unavailable',
+          retryable: true,
+        }, { status: 503 })
+      }
+    }
+
     const modelStartedAt = Date.now()
-    const result = await callSystemSuperGrok(systemKnowledge + viewer.context, cleaned)
+    const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
+    const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
+    const finalText = pricingGuard.text
     const totalMs = Date.now() - requestStartedAt
 
     if (guarded.corrected) {
@@ -240,16 +278,23 @@ export async function POST(req: Request) {
       totalMs,
       knowledgeMs,
       modelMs,
-      modelReportedMs: result.latencyMs,
       promptChars: systemKnowledge.length,
       hostname: inquiryOrigin.hostname,
+      provider: result.provider,
+      fallback: result.fallback,
+      fallbackEvidence: result.failureEvidence ? { kind: result.failureEvidence.kind, status: result.failureEvidence.status } : null,
+      jevMs,
+      jevAvailable: jev.available,
+      jevFailureReason: 'reason' in jev ? jev.reason : null,
+      jevTriggers: triggers,
+      safetyReason: safety.reason,
     })
 
     return withCors(
       req,
       {
-        reply: guarded.text,
-        provider: guarded.corrected ? 'system-ai-grounding-guard' : 'system-ai',
+        reply: finalText,
+        provider: guarded.corrected || pricingGuard.corrected ? 'system-ai-grounding-guard' : publicYqaaProviderLabel(),
         supportApiUrl: SUPPORT_WIDGET_API,
         marketplaceRecommendation,
         retryable: false,
@@ -263,6 +308,7 @@ export async function POST(req: Request) {
         headers: {
           'Server-Timing': timingHeader([
             ['knowledge', knowledgeMs],
+            ['jev', jevMs],
             ['model', modelMs],
             ['total', totalMs],
           ]),

@@ -30,6 +30,7 @@ const EXPECTED_FULL_KEYS = [
   'RESEND_API_KEY',
   'SUPABASE_SERVICE_ROLE_JWT',
   'SUPABASE_SERVICE_ROLE_KEY',
+  'TYPESAFE_API_KEY',
   'XAI_API_KEY',
   'XAI_MODEL',
 ].sort()
@@ -49,6 +50,7 @@ const ALL_SOURCES: Record<string, string> = {
   XAI_API_KEY: 'xai-key',
   XAI_MODEL: 'grok-4.6',
   DEEPSEEK_API_KEY: 'deepseek-key',
+  TYPESAFE_API_KEY: 'typesafe-test-key',
   DATAFORSEO_LOGIN: 'dataforseo-login',
   DATAFORSEO_PASSWORD: 'dataforseo-password',
   GOOGLE_CLIENT_ID: 'google-client-id',
@@ -99,12 +101,13 @@ describe('prepare-worker-secrets.mjs (atomic Worker secret file)', () => {
     const result = runPrepare(ALL_SOURCES)
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('25')
+    expect(result.stdout).toContain('26')
     expect(fs.statSync(outFile).mode & 0o777).toBe(0o600)
 
     const secrets = JSON.parse(fs.readFileSync(outFile, 'utf8'))
     expect(Object.keys(secrets).sort()).toEqual(EXPECTED_FULL_KEYS)
     expect(secrets.CONTENT_AI_PROVIDER).toBe('grok')
+    expect(secrets.TYPESAFE_API_KEY).toBe('typesafe-test-key')
     expect(secrets.GITHUB_TOKEN).toBe('content-studio-pat')
     expect(secrets.CLOUDFLARE_ACCOUNT_ID).toBe('acct-123')
   })

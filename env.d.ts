@@ -72,6 +72,9 @@ declare global {
     // commissioned path: the pin's base URL and upstream model are fixed in
     // lib/contentAiRegistry.ts.
     DEEPSEEK_API_KEY: string
+
+    // TypeSafe System One advisory endpoint; server-only Worker secret.
+    TYPESAFE_API_KEY: string
   }
 }
 
