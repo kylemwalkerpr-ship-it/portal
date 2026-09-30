@@ -95,8 +95,40 @@ describe('source provenance v1 contract', () => {
     expect(evaluateRequiredSource(zero).outcome).toBe('READY')
   })
 
+  it('abstains when available evidence claims complete coverage with zero fraction', () => {
+    const contradictory = normalizeObservation(observation({ coverageFraction: 0 }))
+    expect(contradictory.issues).toContain('AVAILABLE_COVERAGE_FRACTION_CONTRADICTS_COMPLETE')
+    expect(evaluateRequiredSource(contradictory).outcome).toBe('ABSTAIN')
+  })
+
+  it('abstains when an empty result claims positive covered fraction', () => {
+    const contradictory = normalizeObservation(observation({ state: 'empty', value: null, coverageFraction: 0.5 }))
+    expect(contradictory.issues).toContain('EMPTY_COVERAGE_FRACTION_CONTRADICTS_EMPTY')
+    expect(evaluateRequiredSource(contradictory).outcome).toBe('ABSTAIN')
+  })
+
+  it('rejects impossible calendar dates while allowing leap days', () => {
+    const impossible = normalizeObservation(observation({
+      retrievedAt: '2026-02-30T12:00:00Z',
+      window: { start: '2026-02-30T00:00:00Z', end: '2026-03-01T00:00:00Z' },
+      effectiveWindow: { start: '2026-02-30T00:00:00Z', end: '2026-03-01T00:00:00Z' },
+    }))
+    expect(impossible.issues).toEqual(expect.arrayContaining([
+      'RETRIEVED_AT_INVALID', 'WINDOW_START_INVALID',
+    ]))
+    expect(evaluateRequiredSource(impossible).outcome).toBe('ABSTAIN')
+
+    const leapDay = normalizeObservation(observation({
+      retrievedAt: '2024-02-29T12:00:00Z',
+      window: { start: '2024-02-29T00:00:00Z', end: '2024-03-01T00:00:00Z' },
+      effectiveWindow: { start: '2024-02-29T00:00:00Z', end: '2024-03-01T00:00:00Z' },
+    }))
+    expect(leapDay.issues).toEqual([])
+    expect(evaluateRequiredSource(leapDay).outcome).toBe('READY')
+  })
+
   it('keeps complete empty results distinct from zero and unavailable', () => {
-    const empty = normalizeObservation(observation({ state: 'empty', value: null }))
+    const empty = normalizeObservation(observation({ state: 'empty', value: null, coverageFraction: 0 }))
     expect(empty.issues).toEqual([])
     expect(empty.state).toBe('empty')
     expect(evaluateRequiredSource(empty).outcome).toBe('READY')

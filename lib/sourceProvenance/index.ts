@@ -62,10 +62,20 @@ export type SourceReadiness =
 
 const SHA256 = /^[a-f0-9]{64}$/
 const INSTANT = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/
+const INSTANT_PARTS = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)$/
 const TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/
 
 function validInstant(value: string | null): boolean {
-  return value !== null && INSTANT.test(value) && Number.isFinite(Date.parse(value))
+  if (value === null || !INSTANT.test(value)) return false
+  const parts = INSTANT_PARTS.exec(value)
+  if (!parts) return false
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = parts
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText)
+  const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText)
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1]
+    && hour <= 23 && minute <= 59 && second <= 59 && Number.isFinite(Date.parse(value))
 }
 
 function normalizeScope(scope: Record<string, string | null>): Record<string, string | null> {
@@ -184,8 +194,10 @@ export function validateObservation(input: ObservationInputV1): string[] {
   if (input.artifactLocator !== null && !TOKEN.test(input.artifactLocator)) issues.push('ARTIFACT_LOCATOR_INVALID')
   if ((input.state === 'available' || input.state === 'empty') && (input.health !== 'healthy' || input.coverage !== 'complete')) issues.push('POSITIVE_STATE_REQUIRES_HEALTHY_COMPLETE_COVERAGE')
   if (input.state === 'available' && input.value === null) issues.push('AVAILABLE_VALUE_REQUIRED')
+  if (input.state === 'available' && input.coverageFraction !== null && input.coverageFraction < 1) issues.push('AVAILABLE_COVERAGE_FRACTION_CONTRADICTS_COMPLETE')
   if (input.state !== 'available' && input.value !== null) issues.push('NON_AVAILABLE_VALUE_MUST_BE_NULL')
   if (input.state === 'empty' && input.coverage !== 'complete') issues.push('EMPTY_REQUIRES_COMPLETE_COVERAGE')
+  if (input.state === 'empty' && input.coverageFraction !== null && input.coverageFraction > 0) issues.push('EMPTY_COVERAGE_FRACTION_CONTRADICTS_EMPTY')
   if (input.state === 'empty' && input.artifactLocator === null && input.artifactDigest === null) issues.push('EMPTY_ARTIFACT_REQUIRED')
   if (input.state === 'partial' && input.coverage !== 'partial') issues.push('PARTIAL_STATE_REQUIRES_PARTIAL_COVERAGE')
   if ((input.state === 'unavailable' || input.state === 'failed') && input.health === 'healthy') issues.push('FAILED_OR_UNAVAILABLE_CANNOT_BE_HEALTHY')
