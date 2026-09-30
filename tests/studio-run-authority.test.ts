@@ -48,6 +48,17 @@ describe('studio run authority domain contract', () => {
     })).toEqual({ claimed: false, reason: 'LEASE_STILL_ACTIVE' })
   })
 
+  test('rejects claims when fence or version cannot be safely incremented', () => {
+    const expiredStage = { ...stage, leaseExpiresAt: '2026-09-29T10:00:00.000Z' }
+    const request = {
+      leaseOwner: 'worker-c', now: '2026-09-29T11:00:00.000Z', leaseExpiresAt: '2026-09-29T12:00:00.000Z',
+    }
+    expect(claimStage({ ...expiredStage, currentFence: Number.MAX_SAFE_INTEGER }, request))
+      .toEqual({ claimed: false, reason: 'INVALID_CLAIM' })
+    expect(claimStage({ ...expiredStage, version: Number.MAX_SAFE_INTEGER }, request))
+      .toEqual({ claimed: false, reason: 'INVALID_CLAIM' })
+  })
+
   test('rejects stale run-stage fence even when a legacy job lease could be valid', () => {
     const result = transitionStage(stage, { fence: 3, leaseOwner: 'worker-a', now: '2026-09-29T11:30:00.000Z', nextState: 'done', predecessor: { runId: stage.runId, stageId: stage.stageId, version: stage.version } })
     expect(result).toEqual({ allowed: false, reason: 'STALE_FENCE' })

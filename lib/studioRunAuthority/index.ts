@@ -51,7 +51,8 @@ export function claimStage(
   const requestedExpiry = Date.parse(request.leaseExpiresAt)
   if (!required(request.leaseOwner) || !Number.isFinite(now) || !Number.isFinite(requestedExpiry) || requestedExpiry <= now ||
     !Number.isSafeInteger(current.currentFence) || current.currentFence < 0 ||
-    !Number.isSafeInteger(current.version) || current.version < 0) {
+    !Number.isSafeInteger(current.version) || current.version < 0 ||
+    !Number.isSafeInteger(current.currentFence + 1) || !Number.isSafeInteger(current.version + 1)) {
     return { claimed: false, reason: 'INVALID_CLAIM' }
   }
   if (current.state === 'done' || current.state === 'failed' || current.state === 'cancelled') {
