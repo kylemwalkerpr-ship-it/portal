@@ -10,6 +10,8 @@ on:
       - 'lib/seoEngine/gate.ts'
       - 'lib/seoFactory/specialistFeeds.ts'
       - 'tests/supabase-service-role.integration.test.ts'
+      - 'tests/studio-service-role-image-receipt.test.ts'
+      - 'scripts/studio-service-role-image-receipt.cjs'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:
@@ -58,6 +60,45 @@ jobs:
             echo 'Local Supabase startup failed; raw stack output withheld.'
             exit 1
           fi
+          container_names_file="$RUNNER_TEMP/studio-supabase-container-names.txt"
+          docker ps --all --filter 'label=com.supabase.cli.project=yousafe-studio-service-role-ci' --format '{{.Names}}' >"$container_names_file"
+          mapfile -t container_names <"$container_names_file"
+          if ((${#container_names[@]} == 0)); then
+            echo 'No Supabase stack containers found; image receipt was not written.'
+            exit 1
+          fi
+          projection_file="$RUNNER_TEMP/studio-supabase-image-projection.json"
+          receipt_file="$RUNNER_TEMP/studio-supabase-image-receipt.json"
+          container_projection_file="$RUNNER_TEMP/studio-supabase-container-projection.json"
+          image_ids_file="$RUNNER_TEMP/studio-supabase-image-ids.txt"
+          image_projection_file="$RUNNER_TEMP/studio-supabase-image-inspect-projection.json"
+          if ! docker inspect "${container_names[@]}" 2>"$RUNNER_TEMP/studio-supabase-container-inspect.err" |
+            jq '[.[] | {name: .Name, image: .Config.Image, imageId: .Image}]' >"$container_projection_file" 2>"$RUNNER_TEMP/studio-supabase-jq.err"; then
+            echo 'Unable to create sanitized Docker container projection; Docker output withheld.'
+            exit 1
+          fi
+          jq -r '.[].imageId' "$container_projection_file" | sort -u >"$image_ids_file"
+          mapfile -t image_ids <"$image_ids_file"
+          if ((${#image_ids[@]} == 0)); then
+            echo 'No immutable image IDs found; image receipt was not written.'
+            exit 1
+          fi
+          if ! docker image inspect "${image_ids[@]}" 2>"$RUNNER_TEMP/studio-supabase-image-inspect.err" |
+            jq '[.[] | {id: .Id, repoDigests: (.RepoDigests // [])}]' >"$image_projection_file" 2>"$RUNNER_TEMP/studio-supabase-image-jq.err"; then
+            echo 'Unable to inspect referenced Docker images; image output withheld.'
+            exit 1
+          fi
+          if ! jq -n --slurpfile containers "$container_projection_file" --slurpfile images "$image_projection_file" \
+            '{containers: $containers[0], images: $images[0]}' >"$projection_file"; then
+            echo 'Unable to join sanitized Docker projections; output withheld.'
+            exit 1
+          fi
+          GITHUB_SHA="$GITHUB_SHA" \
+          GITHUB_RUN_ID="$GITHUB_RUN_ID" \
+          GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" \
+          SUPABASE_CLI_VERSION='2.98.2' \
+            node scripts/studio-service-role-image-receipt.cjs "$projection_file" "$receipt_file"
+          echo "STUDIO_SUPABASE_IMAGE_RECEIPT=$receipt_file" >>"$GITHUB_ENV"
           env_file="$RUNNER_TEMP/studio-supabase.env"
           (cd ci/supabase && supabase status -o env) >"$env_file"
           node --input-type=module <<'NODE'
@@ -78,6 +119,15 @@ jobs:
           NODE
         env:
           SUPABASE_ENV_FILE: ${{ runner.temp }}/studio-supabase.env
+
+      - name: Upload sanitized Supabase image receipt
+        if: always() && env.STUDIO_SUPABASE_IMAGE_RECEIPT != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: studio-supabase-image-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.STUDIO_SUPABASE_IMAGE_RECEIPT }}
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Exercise real service-role gate and specialist operations
         run: npm run test:supabase-service-role-integration
