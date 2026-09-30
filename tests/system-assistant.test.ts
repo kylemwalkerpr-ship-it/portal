@@ -112,6 +112,23 @@ describe('assistant deterministic fast replies', () => {
   })
 })
 
+
+describe('assistant explicit human-handoff intent', () => {
+  it('does not confuse ordinary help or resource language with a human-agent request', async () => {
+    const { shouldEscalateToLiveAgent } = await import('@/lib/chatEscalation')
+    expect(shouldEscalateToLiveAgent('I want you to help me')).toBe(false)
+    expect(shouldEscalateToLiveAgent('Connect me with work permit information')).toBe(false)
+    expect(shouldEscalateToLiveAgent('What does representative mean in this guide?')).toBe(false)
+  })
+
+  it('recognizes explicit requests for a human or support agent', async () => {
+    const { shouldEscalateToLiveAgent } = await import('@/lib/chatEscalation')
+    expect(shouldEscalateToLiveAgent('I want to talk to a human')).toBe(true)
+    expect(shouldEscalateToLiveAgent('Please connect me with a support agent')).toBe(true)
+    expect(shouldEscalateToLiveAgent('I need a real person')).toBe(true)
+  })
+})
+
 describe('system-wide assistant model routing', () => {
   const originalFetch = global.fetch
 

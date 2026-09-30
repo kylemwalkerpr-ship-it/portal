@@ -11,31 +11,18 @@ export const SUPPORT_WIDGET_API =
   process.env.SUPPORT_WIDGET_URL?.trim() ||
   'https://support.yousafeconsultancy.com/api/chat/widget'
 
-const ESCALATION_KEYWORDS = [
-  'live agent',
-  'real person',
-  'real human',
-  'speak to someone',
-  'speak to a person',
-  'speak to support',
-  'talk to someone',
-  'talk to a person',
-  'talk to a human',
-  'talk to support',
-  'support agent',
-  'support staff',
-  'human support',
-  'human agent',
-  'representative',
-  'connect me with',
-  'i need a human',
-  'i want a human',
-  'i need to speak to',
+const EXPLICIT_ESCALATION_PATTERNS = [
+  /\b(?:live|human|support)\s+(?:agent|representative|staff|person)\b/i,
+  /\b(?:real\s+person|real\s+human|human\s+support|live\s+support)\b/i,
+  /\b(?:speak|talk|chat)\s+(?:to|with)\s+(?:a\s+)?(?:human|person|someone|support|representative|agent)\b/i,
+  /\bconnect\s+me\s+(?:to|with)\s+(?:a\s+)?(?:human|person|someone|support|representative|agent)\b/i,
+  /\bi\s+(?:need|want|would\s+like)\s+(?:a\s+)?(?:human|person|support\s+agent|human\s+agent|representative)\b/i,
+  /\bi\s+(?:need|want|would\s+like)\s+to\s+(?:speak|talk|chat)\s+(?:to|with)\s+(?:a\s+)?(?:human|person|someone|support|representative|agent)\b/i,
 ]
 
 export function shouldEscalateToLiveAgent(text: string): boolean {
-  const lower = String(text || '').toLowerCase()
-  return ESCALATION_KEYWORDS.some(k => lower.includes(k))
+  const value = String(text || '').trim()
+  return EXPLICIT_ESCALATION_PATTERNS.some((pattern) => pattern.test(value))
 }
 
 export type SupportVisitor = {
