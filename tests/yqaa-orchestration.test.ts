@@ -68,7 +68,7 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
   })
 
   it('keeps deterministic simple turns independent of Jev and fails closed on high stakes or low evidence', async () => {
-    const { requestJevAdvisory, applyYqaaSafetyPolicy } = await import('@/lib/jevAdvisory')
+    const { requestJevAdvisory, applyYqaaSafetyPolicy, yqaaJevTriggers } = await import('@/lib/jevAdvisory')
     const simpleContext = { query: 'How do I find public information?', hostname: 'yousafeconsultancy.com', evidence: [
       { id: 'guide', title: 'Public information guide', body: 'Find public information in the verified site guide.', source: 'https://yousafeconsultancy.com/guide', site: 'main', score: 3 },
       { id: 'faq', title: 'Public information FAQ', body: 'Verified ways to find public information.', source: 'https://yousafeconsultancy.com/faq', site: 'main', score: 2 },
@@ -77,6 +77,13 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     expect(timedOut).toEqual({ available: false, reason: 'timeout' })
     expect(applyYqaaSafetyPolicy(simpleContext, timedOut)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
     expect(applyYqaaSafetyPolicy(simpleContext, { available: false, reason: 'not_configured' })).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
+
+    const zeroScoreTrustedEvidence = { ...simpleContext, evidence: [
+      { id: 'canonical', title: 'Canonical public guide', body: 'Trusted canonical steps for finding public information.', source: 'https://yousafeconsultancy.com/guide', site: 'main', score: 0 },
+      { id: 'site-aware', title: 'Site FAQ', body: 'Site-aware verified public information.', source: 'https://yousafeconsultancy.com/faq', site: 'main', score: 0 },
+    ] }
+    expect(yqaaJevTriggers(zeroScoreTrustedEvidence)).not.toContain('low_evidence')
+    expect(applyYqaaSafetyPolicy(zeroScoreTrustedEvidence, { available: false, reason: 'not_configured' })).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
 
     const lowEvidenceContext = { ...simpleContext, evidence: [] }
     expect(applyYqaaSafetyPolicy(lowEvidenceContext, { available: false, reason: 'not_configured' })).toEqual({ answer: false, reason: 'low_evidence_handoff' })
@@ -94,6 +101,45 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     ] }, { available: true, advisory: { sufficient: true, confidence: 0.99, conflict: false, needsHandoff: false, market: 'global' } })).toEqual({ answer: false, reason: 'conflicting_evidence_handoff' })
   })
 
+  it('requires matching jurisdiction evidence during Jev outage, regardless of host affinity', async () => {
+    const { applyYqaaSafetyPolicy } = await import('@/lib/jevAdvisory')
+    const unavailable = { available: false as const, reason: 'not_configured' as const }
+    const query = 'What public housing rules apply in Canada?'
+    const wrongJurisdiction = { query, hostname: 'canada.yousafeconsultancy.com', evidence: [
+      { id: 'usa', title: 'US guide', body: 'Verified general public guidance.', source: 'https://usa.gov/guide', site: 'usa', score: 0 },
+    ] }
+    expect(applyYqaaSafetyPolicy(wrongJurisdiction, unavailable)).toEqual({ answer: false, reason: 'jurisdiction_evidence_missing_handoff' })
+
+    const matchingLocal = { ...wrongJurisdiction, hostname: 'usa.yousafeconsultancy.com', evidence: [
+      { id: 'canada', title: 'Canada guide', body: 'Verified Canadian public guidance.', source: 'https://canada.ca/guide', site: 'canada', score: 0 },
+    ] }
+    expect(applyYqaaSafetyPolicy(matchingLocal, unavailable)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
+
+    const matchingOfficialWeb = { ...wrongJurisdiction, hostname: 'usa.yousafeconsultancy.com', evidence: [
+      { id: 'web', title: 'Canada official guide', body: 'Verified Canadian public guidance.', source: 'https://canada.ca/guide', sourceUrl: 'https://canada.ca/guide', sourceKey: 'xai:web_search', jurisdiction: 'Canada', site: 'official-web', score: 0 },
+    ] }
+    expect(applyYqaaSafetyPolicy(matchingOfficialWeb, unavailable)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
+
+    const multiple = { ...matchingLocal, query: 'Compare public housing rules in Canada and the United States.' }
+    expect(applyYqaaSafetyPolicy(multiple, unavailable).answer).toBe(false)
+  })
+
+  it('allows a conflict only after cited web evidence and a clear sufficient advisory', async () => {
+    const { applyYqaaSafetyPolicy } = await import('@/lib/jevAdvisory')
+    const context = { query: 'These sources conflict about general housing rules; what is correct?', evidence: [
+      { id: 'a', title: 'Source A', body: 'General public information.', source: 'https://a.example/guide', site: 'caseworks' },
+      { id: 'b', title: 'Source B', body: 'General public information.', source: 'https://b.example/guide', site: 'usa' },
+    ] }
+    const clear = { available: true as const, advisory: { sufficient: true, confidence: 0.94, conflict: false, needsHandoff: false, market: 'global' as const } }
+    expect(applyYqaaSafetyPolicy(context, clear).answer).toBe(false)
+    const citedWeb = { id: 'web', title: 'Official web source', body: 'Authoritative current public information.', source: 'https://www.hud.gov/guide', sourceUrl: 'https://www.hud.gov/guide', sourceKey: 'xai:web_search', site: 'official-web' }
+    expect(applyYqaaSafetyPolicy({ ...context, evidence: [citedWeb, ...context.evidence] }, clear)).toEqual({ answer: true, reason: 'jev_advisory_clear' })
+    const uncitedEvidence = { ...citedWeb, sourceKey: 'database' } as any
+    expect(applyYqaaSafetyPolicy({ ...context, evidence: [
+      uncitedEvidence, ...context.evidence,
+    ] }, clear).answer).toBe(false)
+  })
+
   it.each(['not_configured', 'timeout', 'invalid_response', 'request_failed'] as const)(
     'hands an ambiguous or cross-jurisdiction request off when Jev is %s',
     async (reason) => {
@@ -109,7 +155,7 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
         ...ambiguous.evidence,
         { id: 'canada', title: 'Canada PGWP steps', body: 'Verified Canada steps.', source: 'https://ca.yousafeconsultancy.com/pgwp', site: 'canada', score: 3 },
       ] }
-      expect(applyYqaaSafetyPolicy(crossJurisdiction, result)).toEqual({ answer: false, reason: 'jev_unavailable_handoff' })
+      expect(applyYqaaSafetyPolicy(crossJurisdiction, result)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
     },
   )
 
@@ -133,7 +179,7 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     expect(requestInit?.headers).toMatchObject({ Authorization: 'Bearer test-only-token', 'Content-Type': 'application/json' })
     expect(sent.model).toBe('jev-latest')
     expect(sent.state.trustedSite).toBe('market')
-    expect(sent.state.publicEvidence[0].excerpt).toHaveLength(260)
+    expect(sent.state.publicEvidence[0].excerpt).toHaveLength(600)
     expect(JSON.stringify(sent).length).toBeLessThan(4500)
     expect(JSON.stringify(sent)).not.toContain('conversation history')
     expect(payload).not.toContain('private order')
@@ -268,13 +314,19 @@ describe('YQAA public chat privacy boundary', () => {
       isServiceRoleAchieved: () => false,
     }))
     jest.doMock('@/lib/liveKnowledge', () => ({ fetchLiveKnowledge: jest.fn(async () => null) }))
+    jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ loadYqaaEvidence: async () => ({
+      chunks: [
+        { id: 'public-1', title: 'Public overview', body: 'Public general housing overview.', source: 'https://yousafeconsultancy.com/guide', site: 'main', score: 8 },
+        { id: 'public-2', title: 'Public FAQ', body: 'General housing FAQ.', source: 'https://yousafeconsultancy.com/faq', site: 'main', score: 7 },
+      ], source: 'database', retrievalConfidence: 0.9, freshEnough: true, jurisdictions: [], sites: ['main'],
+    }) }))
     jest.doMock('@/lib/yqaaGeneration', () => ({
       generateYqaaAnswer: jest.fn(async (system: string) => { capturedSystem = system; return { text: 'A safe public answer.', provider: 'deepseek-v41-flash', model: 'deepseek-flash', fallback: true } }),
       publicYqaaProviderLabel: () => 'system-ai',
     }))
     jest.doMock('@/lib/jevAdvisory', () => {
       const actual = jest.requireActual('@/lib/jevAdvisory')
-      return { ...actual, yqaaJevTriggers: () => [], requestJevAdvisory: async () => ({ available: false, reason: 'not_configured' }) }
+      return { ...actual, yqaaJevTriggers: () => [], requestJevAdvisory: async () => ({ available: true, advisory: { sufficient: true, confidence: 0.95, conflict: false, needsHandoff: false, market: 'global' } }) }
     })
     const { POST } = await import('@/app/api/chat/route')
     const privateValue = 'PRIVATE-ORDER-93844-CONTEXT'
