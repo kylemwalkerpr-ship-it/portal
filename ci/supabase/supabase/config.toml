@@ -1,0 +1,31 @@
+# Dedicated integration fixture. Never used for linked/remote Supabase projects.
+project_id = "yousafe-studio-service-role-ci"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.migrations]
+enabled = false
+schema_paths = []
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+jwt_expiry = 3600
+jwt_secret = "env(SUPABASE_AUTH_JWT_SECRET)"
+enable_signup = false
+
+[analytics]
+enabled = false
