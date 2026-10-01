@@ -31,7 +31,7 @@ describe('YQAA xAI web-search transport', () => {
     expect(parsed.sources[0]).toMatchObject({ url: 'https://www.uscis.gov/opt', title: 'OPT' })
   })
 
-  test('reads the commissioned direct xAI key from Cloudflare Worker bindings when Node process.env does not expose secrets', async () => {
+  test('uses the commissioned direct xAI Worker binding as the primary live-search credential', async () => {
     delete process.env.XAI_API_KEY
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({
@@ -41,8 +41,7 @@ describe('YQAA xAI web-search transport', () => {
     jest.doMock('@opennextjs/cloudflare', () => ({
       getCloudflareContext: () => ({ env: { XAI_API_KEY: 'worker-direct-key', XAI_MODEL: 'grok-4.6' } }),
     }))
-    const first = JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'No search evidence.' }] }], usage: {} })
-    const second = JSON.stringify({
+    const payload = JSON.stringify({
       citations: ['https://www.uscis.gov/opt'],
       output: [
         { type: 'web_search_call', action: { sources: [{ url: 'https://www.uscis.gov/opt', snippet: 'USCIS OPT source.' }] } },
@@ -50,26 +49,23 @@ describe('YQAA xAI web-search transport', () => {
       ],
       usage: { server_side_tool_usage_details: { web_search_calls: 1 } },
     })
-    global.fetch = jest.fn()
-      .mockResolvedValueOnce(new Response(first, { status: 200 }))
-      .mockResolvedValueOnce(new Response(second, { status: 200 })) as any
+    global.fetch = jest.fn().mockResolvedValueOnce(new Response(payload, { status: 200 })) as any
 
     const { callSystemSuperGrokWebSearch } = await import('@/lib/superGrokAssistant')
     const result = await callSystemSuperGrokWebSearch('latest OPT guidance', ['uscis.gov'])
     expect(result.webSearchCalls).toBe(1)
-    expect(global.fetch).toHaveBeenCalledTimes(2)
-    const headers = (global.fetch as jest.Mock).mock.calls[1][1].headers as Record<string, string>
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const headers = (global.fetch as jest.Mock).mock.calls[0][1].headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer worker-direct-key')
   })
 
-  test('retries the web-search request with the commissioned direct xAI key when the primary auth path returns no citation-linked search evidence', async () => {
+  test('falls back to SuperGrok/OAuth when the direct xAI live-search request times out', async () => {
     process.env.XAI_API_KEY = 'direct-search-key'
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({
         apiKey: 'oauth-token', baseURL: 'https://api.x.ai/v1', model: 'grok-4.7', authMode: 'supergrok',
       })),
     }))
-    const first = JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'No tool evidence.' }] }], usage: {} })
     const secondText = 'Current USCIS OPT guidance.[[1]](https://www.uscis.gov/opt)'
     const second = JSON.stringify({
       citations: ['https://www.uscis.gov/opt'],
@@ -79,8 +75,10 @@ describe('YQAA xAI web-search transport', () => {
       ],
       usage: { server_side_tool_usage_details: { web_search_calls: 1 } },
     })
+    const abort = new Error('The operation was aborted')
+    abort.name = 'AbortError'
     global.fetch = jest.fn()
-      .mockResolvedValueOnce(new Response(first, { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockRejectedValueOnce(abort)
       .mockResolvedValueOnce(new Response(second, { status: 200, headers: { 'Content-Type': 'application/json' } })) as any
 
     const { callSystemSuperGrokWebSearch } = await import('@/lib/superGrokAssistant')
@@ -88,9 +86,12 @@ describe('YQAA xAI web-search transport', () => {
     expect(result.webSearchCalls).toBe(1)
     expect(result.citations).toContain('https://www.uscis.gov/opt')
     expect(global.fetch).toHaveBeenCalledTimes(2)
+    const firstHeaders = (global.fetch as jest.Mock).mock.calls[0][1].headers as Record<string, string>
     const secondHeaders = (global.fetch as jest.Mock).mock.calls[1][1].headers as Record<string, string>
-    expect(secondHeaders.Authorization).toBe('Bearer direct-search-key')
-    const secondBody = JSON.parse(String((global.fetch as jest.Mock).mock.calls[1][1].body))
-    expect(secondBody.include).toContain('web_search_call.action.sources')
+    expect(firstHeaders.Authorization).toBe('Bearer direct-search-key')
+    expect(secondHeaders.Authorization).toBe('Bearer oauth-token')
+    const firstBody = JSON.parse(String((global.fetch as jest.Mock).mock.calls[0][1].body))
+    expect(firstBody.include).toContain('web_search_call.action.sources')
   })
+
 })
