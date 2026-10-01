@@ -1,0 +1,4 @@
+{
+  "command_output": "\n> yousafe-portal@0.1.0 test\n> jest --runInBand tests/estate-ownership-contract.test.ts tests/source-provenance-contract.test.ts tests/studio-run-authority.test.ts tests/studio-estate-shell.test.ts\n\nPASS tests/studio-run-authority.test.ts\nPASS tests/source-provenance-contract.test.ts\nPASS tests/studio-estate-shell.test.ts\nPASS tests/estate-ownership-contract.test.ts\n\nTest Suites: 4 passed, 4 total\nTests:       53 passed, 53 total\nSnapshots:   0 total\nTime:        0.524 s\nRan all test suites matching tests/estate-ownership-contract.test.ts|tests/source-provenance-contract.test.ts|tests/studio-run-authority.test.ts|tests/studio-estate-shell.test.ts.\n",
+  "exit_code": 0
+}

@@ -1,0 +1,15 @@
+{
+  "execution_id": "cs-command-admission-engineering-20261001-v1",
+  "attempt_id": "7f832296-9bc0-46ea-bcee-b06f7a5f90c8",
+  "worktree_head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "file_sha256": "209395d5bede0deef466e5772a72838f337cc81904ff4bf11a9f90ef05804d3a",
+  "normalized_request_sha256": "8165565cf4285c678493fe140cadf7d7d0701140c51c8dbea95a410c4146de29",
+  "route": "START_CODEX",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "confidence": 0.97,
+  "artifacts": [],
+  "status_at_admission": "PREPARED",
+  "native_id_pending_sync_receipt": true,
+  "production_active": false
+}
