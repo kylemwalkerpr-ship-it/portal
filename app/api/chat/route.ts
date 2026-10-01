@@ -19,7 +19,7 @@ import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/li
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
-import { researchYqaaPublicWeb } from '@/lib/yqaaWebResearch'
+import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -241,8 +241,9 @@ export async function POST(req: Request) {
     let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     let webEvidenceCount = 0
     let webResearchStatus: 'skipped' | 'verified' | 'insufficient' | 'failed' = 'skipped'
+    const freshnessRequiresWeb = yqaaNeedsFreshWebResearch(lastUser.content)
     if (safety.reason !== 'high_stakes_handoff' &&
-        (!safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
+        (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
       try {
         const webChunks = await researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname)
         webEvidenceCount = webChunks.length

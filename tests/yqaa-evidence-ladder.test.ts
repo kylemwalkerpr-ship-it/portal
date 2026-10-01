@@ -31,7 +31,7 @@ async function setup(opts: {
   const escalateToSupport = jest.fn(async () => ({ conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }))
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
-  jest.doMock('@/lib/yqaaWebResearch', () => ({ researchYqaaPublicWeb }))
+  jest.doMock('@/lib/yqaaWebResearch', () => ({ ...jest.requireActual('@/lib/yqaaWebResearch'), researchYqaaPublicWeb }))
   jest.doMock('@/lib/yqaaGeneration', () => ({ generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
   jest.doMock('@/lib/chatEscalation', () => ({ ...jest.requireActual('@/lib/chatEscalation'), escalateToSupport }))
   if (opts.useRealFastReplies) {
@@ -56,6 +56,19 @@ async function setup(opts: {
 }
 
 describe('YQAA final evidence ladder', () => {
+  test('freshness-sensitive latest OPT question forces official web research even with a high-confidence fresh KB', async () => {
+    const official = { ...kbChunk('official-web'), id: 'opt-web', sourceKey: 'xai:web_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ jev: [clearJev(), clearJev()], web: [official] })
+    const result = await flow.ask('What are the latest OPT rules for F-1 students?')
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
+    expect(flow.requestJevAdvisory).toHaveBeenCalledTimes(2)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
   test('high-confidence fresh KB and clear Jev answer without web', async () => {
     const flow = await setup()
     const result = await flow.ask('Explain general housing rules in the United States')

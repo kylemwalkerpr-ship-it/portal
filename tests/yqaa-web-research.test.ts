@@ -21,6 +21,32 @@ describe('YQAA public web research', () => {
     expect(evidence[0].sourceUrl).toContain('immi.homeaffairs.gov.au')
   })
 
+  test('latest/current intent is freshness-sensitive and OPT scopes to US primary sources', async () => {
+    const callSystemSuperGrokWebSearch = jest.fn(async () => ({
+      text: 'USCIS publishes current OPT information.',
+      citations: ['https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students'],
+      webSearchCalls: 1,
+      sources: [{
+        url: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+        title: 'Optional Practical Training (OPT) for F-1 Students',
+        snippet: 'Optional Practical Training is temporary employment that is directly related to an F-1 student’s major area of study.',
+      }],
+    }))
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch }))
+    const { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } = await import('@/lib/yqaaWebResearch')
+    expect(yqaaNeedsFreshWebResearch('Show me the latest OPT guidance')).toBe(true)
+    expect(yqaaNeedsFreshWebResearch('Explain OPT generally')).toBe(false)
+    const evidence = await researchYqaaPublicWeb('Show me the latest OPT guidance', 'portal.yousafeconsultancy.com')
+    const domains = (callSystemSuperGrokWebSearch.mock.calls as any[][])[0][1] as string[]
+    expect(domains).toContain('uscis.gov')
+    expect(domains).toContain('dhs.gov')
+    expect(domains).toContain('ice.gov')
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0].jurisdiction).toBe('United States')
+    expect(evidence[0].sourceUrl).toContain('uscis.gov')
+    expect(evidence[0].body).toMatch(/Optional Practical Training/i)
+  })
+
   test('uncited summaries do not become evidence', async () => {
     jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch: async () => ({
       text: 'A plausible uncited answer.', citations: [], webSearchCalls: 1,
