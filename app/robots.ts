@@ -52,7 +52,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/', '/_next/static/'],
+      disallow: ['/api/'],
     },
   }
 
@@ -61,7 +61,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/_next/static/'],
+        disallow: ['/api/'],
       },
       {
         userAgent: [
@@ -72,7 +72,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           'Claude-User',
         ],
         allow: '/',
-        disallow: ['/api/', '/_next/static/'],
+        disallow: ['/api/'],
       },
     ]
     result.sitemap = `https://${MARKET_HOST}/sitemap.xml`

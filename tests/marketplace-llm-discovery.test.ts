@@ -22,7 +22,8 @@ describe('marketplace LLM discovery', () => {
     expect(robots).toContain("const PORTAL_HOST = 'portal.yousafeconsultancy.com'")
     expect(robots).toContain("userAgent: '*'")
     expect(robots).toContain("allow: '/'")
-    expect(robots).toContain("disallow: ['/api/', '/_next/static/']")
+    expect(robots).toContain("disallow: ['/api/']")
+    expect(robots).not.toContain("'/_next/static/'")
     expect(robots).toContain('if (host === MARKET_HOST)')
     for (const agent of MARKET_AGENTS) {
       expect(robots).toContain("'" + agent + "'")
@@ -54,7 +55,8 @@ describe('marketplace LLM discovery', () => {
     expect(llms).not.toMatch(/^## Optional/m)
     expect(llms).not.toMatch(/escrow|encrypted transactions|compliance/i)
     expect(llms).toContain('https://yousafeconsultancy.com')
-    expect(llms).toContain('https://portal.yousafeconsultancy.com/sign-in/student')
+    expect(llms).not.toContain('https://portal.yousafeconsultancy.com/sign-in/student')
+    expect(llms).not.toContain('https://portal.yousafeconsultancy.com/sign-up/attorney')
     expect(llms).toContain('https://payhip.com/YousafeConsultancy')
   })
 
