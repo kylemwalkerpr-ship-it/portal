@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation'
 import { currentUser } from '@clerk/nextjs/server'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { normalizeAuthLane, type AuthLane } from '@/lib/roleLanes'
+import { normalizeAuthLane, normalizeSelfServiceLane, type AuthLane, type SelfServiceLane } from '@/lib/roleLanes'
+import { dashboardRedirectFor, resolveProvisionedSelfServiceLane } from '@/lib/dashboardRolePolicy'
 import { normalizeVertical } from '@/lib/platformConfig'
 import DashboardClient from './client'
 
@@ -29,7 +30,7 @@ function normalizeDashboardRole(value: unknown): DashboardRole {
   return value === 'admin' ? 'admin' : normalizeAuthLane(value)
 }
 
-async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: DashboardRole | null }> {
+async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: SelfServiceLane | null }> {
   // Prefer Clerk's server SDK. It uses the verified session context and is
   // more reliable than the REST fallback during Clerk key rotation or a
   // transient API failure. In particular, losing this lookup must never
@@ -46,7 +47,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
       return {
         email,
         fullName: [clerk.firstName, clerk.lastName].filter(Boolean).join(' '),
-        requestedRole: metadataRole ? normalizeDashboardRole(metadataRole) : null,
+        requestedRole: metadataRole ? normalizeSelfServiceLane(metadataRole) : null,
       }
     }
   } catch {
@@ -67,7 +68,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
     return {
       email,
       fullName,
-      requestedRole: metadataRole ? normalizeDashboardRole(metadataRole) : null,
+      requestedRole: metadataRole ? normalizeSelfServiceLane(metadataRole) : null,
     }
   } catch {
     return { email: '', fullName: '', requestedRole: null }
@@ -104,7 +105,8 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   // Admin is a valid dashboard intent, but it is only a recovery hint.
   // We never provision an admin profile from a URL; an existing admin row
   // must be found by the verified Clerk identity/email below.
-  let requestedRole: DashboardRole = normalizeDashboardRole(params.lane)
+  let requestedRole: DashboardRole =
+    params.lane === 'admin' ? 'admin' : normalizeSelfServiceLane(params.lane) ?? 'client'
   // SignUpClient writes `ys_requested_lane` as a SameSite=Lax cookie
   // before kicking off OAuth. That cookie survives every Clerk
   // round-trip mode (popup, top-level redirect, new tab) and is the
@@ -113,14 +115,14 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   // Prefer it over the URL hint so a stale URL can't override a fresh
   // sign-up attempt — but still allow the URL value to win when the
   // cookie hasn't been set (existing users, deep links, etc).
-  let cookieLane: AuthLane | null = null
+  let cookieLane: SelfServiceLane | null = null
   try {
     const jar = await cookies()
     const raw = jar.get('ys_requested_lane')?.value
     if (raw) {
       const decoded = decodeURIComponent(raw)
       if (decoded && decoded !== 'client') {
-        cookieLane = normalizeAuthLane(decoded)
+        cookieLane = normalizeSelfServiceLane(decoded)
       }
     }
   } catch { /* cookies() can throw in some prerendering contexts; non-fatal */ }
@@ -147,7 +149,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
 
   if (full) {
     profile = full
-    if (profile.role === 'support' && profile.status === 'active') {
+    if (dashboardRedirectFor({ role: profile.role, status: profile.status, laneIntent: params.lane }) === 'support') {
       redirect('/dashboard/support')
     }
   } else {
@@ -161,7 +163,9 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     else if (fullErr) console.error('[dashboard] fetch error:', fullErr.message)
   }
 
-  if (profile && !params.lane) {
+  if (profile?.role === 'support' && params.lane === 'support') {
+    requestedRole = 'support'
+  } else if (profile && !params.lane) {
     requestedRole = normalizeDashboardRole(profile.role)
   }
 
@@ -278,7 +282,11 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   // An explicit admin sign-in must never silently create a client profile.
   // If the verified Clerk email did not match an existing admin row, send the
   // user back through the admin lane rather than weakening role boundaries.
-  if (params.lane === 'admin' && profile?.role !== 'admin') {
+  if (dashboardRedirectFor({
+    role: profile?.role,
+    status: profile?.status,
+    laneIntent: params.lane,
+  }) === 'admin-sign-in') {
     // Never show the student/client profile gate for an admin-lane login.
     // A missing admin row needs operational repair, not a privilege guess.
     redirect('/sign-in/admin?return_to=/dashboard')
@@ -287,15 +295,20 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
     if (!clerkData) clerkData = await getClerkUserData(userId)
+    const roleForNewProfile = resolveProvisionedSelfServiceLane({
+      metadataRole: clerkData.requestedRole,
+      cookieLane,
+      urlLane: params.lane,
+    })
     const defaultStatus =
-      requestedRole === 'client' ? 'active'
-      : requestedRole === 'attorney' ? 'incomplete'
+      roleForNewProfile === 'client' ? 'active'
+      : roleForNewProfile === 'attorney' ? 'incomplete'
       : 'pending'
     const baseRow: Record<string, unknown> = {
       clerk_user_id: userId,
       email: clerkData.email,
       full_name: clerkData.fullName || null,
-      role: requestedRole,
+      role: roleForNewProfile,
       status: defaultStatus,
     }
     if (requestedVertical) baseRow.vertical = requestedVertical
@@ -361,9 +374,13 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     )
   }
 
-  if (profile?.role === 'support' && profile.status === 'active') {
-    redirect('/dashboard/support')
-  }
+  const privilegedRedirect = dashboardRedirectFor({
+    role: profile?.role,
+    status: profile?.status,
+    laneIntent: params.lane,
+  })
+  if (privilegedRedirect === 'support') redirect('/dashboard/support')
+  if (privilegedRedirect === 'admin-sign-in') redirect('/sign-in/admin?return_to=/dashboard')
 
   const role = profile?.role ?? 'client'
   const status = profile?.status ?? 'active'

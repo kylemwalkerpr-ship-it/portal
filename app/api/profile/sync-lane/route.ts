@@ -13,7 +13,7 @@
  *     run once).
  *   - The profile's current role is 'client' AND status is 'active'
  *     (the default new-user state when Clerk dropped the metadata).
- *   - The user has NO orders, NO inquiries, NO offers — i.e., they
+ *   - The user has NO orders, inquiries, or attorney/consultant offers — i.e., they
  *     genuinely just signed up and haven't started using the platform
  *     as a client yet. This guard prevents an existing client from
  *     accidentally getting promoted to attorney via a stale
@@ -28,7 +28,7 @@
  * Returns: { promoted: boolean, role: string }
  */
 import { requirePortalUser } from '@/lib/portalAuth'
-import { normalizeAuthLane } from '@/lib/roleLanes'
+import { normalizeSelfServiceLane } from '@/lib/roleLanes'
 
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
@@ -36,7 +36,10 @@ export async function POST(req: Request) {
   const { db, profileId } = auth
 
   const body = await req.json().catch(() => ({} as any))
-  const requested = normalizeAuthLane(body?.lane)
+  const requested = normalizeSelfServiceLane(body?.lane)
+  if (!requested) {
+    return Response.json({ promoted: false, reason: 'lane_not_allowed' })
+  }
   if (requested === 'client') {
     // No-op: nothing to promote to. Used by the client to clear
     // sessionStorage without side effects.
@@ -58,7 +61,7 @@ export async function POST(req: Request) {
   if (profile.role === requested) {
     return Response.json({ promoted: false, role: profile.role })
   }
-  if (profile.role !== 'client') {
+  if (profile.role !== 'client' || profile.status !== 'active') {
     // Don't override admin / support / a previously-set attorney by
     // mistake. The frontend should clear sessionStorage in this case.
     return Response.json({ promoted: false, role: profile.role, reason: 'role_already_set' })
@@ -67,11 +70,19 @@ export async function POST(req: Request) {
   // Activity guard — if the user has any orders, inquiries, or offers
   // as a client, refuse the promotion. Defends against a stale tab's
   // sessionStorage promoting a real client into attorney by accident.
-  const [{ count: orderCount }, { count: inquiryCount }] = await Promise.all([
+  const [orders, inquiries, offers, consultantOffers, attorneyOffers] = await Promise.all([
     db.from('orders').select('id', { count: 'exact', head: true }).eq('client_id', profile.id),
     db.from('inquiries').select('id', { count: 'exact', head: true }).eq('client_profile_id', profile.id),
+    db.from('offers').select('id', { count: 'exact', head: true }).eq('recipient_id', profile.id),
+    db.from('consultant_offers').select('id', { count: 'exact', head: true }).eq('client_profile_id', profile.id),
+    db.from('attorney_offers').select('id', { count: 'exact', head: true }).eq('client_profile_id', profile.id),
   ])
-  if ((orderCount ?? 0) > 0 || (inquiryCount ?? 0) > 0) {
+
+  const activityReads = [orders, inquiries, offers, consultantOffers, attorneyOffers]
+  if (activityReads.some((result) => result.error)) {
+    return Response.json({ error: 'Unable to verify client activity' }, { status: 503 })
+  }
+  if (activityReads.some((result) => (result.count ?? 0) > 0)) {
     return Response.json({ promoted: false, role: profile.role, reason: 'existing_activity' })
   }
 
@@ -84,13 +95,20 @@ export async function POST(req: Request) {
     : requested === 'consultant' ? 'pending'
     : 'active'
 
-  const { error: updateErr } = await db
+  const { data: promotedProfile, error: updateErr } = await db
     .from('profiles')
     .update({ role: requested, status: nextStatus })
     .eq('id', profile.id)
+    .eq('role', 'client')
+    .eq('status', 'active')
+    .select('id')
+    .maybeSingle()
 
   if (updateErr) {
     return Response.json({ error: updateErr.message }, { status: 500 })
+  }
+  if (!promotedProfile) {
+    return Response.json({ promoted: false, reason: 'profile_changed' })
   }
 
   return Response.json({ promoted: true, role: requested, status: nextStatus })
