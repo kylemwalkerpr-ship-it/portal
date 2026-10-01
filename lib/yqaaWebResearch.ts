@@ -42,7 +42,13 @@ function safeCitation(raw: string, allowedDomains?: string[]): string | null {
   try {
     const url = new URL(raw)
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null
-    const host = url.hostname.toLowerCase()
+    const host = url.hostname.toLowerCase().replace(/\.$/, '')
+    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return null
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+      const [a, b] = host.split('.').map(Number)
+      if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null
+    }
+    if (host.includes(':')) return null
     if (allowedDomains && !allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`))) return null
     if (/\/(?:account|dashboard|orders?|messages?|checkout|profile|admin)(?:\/|$)/i.test(url.pathname)) return null
     return `${url.origin}${url.pathname}`.slice(0, 500)
@@ -75,7 +81,8 @@ async function browserAction<T>(
   if (raw.length > 750_000) return null
   try {
     const parsed = JSON.parse(raw) as BrowserActionEnvelope<T>
-    return parsed?.success === false ? null : parsed
+    if (parsed?.success === false || Number(parsed?.meta?.status || 200) >= 400) return null
+    return parsed
   } catch {
     return null
   }
@@ -163,17 +170,19 @@ async function researchViaCloudflareBrowser(
         gotoOptions: { waitUntil: 'domcontentloaded', timeout: 15_000 },
       })
       if (typeof page?.result !== 'string' || page.result.length < 80) continue
+      const finalUrl = safeCitation(page.meta?.finalUrl || sourceUrl, scope.allowedDomains)
+      if (!finalUrl) continue
       const extracted = markdownEvidence(page.result, publicQuestion)
       if (extracted.body.length < 80) continue
       chunks.push({
         id: `browser-web:${chunks.length + 1}`,
         chunkKey: `browser-web:${chunks.length + 1}`,
         sourceKey: 'cloudflare:browser_search',
-        title: extracted.title || page.meta?.title || new URL(sourceUrl).hostname,
+        title: extracted.title || page.meta?.title || new URL(finalUrl).hostname,
         body: extracted.body,
-        source: sourceUrl,
-        sourceUrl,
-        site: 'official-web',
+        source: finalUrl,
+        sourceUrl: finalUrl,
+        site: scope.officialOnly ? 'official-web' : 'public-web',
         jurisdiction: scope.jurisdiction || undefined,
         topicTags: [],
         fetchedAt: new Date().toISOString(),
