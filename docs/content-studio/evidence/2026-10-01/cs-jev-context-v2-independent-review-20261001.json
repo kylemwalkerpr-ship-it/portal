@@ -1,0 +1,33 @@
+{
+  "patch_sha256": "6d8cc4d9043c7f786ffcf921d62ca78e163e1cd9ff80c6f6ef11b0f008670a22",
+  "source_sha256": {
+    "src/bridge/execution_broker.py": "efd07e50eaae2bb0e104fd55366487c217d4782d22a9461dc99791a478b0c6f5",
+    "src/bridge/pipeline_control.py": "be82686500987d1b89b2b5ea681d3fcde3b2cd65fe426324e90fc2369f37a3ab",
+    "src/bridge/pipeline_state.py": "1341dc06705fece320e3d3175ed5246f5d51f153f19a35de7bb57299f06c1311",
+    "src/bridge/store.py": "f64b17a21ade2d357cc7a4d212c5b2401496eb8a294c31df8a6d232a8e661465",
+    "tests/test_codex_execution_lane.py": "633ebf2520eb78900f138437a752f029d3984e5df63d0177e420cc6dde30794e",
+    "tests/test_freebuff_execution_lane.py": "9dae17c24a630ac8e835a2f401cb2495f6dad173a091aef773e4907a2d9ff1c9",
+    "tests/test_pipeline_state.py": "32d23a962fca83d11adad38534f4033de6e1853e721535647faddc4bfc8a9da6"
+  },
+  "probes": {
+    "oversized_unknown_field_payload_bytes": 20149,
+    "oversized_payload_accepted": true,
+    "oversized_proof_passes": true,
+    "duplicate_generation_payload_accepted": true
+  },
+  "verdict": "NOT_ACCEPTED",
+  "must_fix": [
+    {
+      "path": "src/bridge/pipeline_state.py",
+      "finding": "Current accepted-event decoder and verification proof validator accept oversized/unknown-field proof payloads and duplicate JSON keys rather than yielding UNKNOWN. Require bounded bytes before parse, strict typed allowlisted payload/proof shapes, duplicate-key rejection, and Freebuff equivalently bounded decoding.",
+      "regressions": "Exercise collector final verification_state for oversized, extra-field, duplicate-key, malformed Freebuff lifecycle/error and valid bounded current-generation proofs."
+    }
+  ],
+  "accepted_findings": [
+    "Proof event and attempt generation persist atomically under existing CAS in ordinary and resume paths; generation expected+1 matches both.",
+    "Store snapshot transaction reads current job/attempt/latest lane event consistently.",
+    "Legacy verification_failed remains conservatively BLOCKED; quota/provider blocked remains unknown.",
+    "Producer allowlists bounded typed verifier metrics and Freebuff lifecycle; no source schema or confidence-floor changes."
+  ],
+  "tests": "Isolated pure decoder probes only; root full suite separate."
+}

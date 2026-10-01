@@ -1,0 +1,17 @@
+{
+  "candidate": "06452a21361ada02e40f666b553c29b3b9361750",
+  "commands": [
+    {
+      "operation": "ready",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "\u2713 Pull request kylemwalkerpr-ship-it/portal#312 is marked as \"ready for review\"\n"
+    },
+    {
+      "operation": "merge",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}

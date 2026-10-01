@@ -1,0 +1,37 @@
+{
+  "pr": {
+    "headRefOid": "06452a21361ada02e40f666b553c29b3b9361750",
+    "mergeCommit": {
+      "oid": "010407026438a3f68e063f41ae0c0cd778ac6d50"
+    },
+    "mergedAt": "2026-10-01T20:10:10Z",
+    "state": "MERGED",
+    "url": "https://github.com/kylemwalkerpr-ship-it/portal/pull/312"
+  },
+  "runs": [
+    {
+      "conclusion": "",
+      "databaseId": 36919605423,
+      "event": "push",
+      "headSha": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+      "status": "in_progress",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36919605423"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 36871235947,
+      "event": "push",
+      "headSha": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+      "status": "completed",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36871235947"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 36868516400,
+      "event": "push",
+      "headSha": "95cfaac8b586c5b4b5fda27f09e421d976f4f66b",
+      "status": "completed",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36868516400"
+    }
+  ]
+}

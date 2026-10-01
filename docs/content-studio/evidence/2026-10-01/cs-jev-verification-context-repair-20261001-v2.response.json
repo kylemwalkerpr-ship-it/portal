@@ -1,0 +1,119 @@
+{
+  "decision": {
+    "action": "START",
+    "lane_id": "codex",
+    "model": "gpt-6-luna",
+    "confidence": 0.95,
+    "reason": "jev_selected_eligible_action",
+    "jev_decision": "START_CODEX",
+    "probabilities": {
+      "BLOCK": 0.02,
+      "START_CODEX": 0.98
+    }
+  },
+  "pipeline": {
+    "task": {
+      "session": "cs-jev-verification-context-repair-20261001-v2",
+      "workspace": "/Users/phantomdarne/.local/share/yousafe-deepseek-bridge-worktrees/jev-verification-context-20261001",
+      "requested_lane": "codex",
+      "provider": "codex",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "mode": "workspace-write",
+      "verification_count": 2,
+      "artifact_count": 0,
+      "capabilities": []
+    },
+    "policy": {
+      "codex_tier1_precedence": true,
+      "allow_freebuff_fallback": true,
+      "allow_native_fallback": true,
+      "no_silent_substitution": true,
+      "prohibit_fresh_retry_after_mutation": true,
+      "min_jev_confidence": 0.85
+    },
+    "context": {
+      "current_state": null,
+      "verification_state": null,
+      "mutation_seen": false,
+      "active_lease_lane": null,
+      "active_mission_id": null
+    },
+    "resume": null,
+    "lanes": [
+      {
+        "lane_id": "codex",
+        "model": "gpt-6-luna",
+        "available": true,
+        "tier": 1,
+        "operations": [
+          "admit",
+          "observe",
+          "resume"
+        ],
+        "reason": null,
+        "authenticated": true,
+        "live_e2e": true,
+        "family": "codex"
+      },
+      {
+        "lane_id": "native-deepseek",
+        "model": "deepseek-flash",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "provider_unavailable",
+        "authenticated": true,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "native-grok",
+        "model": "grok-4.7",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "capability_unavailable",
+        "authenticated": true,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "freebuff",
+        "model": "z-ai/glm-5.3-flash",
+        "available": true,
+        "tier": 2,
+        "operations": [
+          "observe",
+          "admit",
+          "resume"
+        ],
+        "reason": null,
+        "authenticated": true,
+        "live_e2e": true,
+        "family": "freebuff"
+      }
+    ]
+  },
+  "execution_id": "cs-jev-verification-context-repair-20261001-v2",
+  "idempotent_replay": false,
+  "observation": {
+    "state": "COMPLETED",
+    "reason": "completed",
+    "lane": "codex",
+    "native_state": "verification.passed",
+    "native_record_id": "01a0f921-457b-7582-af0e-56553e04a082",
+    "resumable": false,
+    "checkpoint": null
+  },
+  "ok": true,
+  "executed": true,
+  "read_only": false,
+  "artifacts": []
+}

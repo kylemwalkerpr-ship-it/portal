@@ -1,0 +1,120 @@
+{
+  "status": "completed",
+  "conclusion": "success",
+  "headSha": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+  "url": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36919605423",
+  "jobs": [
+    {
+      "name": "Build and deploy Worker",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Checkout repository",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up Node",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Typecheck",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Cloudflare credentials",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify required YQAA Jev credential",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build (Next + OpenNext)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Populate static incremental cache (local copy, no network)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Market-root payload budget gate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "SEO audit guard (report-only)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Prepare Worker secrets file (ephemeral, atomic deploy)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Sync AI vault (Supabase) from Worker secrets",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Deploy via OpenNext to Cloudflare (with transient-failure retry)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Remove ephemeral Worker secrets file",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Worker secrets health (startup check)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post-deploy smoke test (studio contract + build freshness)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Set up Node",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Checkout repository",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}

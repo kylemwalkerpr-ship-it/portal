@@ -1,0 +1,28 @@
+{
+  "scope": "reconstructable inactive package caches only",
+  "at": "2026-10-01T20:35:50.995825+00:00",
+  "removed": [
+    {
+      "cache": "Library/Caches/pnpm",
+      "reclaimed_allocated_bytes": 625127424
+    },
+    {
+      "cache": "Library/Caches/node-gyp",
+      "reclaimed_allocated_bytes": 65392640
+    },
+    {
+      "cache": "Library/Caches/Homebrew",
+      "reclaimed_allocated_bytes": 37330944
+    },
+    {
+      "cache": ".cache/uv",
+      "reclaimed_allocated_bytes": 61104128
+    },
+    {
+      "cache": ".cache/node",
+      "reclaimed_allocated_bytes": 47820800
+    }
+  ],
+  "reclaimed_allocated_bytes": 836775936,
+  "free_bytes": 7162687488
+}

@@ -1,0 +1,7 @@
+{
+  "scope": "reconstructable npm cache only",
+  "before_cache_bytes": 1553600512,
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "npm warn using --force Recommended protections disabled.\n"
+}
