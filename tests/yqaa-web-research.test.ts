@@ -60,6 +60,30 @@ describe('YQAA public web research', () => {
     expect(evidence.some((item) => item.sourceUrl === wrongUrl)).toBe(false)
   })
 
+  test('Browser fallback rejects private-network candidates and revalidates final redirects', async () => {
+    const safe = 'https://example.com/public-guide'
+    const quickAction = jest.fn(async (action: string) => {
+      if (action === 'links') return new Response(JSON.stringify({ success: true, result: [
+        'https://127.0.0.1/private',
+        'https://192.168.1.5/secret',
+        'https://example.com/account/profile',
+        safe,
+      ], meta: { status: 200 } }), { status: 200 })
+      return new Response(JSON.stringify({
+        success: true,
+        result: '---\ntitle: "Public guide"\n---\n# Public guide\nThis public guide explains remote work productivity with enough grounded detail for a useful answer.',
+        meta: { status: 200, finalUrl: safe },
+      }), { status: 200 })
+    })
+    jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: { BROWSER: { quickAction } } }) }))
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch: jest.fn(async () => { throw new Error('xAI unavailable') }) }))
+    const { researchYqaaPublicWeb } = await import('@/lib/yqaaWebResearch')
+    const evidence = await researchYqaaPublicWeb('Search the live web for remote work productivity guidance')
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ sourceUrl: safe, site: 'public-web', authorityTier: 3 })
+    expect(quickAction).toHaveBeenCalledTimes(2)
+  })
+
   test('latest/current intent is freshness-sensitive and OPT scopes to US primary sources', async () => {
     const callSystemSuperGrokWebSearch = jest.fn(async () => ({
       text: 'USCIS publishes current OPT information.',
