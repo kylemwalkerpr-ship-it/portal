@@ -15,7 +15,7 @@ const weakJev = () => ({ available: true, advisory: {
 
 async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
-  jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean
+  jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean; generatedText?: string
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
@@ -27,7 +27,7 @@ async function setup(opts: {
   const researchYqaaPublicWeb = jest.fn(opts.webError
     ? async () => { throw new Error('web unavailable') }
     : async () => opts.web ?? [])
-  const generateYqaaAnswer = jest.fn(async () => ({ text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }))
+  const generateYqaaAnswer = jest.fn(async () => ({ text: opts.generatedText ?? 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }))
   const escalateToSupport = jest.fn(async () => ({ conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }))
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
@@ -79,6 +79,23 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
     expect(result.body.reply).toContain(official.sourceUrl)
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
+  test('verified live research prevents false claims that YQAA cannot search the web', async () => {
+    const official = { ...kbChunk('official-web'), id: 'browser-opt-status', sourceKey: 'cloudflare:browser_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({
+      jev: [clearJev(), clearJev()], web: [official],
+      generatedText: "I still can't search the internet from this chat. Here is the general OPT information I have.",
+    })
+    const result = await flow.ask('What are the latest OPT news for F-1 students? Search the live web.')
+    expect(result.body.reply).not.toMatch(/can't search the internet|cannot search the web/i)
+    expect(result.body.reply).toContain('I searched live public sources for this turn')
+    expect(result.body.reply).toContain(official.sourceUrl)
+    const systemPrompt = String((flow.generateYqaaAnswer.mock.calls as any[][])[0][0])
+    expect(systemPrompt).toContain('CURRENT TURN LIVE RESEARCH STATUS')
+    expect(systemPrompt).toContain('Do not claim that you cannot search the web')
   })
 
   test('high-confidence fresh KB and clear Jev answer without web', async () => {

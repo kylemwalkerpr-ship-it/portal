@@ -122,6 +122,14 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
+export function guardVerifiedWebCapabilityClaim(text: string, webResearchStatus: string): string {
+  if (webResearchStatus !== 'verified') return text
+  const replacement = 'I searched live public sources for this turn and grounded this answer in the cited evidence.'
+  return String(text || '')
+    .replace(/\bI\s+(?:still\s+)?(?:cannot|can't)\s+(?:(?:run|perform)\s+(?:a\s+)?)?(?:live\s+)?(?:web search|search the web|search the internet)[^.!?\n]*[.!?]?/gi, replacement)
+    .replace(/\bI\s+(?:do not|don't)\s+have\s+(?:live\s+)?(?:web|internet)\s+access[^.!?\n]*[.!?]?/gi, replacement)
+}
+
 export async function POST(req: Request) {
   const requestStartedAt = Date.now()
   let body: {
@@ -304,11 +312,18 @@ export async function POST(req: Request) {
       'This evidence limitation is not, by itself, a reason to create a human-support handoff.',
       'Continue helping through YQAA. Give the most useful general answer supported by canonical/public evidence. If a current or YouSafe-specific fact cannot be verified, say that plainly and give the closest verified self-service next step. Do not invent specifics or claim freshness, certainty, eligibility, or outcomes that the evidence does not support.',
     ].join('\n')
-    const systemKnowledge = evidenceLimit ? `${baseSystemKnowledge}\n\n${evidenceLimit}` : baseSystemKnowledge
+    const liveResearchContext = webResearchStatus === 'verified' ? [
+      '# CURRENT TURN LIVE RESEARCH STATUS',
+      'Live public-web research completed successfully for this turn and citation-linked evidence is included below.',
+      'Do not claim that you cannot search the web or internet on this turn. You may accurately say which live public sources were retrieved and what could or could not be verified from them.',
+      'For YMYL topics, keep the answer general, distinguish sourced facts from uncertainty, and cite the primary/official sources supplied in the evidence.',
+    ].join('\n') : ''
+    const systemKnowledge = [baseSystemKnowledge, liveResearchContext, evidenceLimit].filter(Boolean).join('\n\n')
     const modelStartedAt = Date.now()
     const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
-    const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
+    const capabilityGuarded = guardVerifiedWebCapabilityClaim(result.text, webResearchStatus)
+    const guarded = enforceCanonicalMarketCoverage(lastUser.content, capabilityGuarded)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
     const webCitations = publicEvidence.filter((chunk) => isYqaaLiveWebSourceKey(chunk.sourceKey))
       .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
