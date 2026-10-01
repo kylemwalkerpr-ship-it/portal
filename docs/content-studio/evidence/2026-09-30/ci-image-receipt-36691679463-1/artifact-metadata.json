@@ -1,0 +1,19 @@
+{
+  "artifacts": [
+    {
+      "id": 11085947120,
+      "name": "studio-supabase-image-receipt-36691679463-1",
+      "size_in_bytes": 1448,
+      "expired": false,
+      "digest": "sha256:977ee7c19318d4c17a6fcbd748d0d76b401a533eb84eb4bd64fef906ad27d4ef",
+      "workflow_run": {
+        "id": 36691679463,
+        "repository_id": 1227922256,
+        "head_repository_id": 1227922256,
+        "head_branch": "test/studio-service-role-real-jwt-ci-20260929",
+        "head_sha": "f19cc842e33dc32c9345ef58b42f182be195122e"
+      }
+    }
+  ],
+  "receipt_json_sha256": "838b568f4a0f704036d476de0a930096250530a3669eed65c436adf8d1502a38"
+}

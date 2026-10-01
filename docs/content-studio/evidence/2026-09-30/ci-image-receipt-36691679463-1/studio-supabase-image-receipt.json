@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "commit": "59c215678f7c6338e9ce87763a618850b633cdcf",
+  "cliVersion": "2.98.2",
+  "runId": "36691679463",
+  "runAttempt": "1",
+  "containers": [
+    {
+      "name": "supabase_auth_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/gotrue:v2.188.1",
+      "imageId": "sha256:b061f1fa636f31bc01de0a791986352e82772760cce8e1d55bbec6f552930a1e",
+      "repoDigests": [
+        "ghcr.io/supabase/gotrue@sha256:87db8c737af49a64236c461882ed3925f8b1e5c2c47176c64694dedc65153573"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_db_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/postgres:15.8.1.085",
+      "imageId": "sha256:8613ba8eab946dff6674a2db6aab75b80aa101da39035fe20f62b0c7591ab35d",
+      "repoDigests": [
+        "ghcr.io/supabase/postgres@sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_edge_runtime_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/edge-runtime:v1.73.13",
+      "imageId": "sha256:77200576bb98efc3414ec48f0ab02815c4f537813ad71f6330e82cd6779910e0",
+      "repoDigests": [
+        "ghcr.io/supabase/edge-runtime@sha256:cfa86b9ad11f349aa4b930f3ab295d6ad923f2e43c5513c08d79c1f3b990b486"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_inbucket_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/mailpit:v1.22.3",
+      "imageId": "sha256:3f56e44ddc1a5655b8f288a2aa812db567b2f5f0b8bc18ef3da63b94a95608d5",
+      "repoDigests": [
+        "ghcr.io/supabase/mailpit@sha256:f7f7c31de4de59540ad6515a0ca057a77525bca2069b6e747d873ca66c10fe08"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_kong_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/kong:2.8.1",
+      "imageId": "sha256:3cefb958bcd694597b65adc00053a762b1f9a6df3c6031af528d052d75a64e1a",
+      "repoDigests": [
+        "ghcr.io/supabase/kong@sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_pg_meta_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/postgres-meta:v0.96.4",
+      "imageId": "sha256:103063d9a3652760363e8f924b0d1ae2e742d4fe8807a9eccdb5384a46a70c89",
+      "repoDigests": [
+        "ghcr.io/supabase/postgres-meta@sha256:4dd3e0ff3e9a0f9f62dd1a1a827f124645549b439ddb2a53598575744585e32d"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_realtime_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/realtime:v2.86.3",
+      "imageId": "sha256:65d7549b3ce537cef75da797ac8018ce2c1bcd89fdbd9adabbf98b54ea4aa759",
+      "repoDigests": [
+        "ghcr.io/supabase/realtime@sha256:d92097f98347041afd61198d71bb819b38adc4a710db937202290f0ae5ce961b"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_rest_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/postgrest:v14.10",
+      "imageId": "sha256:fe5428d51d9805147859ed38db0a26e9e424c4639dc851733e99a86829e1d5aa",
+      "repoDigests": [
+        "ghcr.io/supabase/postgrest@sha256:bca3f86f69d8ef7aa1e5ee65e66ce9a20c6c147be637517a7be8399e102901d1"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_storage_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/storage-api:v1.54.1",
+      "imageId": "sha256:da6409e5fd135ab8895f0c344f82066d99c107ca1031ed4a1ab1d33f0b775572",
+      "repoDigests": [
+        "ghcr.io/supabase/storage-api@sha256:09c0f6f63ba79f1fea1917dfa2bc1ada8ef262f3f37a4d9f6c12add27707b0cd"
+      ],
+      "repoDigestStatus": "available"
+    },
+    {
+      "name": "supabase_studio_yousafe-studio-service-role-ci",
+      "image": "ghcr.io/supabase/studio:2026.04.28-sha-89d08a2",
+      "imageId": "sha256:081de896e10a556a26110ea26dc90bd5c925263b830242065e80277bd30aca06",
+      "repoDigests": [
+        "ghcr.io/supabase/studio@sha256:b5fb9c41dd7ef672989ce1a6fecfb260da52f948fecde76c292210cc4ffaf9c9"
+      ],
+      "repoDigestStatus": "available"
+    }
+  ]
+}

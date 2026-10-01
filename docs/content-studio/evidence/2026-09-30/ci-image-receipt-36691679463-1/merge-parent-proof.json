@@ -1,0 +1,11 @@
+{
+  "receipt_commit": "59c215678f7c6338e9ce87763a618850b633cdcf",
+  "parents": [
+    "93949e28fb74de8b3ee58eeaf01349c38994004c",
+    "f19cc842e33dc32c9345ef58b42f182be195122e"
+  ],
+  "subject": "Merge f19cc842e33dc32c9345ef58b42f182be195122e into 93949e28fb74de8b3ee58eeaf01349c38994004c",
+  "pr": 303,
+  "pr_head": "f19cc842e33dc32c9345ef58b42f182be195122e",
+  "pr_merge_commit_sha": "59c215678f7c6338e9ce87763a618850b633cdcf"
+}

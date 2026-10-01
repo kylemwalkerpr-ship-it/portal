@@ -1,0 +1,17 @@
+{
+  "action": "pipeline_execute",
+  "execution_id": "cs-a4-claim-review-failclosed-correction-20260930-v3",
+  "session": "studio-a4-claim-freshness-correction-v3",
+  "cwd": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929",
+  "objective": "Correct the exact A4 Studio claim-freshness contract at commit 3307055d7476da847fb80712c1bb3a8a57efde35, confined to lib/studioClaimFreshness/index.ts and tests/studio-claim-freshness.test.ts. Implement fail-closed behavior for four independently reviewed P2 cases: (1) a consequential claim with no qualified human reviewer must BLOCK, not ABSTAIN; (2) calendar-invalid timestamp strings must be rejected, not normalized by Date.parse; (3) supplied empty provenance must fail the identity join rather than bypass it; (4) clarify and test that a non-null current source whose identifier differs from the decision source intentionally invalidates freshness. Add focused negative regressions first, then the smallest correction. Do not touch schemas, SQL, migrations, providers, activation, merge, deployment, publication, or other packets. Preserve one-writer ownership and report exact checks.",
+  "requested_lane": "auto",
+  "provider": "codex",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "mode": "workspace-write",
+  "verify": [
+    "npm test -- --runInBand tests/studio-claim-freshness.test.ts",
+    "npx tsc --noEmit --pretty false",
+    "git diff --check"
+  ]
+}

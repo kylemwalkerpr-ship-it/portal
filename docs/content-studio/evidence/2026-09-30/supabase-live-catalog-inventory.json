@@ -1,0 +1,1820 @@
+{
+  "observedAt": "2026-09-30T08:20:16.535Z",
+  "projectId": "krggzrxxnqfsbbklatxl",
+  "source": "connected Supabase MCP read-only catalogs; Portal .env project-reference match",
+  "baseline": {
+    "schemas": [
+      "auth",
+      "cron",
+      "extensions",
+      "graphql",
+      "graphql_public",
+      "public",
+      "realtime",
+      "storage",
+      "supabase_migrations",
+      "vault"
+    ],
+    "extensions": [
+      {
+        "name": "pg_cron",
+        "version": "1.6.4"
+      },
+      {
+        "name": "pg_stat_statements",
+        "version": "1.11"
+      },
+      {
+        "name": "pg_trgm",
+        "version": "1.6"
+      },
+      {
+        "name": "pgcrypto",
+        "version": "1.3"
+      },
+      {
+        "name": "plpgsql",
+        "version": "1.0"
+      },
+      {
+        "name": "supabase_vault",
+        "version": "0.3.1"
+      },
+      {
+        "name": "uuid-ossp",
+        "version": "1.1"
+      }
+    ],
+    "database_name": "postgres",
+    "database_bytes": 289934483,
+    "engine_version": "PostgreSQL 17.6 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+    "inspection_role": "postgres"
+  },
+  "migrations": {
+    "migrations": [
+      {
+        "version": "20260616092444",
+        "name": "drop_all_stripe_columns"
+      },
+      {
+        "version": "20260616095653",
+        "name": "gsc_connection"
+      },
+      {
+        "version": "20260907103305",
+        "name": "conversation_ai_mode"
+      },
+      {
+        "version": "20260907104004",
+        "name": "attorney_show_bar_number"
+      },
+      {
+        "version": "20260909124337",
+        "name": "marketplace_gig_gallery_public"
+      },
+      {
+        "version": "20260911112020",
+        "name": "provider_credential_visibility_controls"
+      },
+      {
+        "version": "20260914181604",
+        "name": "content_studio_evidence_contract"
+      },
+      {
+        "version": "20260919170242",
+        "name": "reward_dedupe_full_unique"
+      },
+      {
+        "version": "20260919170323",
+        "name": "reward_dedupe_full_unique"
+      },
+      {
+        "version": "20260922024211",
+        "name": "p9_external_authority_truth"
+      },
+      {
+        "version": "20260930063343",
+        "name": "create_yqaa_public_knowledge_index"
+      },
+      {
+        "version": "20260930064846",
+        "name": "add_yqaa_knowledge_ingestion_run_tracking"
+      },
+      {
+        "version": "20260930071214",
+        "name": "tune_yqaa_knowledge_ranking"
+      },
+      {
+        "version": "20260930071507",
+        "name": "improve_yqaa_natural_language_recall"
+      },
+      {
+        "version": "20260930073212",
+        "name": "tune_yqaa_knowledge_ranking"
+      }
+    ]
+  },
+  "tables": {
+    "tables": [
+      {
+        "name": "public.profiles",
+        "rls_enabled": true,
+        "rows": 100
+      },
+      {
+        "name": "public.services",
+        "rls_enabled": true,
+        "rows": 61
+      },
+      {
+        "name": "public.orders",
+        "rls_enabled": true,
+        "rows": 7
+      },
+      {
+        "name": "public.order_items",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.order_status_history",
+        "rls_enabled": true,
+        "rows": 12
+      },
+      {
+        "name": "public.notifications",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.chat_conversations",
+        "rls_enabled": true,
+        "rows": 5
+      },
+      {
+        "name": "public.chat_messages",
+        "rls_enabled": true,
+        "rows": 11
+      },
+      {
+        "name": "public.chat_notifications",
+        "rls_enabled": true,
+        "rows": 18
+      },
+      {
+        "name": "public.support_presence",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.platform_settings",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.order_files",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.consultant_notification_reads",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.consultants",
+        "rls_enabled": true,
+        "rows": 28
+      },
+      {
+        "name": "public.intake_submissions",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorney_applications",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorneys",
+        "rls_enabled": true,
+        "rows": 42
+      },
+      {
+        "name": "public.inquiries",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.inquiry_messages",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorney_offers",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorney_ratings",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.consultant_offers",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.provider_gigs",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.provider_gig_tiers",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.offers",
+        "rls_enabled": true,
+        "rows": 4
+      },
+      {
+        "name": "public.offer_files",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.chat_attachments",
+        "rls_enabled": true,
+        "rows": 4
+      },
+      {
+        "name": "public.order_events",
+        "rls_enabled": true,
+        "rows": 13
+      },
+      {
+        "name": "public.admin_audit_log",
+        "rls_enabled": true,
+        "rows": 392
+      },
+      {
+        "name": "public.wallets",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.refund_ledger",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.gigs",
+        "rls_enabled": true,
+        "rows": 220
+      },
+      {
+        "name": "public.gig_tiers",
+        "rls_enabled": true,
+        "rows": 660
+      },
+      {
+        "name": "public.gig_reviews",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.gig_review_replies",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.moderation_queue",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.gig_metrics",
+        "rls_enabled": true,
+        "rows": 99
+      },
+      {
+        "name": "public.gig_metric_events",
+        "rls_enabled": true,
+        "rows": 1837
+      },
+      {
+        "name": "public.seller_level_snapshots",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.saved_gig_collections",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.saved_gigs",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.gig_promotion_campaigns",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorney_application_events",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.conversations",
+        "rls_enabled": true,
+        "rows": 21
+      },
+      {
+        "name": "public.conversation_messages",
+        "rls_enabled": true,
+        "rows": 93
+      },
+      {
+        "name": "public.conversation_reads",
+        "rls_enabled": true,
+        "rows": 20
+      },
+      {
+        "name": "public.order_messages",
+        "rls_enabled": true,
+        "rows": 4
+      },
+      {
+        "name": "public.student_wallets",
+        "rls_enabled": true,
+        "rows": 23,
+        "comment": "Student wallet balance — system of \n  record because NMI has no hosted customer balance."
+      },
+      {
+        "name": "public.student_payment_methods",
+        "rls_enabled": true,
+        "rows": 10,
+        "comment": "Cards vaulted in NMI Customer Vault. vault_id is\n  the NMI customer_vault_id."
+      },
+      {
+        "name": "public.wallet_transactions",
+        "rls_enabled": true,
+        "rows": 37,
+        "comment": "Immutable ledger of every wallet mutation. Reconstru\n  cts balance at any point in time."
+      },
+      {
+        "name": "public.provider_earnings",
+        "rls_enabled": true,
+        "rows": 7
+      },
+      {
+        "name": "public.provider_payouts",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.inquiry_statuses",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.inquiry_status_views",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.support_tickets",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.conversation_participants",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.conversation_message_reactions",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.gig_slug_redirects",
+        "rls_enabled": true,
+        "rows": 217
+      },
+      {
+        "name": "public.support_audit_log",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.support_macros",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.disputes",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.moderation_flags",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.support_notifications",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.consultant_applications",
+        "rls_enabled": true,
+        "rows": 1
+      },
+      {
+        "name": "public.consultant_application_events",
+        "rls_enabled": true,
+        "rows": 1
+      },
+      {
+        "name": "public.document_access_log",
+        "rls_enabled": true,
+        "rows": 220
+      },
+      {
+        "name": "public.document_shares",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.template_pdf_renders",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.canonical_ledger",
+        "rls_enabled": true,
+        "rows": 15
+      },
+      {
+        "name": "public.order_milestones",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.order_scope_changes",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.escrow_events",
+        "rls_enabled": true,
+        "rows": 6
+      },
+      {
+        "name": "public.template_fill_sessions",
+        "rls_enabled": true,
+        "rows": 27
+      },
+      {
+        "name": "public.template_orders",
+        "rls_enabled": true,
+        "rows": 1
+      },
+      {
+        "name": "public.checkout_idempotency_keys",
+        "rls_enabled": true,
+        "rows": 20
+      },
+      {
+        "name": "public.payment_incidents",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.webhook_events",
+        "rls_enabled": true,
+        "rows": 17
+      },
+      {
+        "name": "public.translations",
+        "rls_enabled": true,
+        "rows": 9809
+      },
+      {
+        "name": "public.indexnow_log",
+        "rls_enabled": true,
+        "rows": 35
+      },
+      {
+        "name": "public.gsc_connection",
+        "rls_enabled": true,
+        "rows": 1
+      },
+      {
+        "name": "public.content_jobs",
+        "rls_enabled": true,
+        "rows": 248
+      },
+      {
+        "name": "public.gsc_tokens",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.war_room_daily_runs",
+        "rls_enabled": true,
+        "rows": 65,
+        "comment": "SEO War Room daily automation logs: top plays shipped + canonical URLs"
+      },
+      {
+        "name": "public.gsc_snapshots",
+        "rls_enabled": true,
+        "rows": 10
+      },
+      {
+        "name": "public.anchor_ledger",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.crawl_checks",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.mission_log",
+        "rls_enabled": true,
+        "rows": 53,
+        "comment": "SEO Command Center: durable audit trail of mission runs (launch, autopilot, merge, save, refresh)"
+      },
+      {
+        "name": "public.cannibal_merges",
+        "rls_enabled": true,
+        "rows": 42,
+        "comment": "Shared cannibal merge decisions — Command Center (Convex) and Content Studio (portal) write here, both read the same history"
+      },
+      {
+        "name": "public.seo_lifecycle_stages",
+        "rls_enabled": true,
+        "rows": 36
+      },
+      {
+        "name": "public.seo_knowledge",
+        "rls_enabled": true,
+        "rows": 960
+      },
+      {
+        "name": "public.seo_cluster_plans",
+        "rls_enabled": true,
+        "rows": 173
+      },
+      {
+        "name": "public.seo_engine_runs",
+        "rls_enabled": true,
+        "rows": 213
+      },
+      {
+        "name": "public.seo_engine_config",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.seo_interlinks",
+        "rls_enabled": true,
+        "rows": 1899
+      },
+      {
+        "name": "public.seo_llm_visibility",
+        "rls_enabled": true,
+        "rows": 268
+      },
+      {
+        "name": "public.seo_gate_runs",
+        "rls_enabled": true,
+        "rows": 98
+      },
+      {
+        "name": "public.ai_provider_keys",
+        "rls_enabled": true,
+        "rows": 1,
+        "comment": "SEO Command Center: admin-pasted API keys for content AI providers, including NVIDIA GLM 5.2 (stored in Supabase, read by the Worker at runtime)"
+      },
+      {
+        "name": "public.ai_settings",
+        "rls_enabled": true,
+        "rows": 8,
+        "comment": "Admin AI defaults and ordered provider cascade; accessed only through the portal service-role API."
+      },
+      {
+        "name": "public.gig_version_history",
+        "rls_enabled": true,
+        "rows": 1302
+      },
+      {
+        "name": "public.seller_level_thresholds",
+        "rls_enabled": true,
+        "rows": 4
+      },
+      {
+        "name": "public.order_status_counts",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.attorney_chats",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.inquiry_threads",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.documents",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.consultant_ratings",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.messages",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.seo_backlink_targets",
+        "rls_enabled": true,
+        "rows": 16
+      },
+      {
+        "name": "public.seo_backlink_outreach",
+        "rls_enabled": true,
+        "rows": 14
+      },
+      {
+        "name": "public.seo_intelligence_snapshots",
+        "rls_enabled": true,
+        "rows": 902
+      },
+      {
+        "name": "public.seo_ranking_scores",
+        "rls_enabled": true,
+        "rows": 68,
+        "comment": "Composite ranking model outputs per topic/page/plan. Provenance only — never presented as a Google ranking factor."
+      },
+      {
+        "name": "public.seo_forecast_runs",
+        "rls_enabled": true,
+        "rows": 1836,
+        "comment": "30/60/90-day projections with explicit assumptions; projections are internal decision support."
+      },
+      {
+        "name": "public.seo_reward_events",
+        "rls_enabled": true,
+        "rows": 735,
+        "comment": "Outcome ledger: observed deltas from shipped pages credited to action families for model recalibration."
+      },
+      {
+        "name": "public.seo_model_calibration",
+        "rls_enabled": true,
+        "rows": 2,
+        "comment": "Immutable history of bounded weight recalibration — the audit trail of the model dynamism."
+      },
+      {
+        "name": "public.content_jobs_archive",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.content_rhythm_alerts",
+        "rls_enabled": true,
+        "rows": 372,
+        "comment": "Weekly rhythm-scan alert rows (sentence_start_repetition) for stored drafts."
+      },
+      {
+        "name": "public.site_health_pages",
+        "rls_enabled": true,
+        "rows": 490
+      },
+      {
+        "name": "public.gsc_index_coverage",
+        "rls_enabled": true,
+        "rows": 46,
+        "comment": "GSC URL Inspection snapshot — why each estate page is (not) indexed, cached to respect the inspection API quota."
+      },
+      {
+        "name": "public.seo_ahrefs_snapshots",
+        "rls_enabled": true,
+        "rows": 14
+      },
+      {
+        "name": "public.content_job_reviews",
+        "rls_enabled": true,
+        "rows": 2957
+      },
+      {
+        "name": "public.seo_title_history",
+        "rls_enabled": true,
+        "rows": 0,
+        "comment": "Scored CTR title candidates produced by lib/seoEngine/titleLab.ts (advisory, deterministic). ctr_after_ship feeds recalibrateTitleScorer."
+      },
+      {
+        "name": "public.seo_gsc_rows",
+        "rls_enabled": true,
+        "rows": 25340
+      },
+      {
+        "name": "public.seo_topic_nodes",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.seo_topic_edges",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.studio_specialist_signals",
+        "rls_enabled": true,
+        "rows": 6
+      },
+      {
+        "name": "public.marketplace_search_events",
+        "rls_enabled": true,
+        "rows": 4,
+        "comment": "Private Marketplace demand telemetry. Stores only privacy-filtered search text plus a one-way session hash; never IP addresses, user agents, emails, or profile identifiers."
+      },
+      {
+        "name": "public.content_studio_evidence_items",
+        "rls_enabled": true,
+        "rows": 106
+      },
+      {
+        "name": "public.content_studio_writing_contracts",
+        "rls_enabled": true,
+        "rows": 6
+      },
+      {
+        "name": "public.content_studio_stage_events",
+        "rls_enabled": true,
+        "rows": 0
+      },
+      {
+        "name": "public.seo_cannibal_decisions",
+        "rls_enabled": true,
+        "rows": 0,
+        "comment": "P4 append-only destructive cannibalization decision ledger. One immutable row per decision attempt; a cluster is never overwritten in place."
+      },
+      {
+        "name": "public.seo_backlink_verifications",
+        "rls_enabled": true,
+        "rows": 0,
+        "comment": "P9 append-only evidence for live external backlink verification. One immutable row per attempt (positive, absent or unavailable). Never updated, never deleted; the only authority that may transition a seo_backlink_targets row to status=won."
+      },
+      {
+        "name": "public.conversion_attribution_sessions",
+        "rls_enabled": true,
+        "rows": 14,
+        "comment": "P10 anonymous first-party attribution identity. Stores only a SHA-256 identity hash and capped source detail: no IP, user agent, email, profile id or Clerk id. A row may only exist for a visitor who granted analytics consent; a denied visitor has no row and therefore no smuggled analytics identifier."
+      },
+      {
+        "name": "public.conversion_attribution_links",
+        "rls_enabled": true,
+        "rows": 0,
+        "comment": "P10 cross-domain handoff edges. Signed, short-lived, single-use tokens LINK a child session to a parent session; identities are never merged or re-pointed and no raw handoff token is stored."
+      },
+      {
+        "name": "public.conversion_events",
+        "rls_enabled": true,
+        "rows": 14,
+        "comment": "P10 append-only conversion event ledger. event_key is the deterministic idempotency boundary (duplicate webhook/order callback must not double-credit one order). Business events are server_observed and require a subject; browser events are client_declared and can never carry a business subject or an amount. consent_state records only consent that was actually evidenced: an unattributed business event is never stored as granted."
+      },
+      {
+        "name": "public.yqaa_knowledge_ingestion_runs",
+        "rls_enabled": true,
+        "rows": 2
+      },
+      {
+        "name": "public.yqaa_knowledge_sources",
+        "rls_enabled": true,
+        "rows": 1794,
+        "comment": "Public YouSafe estate pages verified from deployed surfaces. No private Portal/account/order/message data."
+      },
+      {
+        "name": "public.yqaa_knowledge_chunks",
+        "rls_enabled": true,
+        "rows": 22683,
+        "comment": "Section-level public evidence for YQAA retrieval with provenance, freshness and server-side full-text ranking."
+      }
+    ]
+  },
+  "privileges": {
+    "tables": [
+      {
+        "rls": true,
+        "bytes": 147456,
+        "table": "cannibal_merges",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 31211520,
+        "table": "content_job_reviews",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 7675904,
+        "table": "content_jobs",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 57344,
+        "table": "content_jobs_archive",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 229376,
+        "table": "content_rhythm_alerts",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 204800,
+        "table": "content_studio_evidence_items",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 24576,
+        "table": "content_studio_stage_events",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 131072,
+        "table": "content_studio_writing_contracts",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 32768,
+        "table": "gsc_connection",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 1007616,
+        "table": "gsc_snapshots",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 32768,
+        "table": "gsc_tokens",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 106496,
+        "table": "marketplace_search_events",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 122880,
+        "table": "mission_log",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 81920,
+        "table": "seo_ahrefs_snapshots",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 106496,
+        "table": "seo_backlink_outreach",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 188416,
+        "table": "seo_backlink_targets",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 32768,
+        "table": "seo_backlink_verifications",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 40960,
+        "table": "seo_cannibal_decisions",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 1269760,
+        "table": "seo_cluster_plans",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 262144,
+        "table": "seo_engine_config",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 180224,
+        "table": "seo_engine_runs",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 1802240,
+        "table": "seo_forecast_runs",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 131072,
+        "table": "seo_gate_runs",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 13910016,
+        "table": "seo_gsc_rows",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 1810432,
+        "table": "seo_intelligence_snapshots",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 1482752,
+        "table": "seo_interlinks",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": true,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": true,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 1425408,
+        "table": "seo_knowledge",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 122880,
+        "table": "seo_lifecycle_stages",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 614400,
+        "table": "seo_llm_visibility",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": false,
+        "anon_insert": false,
+        "anon_select": false,
+        "anon_update": false,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "bytes": 49152,
+        "table": "seo_model_calibration",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 442368,
+        "table": "seo_ranking_scores",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 983040,
+        "table": "seo_reward_events",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 24576,
+        "table": "seo_title_history",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 16384,
+        "table": "seo_topic_edges",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 16384,
+        "table": "seo_topic_nodes",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      },
+      {
+        "rls": true,
+        "bytes": 65536,
+        "table": "studio_specialist_signals",
+        "schema": "public",
+        "forced_rls": false,
+        "anon_delete": true,
+        "anon_insert": true,
+        "anon_select": true,
+        "anon_update": true,
+        "service_role_insert": true,
+        "service_role_select": true,
+        "authenticated_delete": true,
+        "authenticated_insert": true,
+        "authenticated_select": true,
+        "authenticated_update": true
+      }
+    ],
+    "policies": [
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "cannibal_merges",
+        "permissive": "PERMISSIVE",
+        "policyname": "Admin full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "content_job_reviews",
+        "permissive": "PERMISSIVE",
+        "policyname": "Content job reviews full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "content_jobs",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "content_jobs_archive",
+        "permissive": "PERMISSIVE",
+        "policyname": "Admin full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "content_rhythm_alerts",
+        "permissive": "PERMISSIVE",
+        "policyname": "Rhythm alerts full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "gsc_snapshots",
+        "permissive": "PERMISSIVE",
+        "policyname": "GSC snapshots full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "gsc_tokens",
+        "permissive": "PERMISSIVE",
+        "policyname": "Admin full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "mission_log",
+        "permissive": "PERMISSIVE",
+        "policyname": "Admin full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_ahrefs_snapshots",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine ahrefs full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_backlink_outreach",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_backlink_targets",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_backlink_verifications",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_cannibal_decisions",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_cluster_plans",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_engine_config",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_engine_runs",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_forecast_runs",
+        "permissive": "PERMISSIVE",
+        "policyname": "SEO forecast runs full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_gate_runs",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine v2 full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_gsc_rows",
+        "permissive": "PERMISSIVE",
+        "policyname": "seo_gsc_rows full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_intelligence_snapshots",
+        "permissive": "PERMISSIVE",
+        "policyname": "SEO intelligence full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "true",
+        "roles": [
+          "anon",
+          "authenticated"
+        ],
+        "tablename": "seo_interlinks",
+        "permissive": "PERMISSIVE",
+        "policyname": "seo_interlinks read for realtime",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_interlinks",
+        "permissive": "PERMISSIVE",
+        "policyname": "seo_interlinks service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_knowledge",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_lifecycle_stages",
+        "permissive": "PERMISSIVE",
+        "policyname": "Engine full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "service_role"
+        ],
+        "tablename": "seo_llm_visibility",
+        "permissive": "PERMISSIVE",
+        "policyname": "Service role full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_model_calibration",
+        "permissive": "PERMISSIVE",
+        "policyname": "SEO model calibration full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_ranking_scores",
+        "permissive": "PERMISSIVE",
+        "policyname": "SEO ranking scores full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_reward_events",
+        "permissive": "PERMISSIVE",
+        "policyname": "SEO reward events full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_topic_edges",
+        "permissive": "PERMISSIVE",
+        "policyname": "seo_topic_edges full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "seo_topic_nodes",
+        "permissive": "PERMISSIVE",
+        "policyname": "seo_topic_nodes full access",
+        "schemaname": "public",
+        "with_check": "true"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "true",
+        "roles": [
+          "public"
+        ],
+        "tablename": "studio_specialist_signals",
+        "permissive": "PERMISSIVE",
+        "policyname": "Specialist signals full access",
+        "schemaname": "public",
+        "with_check": "true"
+      }
+    ]
+  },
+  "limitations": [
+    "No production mutations or private business row reads",
+    "Catalog evidence only; exhaustive access tests, plan/quota/backup/restore still pending",
+    "No studio/studio_private schemas or pgvector installed at observation"
+  ]
+}

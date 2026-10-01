@@ -1,0 +1,13 @@
+{
+  "source_path": "/Users/phantomdarne/.claude-server-commander/claude_tool_call.log",
+  "source_line": 11405,
+  "source_timestamp": "2026-09-30T01:08:21.528Z",
+  "source_line_sha256": "c57009d5a752dd2e3fd65a641b55de5f042f6fc07ff06d3bdc6c3550d217ec1a",
+  "original_requested_lane": "auto",
+  "normalized_routed_lane": "codex",
+  "expected_request_sha256": "e64121c1ef4acc40f03b7426ce79d08cdd889174bc5054fc3053179dfa0aa49b",
+  "computed_request_sha256": "e64121c1ef4acc40f03b7426ce79d08cdd889174bc5054fc3053179dfa0aa49b",
+  "exact_match": true,
+  "extraction_method": "JSON Arguments command, AST literal base dictionary; original explicit fields only",
+  "admission_performed": false
+}

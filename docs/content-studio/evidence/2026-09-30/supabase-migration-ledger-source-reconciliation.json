@@ -1,0 +1,740 @@
+{
+  "origin_main": "ab311e37a19c10e25e5b95b0432baadb7b4e0cd6",
+  "project_ref": "krggzrxxnqfsbbklatxl",
+  "results": [
+    {
+      "filename": "20260806_hardening.sql",
+      "sha256": "3b053795d744489832a14f7c98436f6d05de5799155a31e00f128bbf78f9fe06",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260806_hardening.sql",
+      "current_source_sha256": "3b053795d744489832a14f7c98436f6d05de5799155a31e00f128bbf78f9fe06",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260808_cannibal_merges.sql",
+      "sha256": "4cad465f9f549545bdbc14d46f141e4c90425587fe492c3ac2f6f4db610d9066",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260808_cannibal_merges.sql",
+      "current_source_sha256": "4cad465f9f549545bdbc14d46f141e4c90425587fe492c3ac2f6f4db610d9066",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260809_cannibal_rechecks.sql",
+      "sha256": "db2cf2bbf6f1be3bf71ed569ccb594d20d7d4f04bcf21a122c2c77b6613c1bd7",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260809_cannibal_rechecks.sql",
+      "current_source_sha256": "db2cf2bbf6f1be3bf71ed569ccb594d20d7d4f04bcf21a122c2c77b6613c1bd7",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260809_seo_master_engine.sql",
+      "sha256": "a44d179d2b115afb1ca8b1356d870e281dcb51c43d7bb27ee8d95b05bf5ecc67",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260809_seo_master_engine.sql",
+      "current_source_sha256": "a44d179d2b115afb1ca8b1356d870e281dcb51c43d7bb27ee8d95b05bf5ecc67",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260810_seo_engine_v2.sql",
+      "sha256": "caf3f05a638fe9288d60bdfa75c1f51e5aebd4dfcc92819153c143ca6687d669",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260810_seo_engine_v2.sql",
+      "current_source_sha256": "caf3f05a638fe9288d60bdfa75c1f51e5aebd4dfcc92819153c143ca6687d669",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260811_content_jobs_archive.sql",
+      "sha256": "779311bbe40a5baddb0aff6e25e646f666168e3bd248be52c917cdf58197d6d8",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260811_content_jobs_archive.sql",
+      "current_source_sha256": "779311bbe40a5baddb0aff6e25e646f666168e3bd248be52c917cdf58197d6d8",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260811_table_guarantees.sql",
+      "sha256": "0da0b8a29b49cd5b410802dc7ccb1c1dc052afa58dafb02df4fec28d38a1a1a6",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260811_table_guarantees.sql",
+      "current_source_sha256": "0da0b8a29b49cd5b410802dc7ccb1c1dc052afa58dafb02df4fec28d38a1a1a6",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260812_competing_urls.sql",
+      "sha256": "3b328c7f12f936821d6f94e156164be80315aca760b1807251924d545423be0e",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260812_competing_urls.sql",
+      "current_source_sha256": "3b328c7f12f936821d6f94e156164be80315aca760b1807251924d545423be0e",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260812_content_jobs_hardening.sql",
+      "sha256": "18f1fa4f4713a36dd614b269ca6e938967e40b598e4222acd49b64ce89e883a6",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260812_content_jobs_hardening.sql",
+      "current_source_sha256": "18f1fa4f4713a36dd614b269ca6e938967e40b598e4222acd49b64ce89e883a6",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260813_ai_admin_provider_order.sql",
+      "sha256": "65c32f60d014ca327fc23f29f7ba15544f8e56326930fabdd7149e5a975aa837",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260813_ai_admin_provider_order.sql",
+      "current_source_sha256": "65c32f60d014ca327fc23f29f7ba15544f8e56326930fabdd7149e5a975aa837",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260813_backlink_engine.sql",
+      "sha256": "7766926eae3e5897d8afbc3433464c22888cced1888125c8cadf2e86b42df602",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260813_backlink_engine.sql",
+      "current_source_sha256": "7766926eae3e5897d8afbc3433464c22888cced1888125c8cadf2e86b42df602",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260813_rhythm_alerts.sql",
+      "sha256": "fe489b486124b501089247452204dfc111c4081af4403600e9e5a8fbc685f937",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260813_rhythm_alerts.sql",
+      "current_source_sha256": "fe489b486124b501089247452204dfc111c4081af4403600e9e5a8fbc685f937",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260814_ai_baseten_provider.sql",
+      "sha256": "0836d6a8db4b1ee24962ca6a8c6faa72dd700fa46823f242ef765cd7fdd5e702",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260814_ai_baseten_provider.sql",
+      "current_source_sha256": "0836d6a8db4b1ee24962ca6a8c6faa72dd700fa46823f242ef765cd7fdd5e702",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260815_backlinks_json.sql",
+      "sha256": "6a172028746daf4aa2b670f2330dc73263c1e102fc361a5c2334abafa0b43556",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260815_backlinks_json.sql",
+      "current_source_sha256": "6a172028746daf4aa2b670f2330dc73263c1e102fc361a5c2334abafa0b43556",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260815_competing_snippets.sql",
+      "sha256": "1e3cd5405bad611db56390967e8bd9c76f33b683a7ba86ed9f7ce8f9cd94797c",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260815_competing_snippets.sql",
+      "current_source_sha256": "1e3cd5405bad611db56390967e8bd9c76f33b683a7ba86ed9f7ce8f9cd94797c",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260815_keyword_partition.sql",
+      "sha256": "4338c2824fb33b3a5054ecceca0642da38a2492e4b93db0c3bc68ec9bf38cf58",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260815_keyword_partition.sql",
+      "current_source_sha256": "4338c2824fb33b3a5054ecceca0642da38a2492e4b93db0c3bc68ec9bf38cf58",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260815_master_engine_backfill.sql",
+      "sha256": "f1c4a9b6610ee9c6433188bfaa7936a086669ab1eff1152854d83afa2e61041d",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260815_master_engine_backfill.sql",
+      "current_source_sha256": "f1c4a9b6610ee9c6433188bfaa7936a086669ab1eff1152854d83afa2e61041d",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260815_seo_intelligence.sql",
+      "sha256": "bdc925a76263148a648deb979af92f83722e4a8d79215a7d178740e29f0c3ba4",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260815_seo_intelligence.sql",
+      "current_source_sha256": "bdc925a76263148a648deb979af92f83722e4a8d79215a7d178740e29f0c3ba4",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260816_ai_nemotron_provider.sql",
+      "sha256": "f4d743cec6831665758442aec2b6c6f18eba4b28b803bb6266e567c7c0116cc0",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260816_ai_nemotron_provider.sql",
+      "current_source_sha256": "f4d743cec6831665758442aec2b6c6f18eba4b28b803bb6266e567c7c0116cc0",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260816_content_jobs_replica_identity.sql",
+      "sha256": "8468f86ad1ea69b5205e146895e4e73fda605f85d828a0dafe99af73df48464d",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260816_content_jobs_replica_identity.sql",
+      "current_source_sha256": "8468f86ad1ea69b5205e146895e4e73fda605f85d828a0dafe99af73df48464d",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260816_gsc_index_coverage.sql",
+      "sha256": "2ed6a3254d49d80d4992e5f2f72da35c1df7c1b3c34bd8370470eb084457023a",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260816_gsc_index_coverage.sql",
+      "current_source_sha256": "2ed6a3254d49d80d4992e5f2f72da35c1df7c1b3c34bd8370470eb084457023a",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260816_seo_llm_visibility_v3.sql",
+      "sha256": "4eda94ffede8164897af5cd54e8a19e61e0545044fda8c37d771e7b151859241",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260816_seo_llm_visibility_v3.sql",
+      "current_source_sha256": "4eda94ffede8164897af5cd54e8a19e61e0545044fda8c37d771e7b151859241",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260816_site_health_pages.sql",
+      "sha256": "f8bea0158edc3aa193c16f91b1b2b11c0324cd830456321ae2d054038bf0faae",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260816_site_health_pages.sql",
+      "current_source_sha256": "f8bea0158edc3aa193c16f91b1b2b11c0324cd830456321ae2d054038bf0faae",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_ahrefs_snapshots.sql",
+      "sha256": "27e86d531c1b4d29eebbd58176dab534fada74f1c8f6409cefb554be1476fa35",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_ahrefs_snapshots.sql",
+      "current_source_sha256": "27e86d531c1b4d29eebbd58176dab534fada74f1c8f6409cefb554be1476fa35",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_seo_competitive_v1.sql",
+      "sha256": "32d02392392aa17d05f6a0f53a16100b9a3492a0047eb4ab70f2cf7b38dec0fc",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_seo_competitive_v1.sql",
+      "current_source_sha256": "32d02392392aa17d05f6a0f53a16100b9a3492a0047eb4ab70f2cf7b38dec0fc",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_seo_content_semantic_v1.sql",
+      "sha256": "e6f15bb0d3c4969975ccac2497c515d1f465c79282912e091830cfcb22660f09",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_seo_content_semantic_v1.sql",
+      "current_source_sha256": "e6f15bb0d3c4969975ccac2497c515d1f465c79282912e091830cfcb22660f09",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_seo_eeat_v1.sql",
+      "sha256": "6c2d8ceee928483e77ae8bd3d30de2da5e767cc544c4061db64bc3ab19317126",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_seo_eeat_v1.sql",
+      "current_source_sha256": "6c2d8ceee928483e77ae8bd3d30de2da5e767cc544c4061db64bc3ab19317126",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_seo_local_v1.sql",
+      "sha256": "fe700d2089e1c7c2685b4f46681ed6e438f7e205508f1adda5e821f818789557",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_seo_local_v1.sql",
+      "current_source_sha256": "fe700d2089e1c7c2685b4f46681ed6e438f7e205508f1adda5e821f818789557",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260817_site_health_rls.sql",
+      "sha256": "7f28310e9a47f3f83ee718e73bee8bc8c0ae3bd11a1449ca72bf65112a67e6cd",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260817_site_health_rls.sql",
+      "current_source_sha256": "7f28310e9a47f3f83ee718e73bee8bc8c0ae3bd11a1449ca72bf65112a67e6cd",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260819_content_job_reviews.sql",
+      "sha256": "594055b54438307b3cba9928186b7752d1bdaa29a5687489dd100c57ce22236e",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260819_content_job_reviews.sql",
+      "current_source_sha256": "594055b54438307b3cba9928186b7752d1bdaa29a5687489dd100c57ce22236e",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260819_seo_engine_runs_kind.sql",
+      "sha256": "bbdedbc06d1b7cb96b2bfa10337a8e7917949e2fa3cfe650ce1c04f8911e7993",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260819_seo_engine_runs_kind.sql",
+      "current_source_sha256": "bbdedbc06d1b7cb96b2bfa10337a8e7917949e2fa3cfe650ce1c04f8911e7993",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260826_nvidia_minimax_draft_default.sql",
+      "sha256": "64051e3d2674a617f7ab511515ffebc6a1bb8b86cf36b30b3c087ccd9e2705e0",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260826_nvidia_minimax_draft_default.sql",
+      "current_source_sha256": "64051e3d2674a617f7ab511515ffebc6a1bb8b86cf36b30b3c087ccd9e2705e0",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260831_keyword_provenance.sql",
+      "sha256": "c2768a2a3cfe265acf6c0cd9f184cbe14cb6e062d702580eeca023082ecda2f1",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260831_keyword_provenance.sql",
+      "current_source_sha256": "c2768a2a3cfe265acf6c0cd9f184cbe14cb6e062d702580eeca023082ecda2f1",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260901_content_job_reviews_fingerprint.sql",
+      "sha256": "04690bf22425aad7deb643f5bd226459a3869f9d3c50d46accb81ceec6dc37df",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260901_content_job_reviews_fingerprint.sql",
+      "current_source_sha256": "04690bf22425aad7deb643f5bd226459a3869f9d3c50d46accb81ceec6dc37df",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260901_seo_ranking_model.sql",
+      "sha256": "b31ef86f45f61045af6921dd3eff3a3fdd59b536825038ce5a9d279b2575ac7d",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260901_seo_ranking_model.sql",
+      "current_source_sha256": "b31ef86f45f61045af6921dd3eff3a3fdd59b536825038ce5a9d279b2575ac7d",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260902_seo_cluster_plan_economics.sql",
+      "sha256": "b455264dc8fd424611f1470aff1251df542449d3f7dd8b944be941fc1b3c53f1",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260902_seo_cluster_plan_economics.sql",
+      "current_source_sha256": "b455264dc8fd424611f1470aff1251df542449d3f7dd8b944be941fc1b3c53f1",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260902_seo_cluster_plan_lifecycle.sql",
+      "sha256": "e62c970604619e7bfe42884d9b7ee5db6e920964db1ca7c42d886d62a810f719",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260902_seo_cluster_plan_lifecycle.sql",
+      "current_source_sha256": "e62c970604619e7bfe42884d9b7ee5db6e920964db1ca7c42d886d62a810f719",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260902_seo_llm_fanout.sql",
+      "sha256": "87d17ada40b855c77dc86945154ee06c59643f930b7ae0ae2698e944d650611a",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260902_seo_llm_fanout.sql",
+      "current_source_sha256": "87d17ada40b855c77dc86945154ee06c59643f930b7ae0ae2698e944d650611a",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260902_seo_title_history.sql",
+      "sha256": "9a33ee3f29d2fe542b2ded7fdab3c84d0a879ffecb8322bd51dd8588ba867109",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260902_seo_title_history.sql",
+      "current_source_sha256": "9a33ee3f29d2fe542b2ded7fdab3c84d0a879ffecb8322bd51dd8588ba867109",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260903_content_jobs_target_repo_default.sql",
+      "sha256": "0aaa8cba7852844c497484dfaf72657deec99e7c09d334f797e5d2f69847f5f7",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260903_content_jobs_target_repo_default.sql",
+      "current_source_sha256": "0aaa8cba7852844c497484dfaf72657deec99e7c09d334f797e5d2f69847f5f7",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260903_content_jobs_target_repo_trigger.sql",
+      "sha256": "ebbc735dd92048e3ad12ef20b3777bcd84454da7f5e2c5b723e584ad230791da",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260903_content_jobs_target_repo_trigger.sql",
+      "current_source_sha256": "ebbc735dd92048e3ad12ef20b3777bcd84454da7f5e2c5b723e584ad230791da",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260903_seo_engine_integrity.sql",
+      "sha256": "faebbd9f432b828ae3dea5c4d92f1b0068e04ac7c89ee2da3be00ecae14db8db",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260903_seo_engine_integrity.sql",
+      "current_source_sha256": "faebbd9f432b828ae3dea5c4d92f1b0068e04ac7c89ee2da3be00ecae14db8db",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260904_seo_gsc_rows.sql",
+      "sha256": "cc3b6e070ad53dd416586fd98c9a6e46c9b9b759b1804851ecd7de5aeab7161d",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260904_seo_gsc_rows.sql",
+      "current_source_sha256": "cc3b6e070ad53dd416586fd98c9a6e46c9b9b759b1804851ecd7de5aeab7161d",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260904_seo_topic_graph.sql",
+      "sha256": "6d487b170bf23b3c9f9bc6910dee854d50012ce9896ed92e227c36527f418045",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260904_seo_topic_graph.sql",
+      "current_source_sha256": "6d487b170bf23b3c9f9bc6910dee854d50012ce9896ed92e227c36527f418045",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260906_studio_specialist_signals.sql",
+      "sha256": "316e541ef29b639b377f888e27cc85779b1d3061f578b5cd5e777c7c874fcf90",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260906_studio_specialist_signals.sql",
+      "current_source_sha256": "316e541ef29b639b377f888e27cc85779b1d3061f578b5cd5e777c7c874fcf90",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260907_attorney_show_bar_number.sql",
+      "sha256": "b7d54ba8c793fdde1e4b51669b2a841c527c67bd1299a9ef33c1feca321751f7",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260907_attorney_show_bar_number.sql",
+      "current_source_sha256": "b7d54ba8c793fdde1e4b51669b2a841c527c67bd1299a9ef33c1feca321751f7",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260907_conversation_ai_mode.sql",
+      "sha256": "ad410d5c5a4bbb4af968f2956af0a134cfdf83e252a25a841da9b7b169492788",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260907_conversation_ai_mode.sql",
+      "current_source_sha256": "ad410d5c5a4bbb4af968f2956af0a134cfdf83e252a25a841da9b7b169492788",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260907_engine_evidence_attribution.sql",
+      "sha256": "fb28a0e815a2e9df2264559f603de0aafaff1befb7eaa5f5a016a0b6c28ee50b",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260907_engine_evidence_attribution.sql",
+      "current_source_sha256": "fb28a0e815a2e9df2264559f603de0aafaff1befb7eaa5f5a016a0b6c28ee50b",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260908_marketplace_gig_jurisdiction_au.sql",
+      "sha256": "55a6226fcf375c218f519a8256159602483ae1b6f5797386d20eee7c586c4dbf",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260908_marketplace_gig_jurisdiction_au.sql",
+      "current_source_sha256": "55a6226fcf375c218f519a8256159602483ae1b6f5797386d20eee7c586c4dbf",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260909_client_order_cancellation.sql",
+      "sha256": "4b145f0347b6c14244e4fdbad1d46323f8217aef84228b6f5fbee049a1deb486",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260909_client_order_cancellation.sql",
+      "current_source_sha256": "4b145f0347b6c14244e4fdbad1d46323f8217aef84228b6f5fbee049a1deb486",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260909_marketplace_gig_gallery_public.sql",
+      "sha256": "0217b170d2c826bea4f35519d503d2e48cde6adf81a0b6bcc245ad47f66ca1d3",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260909_marketplace_gig_gallery_public.sql",
+      "current_source_sha256": "0217b170d2c826bea4f35519d503d2e48cde6adf81a0b6bcc245ad47f66ca1d3",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260911_marketplace_search_intelligence_metrics.sql",
+      "sha256": "2df10a0ae34343bee77b22401e9d66fa48a0ac2396f39e94a55cfedfac685741",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260911_marketplace_search_intelligence_metrics.sql",
+      "current_source_sha256": "2df10a0ae34343bee77b22401e9d66fa48a0ac2396f39e94a55cfedfac685741",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260911_marketplace_search_intelligence.sql",
+      "sha256": "f29f8f51454779f350e8da0fc83f799c6515f146bc79798c60ed2a7f0febe8c6",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260911_marketplace_search_intelligence.sql",
+      "current_source_sha256": "f29f8f51454779f350e8da0fc83f799c6515f146bc79798c60ed2a7f0febe8c6",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260911_provider_credential_visibility_controls.sql",
+      "sha256": "ed9bc3a5b831b85c5c0b87850ed467b0bbe8190b286d9c46f86798117a401419",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260911_provider_credential_visibility_controls.sql",
+      "current_source_sha256": "ed9bc3a5b831b85c5c0b87850ed467b0bbe8190b286d9c46f86798117a401419",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260914_content_studio_evidence_contract.sql",
+      "sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+      "current_source_sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260915_content_studio_execution_lease.sql",
+      "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "current_source_sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260915_support_security_boundary.sql",
+      "sha256": "6b551ec8090ec4b727459cb7fe45ebd2b584c9dca4a93d018ceaf0de10a151e3",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/20260915_support_security_boundary.sql",
+      "current_source_sha256": "6b551ec8090ec4b727459cb7fe45ebd2b584c9dca4a93d018ceaf0de10a151e3",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260916122441_content_studio_provider_parity.sql",
+      "sha256": "554a2a5c044d0037626738af4fe55c8e48f49659c8138a4531085f3f496fbf86",
+      "applied_at": "2026-09-16 13:34:33.420263+00",
+      "source_git_sha": "958de55ccba51d87221584a0caee645f25f0048f",
+      "source_path": "supabase/migrations/20260916122441_content_studio_provider_parity.sql",
+      "current_source_sha256": "554a2a5c044d0037626738af4fe55c8e48f49659c8138a4531085f3f496fbf86",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260917173300_base_table_least_privilege.sql",
+      "sha256": "355eb0e63ff1cae553cac07e330bf0e8207a0ceafbfb9e362856c5c0b5f4a277",
+      "applied_at": "2026-09-17 18:14:03.941539+00",
+      "source_git_sha": "5429e5a124aa25df7d771fada50741a234a21d3b",
+      "source_path": "supabase/migrations/20260917173300_base_table_least_privilege.sql",
+      "current_source_sha256": "355eb0e63ff1cae553cac07e330bf0e8207a0ceafbfb9e362856c5c0b5f4a277",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260919165400_reward_dedupe_full_unique.sql",
+      "sha256": "23784e30e40d6974f10a2a5273a0eca4c8f1ac687864be0744cd74c0732006a0",
+      "applied_at": "2026-09-19 17:02:38.065895+00",
+      "source_git_sha": "d13041148e82209758b4eb32f7b67b00aa525928",
+      "source_path": "supabase/migrations/20260919165400_reward_dedupe_full_unique.sql",
+      "current_source_sha256": "23784e30e40d6974f10a2a5273a0eca4c8f1ac687864be0744cd74c0732006a0",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260920090000_p4_cannibal_decisions.sql",
+      "sha256": "aeae74c2e703406c75e722f2512221a9273281f1ab14e95f86bfd5bbd5ef724d",
+      "applied_at": "2026-09-20 12:20:36.451002+00",
+      "source_git_sha": "a26501f73a69212e6233dd4f38f8a0106522f353",
+      "source_path": "supabase/migrations/20260920090000_p4_cannibal_decisions.sql",
+      "current_source_sha256": "aeae74c2e703406c75e722f2512221a9273281f1ab14e95f86bfd5bbd5ef724d",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260920120000_seo_cannibal_decisions_append_only_search_path.sql",
+      "sha256": "c7720a3e1fc320d307d4be56598f3bdd5e89bd0c8bb6a3439723830bd0df0a2c",
+      "applied_at": "2026-09-20 12:33:09.926148+00",
+      "source_git_sha": "77105d511552dd64439aa6dcfcf70a6d8f395324",
+      "source_path": "supabase/migrations/20260920120000_seo_cannibal_decisions_append_only_search_path.sql",
+      "current_source_sha256": "c7720a3e1fc320d307d4be56598f3bdd5e89bd0c8bb6a3439723830bd0df0a2c",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260920130000_seo_interlinks_verification_truth.sql",
+      "sha256": "51ff7a204c9c18b3128cf4335b136c1381a1b4232aaedb3bdb639bc57fce9a01",
+      "applied_at": "2026-09-21 03:01:53.096291+00",
+      "source_git_sha": "ab6305a7c5c362f01b46947e53be0e462772c88e",
+      "source_path": "supabase/migrations/20260920130000_seo_interlinks_verification_truth.sql",
+      "current_source_sha256": "51ff7a204c9c18b3128cf4335b136c1381a1b4232aaedb3bdb639bc57fce9a01",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260921120000_p9_external_authority_truth.sql",
+      "sha256": "dd8ac76eb903975f9d87ee73d2ae5a267f0cbf2c39caa773e4181ac12b665f97",
+      "applied_at": "2026-09-22 02:41:14.774223+00",
+      "source_git_sha": "4993dbcf37f461c412ab29699b019714148e775b",
+      "source_path": "supabase/migrations/20260921120000_p9_external_authority_truth.sql",
+      "current_source_sha256": "dd8ac76eb903975f9d87ee73d2ae5a267f0cbf2c39caa773e4181ac12b665f97",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260922120000_p10_conversion_attribution.sql",
+      "sha256": "10b38404ec51d6d2134d76ce5ce6fc83c04b104f3980e0ac42b337e645e03816",
+      "applied_at": "2026-09-22 06:21:38.718817+00",
+      "source_git_sha": "07fbc3a6cb81addbe132cfd79eb2996f99f56f32",
+      "source_path": "supabase/migrations/20260922120000_p10_conversion_attribution.sql",
+      "current_source_sha256": "10b38404ec51d6d2134d76ce5ce6fc83c04b104f3980e0ac42b337e645e03816",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260922130000_p11_geo_visibility_truth.sql",
+      "sha256": "5a343bff2692cfb0a69c492b67589318e5fe99ec6f8fced9214f821478b184af",
+      "applied_at": "2026-09-22 11:11:05.954429+00",
+      "source_git_sha": "4b0a310f22a43e532c2f16ce08df3897d760caf4",
+      "source_path": "supabase/migrations/20260922130000_p11_geo_visibility_truth.sql",
+      "current_source_sha256": "5a343bff2692cfb0a69c492b67589318e5fe99ec6f8fced9214f821478b184af",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260930070000_create_yqaa_public_knowledge_index.sql",
+      "sha256": "dc52d8d563f735335a6b97eee0a5ddd6c92eee565fdad082f3bb6b3b65c7db66",
+      "applied_at": "2026-09-30 07:31:26.145455+00",
+      "source_git_sha": "642b371a73b9da1bd59c9e72fa69412880911b28",
+      "source_path": "supabase/migrations/20260930070000_create_yqaa_public_knowledge_index.sql",
+      "current_source_sha256": "dc52d8d563f735335a6b97eee0a5ddd6c92eee565fdad082f3bb6b3b65c7db66",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260930071500_tune_yqaa_knowledge_ranking.sql",
+      "sha256": "8e6e572ca7f4b5edfce610b0770cc8f390be383d2d03fe62785f44a30a112e34",
+      "applied_at": "2026-09-30 07:31:26.548862+00",
+      "source_git_sha": "642b371a73b9da1bd59c9e72fa69412880911b28",
+      "source_path": "supabase/migrations/20260930071500_tune_yqaa_knowledge_ranking.sql",
+      "current_source_sha256": "8e6e572ca7f4b5edfce610b0770cc8f390be383d2d03fe62785f44a30a112e34",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+      "sha256": "5c07a4321ac8d75102cb8d9620441dfe42a1c32f88509a2545bd1ae7c396daef",
+      "applied_at": "2026-09-30 08:36:40.32265+00",
+      "source_git_sha": "c92df3820f27c8e15dbd356c2eeea5e94b209500",
+      "source_path": "supabase/migrations/20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+      "current_source_sha256": "df77e80214173de42aafdcabbb663552b30f99944cead75e2742f393d364f578",
+      "source_hash_status": "MISMATCH"
+    },
+    {
+      "filename": "additional_fts_indexes.sql",
+      "sha256": "6abaa93fcadfc16fc07455fa21183fb07ae2a7aa917f05afb7cecbf03a64a6c8",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/additional_fts_indexes.sql",
+      "current_source_sha256": "6abaa93fcadfc16fc07455fa21183fb07ae2a7aa917f05afb7cecbf03a64a6c8",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "ai_provider_keys.sql",
+      "sha256": "8777979dbe17c1810a51a515a6c75cc2c3c3c0341242810c59b8e233352216cd",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/ai_provider_keys.sql",
+      "current_source_sha256": "8777979dbe17c1810a51a515a6c75cc2c3c3c0341242810c59b8e233352216cd",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "application_fts_indexes.sql",
+      "sha256": "0b86a931aa3787782aa73f165741ad720c7d62605a8ae863063628cdf11d9faf",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/application_fts_indexes.sql",
+      "current_source_sha256": "0b86a931aa3787782aa73f165741ad720c7d62605a8ae863063628cdf11d9faf",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "content_jobs_event_log.sql",
+      "sha256": "72df0a71903fdba67be1d8884b992e3f709e0e87e71c08068cfcee21a004057e",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/content_jobs_event_log.sql",
+      "current_source_sha256": "72df0a71903fdba67be1d8884b992e3f709e0e87e71c08068cfcee21a004057e",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "content_jobs_fts_index.sql",
+      "sha256": "dc8d89bd7a1bce11d583aea651ad6287c8008b521f284a273c9a12311a21c503",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/content_jobs_fts_index.sql",
+      "current_source_sha256": "dc8d89bd7a1bce11d583aea651ad6287c8008b521f284a273c9a12311a21c503",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "content_jobs.sql",
+      "sha256": "5447521c49918ab21406ece72eb6fcf0bb73c56fa8cb3f85c3faf0940fccb55b",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/content_jobs.sql",
+      "current_source_sha256": "5447521c49918ab21406ece72eb6fcf0bb73c56fa8cb3f85c3faf0940fccb55b",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "gsc_tokens.sql",
+      "sha256": "9a685ff1a0572f8071c115807cc0e3125edd842944a7f9653ee43d7f3b020e04",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/gsc_tokens.sql",
+      "current_source_sha256": "9a685ff1a0572f8071c115807cc0e3125edd842944a7f9653ee43d7f3b020e04",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "live_verify_columns.sql",
+      "sha256": "08c05f8b167c11db97b91a1a963d5271245e5914e5abd2fce8cf79ad4276dbf3",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/live_verify_columns.sql",
+      "current_source_sha256": "08c05f8b167c11db97b91a1a963d5271245e5914e5abd2fce8cf79ad4276dbf3",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "mission_log.sql",
+      "sha256": "63a2bef297bc231dae90a4eda25cf4b6d216b5c9a394af3a0c333463de740935",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/mission_log.sql",
+      "current_source_sha256": "63a2bef297bc231dae90a4eda25cf4b6d216b5c9a394af3a0c333463de740935",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "pg_trgm_indexes.sql",
+      "sha256": "cf7b2b2f1d62231aca60f78f13705e0249c937013b4ce556ca37310a5d9588e5",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/pg_trgm_indexes.sql",
+      "current_source_sha256": "cf7b2b2f1d62231aca60f78f13705e0249c937013b4ce556ca37310a5d9588e5",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "seo_factory_columns.sql",
+      "sha256": "538218534cdb85ee00d601f0e482a96d9b22b0821c7a3c24ab57dd5be558fe64",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/seo_factory_columns.sql",
+      "current_source_sha256": "538218534cdb85ee00d601f0e482a96d9b22b0821c7a3c24ab57dd5be558fe64",
+      "source_hash_status": "MATCH"
+    },
+    {
+      "filename": "war_room_daily_runs.sql",
+      "sha256": "5219aaf6841b24a5c36580de1dcfa03338aa948ddbd7bc26e5c9a822984b9736",
+      "applied_at": "2026-09-16 07:53:44.755092+00",
+      "source_git_sha": "39e43edbb06ba47893235ba0a6972eb0cff59db2",
+      "source_path": "supabase/migrations/war_room_daily_runs.sql",
+      "current_source_sha256": "5219aaf6841b24a5c36580de1dcfa03338aa948ddbd7bc26e5c9a822984b9736",
+      "source_hash_status": "MATCH"
+    }
+  ],
+  "counts": {
+    "MATCH": 80,
+    "MISMATCH": 1,
+    "MISSING": 0
+  }
+}

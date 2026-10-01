@@ -1,0 +1,2389 @@
+{
+  "observedAt": "2026-09-30T08:25:14.531Z",
+  "projectId": "krggzrxxnqfsbbklatxl",
+  "source": "read-only pg/information_schema catalogs",
+  "columns": [
+    {
+      "type": "text",
+      "table": "content_job_health_summary",
+      "column": "status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "job_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_job_health_summary",
+      "column": "oldest_update",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_job_health_summary",
+      "column": "newest_update",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "stuck_drafting",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "failed_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "due_for_retry",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "ship_error_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_health_summary",
+      "column": "orphan_pr",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "content_job_reviews",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_job_reviews",
+      "column": "job_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_job_reviews",
+      "column": "content",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "integer",
+      "table": "content_job_reviews",
+      "column": "word_count",
+      "default": "0",
+      "nullable": "NO"
+    },
+    {
+      "type": "boolean",
+      "table": "content_job_reviews",
+      "column": "quality_ok",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_job_reviews",
+      "column": "ship_ready",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_job_reviews",
+      "column": "blockers",
+      "default": "'[]'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_job_reviews",
+      "column": "warnings",
+      "default": "'[]'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_job_reviews",
+      "column": "applied_repairs",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_job_reviews",
+      "column": "source",
+      "default": "'autosave'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_job_reviews",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_job_reviews",
+      "column": "content_fingerprint",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "content_jobs",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "user_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "title",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "topic",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "content_type",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "tone",
+      "default": "'educational'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "region",
+      "default": "'US'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "audience",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "keywords",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "content",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "slug",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "status",
+      "default": "'pending'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "error_message",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "target_repo",
+      "default": "'caseworks'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "branch_name",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "content_path",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "pr_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "pr_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "merged_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "closed_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ai_provider",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "word_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "seo_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "updated_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ship_mode",
+      "default": "'pr'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_jobs",
+      "column": "indexable",
+      "default": "true",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "canonical_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "owner_host",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "primary_keyword",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "audit_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "gsc_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "deploy_sha",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "deployed_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "inspection_status",
+      "default": "'n/a'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_jobs",
+      "column": "llms_included",
+      "default": "false",
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "event_log",
+      "default": "'[]'::jsonb",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "dedup_key",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_canonical_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "live_verified_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "live_http_status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "live_word_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "live_audit_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "live_human_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_jobs",
+      "column": "live_has_noindex",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_purge_status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_sitemap_status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_indexnow_status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "live_error",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_jobs",
+      "column": "needs_revert",
+      "default": "false",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "revert_reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ai_model",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "attempt_count",
+      "default": "0",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "last_attempt_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "next_attempt_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "last_failure_kind",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "created_via",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ship_error",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ship_provider",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "ship_target_repo",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "content_jobs",
+      "column": "source_job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "lineage",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "regeneration_reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "regeneration_mode",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "required_short_keywords",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "required_long_tail_keywords",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "keyword_coverage",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "competing_urls",
+      "default": "'[]'::jsonb",
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "backlinks_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "backlinks_fetched_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "master_engine_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "master_engine_grade",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "master_engine_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "master_engine_fetched_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "competing_snippets",
+      "default": "'[]'::jsonb",
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "content_quality_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "content_depth_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "content_gap_missing_subtopics",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "content_top_competitor",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "content_top_competitor_depth",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "content_confidence_avg",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "content_flags",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "content_model_used",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "content_scored_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "semantic_coverage_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "semantic_topical_breadth_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "semantic_missing_entities",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "semantic_top_competitor",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "semantic_top_competitor_coverage",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "semantic_confidence_avg",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "semantic_flags",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "semantic_model_used",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "semantic_scored_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "eeat_trust_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "eeat_author_expertise_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "eeat_missing_signals",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "eeat_top_competitor",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "eeat_top_competitor_trust",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "eeat_confidence_avg",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "eeat_flags",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "eeat_model_used",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "eeat_scored_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "competitive_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "competitive_overall_position",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "competitive_missing_edges",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "competitive_top_competitor",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "competitive_top_competitor_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "competitive_confidence_avg",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "competitive_flags",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "competitive_model_used",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "competitive_scored_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "local_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "local_gbp_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "local_nap_consistency_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "local_missing_signals",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "local_top_competitor",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "local_top_competitor_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "content_jobs",
+      "column": "local_confidence_avg",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs",
+      "column": "local_flags",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "local_model_used",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "local_scored_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "short_keyword_terms",
+      "default": "'[]'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs",
+      "column": "long_tail_keyword_terms",
+      "default": "'[]'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "opportunity_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "contract_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "contract_version",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "contract_hash",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "evidence_hash",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "execution_stage",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "publication_phase",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "expected_revision_marker",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "requested_model",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "actual_model",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "execution_owner",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs",
+      "column": "execution_attempt",
+      "default": "0",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs",
+      "column": "execution_lease_expires_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "actual_provider",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs",
+      "column": "provider_error_class",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "content_jobs_archive",
+      "column": "id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "user_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "content_jobs_archive",
+      "column": "source_job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "regeneration_reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "regeneration_mode",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs_archive",
+      "column": "lineage",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "title",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "topic",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "content_type",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "tone",
+      "default": "'educational'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "region",
+      "default": "'US'::text",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "audience",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_jobs_archive",
+      "column": "keywords",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "content",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "slug",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "error_message",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "last_failure_kind",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "target_repo",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "branch_name",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "content_path",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "pr_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs_archive",
+      "column": "pr_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "ai_provider",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs_archive",
+      "column": "word_count",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_jobs_archive",
+      "column": "seo_score",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "primary_keyword",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "owner_host",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "canonical_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "ship_mode",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "content_jobs_archive",
+      "column": "indexable",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_jobs_archive",
+      "column": "deploy_sha",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "deployed_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "merged_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "closed_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "created_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "updated_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs_archive",
+      "column": "event_log",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs_archive",
+      "column": "audit_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_jobs_archive",
+      "column": "gsc_json",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_jobs_archive",
+      "column": "archived_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_rhythm_alerts",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_rhythm_alerts",
+      "column": "job_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "title",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "status",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "content_type",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "region",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "primary_keyword",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "rhythm_key",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "integer",
+      "table": "content_rhythm_alerts",
+      "column": "count",
+      "default": "0",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_rhythm_alerts",
+      "column": "severity",
+      "default": "'warning'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "boolean",
+      "table": "content_rhythm_alerts",
+      "column": "remediable",
+      "default": "false",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_rhythm_alerts",
+      "column": "run_ts",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_rhythm_alerts",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "run_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_studio_evidence_items",
+      "column": "job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "source_kind",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "source_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "publisher",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_studio_evidence_items",
+      "column": "observed_at",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "jurisdiction",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "locale",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "ARRAY",
+      "table": "content_studio_evidence_items",
+      "column": "category_ids",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "query",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "observation",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "excerpt",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "content_hash",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "confidence",
+      "default": "'unverified'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_evidence_items",
+      "column": "verification",
+      "default": "'pending'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_studio_evidence_items",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "bigint",
+      "table": "content_studio_stage_events",
+      "column": "id",
+      "default": "nextval('content_studio_stage_events_id_seq'::regclass)",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_studio_stage_events",
+      "column": "job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "from_stage",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "to_stage",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "actor",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "input_hash",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_stage_events",
+      "column": "output_hash",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_studio_stage_events",
+      "column": "attempt",
+      "default": "1",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_studio_stage_events",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_writing_contracts",
+      "column": "contract_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "content_studio_writing_contracts",
+      "column": "job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "integer",
+      "table": "content_studio_writing_contracts",
+      "column": "contract_version",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_writing_contracts",
+      "column": "contract_hash",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "content_studio_writing_contracts",
+      "column": "opportunity_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "content_studio_writing_contracts",
+      "column": "payload",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "content_studio_writing_contracts",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "mission_log",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "kind",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "status",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "source",
+      "default": "'command'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "message",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "mission_log",
+      "column": "detail",
+      "default": "'{}'::jsonb",
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "mission_log",
+      "column": "pr_url",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "mission_log",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "seo_engine_runs",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "seo_engine_runs",
+      "column": "kind",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "seo_engine_runs",
+      "column": "status",
+      "default": "'running'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "seo_engine_runs",
+      "column": "triggered_by",
+      "default": "'cron'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "seo_engine_runs",
+      "column": "summary",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "ARRAY",
+      "table": "seo_engine_runs",
+      "column": "errors",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "seo_engine_runs",
+      "column": "started_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "seo_engine_runs",
+      "column": "finished_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "seo_gate_runs",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "seo_gate_runs",
+      "column": "subject_type",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "seo_gate_runs",
+      "column": "subject_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "seo_gate_runs",
+      "column": "cluster_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "seo_gate_runs",
+      "column": "stage",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "seo_gate_runs",
+      "column": "country",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "seo_gate_runs",
+      "column": "score",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "boolean",
+      "table": "seo_gate_runs",
+      "column": "passed",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "numeric",
+      "table": "seo_gate_runs",
+      "column": "threshold",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "seo_gate_runs",
+      "column": "by_category",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "ARRAY",
+      "table": "seo_gate_runs",
+      "column": "blockers",
+      "default": "'{}'::text[]",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "seo_gate_runs",
+      "column": "signals",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "seo_gate_runs",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "seo_gate_runs",
+      "column": "mandatory",
+      "default": "'{}'::jsonb",
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "studio_specialist_signals",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "studio_specialist_signals",
+      "column": "role",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "studio_specialist_signals",
+      "column": "region",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "studio_specialist_signals",
+      "column": "payload",
+      "default": "'{}'::jsonb",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "studio_specialist_signals",
+      "column": "status",
+      "default": "'new'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "integer",
+      "table": "studio_specialist_signals",
+      "column": "priority",
+      "default": "3",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "studio_specialist_signals",
+      "column": "related_job_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "studio_specialist_signals",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "studio_specialist_signals",
+      "column": "consumed_at",
+      "default": null,
+      "nullable": "YES"
+    }
+  ],
+  "functions": [
+    {
+      "args": "p_job_id uuid, p_contract_id text, p_contract_hash text, p_execution_owner text, p_execution_attempt integer",
+      "name": "check_content_studio_execution",
+      "schema": "public",
+      "anon_execute": false,
+      "security_definer": true,
+      "search_path_config": [
+        "search_path=public"
+      ],
+      "authenticated_execute": false
+    },
+    {
+      "args": "p_job_id uuid, p_contract_id text, p_contract_hash text, p_execution_owner text, p_lease_seconds integer, p_allow_failed_retry boolean",
+      "name": "claim_content_studio_execution",
+      "schema": "public",
+      "anon_execute": false,
+      "security_definer": true,
+      "search_path_config": [
+        "search_path=public"
+      ],
+      "authenticated_execute": false
+    },
+    {
+      "args": "target_gig uuid",
+      "name": "compute_gig_content_score",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "content_jobs_ensure_target_repo",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "content_studio_reject_contract_mutation",
+      "schema": "public",
+      "anon_execute": false,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": false
+    },
+    {
+      "args": "",
+      "name": "cron_auto_release_escrow",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "process_escrow_auto_releases",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "p_job_id uuid, p_execution_owner text, p_execution_attempt integer",
+      "name": "release_content_studio_execution",
+      "schema": "public",
+      "anon_execute": false,
+      "security_definer": true,
+      "search_path_config": [
+        "search_path=public"
+      ],
+      "authenticated_execute": false
+    },
+    {
+      "args": "p_order_id text",
+      "name": "release_earnings_for_order",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "p_order_id uuid",
+      "name": "release_escrow_now",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": true,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "p_milestone_id uuid, p_actor_id uuid",
+      "name": "release_milestone",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "p_job_id uuid, p_contract_id text, p_contract_hash text, p_execution_owner text, p_execution_attempt integer, p_lease_seconds integer",
+      "name": "renew_content_studio_execution",
+      "schema": "public",
+      "anon_execute": false,
+      "security_definer": true,
+      "search_path_config": [
+        "search_path=public"
+      ],
+      "authenticated_execute": false
+    },
+    {
+      "args": "",
+      "name": "seo_backlink_targets_won_guard",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": [
+        "search_path=\"\""
+      ],
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "seo_backlink_verifications_append_only",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": [
+        "search_path=\"\""
+      ],
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "seo_cannibal_decisions_append_only",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": [
+        "search_path=\"\""
+      ],
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "set_seo_interlinks_updated_at",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "update_content_jobs_updated_at",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    },
+    {
+      "args": "",
+      "name": "update_seo_engine_updated_at",
+      "schema": "public",
+      "anon_execute": true,
+      "security_definer": false,
+      "search_path_config": null,
+      "authenticated_execute": true
+    }
+  ],
+  "constraints": [
+    {
+      "name": "content_job_reviews_job_id_fkey",
+      "type": "f",
+      "table": "content_job_reviews",
+      "definition": "FOREIGN KEY (job_id) REFERENCES content_jobs(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "content_job_reviews_pkey",
+      "type": "p",
+      "table": "content_job_reviews",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_job_reviews_source_check",
+      "type": "c",
+      "table": "content_job_reviews",
+      "definition": "CHECK ((source = ANY (ARRAY['autosave'::text, 'reaudit'::text, 'fix'::text, 'manual'::text, 'restore'::text])))"
+    },
+    {
+      "name": "content_jobs_content_type_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((content_type = ANY (ARRAY['blog_post'::text, 'article'::text, 'regional_page'::text, 'marketplace_gig'::text])))"
+    },
+    {
+      "name": "content_jobs_execution_attempt_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((execution_attempt >= 0))"
+    },
+    {
+      "name": "content_jobs_inspection_status_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK (((inspection_status IS NULL) OR (inspection_status = ANY (ARRAY['pending'::text, 'indexed'::text, 'discovered'::text, 'excluded'::text, 'error'::text, 'n/a'::text]))))"
+    },
+    {
+      "name": "content_jobs_last_failure_kind_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK (((last_failure_kind IS NULL) OR (last_failure_kind = ANY (ARRAY['compliance_gate'::text, 'ai_provider'::text, 'github_push'::text, 'github_merge'::text, 'cloudflare_deploy'::text, 'schema'::text, 'config'::text, 'timeout'::text, 'unknown'::text]))))"
+    },
+    {
+      "name": "content_jobs_live_status_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((live_status = ANY (ARRAY['verified'::text, 'noindex'::text, 'fetch_failed'::text, 'needs_review'::text, 'unverified'::text])))"
+    },
+    {
+      "name": "content_jobs_pkey",
+      "type": "p",
+      "table": "content_jobs",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_jobs_region_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((region = ANY (ARRAY['US'::text, 'CA'::text, 'AU'::text, 'UK'::text, 'COMPARE'::text])))"
+    },
+    {
+      "name": "content_jobs_seo_score_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK (((seo_score >= 0) AND (seo_score <= 100)))"
+    },
+    {
+      "name": "content_jobs_ship_mode_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK (((ship_mode IS NULL) OR (ship_mode = ANY (ARRAY['pr'::text, 'autodeploy'::text]))))"
+    },
+    {
+      "name": "content_jobs_source_job_id_fkey",
+      "type": "f",
+      "table": "content_jobs",
+      "definition": "FOREIGN KEY (source_job_id) REFERENCES content_jobs(id) ON DELETE SET NULL"
+    },
+    {
+      "name": "content_jobs_status_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'drafting'::text, 'processing'::text, 'publishing'::text, 'pr_created'::text, 'merged'::text, 'closed'::text, 'failed'::text])))"
+    },
+    {
+      "name": "content_jobs_tone_check",
+      "type": "c",
+      "table": "content_jobs",
+      "definition": "CHECK ((tone = ANY (ARRAY['professional'::text, 'educational'::text, 'persuasive'::text, 'authoritative'::text, 'casual'::text])))"
+    },
+    {
+      "name": "content_jobs_archive_pkey",
+      "type": "p",
+      "table": "content_jobs_archive",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_rhythm_alerts_job_id_run_ts_key",
+      "type": "u",
+      "table": "content_rhythm_alerts",
+      "definition": "UNIQUE (job_id, run_ts)"
+    },
+    {
+      "name": "content_rhythm_alerts_pkey",
+      "type": "p",
+      "table": "content_rhythm_alerts",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_studio_evidence_items_pkey",
+      "type": "p",
+      "table": "content_studio_evidence_items",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_studio_stage_events_attempt_check",
+      "type": "c",
+      "table": "content_studio_stage_events",
+      "definition": "CHECK ((attempt > 0))"
+    },
+    {
+      "name": "content_studio_stage_events_pkey",
+      "type": "p",
+      "table": "content_studio_stage_events",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "content_studio_writing_contracts_contract_version_check",
+      "type": "c",
+      "table": "content_studio_writing_contracts",
+      "definition": "CHECK ((contract_version > 0))"
+    },
+    {
+      "name": "content_studio_writing_contracts_pkey",
+      "type": "p",
+      "table": "content_studio_writing_contracts",
+      "definition": "PRIMARY KEY (contract_id)"
+    },
+    {
+      "name": "mission_log_pkey",
+      "type": "p",
+      "table": "mission_log",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "seo_engine_runs_kind_check",
+      "type": "c",
+      "table": "seo_engine_runs",
+      "definition": "CHECK ((kind = ANY (ARRAY['knowledge'::text, 'plan'::text, 'daily'::text, 'manual'::text, 'forecast-reward'::text])))"
+    },
+    {
+      "name": "seo_engine_runs_pkey",
+      "type": "p",
+      "table": "seo_engine_runs",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "seo_engine_runs_status_check",
+      "type": "c",
+      "table": "seo_engine_runs",
+      "definition": "CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'partial'::text, 'failed'::text])))"
+    },
+    {
+      "name": "seo_gate_runs_pkey",
+      "type": "p",
+      "table": "seo_gate_runs",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "seo_gate_runs_subject_type_check",
+      "type": "c",
+      "table": "seo_gate_runs",
+      "definition": "CHECK ((subject_type = ANY (ARRAY['plan'::text, 'draft'::text, 'job'::text, 'brief'::text])))"
+    },
+    {
+      "name": "studio_specialist_signals_pkey",
+      "type": "p",
+      "table": "studio_specialist_signals",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "studio_specialist_signals_status_check",
+      "type": "c",
+      "table": "studio_specialist_signals",
+      "definition": "CHECK ((status = ANY (ARRAY['new'::text, 'queued'::text, 'consumed'::text, 'dismissed'::text])))"
+    }
+  ]
+}

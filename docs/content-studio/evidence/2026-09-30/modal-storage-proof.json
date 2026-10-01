@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-09-30T08:05:16.476816+00:00",
+  "environment": "content-studio-staging",
+  "volume": "content-studio-artifacts",
+  "remoteTestDirectory": "/supervisor-probe-99b3d6ffa7ac4231b73b9cc5b92db027",
+  "sha256": "339bd773c59b9e582babc8066d9850349b528a949da590cfff68f5a0de307a17",
+  "gpuUsed": false,
+  "computeAppDeployed": false,
+  "upload": "PASS",
+  "readbackSha256": "339bd773c59b9e582babc8066d9850349b528a949da590cfff68f5a0de307a17",
+  "readback": "PASS",
+  "cleanup": "PASS",
+  "cleanupVerified": true
+}
