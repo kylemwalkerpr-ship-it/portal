@@ -23,12 +23,19 @@ declare global {
   /** KV namespace for page-level data caching (configured in wrangler.toml). */
   const PAGE_CACHE: KVNamespace | undefined
 
+  interface BrowserQuickActionBinding {
+    quickAction(action: 'links' | 'markdown' | 'content' | string, options: Record<string, unknown>): Promise<Response>
+  }
+
   interface CloudflareEnv {
     /** KV namespace for page-level data caching. */
     PAGE_CACHE: KVNamespace
 
     /** Content assets directory binding. */
     ASSETS: Fetcher
+
+    /** Cloudflare Browser Rendering binding for bounded public-web research. */
+    BROWSER: BrowserQuickActionBinding
 
     // Environment variables (defined in wrangler.toml [vars])
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: string

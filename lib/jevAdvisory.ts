@@ -1,5 +1,6 @@
 import { knowledgeSiteForHost, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
+import { isYqaaLiveWebSourceKey } from '@/lib/yqaaWebEvidence'
 
 export type JevTrigger = 'ambiguous' | 'conflicting_evidence' | 'low_evidence' | 'high_stakes' | 'cross_jurisdiction'
 export type JevAdvisory = {
@@ -68,7 +69,7 @@ function hasJurisdictionEvidence(ctx: JevContext, market: string): boolean {
     const evidence = item as KnowledgeChunk & { jurisdiction?: string; sourceKey?: string }
     if (normalizedJurisdiction(item.site) === market || normalizedJurisdiction(evidence.jurisdiction) === market) return true
     // Web research only admits bounded evidence with citations from the official domains.
-    return evidence.sourceKey === 'xai:web_search' && Boolean(item.sourceUrl || item.source) &&
+    return isYqaaLiveWebSourceKey(evidence.sourceKey) && Boolean(item.sourceUrl || item.source) &&
       normalizedJurisdiction(evidence.jurisdiction) === market
   })
 }
@@ -76,7 +77,7 @@ function hasJurisdictionEvidence(ctx: JevContext, market: string): boolean {
 function hasCitationLinkedWebEvidence(ctx: JevContext): boolean {
   return ctx.evidence.some((item) => {
     const evidence = item as KnowledgeChunk & { sourceKey?: string }
-    return evidence.sourceKey === 'xai:web_search' && Boolean(item.sourceUrl || item.source)
+    return isYqaaLiveWebSourceKey(evidence.sourceKey) && Boolean(item.sourceUrl || item.source)
   })
 }
 

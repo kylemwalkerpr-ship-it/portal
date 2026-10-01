@@ -1,6 +1,7 @@
 import { explicitYqaaJurisdiction, yqaaOriginSite, type YqaaIndexedChunk } from '@/lib/yqaaKnowledgeDb'
 import { sanitizeYqaaPublicQuestion } from '@/lib/jevAdvisory'
 import { callSystemSuperGrokWebSearch } from '@/lib/superGrokAssistant'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 const OFFICIAL_DOMAINS: Record<string, string[]> = {
   Australia: ['gov.au', 'legislation.gov.au'],
@@ -41,21 +42,164 @@ function safeCitation(raw: string, allowedDomains?: string[]): string | null {
   try {
     const url = new URL(raw)
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null
-    const host = url.hostname.toLowerCase()
+    const host = url.hostname.toLowerCase().replace(/\.$/, '')
+    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return null
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+      const [a, b] = host.split('.').map(Number)
+      if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null
+    }
+    if (host.includes(':')) return null
     if (allowedDomains && !allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`))) return null
     if (/\/(?:account|dashboard|orders?|messages?|checkout|profile|admin)(?:\/|$)/i.test(url.pathname)) return null
     return `${url.origin}${url.pathname}`.slice(0, 500)
   } catch { return null }
 }
 
-/** Keep only public, citation-linked search findings; a model summary alone is not evidence. */
-export async function researchYqaaPublicWeb(query: string, hostname?: string | null): Promise<YqaaIndexedChunk[]> {
-  const scope = yqaaResearchScope(query, hostname)
+type BrowserActionEnvelope<T> = {
+  success?: boolean
+  result?: T
+  meta?: { status?: number; title?: string; finalUrl?: string }
+}
+
+function browserBinding(): BrowserQuickActionBinding | null {
+  try {
+    return (getCloudflareContext().env as CloudflareEnv & { BROWSER?: BrowserQuickActionBinding }).BROWSER || null
+  } catch {
+    return null
+  }
+}
+
+async function browserAction<T>(
+  browser: BrowserQuickActionBinding,
+  action: 'links' | 'markdown',
+  options: Record<string, unknown>,
+): Promise<BrowserActionEnvelope<T> | null> {
+  const response = await browser.quickAction(action, options)
+  const declared = Number(response.headers.get('content-length') || 0)
+  if (!response.ok || declared > 750_000) return null
+  const raw = await response.text()
+  if (raw.length > 750_000) return null
+  try {
+    const parsed = JSON.parse(raw) as BrowserActionEnvelope<T>
+    if (parsed?.success === false || Number(parsed?.meta?.status || 200) >= 400) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function duckDuckGoTarget(raw: string): string {
+  try {
+    const url = new URL(raw)
+    if ((url.hostname === 'duckduckgo.com' || url.hostname.endsWith('.duckduckgo.com')) && url.pathname === '/l/') {
+      return url.searchParams.get('uddg') || raw
+    }
+    return raw
+  } catch {
+    return raw
+  }
+}
+
+function searchTerms(query: string): string[] {
+  const stop = new Set(['what', 'when', 'where', 'which', 'with', 'from', 'that', 'this', 'these', 'those', 'latest', 'current', 'today', 'news', 'updates', 'update', 'rules', 'guides', 'guide', 'search', 'live', 'web', 'official', 'sources', 'source', 'students', 'student'])
+  return [...new Set(String(query || '').toLowerCase().match(/[a-z0-9-]{3,}/g) || [])]
+    .filter((term) => !stop.has(term))
+    .slice(0, 12)
+}
+
+function markdownEvidence(markdown: string, query: string): { title?: string; body: string } {
+  const title = markdown.match(/^---[\s\S]*?^title:\s*["']?([^\n"']+)/m)?.[1]?.trim()
+  const withoutFrontmatter = markdown.replace(/^---\s*[\s\S]*?\n---\s*/m, '')
+  const cleanLines = withoutFrontmatter
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s{0,3}#{1,6}\s*/, '').replace(/[|*_`>]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length >= 35 && line.length <= 1600)
+  const terms = searchTerms(query)
+  const ranked = cleanLines.map((line, index) => {
+    const lower = line.toLowerCase()
+    let score = 0
+    for (const term of terms) if (lower.includes(term)) score += term === 'opt' || term === 'f-1' ? 4 : 1
+    if (/last (?:reviewed|updated)|effective|optional practical training|stem opt|f-1/i.test(line)) score += 2
+    return { line, index, score }
+  }).filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 6)
+
+  const indexes = new Set<number>()
+  for (const entry of ranked) {
+    indexes.add(entry.index)
+    if (entry.index > 0) indexes.add(entry.index - 1)
+    if (entry.index + 1 < cleanLines.length) indexes.add(entry.index + 1)
+  }
+  let body = [...indexes].sort((a, b) => a - b).map((index) => cleanLines[index]).join('\n')
+  if (body.length < 120) body = cleanLines.slice(0, 12).join('\n')
+  return { title, body: body.slice(0, 4200) }
+}
+
+async function researchViaCloudflareBrowser(
+  query: string,
+  scope: ReturnType<typeof yqaaResearchScope>,
+): Promise<YqaaIndexedChunk[]> {
+  const browser = browserBinding()
+  if (!browser) return []
   const publicQuestion = sanitizeYqaaPublicQuestion(query)
-  const result = await callSystemSuperGrokWebSearch(
-    `${publicQuestion}\nJurisdiction: ${scope.jurisdiction || 'unspecified'}. Cite each factual sentence with its source URL.`,
-    scope.allowedDomains,
-  )
+  const domainClause = scope.allowedDomains?.length
+    ? ` (${scope.allowedDomains.slice(0, 5).map((domain) => `site:${domain}`).join(' OR ')})`
+    : ''
+  const discoveryUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`${publicQuestion}${domainClause}`)}`
+  const links = await browserAction<string[]>(browser, 'links', {
+    url: discoveryUrl,
+    rejectResourceTypes: ['image', 'font', 'media', 'stylesheet'],
+    gotoOptions: { waitUntil: 'domcontentloaded', timeout: 12_000 },
+  })
+  const candidates: string[] = []
+  for (const raw of Array.isArray(links?.result) ? links!.result! : []) {
+    const sourceUrl = safeCitation(duckDuckGoTarget(raw), scope.allowedDomains)
+    if (!sourceUrl || candidates.includes(sourceUrl)) continue
+    candidates.push(sourceUrl)
+    if (candidates.length >= 3) break
+  }
+  const chunks: YqaaIndexedChunk[] = []
+  for (const sourceUrl of candidates) {
+    try {
+      const page = await browserAction<string>(browser, 'markdown', {
+        url: sourceUrl,
+        rejectResourceTypes: ['image', 'font', 'media', 'stylesheet'],
+        gotoOptions: { waitUntil: 'domcontentloaded', timeout: 15_000 },
+      })
+      if (typeof page?.result !== 'string' || page.result.length < 80) continue
+      const finalUrl = safeCitation(page.meta?.finalUrl || sourceUrl, scope.allowedDomains)
+      if (!finalUrl) continue
+      const extracted = markdownEvidence(page.result, publicQuestion)
+      if (extracted.body.length < 80) continue
+      chunks.push({
+        id: `browser-web:${chunks.length + 1}`,
+        chunkKey: `browser-web:${chunks.length + 1}`,
+        sourceKey: 'cloudflare:browser_search',
+        title: extracted.title || page.meta?.title || new URL(finalUrl).hostname,
+        body: extracted.body,
+        source: finalUrl,
+        sourceUrl: finalUrl,
+        site: scope.officialOnly ? 'official-web' : 'public-web',
+        jurisdiction: scope.jurisdiction || undefined,
+        topicTags: [],
+        fetchedAt: new Date().toISOString(),
+        authorityTier: scope.officialOnly ? 5 : 3,
+        score: 8,
+      })
+    } catch (err) {
+      console.warn('[system-assistant] Browser research page fetch failed', err instanceof Error ? err.message : 'unknown')
+    }
+  }
+  return chunks
+}
+
+function xaiEvidenceChunks(
+  result: Awaited<ReturnType<typeof callSystemSuperGrokWebSearch>>,
+  scope: ReturnType<typeof yqaaResearchScope>,
+): YqaaIndexedChunk[] {
   if (result.webSearchCalls < 1) return []
   const cited = new Set(result.citations.map((url) => safeCitation(url, scope.allowedDomains)).filter(Boolean))
   const chunks: YqaaIndexedChunk[] = []
@@ -71,12 +215,10 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
       fetchedAt: new Date().toISOString(), authorityTier: scope.officialOnly ? 5 : 3, score: 8,
     })
   }
-
   for (const source of result.sources || []) {
     if (chunks.length >= 3) break
     addChunk(source.url, source.snippet || '', source.title)
   }
-
   const links = /\[\[\d+\]\]\((https:\/\/[^\s)]+)\)/g
   for (const match of result.text.matchAll(links)) {
     if (chunks.length >= 3) break
@@ -85,4 +227,42 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
     addChunk(match[1], sentence)
   }
   return chunks
+}
+
+/** Keep only public, citation-linked search findings; a model summary alone is not evidence. */
+export async function researchYqaaPublicWeb(query: string, hostname?: string | null): Promise<YqaaIndexedChunk[]> {
+  const scope = yqaaResearchScope(query, hostname)
+  const publicQuestion = sanitizeYqaaPublicQuestion(query)
+
+  // For regulated/current/YMYL research, deterministic official-source browser
+  // retrieval is both safer and faster than asking a model to decide whether
+  // to invoke a provider-side search tool.
+  if (scope.officialOnly) {
+    try {
+      const browserEvidence = await researchViaCloudflareBrowser(query, scope)
+      if (browserEvidence.length) return browserEvidence
+    } catch (err) {
+      console.warn('[system-assistant] Cloudflare Browser research failed', err instanceof Error ? err.message : 'unknown')
+    }
+  }
+
+  try {
+    const result = await callSystemSuperGrokWebSearch(
+      `${publicQuestion}\nJurisdiction: ${scope.jurisdiction || 'unspecified'}. Cite each factual sentence with its source URL.`,
+      scope.allowedDomains,
+    )
+    const chunks = xaiEvidenceChunks(result, scope)
+    if (chunks.length) return chunks
+  } catch (err) {
+    console.warn('[system-assistant] xAI web research unavailable', err instanceof Error ? err.message : 'unknown')
+  }
+
+  // Non-YMYL and provider-search failure both get the same bounded browser
+  // fallback. safeCitation() still rejects credentialed/private URLs.
+  try {
+    return await researchViaCloudflareBrowser(query, scope)
+  } catch (err) {
+    console.warn('[system-assistant] Cloudflare Browser fallback unavailable', err instanceof Error ? err.message : 'unknown')
+    return []
+  }
 }

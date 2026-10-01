@@ -560,13 +560,16 @@ const POPULAR_CHIPS: Record<Country, Array<{ label: string; q: string }>> = {
 const SERVICE_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'Service',
+  '@id': 'https://market.yousafeconsultancy.com/#service',
+  url: 'https://market.yousafeconsultancy.com/',
   name: 'YouSafe Marketplace',
   provider: {
     '@type': 'Organization',
+    '@id': 'https://yousafeconsultancy.com/#organization',
     name: 'YouSafe Consultancy',
     url: 'https://yousafeconsultancy.com',
   },
-  serviceType: 'Immigration and Tenancy Legal Marketplace',
+  serviceType: 'Immigration support, document preparation, and tenancy services marketplace',
   areaServed: [
     { '@type': 'Country', name: 'United States' },
     { '@type': 'Country', name: 'United Kingdom' },

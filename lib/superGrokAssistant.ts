@@ -1,5 +1,6 @@
 import { resolveMessengerGrokAuth, type MessengerGrokAuth } from '@/lib/messengerAi'
 import { XAI_API_BASE_DEFAULT } from '@/lib/xaiSuperGrokOAuth'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type SystemAssistantTurn = {
   role: 'user' | 'assistant'
@@ -316,22 +317,75 @@ export function parseSystemWebSearchResponse(raw: string): {
 }
 
 function directXaiWebAuth(current: MessengerGrokAuth): MessengerGrokAuth | null {
-  const apiKey = process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
+  let apiKey = ''
+  let model = ''
+  try {
+    const workerEnv = getCloudflareContext().env as CloudflareEnv & {
+      XAI_API_KEY?: string
+      GROK_API_KEY?: string
+      XAI_MODEL?: string
+    }
+    apiKey = workerEnv.XAI_API_KEY?.trim() || workerEnv.GROK_API_KEY?.trim() || ''
+    model = workerEnv.XAI_MODEL?.trim() || ''
+  } catch {
+    // Local/test execution can fall back to Node-style server env.
+  }
+  apiKey ||= process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
+  model ||= process.env.XAI_MODEL?.trim() || ''
   if (!apiKey || apiKey === current.apiKey) return null
   return {
     apiKey,
     baseURL: XAI_API_BASE_DEFAULT,
-    model: process.env.XAI_MODEL?.trim() || current.model,
+    model: model || current.model,
     authMode: 'env',
   }
 }
 
-/** One bounded xAI Responses web call with current-schema source extraction and a direct-key retry. */
+async function vaultXaiWebAuth(current: MessengerGrokAuth): Promise<MessengerGrokAuth | null> {
+  try {
+    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
+    const overlay = await withTimeout(buildVaultEnvOverrides(false), AUTH_TIMEOUT_MS, 'Assistant vault auth resolution')
+    const apiKey = overlay.XAI_API_KEY?.trim() || ''
+    if (!apiKey || apiKey === current.apiKey) return null
+    return {
+      apiKey,
+      baseURL: XAI_API_BASE_DEFAULT,
+      model: overlay.XAI_MODEL?.trim() || current.model,
+      authMode: 'vault',
+    }
+  } catch {
+    return null
+  }
+}
+
+export function safeWebSearchResponseMeta(raw: string) {
+  try {
+    const data = JSON.parse(raw) as Record<string, any>
+    const output = Array.isArray(data.output) ? data.output : []
+    const usage = data.usage || {}
+    return {
+      responseStatus: typeof data.status === 'string' ? data.status : null,
+      model: typeof data.model === 'string' ? data.model : null,
+      toolChoice: typeof data.tool_choice === 'string' ? data.tool_choice : data.tool_choice?.type || null,
+      outputTypes: output.map((item: any) => String(item?.type || 'unknown')).slice(0, 12),
+      citationsCount: Array.isArray(data.citations) ? data.citations.length : 0,
+      numSourcesUsed: Number(usage.num_sources_used || 0) || 0,
+      numServerSideToolsUsed: Number(usage.num_server_side_tools_used || 0) || 0,
+      webSearchCalls: Number(usage.server_side_tool_usage_details?.web_search_calls ?? usage.server_side_tool_usage?.web_search_calls ?? 0) || 0,
+      errorType: typeof data.error?.type === 'string' ? data.error.type : null,
+      errorCode: typeof data.error?.code === 'string' ? data.error.code : null,
+    }
+  } catch {
+    return { parseable: false }
+  }
+}
+
+/** One bounded xAI Responses web call with current-schema source extraction and independent credential failover. */
 export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
 ): Promise<{ text: string; citations: string[]; webSearchCalls: number; sources: SystemWebSearchSource[] }> {
-  let auth = await resolveCachedAuth()
+  let resolvedAuth = await resolveCachedAuth()
   const request = (selectedAuth: MessengerGrokAuth) => postJsonWithRetry(
     `${selectedAuth.baseURL}/responses`,
     {
@@ -344,22 +398,19 @@ export async function callSystemSuperGrokWebSearch(
           { role: 'user', content: question },
         ],
         tools: [{ type: 'web_search', ...(allowedDomains?.length ? { filters: { allowed_domains: allowedDomains.slice(0, 5) } } : {}) }],
+        // This function is invoked only after YQAA has already decided current
+        // public-web evidence is required. Do not let the model silently skip
+        // the only offered research tool and answer from memory instead.
+        tool_choice: 'required',
         include: ['web_search_call.action.sources'],
         reasoning: { effort: 'low' },
         max_output_tokens: 900,
         store: false,
       }),
     },
-    18_000,
+    30_000,
     1,
   )
-
-  let result = await request(auth)
-  if (AUTH_FAILURE_STATUS.has(result.response.status)) {
-    authCache = null
-    auth = await resolveCachedAuth(true)
-    result = await request(auth)
-  }
 
   const parseIfUsable = (candidate: { response: Response; text: string }) => {
     if (!candidate.response.ok || candidate.text.length > 65_536) return null
@@ -369,17 +420,59 @@ export async function callSystemSuperGrokWebSearch(
     } catch { return null }
   }
 
-  const first = parseIfUsable(result)
-  if (first) return first
+  const vaultAuth = await vaultXaiWebAuth(resolvedAuth)
+  const directAuth = directXaiWebAuth(resolvedAuth)
+  // Server-side search is an API-billed tool. Follow the estate's credential
+  // precedence for developer keys first, then retain SuperGrok/OAuth as an
+  // independent recovery lane. Deduplicate identical credentials.
+  const rawCandidates: MessengerGrokAuth[] = [vaultAuth, directAuth, resolvedAuth].filter(Boolean) as MessengerGrokAuth[]
+  const seenKeys = new Set<string>()
+  const candidates = rawCandidates.filter((candidate) => {
+    if (seenKeys.has(candidate.apiKey)) return false
+    seenKeys.add(candidate.apiKey)
+    return true
+  })
+  const diagnostics: Array<{
+    authMode: string
+    status: number | 'network'
+    reason?: string
+    meta?: ReturnType<typeof safeWebSearchResponseMeta>
+  }> = []
 
-  const fallbackAuth = directXaiWebAuth(auth)
-  if (fallbackAuth) {
-    const fallback = await request(fallbackAuth)
-    const parsed = parseIfUsable(fallback)
-    if (parsed) return parsed
-    if (!fallback.response.ok) throw new Error(`Web research failed (${fallback.response.status})`)
+  for (let index = 0; index < candidates.length; index += 1) {
+    let selectedAuth = candidates[index]
+    try {
+      let result = await request(selectedAuth)
+      if (AUTH_FAILURE_STATUS.has(result.response.status) && selectedAuth.apiKey === resolvedAuth.apiKey) {
+        authCache = null
+        resolvedAuth = await resolveCachedAuth(true)
+        selectedAuth = resolvedAuth
+        result = await request(selectedAuth)
+      }
+      const parsed = parseIfUsable(result)
+      if (parsed) return parsed
+      diagnostics.push({
+        authMode: selectedAuth.authMode,
+        status: result.response.status,
+        meta: safeWebSearchResponseMeta(result.text),
+      })
+    } catch (err) {
+      diagnostics.push({
+        authMode: selectedAuth.authMode,
+        status: 'network',
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'request failed',
+      })
+    }
   }
 
-  if (!result.response.ok) throw new Error(`Web research failed (${result.response.status})`)
-  throw new Error('Web research returned no citation-linked sources')
+  console.warn('[system-assistant] web research transport exhausted', {
+    vaultKeyConfigured: Boolean(vaultAuth),
+    workerKeyConfigured: Boolean(directAuth),
+    attempts: diagnostics,
+  })
+  const last = diagnostics.at(-1)
+  if (last?.status && typeof last.status === 'number' && last.status >= 400) {
+    throw new Error(`Web research failed (${last.status})`)
+  }
+  throw new Error(last?.reason || 'Web research returned no citation-linked sources')
 }

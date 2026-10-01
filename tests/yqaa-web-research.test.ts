@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 
 describe('YQAA public web research', () => {
-  afterEach(() => { jest.resetModules(); jest.dontMock('@/lib/superGrokAssistant') })
+  afterEach(() => { jest.resetModules(); jest.dontMock('@/lib/superGrokAssistant'); jest.dontMock('@opennextjs/cloudflare') })
 
   test('Australia on a USA host restricts xAI search and accepts only Australia official citations', async () => {
     const callSystemSuperGrokWebSearch = jest.fn(async (_question: string, _domains?: string[]) => ({
@@ -19,6 +19,69 @@ describe('YQAA public web research', () => {
     expect(evidence).toHaveLength(1)
     expect(evidence[0]).toMatchObject({ jurisdiction: 'Australia', sourceKey: 'xai:web_search' })
     expect(evidence[0].sourceUrl).toContain('immi.homeaffairs.gov.au')
+  })
+
+  test('YMYL latest OPT research uses Cloudflare Browser official discovery and direct page markdown before xAI', async () => {
+    const optUrl = 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students'
+    const wrongUrl = 'https://example.com/opt-rumor'
+    const quickAction = jest.fn(async (action: string) => {
+      if (action === 'links') {
+        return new Response(JSON.stringify({
+          success: true,
+          result: [
+            `https://duckduckgo.com/l/?uddg=${encodeURIComponent(optUrl)}&rut=abc`,
+            `https://duckduckgo.com/l/?uddg=${encodeURIComponent(wrongUrl)}&rut=def`,
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        result: `---\ntitle: "Optional Practical Training (OPT) for F-1 Students | USCIS"\n---\n# Optional Practical Training (OPT) for F-1 Students\nOptional Practical Training is temporary employment that is directly related to an F-1 student's major area of study.\nPost-completion OPT generally occurs after completing the academic program.\nUSCIS publishes the current filing and employment-authorization requirements for eligible F-1 students.`,
+        meta: { status: 200, title: 'Optional Practical Training (OPT) for F-1 Students | USCIS', finalUrl: optUrl },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    const callSystemSuperGrokWebSearch = jest.fn(async () => { throw new Error('xAI should not be needed') })
+    jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: { BROWSER: { quickAction } } }) }))
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch }))
+    const { researchYqaaPublicWeb } = await import('@/lib/yqaaWebResearch')
+    const evidence = await researchYqaaPublicWeb('What are the latest OPT news and updates for F-1 students?', 'portal.yousafeconsultancy.com')
+    expect(callSystemSuperGrokWebSearch).not.toHaveBeenCalled()
+    expect(quickAction).toHaveBeenCalledWith('links', expect.objectContaining({ url: expect.stringContaining('duckduckgo.com') }))
+    expect(quickAction).toHaveBeenCalledWith('markdown', expect.objectContaining({ url: optUrl }))
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({
+      sourceKey: 'cloudflare:browser_search',
+      sourceUrl: optUrl,
+      jurisdiction: 'United States',
+      site: 'official-web',
+      authorityTier: 5,
+    })
+    expect(evidence[0].body).toMatch(/Optional Practical Training/i)
+    expect(evidence.some((item) => item.sourceUrl === wrongUrl)).toBe(false)
+  })
+
+  test('Browser fallback rejects private-network candidates and revalidates final redirects', async () => {
+    const safe = 'https://example.com/public-guide'
+    const quickAction = jest.fn(async (action: string) => {
+      if (action === 'links') return new Response(JSON.stringify({ success: true, result: [
+        'https://127.0.0.1/private',
+        'https://192.168.1.5/secret',
+        'https://example.com/account/profile',
+        safe,
+      ], meta: { status: 200 } }), { status: 200 })
+      return new Response(JSON.stringify({
+        success: true,
+        result: '---\ntitle: "Public guide"\n---\n# Public guide\nThis public guide explains remote work productivity with enough grounded detail for a useful answer.',
+        meta: { status: 200, finalUrl: safe },
+      }), { status: 200 })
+    })
+    jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: { BROWSER: { quickAction } } }) }))
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch: jest.fn(async () => { throw new Error('xAI unavailable') }) }))
+    const { researchYqaaPublicWeb } = await import('@/lib/yqaaWebResearch')
+    const evidence = await researchYqaaPublicWeb('Search the live web for remote work productivity guidance')
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ sourceUrl: safe, site: 'public-web', authorityTier: 3 })
+    expect(quickAction).toHaveBeenCalledTimes(2)
   })
 
   test('latest/current intent is freshness-sensitive and OPT scopes to US primary sources', async () => {

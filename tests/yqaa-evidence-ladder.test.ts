@@ -15,7 +15,8 @@ const weakJev = () => ({ available: true, advisory: {
 
 async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
-  jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean
+  jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean;
+  generationError?: boolean
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
@@ -27,7 +28,10 @@ async function setup(opts: {
   const researchYqaaPublicWeb = jest.fn(opts.webError
     ? async () => { throw new Error('web unavailable') }
     : async () => opts.web ?? [])
-  const generateYqaaAnswer = jest.fn(async () => ({ text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }))
+  const generateYqaaAnswer = jest.fn(async () => {
+    if (opts.generationError) throw new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')
+    return { text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }
+  })
   const escalateToSupport = jest.fn(async () => ({ conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }))
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
@@ -64,6 +68,55 @@ describe('YQAA final evidence ladder', () => {
     const result = await flow.ask('What are the latest OPT rules for F-1 students?')
     expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
     expect(flow.requestJevAdvisory).toHaveBeenCalledTimes(2)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    const systemPrompt = String((flow.generateYqaaAnswer.mock.calls as any[][])[0][0])
+    expect(systemPrompt).toContain('LIVE WEB RESEARCH — VERIFIED THIS TURN')
+    expect(systemPrompt).toContain('Do NOT say that you cannot search, browse, crawl, access, or research the live web')
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
+  test('Browser evidence explicitly tells the model live research succeeded even when second Jev is unavailable', async () => {
+    const official = { ...kbChunk('official-web'), id: 'browser-live', sourceKey: 'cloudflare:browser_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ confidence: 0.2, jev: [weakJev(), { available: false, reason: 'request_failed' }], web: [official] })
+    const result = await flow.ask('What are the latest OPT news for F-1 students?')
+    expect(result.body.provider).toBe('system-ai')
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    const systemPrompt = String((flow.generateYqaaAnswer.mock.calls as any[][])[0][0])
+    expect(systemPrompt).toContain('LIVE WEB RESEARCH — VERIFIED THIS TURN')
+    expect(systemPrompt).toContain('Do NOT say that you cannot search, browse, crawl, access, or research the live web')
+    expect(systemPrompt).toContain(official.sourceUrl)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
+  test('verified live research returns a source digest instead of 502 when the generation seam is exhausted', async () => {
+    const official = { ...kbChunk('official-web'), id: 'digest-browser', sourceKey: 'cloudflare:browser_search',
+      title: 'Optional Practical Training (OPT) for F-1 Students | USCIS',
+      body: 'USCIS publishes current official Optional Practical Training guidance for F-1 students.',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ jev: [clearJev(), clearJev()], web: [official], generationError: true })
+    const result = await flow.ask('What are the latest OPT updates for F-1 students?')
+    expect(result.status).toBe(200)
+    expect(result.body.provider).toBe('system-ai-live-evidence')
+    expect(result.body.reply).toContain('Live web research succeeded')
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(result.body.reply).toContain('model-synthesis issue')
+    expect(result.body.reply).not.toMatch(/can(?:not|'t) search|web access.*unavailable/i)
+    expect(result.body.handoff).toBeUndefined()
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
+  test('Browser-derived live web evidence is retained and cited in the final YQAA answer', async () => {
+    const official = { ...kbChunk('official-web'), id: 'browser-opt', sourceKey: 'cloudflare:browser_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ jev: [clearJev(), clearJev()], web: [official] })
+    const result = await flow.ask('What are the latest OPT rules for F-1 students?')
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
     expect(result.body.reply).toContain(official.sourceUrl)
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
