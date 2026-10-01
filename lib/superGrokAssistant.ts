@@ -359,6 +359,10 @@ export async function callSystemSuperGrokWebSearch(
           { role: 'user', content: question },
         ],
         tools: [{ type: 'web_search', ...(allowedDomains?.length ? { filters: { allowed_domains: allowedDomains.slice(0, 5) } } : {}) }],
+        // This function is invoked only after YQAA has already decided current
+        // public-web evidence is required. Do not let the model silently skip
+        // the only offered research tool and answer from memory instead.
+        tool_choice: 'required',
         include: ['web_search_call.action.sources'],
         reasoning: { effort: 'low' },
         max_output_tokens: 900,
