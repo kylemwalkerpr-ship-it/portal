@@ -67,9 +67,12 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         userAgent: [
           'OAI-SearchBot',
           'ChatGPT-User',
+          'GPTBot',
           'PerplexityBot',
           'Perplexity-User',
           'Claude-User',
+          'Claude-SearchBot',
+          'ClaudeBot',
         ],
         allow: '/',
         disallow: ['/api/'],
