@@ -1,0 +1,41 @@
+{
+  "operation": "mounted_absence_only",
+  "proof_id": "8efda853-9fcb-4853-87e1-8fa7d84b913a",
+  "artifact_path": "proofs/modal-storage-proof/8efda853-9fcb-4853-87e1-8fa7d84b913a.bin",
+  "environment": "content-studio-staging",
+  "volume_name": "content-studio-artifacts",
+  "source_head": "a25aa5771fbb5891a3f8c22ebd8ef3f5333ac415",
+  "started_unix": 1790865202.687237,
+  "writes": 0,
+  "remote_function_calls": 1,
+  "gpu": null,
+  "cpu": [
+    0.25,
+    0.25
+  ],
+  "memory": [
+    128,
+    256
+  ],
+  "max_containers_per_function": 1,
+  "retries": 0,
+  "original_probe_receipt_unchanged": true,
+  "app_id": "ap-h1Io2MJVfSgR7oaQWlFrkz",
+  "own_path_missing": true,
+  "proof_root_entry_count": 0,
+  "mounted_absence_passed": true,
+  "finished_unix": 1790865213.379888,
+  "own_app_stop_command_exit": 1,
+  "own_app_stop_command_result": "already stopped",
+  "own_app_metadata": [
+    {
+      "app_id": "ap-h1Io2MJVfSgR7oaQWlFrkz",
+      "description": "content-studio-modal-volume-proof",
+      "state": "stopped",
+      "tasks": "0",
+      "created_at": "2026-10-01 10:33:26-04:00",
+      "stopped_at": "2026-10-01 10:33:36-04:00"
+    }
+  ],
+  "modal_sdk_version": "1.5.5"
+}
