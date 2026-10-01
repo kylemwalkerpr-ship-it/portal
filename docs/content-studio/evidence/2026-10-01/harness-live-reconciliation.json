@@ -1,0 +1,22 @@
+{
+  "configured_source_head": "8422a380dc0c66ac315c95de6acdfeb4774949a8",
+  "health": {
+    "ok": true,
+    "status": "ok",
+    "harness_version": "0.6.4",
+    "db_schema_version": 11,
+    "db_schema_supported": 11,
+    "worker_alive": true,
+    "workers_alive": 4,
+    "workers_expected": 4,
+    "accepting": true,
+    "draining": false,
+    "pending_jobs": 0,
+    "worker_fault_count": 39,
+    "execution_shadow_fault_count": 0,
+    "db_read_ok": true,
+    "db_write_ok": true,
+    "disk_low": false
+  },
+  "final_generation_artifact_repairs_loaded": false
+}
