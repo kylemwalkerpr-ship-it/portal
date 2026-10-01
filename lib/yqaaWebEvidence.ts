@@ -13,6 +13,27 @@ type LiveWebEvidenceLike = {
   sourceUrl?: string
   source?: string
   fetchedAt?: string
+  title?: string
+  body?: string
+  jurisdiction?: string
+}
+
+function liveWebEvidence(chunks: LiveWebEvidenceLike[]): LiveWebEvidenceLike[] {
+  const seen = new Set<string>()
+  return chunks.filter((chunk) => {
+    if (!isYqaaLiveWebSourceKey(chunk.sourceKey)) return false
+    const url = String(chunk.sourceUrl || chunk.source || '').trim()
+    if (!/^https:\/\//i.test(url) || seen.has(url)) return false
+    seen.add(url)
+    return true
+  })
+}
+
+function compactExcerpt(value: unknown, max = 1200): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
 }
 
 export function buildYqaaLiveResearchContext(
@@ -36,6 +57,28 @@ export function buildYqaaLiveResearchContext(
     'Do NOT say that you cannot search, browse, crawl, access, or research the live web on this turn. Do NOT call this evidence merely cached or offline when it was retrieved for this turn.',
     'Do not imply that search results are exhaustive. Distinguish what the cited official pages verify from anything that remains uncertain.',
   ].filter(Boolean).join('\n')
+}
+
+
+export function buildYqaaVerifiedWebDigest(
+  chunks: LiveWebEvidenceLike[],
+): string {
+  const live = liveWebEvidence(chunks).slice(0, 3)
+  if (!live.length) return ''
+  const sources = live.map((chunk) => {
+    const url = String(chunk.sourceUrl || chunk.source)
+    const title = compactExcerpt(chunk.title || new URL(url).hostname, 220)
+    const excerpt = compactExcerpt(chunk.body, 260)
+    return `- **${title}** — [${new URL(url).hostname}](${url})${excerpt ? `\n  Retrieved evidence: ${excerpt}${String(chunk.body || '').replace(/\\s+/g, ' ').trim().length > 260 ? '…' : ''}` : ''}`
+  }).join('\n')
+  return [
+    '**Live web research succeeded.** I retrieved current public sources for this request, but the answer-synthesis model did not complete reliably enough for me to turn them into a confident narrative answer.',
+    '',
+    'Rather than invent or overstate anything, here are the live sources and the bounded evidence I verified:',
+    sources,
+    '',
+    'You can retry the question for a synthesized YQAA answer. This is a model-synthesis issue, not a web-access limitation.',
+  ].join('\n')
 }
 
 export function guardVerifiedLiveResearchDisclosure(text: string, verified: boolean): string {
