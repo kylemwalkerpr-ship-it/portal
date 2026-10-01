@@ -103,12 +103,14 @@ function canonicalPath(pathname: string, policy: EstateRoutePolicyV1): string | 
   if (normalized.length > policy.maxPathLength) return null
   if (policy.trailingSlash === 'always' && normalized !== '/') normalized += '/'
   if (policy.trailingSlash === 'never' && normalized.length > 1) normalized = normalized.replace(/\/+$/, '')
+  if (policy.trailingSlash === 'preserve' && normalized !== '/' && pathname.endsWith('/')) normalized += '/'
   return normalized
 }
 
 /** Validate an absolute HTTPS canonical against a registered, explicit host policy. */
 export function normalizeRouteV1(canonicalUrl: string, policy: EstateRoutePolicyV1): NormalizedRouteV1 | null {
   if (policy.schemaVersion !== ESTATE_OWNERSHIP_SCHEMA_VERSION || !policy.routePolicyVersion || !policy.hostId || !policy.canonicalHost || !Number.isInteger(policy.maxPathLength) || policy.maxPathLength < 1) return null
+  if (canonicalUrl.includes('\\')) return null
   const rawPath = canonicalUrl.match(/^https:\/\/[^/?#]*(\/[^?#]*)?/i)?.[1] ?? '/'
   // URL() removes literal dot segments during parsing, so inspect the supplied
   // spelling first to ensure traversal is rejected rather than normalized.

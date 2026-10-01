@@ -64,6 +64,17 @@ describe('estate ownership versioned pure contract', () => {
     expect(normalizeRouteV1('https://legal.example.test/admin/draft', routePolicy)).toBeNull()
   })
 
+  it('preserves a genuine trailing slash only when the route policy preserves it', () => {
+    const preservePolicy = { ...routePolicy, trailingSlash: 'preserve' as const }
+    expect(normalizeRouteV1('https://legal.example.test/guide/', preservePolicy)?.canonicalPath).toBe('/guide/')
+    expect(normalizeRouteV1('https://legal.example.test/', preservePolicy)?.canonicalPath).toBe('/')
+    expect(normalizeRouteV1('https://legal.example.test/guide', { ...preservePolicy, trailingSlash: 'never' })?.canonicalPath).toBe('/guide')
+  })
+
+  it('rejects raw URL backslashes before URL parsing can normalize them', () => {
+    expect(normalizeRouteV1('https://legal.example.test/guide\\private', routePolicy)).toBeNull()
+  })
+
   it('blocks live owners, tombstones, and pending intent or route reservations', () => {
     const intentKey = normalizeIntentV1(intent())!
     const route = normalizeRouteV1('https://legal.example.test/us/i-485-guide', routePolicy)!
