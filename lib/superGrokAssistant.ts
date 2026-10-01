@@ -341,7 +341,46 @@ function directXaiWebAuth(current: MessengerGrokAuth): MessengerGrokAuth | null 
   }
 }
 
-/** One bounded xAI Responses web call with current-schema source extraction and a direct-key retry. */
+async function vaultXaiWebAuth(current: MessengerGrokAuth): Promise<MessengerGrokAuth | null> {
+  try {
+    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
+    const overlay = await withTimeout(buildVaultEnvOverrides(false), AUTH_TIMEOUT_MS, 'Assistant vault auth resolution')
+    const apiKey = overlay.XAI_API_KEY?.trim() || ''
+    if (!apiKey || apiKey === current.apiKey) return null
+    return {
+      apiKey,
+      baseURL: XAI_API_BASE_DEFAULT,
+      model: overlay.XAI_MODEL?.trim() || current.model,
+      authMode: 'vault',
+    }
+  } catch {
+    return null
+  }
+}
+
+export function safeWebSearchResponseMeta(raw: string) {
+  try {
+    const data = JSON.parse(raw) as Record<string, any>
+    const output = Array.isArray(data.output) ? data.output : []
+    const usage = data.usage || {}
+    return {
+      responseStatus: typeof data.status === 'string' ? data.status : null,
+      model: typeof data.model === 'string' ? data.model : null,
+      toolChoice: typeof data.tool_choice === 'string' ? data.tool_choice : data.tool_choice?.type || null,
+      outputTypes: output.map((item: any) => String(item?.type || 'unknown')).slice(0, 12),
+      citationsCount: Array.isArray(data.citations) ? data.citations.length : 0,
+      numSourcesUsed: Number(usage.num_sources_used || 0) || 0,
+      numServerSideToolsUsed: Number(usage.num_server_side_tools_used || 0) || 0,
+      webSearchCalls: Number(usage.server_side_tool_usage_details?.web_search_calls ?? usage.server_side_tool_usage?.web_search_calls ?? 0) || 0,
+      errorType: typeof data.error?.type === 'string' ? data.error.type : null,
+      errorCode: typeof data.error?.code === 'string' ? data.error.code : null,
+    }
+  } catch {
+    return { parseable: false }
+  }
+}
+
+/** One bounded xAI Responses web call with current-schema source extraction and independent credential failover. */
 export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
@@ -381,15 +420,24 @@ export async function callSystemSuperGrokWebSearch(
     } catch { return null }
   }
 
+  const vaultAuth = await vaultXaiWebAuth(resolvedAuth)
   const directAuth = directXaiWebAuth(resolvedAuth)
-  // Live research prefers the commissioned xAI API key because it is the
-  // credential explicitly provisioned for xAI Responses tools in production.
-  // SuperGrok/OAuth remains an independent fallback. A timeout/error on either
-  // lane must never prevent the other lane from being attempted.
-  const candidates: MessengerGrokAuth[] = directAuth
-    ? [directAuth, resolvedAuth]
-    : [resolvedAuth]
-  const diagnostics: Array<{ authMode: string; status: number | 'network'; reason?: string }> = []
+  // Server-side search is an API-billed tool. Follow the estate's credential
+  // precedence for developer keys first, then retain SuperGrok/OAuth as an
+  // independent recovery lane. Deduplicate identical credentials.
+  const rawCandidates: MessengerGrokAuth[] = [vaultAuth, directAuth, resolvedAuth].filter(Boolean) as MessengerGrokAuth[]
+  const seenKeys = new Set<string>()
+  const candidates = rawCandidates.filter((candidate) => {
+    if (seenKeys.has(candidate.apiKey)) return false
+    seenKeys.add(candidate.apiKey)
+    return true
+  })
+  const diagnostics: Array<{
+    authMode: string
+    status: number | 'network'
+    reason?: string
+    meta?: ReturnType<typeof safeWebSearchResponseMeta>
+  }> = []
 
   for (let index = 0; index < candidates.length; index += 1) {
     let selectedAuth = candidates[index]
@@ -403,7 +451,11 @@ export async function callSystemSuperGrokWebSearch(
       }
       const parsed = parseIfUsable(result)
       if (parsed) return parsed
-      diagnostics.push({ authMode: selectedAuth.authMode, status: result.response.status })
+      diagnostics.push({
+        authMode: selectedAuth.authMode,
+        status: result.response.status,
+        meta: safeWebSearchResponseMeta(result.text),
+      })
     } catch (err) {
       diagnostics.push({
         authMode: selectedAuth.authMode,
@@ -414,7 +466,8 @@ export async function callSystemSuperGrokWebSearch(
   }
 
   console.warn('[system-assistant] web research transport exhausted', {
-    directKeyPrimaryConfigured: Boolean(directAuth),
+    vaultKeyConfigured: Boolean(vaultAuth),
+    workerKeyConfigured: Boolean(directAuth),
     attempts: diagnostics,
   })
   const last = diagnostics.at(-1)
