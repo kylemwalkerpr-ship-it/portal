@@ -57,6 +57,24 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   }
 
   if (host === MARKET_HOST) {
+    result.rules = [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: ['/api/', '/_next/static/'],
+      },
+      {
+        userAgent: [
+          'OAI-SearchBot',
+          'ChatGPT-User',
+          'PerplexityBot',
+          'Perplexity-User',
+          'Claude-User',
+        ],
+        allow: '/',
+        disallow: ['/api/', '/_next/static/'],
+      },
+    ]
     result.sitemap = `https://${MARKET_HOST}/sitemap.xml`
   }
 
