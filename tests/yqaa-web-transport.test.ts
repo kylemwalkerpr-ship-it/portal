@@ -57,6 +57,37 @@ describe('YQAA xAI web-search transport', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1)
     const headers = (global.fetch as jest.Mock).mock.calls[0][1].headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer worker-direct-key')
+    const body = JSON.parse(String((global.fetch as jest.Mock).mock.calls[0][1].body))
+    expect(body.tool_choice).toBe('required')
+    expect(body.tools).toEqual([expect.objectContaining({ type: 'web_search' })])
+  })
+
+  test('falls back to SuperGrok/OAuth when the direct xAI key is forbidden and still requires web search', async () => {
+    process.env.XAI_API_KEY = 'direct-search-key'
+    jest.doMock('@/lib/messengerAi', () => ({
+      resolveMessengerGrokAuth: jest.fn(async () => ({
+        apiKey: 'oauth-token', baseURL: 'https://api.x.ai/v1', model: 'grok-4.7', authMode: 'supergrok',
+      })),
+    }))
+    const oauth = JSON.stringify({
+      citations: ['https://www.uscis.gov/opt'],
+      output: [
+        { type: 'web_search_call', action: { sources: [{ url: 'https://www.uscis.gov/opt', snippet: 'USCIS OPT source.' }] } },
+        { type: 'message', content: [{ type: 'output_text', text: 'USCIS OPT guidance.[[1]](https://www.uscis.gov/opt)' }] },
+      ],
+      usage: { server_side_tool_usage_details: { web_search_calls: 1 } },
+    })
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(new Response('{"error":"forbidden"}', { status: 403 }))
+      .mockResolvedValueOnce(new Response(oauth, { status: 200, headers: { 'Content-Type': 'application/json' } })) as any
+
+    const { callSystemSuperGrokWebSearch } = await import('@/lib/superGrokAssistant')
+    const result = await callSystemSuperGrokWebSearch('latest OPT guidance', ['uscis.gov'])
+    expect(result.webSearchCalls).toBe(1)
+    expect(result.citations).toContain('https://www.uscis.gov/opt')
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    const oauthBody = JSON.parse(String((global.fetch as jest.Mock).mock.calls[1][1].body))
+    expect(oauthBody.tool_choice).toBe('required')
   })
 
   test('falls back to SuperGrok/OAuth when the direct xAI live-search request times out', async () => {
