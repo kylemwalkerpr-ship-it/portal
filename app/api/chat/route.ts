@@ -20,7 +20,11 @@ import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneratio
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
-import { isYqaaLiveWebSourceKey } from '@/lib/yqaaWebEvidence'
+import {
+  buildYqaaLiveResearchContext,
+  guardVerifiedLiveResearchDisclosure,
+  isYqaaLiveWebSourceKey,
+} from '@/lib/yqaaWebEvidence'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -297,12 +301,7 @@ export async function POST(req: Request) {
       origin: inquiryOrigin,
       curatedChunks: publicEvidence,
     })
-    const liveWebNotice = webEvidenceCount > 0 ? [
-      '# LIVE WEB RESEARCH SUCCEEDED',
-      `Live public-web evidence was retrieved this turn from ${webEvidenceCount} source${webEvidenceCount === 1 ? '' : 's'}.`,
-      'Use the supplied web evidence and cite its source URLs for freshness-sensitive claims.',
-      'Do not say that web search, internet access, or live research is unavailable on this turn.',
-    ].join('\n') : ''
+    const liveResearchContext = buildYqaaLiveResearchContext(publicEvidence, webResearchStatus)
     const evidenceLimit = safety.answer ? '' : [
       '# CURRENT TURN EVIDENCE LIMIT',
       `Evidence check: ${safety.reason.replace(/_handoff$/, '')}.`,
@@ -310,18 +309,20 @@ export async function POST(req: Request) {
       'This evidence limitation is not, by itself, a reason to create a human-support handoff.',
       'Continue helping through YQAA. Give the most useful general answer supported by canonical/public evidence. If a current or YouSafe-specific fact cannot be verified, say that plainly and give the closest verified self-service next step. Do not invent specifics or claim freshness, certainty, eligibility, or outcomes that the evidence does not support.',
     ].join('\n')
-    const systemKnowledge = [baseSystemKnowledge, liveWebNotice, evidenceLimit].filter(Boolean).join('\n\n')
+    const systemKnowledge = [baseSystemKnowledge, liveResearchContext, evidenceLimit].filter(Boolean).join('\n\n')
     const modelStartedAt = Date.now()
     const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
+    const verifiedLiveResearch = webEvidenceCount > 0 && (webResearchStatus === 'verified' || webResearchStatus === 'retrieved')
+    const researchGuardedText = guardVerifiedLiveResearchDisclosure(pricingGuard.text, verifiedLiveResearch)
     const webCitations = publicEvidence.filter((chunk) => isYqaaLiveWebSourceKey(chunk.sourceKey))
       .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
-    const missingCitations = webCitations.filter((url) => !pricingGuard.text.includes(url))
+    const missingCitations = webCitations.filter((url) => !researchGuardedText.includes(url))
     const finalText = missingCitations.length
-      ? `${pricingGuard.text}\n\nSources: ${missingCitations.map((url) => `[${new URL(url).hostname}](${url})`).join(', ')}`
-      : pricingGuard.text
+      ? `${researchGuardedText}\n\nSources: ${missingCitations.map((url) => `[${new URL(url).hostname}](${url})`).join(', ')}`
+      : researchGuardedText
     const totalMs = Date.now() - requestStartedAt
 
     if (guarded.corrected) {
