@@ -50,7 +50,7 @@ describe('marketplace LLM discovery', () => {
     expect(llms).toMatch(/licensed attorneys/i)
     expect(llms).toContain('https://legal.yousafeconsultancy.com')
     expect(llms).toContain('https://market.yousafeconsultancy.com/')
-    expect(llms).toMatch(/account utilities/i)
+    expect(llms).toMatch(/private account utilities/i)
     expect(llms).not.toMatch(/^## Optional/m)
     expect(llms).not.toMatch(/escrow|encrypted transactions|compliance/i)
     expect(llms).toContain('https://yousafeconsultancy.com')

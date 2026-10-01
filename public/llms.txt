@@ -10,7 +10,7 @@ YouSafe Consultancy is not a law firm. Legal advice comes only from independentl
 - [File shop](https://market.yousafeconsultancy.com/shop) — workbooks, templates, and short guides. Pay once, download immediately.
 - Regional informational sites: [USA](https://usa.yousafeconsultancy.com), [Canada](https://ca.yousafeconsultancy.com), [UK](https://uk.yousafeconsultancy.com), [Australia](https://au.yousafeconsultancy.com).
 - [Legal procedural guides](https://legal.yousafeconsultancy.com) — legal and procedural articles. They are not Marketplace commerce pages.
-- Portal links are account utilities: [client sign-in](https://portal.yousafeconsultancy.com/sign-in/student), [apply as attorney](https://portal.yousafeconsultancy.com/sign-up/attorney).
+Signed-in portal pages are private account utilities and are not citable public content.
 
 ## Important links
 
@@ -24,6 +24,4 @@ YouSafe Consultancy is not a law firm. Legal advice comes only from independentl
 - [Australia](https://au.yousafeconsultancy.com)
 - [Blog and guides](https://yousafeconsultancy.com/blog)
 - [Legal article feed](https://legal.yousafeconsultancy.com)
-- [Client portal login](https://portal.yousafeconsultancy.com/sign-in/student)
-- [Apply as attorney](https://portal.yousafeconsultancy.com/sign-up/attorney)
 - [Contact](https://yousafeconsultancy.com/contact)
