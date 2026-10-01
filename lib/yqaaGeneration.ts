@@ -1,4 +1,4 @@
-import { adapterFor, DEEPSEEK_V41_FLASH_PIN, type CommissionedProviderPin } from '@/lib/contentAiRegistry'
+import { adapterFor, DEEPSEEK_V41_FLASH_PIN, resolveDeepseekFirstPartyApiKey, type CommissionedProviderPin } from '@/lib/contentAiRegistry'
 import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
 import { refreshAiVault } from '@/lib/contentAiProviderCore'
 
@@ -56,6 +56,15 @@ async function generateWithProvider(provider: YqaaProvider, system: string, turn
   return { text, model: result.model }
 }
 
+function compactGrokRecoverySystem(system: string): string {
+  const value = String(system || '')
+  if (value.length <= 10_000) return value
+  // Preserve the opening policy/canonical contract and the newest evidence /
+  // turn-specific constraints at the end. This retry exists only after the
+  // full-prompt Grok path has already failed transiently.
+  return `${value.slice(0, 5_000)}\n\n[Recovery prompt compacted after transient provider failure.]\n\n${value.slice(-5_000)}`
+}
+
 /** Provider-neutral YQAA answer seam. Grok remains default; fallback needs an exact server pin. */
 export async function generateYqaaAnswer(system: string, turns: SystemAssistantTurn[]): Promise<YqaaGenerationResult> {
   const selection = configuredYqaaProviders()
@@ -64,14 +73,28 @@ export async function generateYqaaAnswer(system: string, turns: SystemAssistantT
     return { ...generated, provider: selection.primary, fallback: false }
   } catch (error) {
     const evidence = classifyYqaaProviderFailure(error)
-    if (!selection.fallback || !evidence.eligible) throw error
+    if (!evidence.eligible) throw error
 
-    // YQAA's primary Grok path has its own auth resolver, but the commissioned
-    // DeepSeek adapter reads credentials through contentAiEnv(). Hydrate that
-    // vault overlay only when an eligible fallback is actually needed so the
-    // normal Grok path pays no vault-read latency tax.
-    await refreshAiVault()
-    const generated = await generateWithProvider(selection.fallback, system, turns)
-    return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: evidence }
+    // A transient Grok timeout is common on evidence-heavy live-research
+    // turns. Give the commissioned primary one compact recovery attempt before
+    // crossing providers. This also keeps YQAA operational when the optional
+    // DeepSeek credential has not been provisioned.
+    try {
+      const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns)
+      return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
+    } catch (recoveryError) {
+      const recoveryEvidence = classifyYqaaProviderFailure(recoveryError)
+      if (!selection.fallback || !recoveryEvidence.eligible) throw recoveryError
+
+      // The commissioned DeepSeek adapter is vault-aware, but YQAA normally
+      // reaches Grok without initializing the Content Studio vault. Hydrate it
+      // only now, then execute DeepSeek only when a real first-party credential
+      // exists. Never turn a missing optional fallback key into the visitor's
+      // final error when the actual failure was Grok.
+      await refreshAiVault()
+      if (!resolveDeepseekFirstPartyApiKey()) throw recoveryError
+      const generated = await generateWithProvider(selection.fallback, system, turns)
+      return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: recoveryEvidence }
+    }
   }
 }
