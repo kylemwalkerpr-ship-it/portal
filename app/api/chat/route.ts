@@ -122,7 +122,7 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
-export function guardVerifiedWebCapabilityClaim(text: string, webResearchStatus: string): string {
+function guardVerifiedWebCapabilityClaim(text: string, webResearchStatus: string): string {
   if (webResearchStatus !== 'verified') return text
   const replacement = 'I searched live public sources for this turn and grounded this answer in the cited evidence.'
   return String(text || '')
