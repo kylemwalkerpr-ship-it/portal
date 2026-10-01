@@ -1,0 +1,20 @@
+{
+  "state": "SAVED_ONLY_HOLD",
+  "request_path": "/tmp/cs-a1-stateless-contract-kernel-20261001-v1.request.json",
+  "request_sha256": "3ffbccff4e5d9e116292c57aca3fcdf935d532fabb1fe153fec4e6ea8f771e11",
+  "source_head": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+  "manifest_pins_verified": 8,
+  "worktree_created": false,
+  "job_admitted": false,
+  "source_extract": "/tmp/cs-a1-kernel-20261001-v1.source-extract.txt",
+  "blocking_context_dependencies": [
+    "versioned currency registry not established",
+    "general canonical safe URL policy not established; estate normalizer available"
+  ],
+  "allowed_paths": [
+    "lib/contentStudioV3/contracts/registry.ts",
+    "lib/contentStudioV3/contracts/schema.ts",
+    "lib/contentStudioV3/contracts/hashes.ts",
+    "tests/content-studio-v3/contracts.test.ts"
+  ]
+}

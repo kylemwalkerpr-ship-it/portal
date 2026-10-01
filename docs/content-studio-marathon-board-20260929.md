@@ -227,3 +227,6 @@ Jev contextv2 naturally COMPLETED/verification.passed native01a0f921-457b-7582-a
 
 
 Jevcontextv2 exactpatch6d8cc4d9043c7f786ffcf921d62ca78e163e1cd9ff80c6f6ef11b0f008670a22 independentSolNOT_ACCEPTED: isolated20,149byteproof withunknownfield andduplicategenerationJSONkeys accepted. Narrow v3 authorized toboundbeforeparse/rejectduplicates/strictCodexFreebufftypedproof; v2historypreserved. v3sourcewriteradmission waitsrootfullsuite terminal/capacity. A0mapv3 releasedpayloadpreparedSHA5054c0776023fa63fcdbe1243c4fb12856fee7f7bb934082c339cb32ce17b0fc supersedes originalunadmittedHOLD onlywhenrootcapacityrelease; nojob/route/execute yet.
+
+
+V2 fullhostsuite2169tests/67skip PASS102.342s unchanged6d8cc4...; semanticNOT_ACCEPTED stillholds. V3 narrowbounds correction JevSTART_CODEX0.96 authenticatedliveLuna admittedONCE executioncs-jev-verification-context-bounds-repair-20261001-v3, attemptc6615f5d-f466-421a-b628-d913eb015714. PREPARED/nativeIDnull during synchronouswork not permissiontoreplay. RequestSHAb3feb057e5cc5304eeea40901cd9aa58016759e5f34b407592d8d0cd504daad4. FreshPortal originmain010407; #302/#303 unchangeddrafts/unmerged, #312merged. Runtimev2 exactquota checkpoint/requesthash reconciled unchanged; no resumeclaim/route/execute. Kernelpacket readonlypreparation only; A0v3 admissionheld.

@@ -1,0 +1,99 @@
+{
+  "observed_at": "2026-10-01T21:09:48.534538+00:00",
+  "mode": "READ_ONLY_RECONCILIATION_NO_ROUTE_NO_EXECUTE",
+  "job": "cs-command-admission-verification-correction-20261001-v2",
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "request_file_sha256": "33d0a4c7370dc9a59e773a8cf5e1f3a2e77e97e4991e7499836634c2ee437a00",
+  "broker_request_sha256": "9bbb87f4284f83474f5018bce5cc5ecfc6c6da32532473ea6e37340cbaf00b9b",
+  "attempt": "c0d5725d-59ca-40b6-a75b-9d7f05c381ed",
+  "native": "01a0f7fb-2f3a-7b80-9664-7b9e463cd651",
+  "state": "BLOCKED",
+  "reason": "quota_exhausted",
+  "resumable": true,
+  "state_generation": 0,
+  "resume_claim_id": null,
+  "checkpoint_digest": null,
+  "untracked_files": [
+    {
+      "path": ".github/workflows/studio-command-admission-test.yml",
+      "sha256": "e3735b31e73565341e2a242ed5cbfbcbe3aa34a1d5081e8b41f2f4eabcfbc50a",
+      "bytes": 10416
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/route.ts",
+      "sha256": "e80b759e9f91c6c73d940012b4e5e680c5f759ff4fb964da12b55a0758848823",
+      "bytes": 311
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/routeCore.ts",
+      "sha256": "ba3187980bf16fb7ed8fad5df3bf44a40c29022ef269125c553b6ffb9a8b8efd",
+      "bytes": 2179
+    },
+    {
+      "path": "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+      "sha256": "a00494dba4e7df009a917746ea243ee85abf44c726ae6bddef5b3183bac7aa60",
+      "bytes": 7634
+    },
+    {
+      "path": "lib/studioRuntime/commandAdmission.ts",
+      "sha256": "b4f3565a9106253f77f228ea336c3d8b8ad895d3c064cb735e3e0620404cb7f2",
+      "bytes": 1926
+    },
+    {
+      "path": "lib/studioRuntime/contracts.ts",
+      "sha256": "fe6ed43c9b9620abfd25eb953a319f052e3da6fa2db137aed0589148860ac04a",
+      "bytes": 7697
+    },
+    {
+      "path": "lib/studioRuntime/repository.ts",
+      "sha256": "40df8704e7eebe73897e1bd9a5c344063f8748e5bc2f56b052763200f97ae6bb",
+      "bytes": 1252
+    },
+    {
+      "path": "scripts/test-studio-command-admission.mjs",
+      "sha256": "c455bccf63e11ee97001586e19010f06293cc8e22fa9b464ece48f3f93057c12",
+      "bytes": 30907
+    },
+    {
+      "path": "supabase/migrations/20261001000000_studio_command_admission.sql",
+      "sha256": "622fb99853d44befa6bbaea26ab2afa0ef441498acb83edba8432f7555d6e901",
+      "bytes": 17542
+    },
+    {
+      "path": "tests/content-studio-v3/commandAdmission.test.ts",
+      "sha256": "ba04ea147a67e2d7e429eb5321089fee8b2e5fe9c378efcc88f8ceae7d2d0d27",
+      "bytes": 5478
+    },
+    {
+      "path": "tests/content-studio-v3/runAdmissionRoute.test.ts",
+      "sha256": "22094410f306f301bf1dfd5aee57ee7ab69835568f7bcd9c5e915d9db7a820b4",
+      "bytes": 3900
+    },
+    {
+      "path": "tests/sql/studio-command-admission.sql",
+      "sha256": "f330f0f1bdfb1afe8ccbdeb970eaa4eb6cd9c335bd3843f7d833ca4d92f9dcda",
+      "bytes": 14014
+    }
+  ],
+  "manifest_sha256": "c7bb4677cfef2248845a6af034614bec0088ac5aebc0969c62007a8f6d1a8e38",
+  "continuation": [
+    "Wait for Jev metadata repaired generation loaded; revalidate exact original request/head/checkpoint/leases before routing.",
+    "Use original stable request only, pipeline_route; require exact RESUME_CODEX confidence>=0.85, authenticated available gpt-6-luna, then pipeline_execute once. No new START, request rewrite, SQL mutation, or ambiguous replay.",
+    "Original request scope remains authoritative. New independent findings must be delivered as checkpoint guidance only where supported without changing canonical request identity; otherwise finish valid original continuation then distinct terminal correction packet."
+  ],
+  "must_fix": [
+    "Same-key race: one session waits scoped advisory lock, second waits authority-row transaction lock; observe owned blocking chain and overlap, not impossible two advisory waiters.",
+    "Use before/after per-table counts; hardcoded4 wrong because fixture2+independent scopes3+race1=6.",
+    "Numeric predicates Number(v)===1, never Number(v)===string1.",
+    "Compute service-role hostile search-path call hash using real exported TS hash before SET ROLE; pass literal to RPC without granting private helper EXECUTE.",
+    "Parse actual psql verbose SQLSTATE ERROR:42501: with focused parser regression; setup/syntax failure cannot count permission denial.",
+    "Lost ACK: suppress receipt before its delivery; current SELECT emits JSON before COMMIT/sleep. Use distinct committed receipt delivery barrier and independent visibility proof, terminate owned connection, reconnect.",
+    "Set activeCheck before independent identity cases; include sessionEvents in sanitized always-uploaded CI receipt."
+  ],
+  "verification": [
+    "Node22 syntax/migration-order/ledger policy/whitespace checks retain honest scope.",
+    "Review corrected exact diff independently before commit.",
+    "Hosted isolated pinned PostgreSQL17 real multiconnection/crash/role-operation/hash proof required; root project TypeScript/Jest exact candidate npm-ci checks required.",
+    "Production SQL/migration and positive authority activation remain held; production resolver remains deny-only; no credential lookup/live DB writes."
+  ]
+}
