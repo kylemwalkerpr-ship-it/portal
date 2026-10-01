@@ -120,6 +120,11 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     ] }
     expect(applyYqaaSafetyPolicy(matchingOfficialWeb, unavailable)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
 
+    const matchingBrowserWeb = { ...wrongJurisdiction, hostname: 'usa.yousafeconsultancy.com', evidence: [
+      { id: 'browser-web', title: 'Canada official browser source', body: 'Verified Canadian public guidance.', source: 'https://canada.ca/guide', sourceUrl: 'https://canada.ca/guide', sourceKey: 'cloudflare:browser_search', jurisdiction: 'Canada', site: 'official-web', score: 0 },
+    ] }
+    expect(applyYqaaSafetyPolicy(matchingBrowserWeb, unavailable)).toEqual({ answer: true, reason: 'deterministic_policy_clear' })
+
     const multiple = { ...matchingLocal, query: 'Compare public housing rules in Canada and the United States.' }
     expect(applyYqaaSafetyPolicy(multiple, unavailable).answer).toBe(false)
   })
@@ -134,6 +139,8 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     expect(applyYqaaSafetyPolicy(context, clear).answer).toBe(false)
     const citedWeb = { id: 'web', title: 'Official web source', body: 'Authoritative current public information.', source: 'https://www.hud.gov/guide', sourceUrl: 'https://www.hud.gov/guide', sourceKey: 'xai:web_search', site: 'official-web' }
     expect(applyYqaaSafetyPolicy({ ...context, evidence: [citedWeb, ...context.evidence] }, clear)).toEqual({ answer: true, reason: 'jev_advisory_clear' })
+    const browserWeb = { ...citedWeb, id: 'browser-web', sourceKey: 'cloudflare:browser_search' }
+    expect(applyYqaaSafetyPolicy({ ...context, evidence: [browserWeb, ...context.evidence] }, clear)).toEqual({ answer: true, reason: 'jev_advisory_clear' })
     const uncitedEvidence = { ...citedWeb, sourceKey: 'database' } as any
     expect(applyYqaaSafetyPolicy({ ...context, evidence: [
       uncitedEvidence, ...context.evidence,

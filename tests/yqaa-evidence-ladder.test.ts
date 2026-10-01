@@ -69,6 +69,18 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
   })
 
+  test('Browser-derived live web evidence is retained and cited in the final YQAA answer', async () => {
+    const official = { ...kbChunk('official-web'), id: 'browser-opt', sourceKey: 'cloudflare:browser_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ jev: [clearJev(), clearJev()], web: [official] })
+    const result = await flow.ask('What are the latest OPT rules for F-1 students?')
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
   test('high-confidence fresh KB and clear Jev answer without web', async () => {
     const flow = await setup()
     const result = await flow.ask('Explain general housing rules in the United States')

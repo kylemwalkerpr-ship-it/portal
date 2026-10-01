@@ -39,6 +39,12 @@ id = "a60944658f974790acc6c74a35c661aa"
 [ai]
 binding = "AI"
 
+# ── Browser Rendering ───────────────────────────────────────────────────
+# Credential-free public-web fallback for YQAA research. YMYL queries are
+# constrained in code to primary/official domains before any page is fetched.
+[browser]
+binding = "BROWSER"
+
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
