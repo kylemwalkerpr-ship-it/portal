@@ -346,7 +346,7 @@ export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
 ): Promise<{ text: string; citations: string[]; webSearchCalls: number; sources: SystemWebSearchSource[] }> {
-  let auth = await resolveCachedAuth()
+  let resolvedAuth = await resolveCachedAuth()
   const request = (selectedAuth: MessengerGrokAuth) => postJsonWithRetry(
     `${selectedAuth.baseURL}/responses`,
     {
@@ -365,16 +365,9 @@ export async function callSystemSuperGrokWebSearch(
         store: false,
       }),
     },
-    18_000,
+    30_000,
     1,
   )
-
-  let result = await request(auth)
-  if (AUTH_FAILURE_STATUS.has(result.response.status)) {
-    authCache = null
-    auth = await resolveCachedAuth(true)
-    result = await request(auth)
-  }
 
   const parseIfUsable = (candidate: { response: Response; text: string }) => {
     if (!candidate.response.ok || candidate.text.length > 65_536) return null
@@ -384,25 +377,45 @@ export async function callSystemSuperGrokWebSearch(
     } catch { return null }
   }
 
-  const first = parseIfUsable(result)
-  if (first) return first
+  const directAuth = directXaiWebAuth(resolvedAuth)
+  // Live research prefers the commissioned xAI API key because it is the
+  // credential explicitly provisioned for xAI Responses tools in production.
+  // SuperGrok/OAuth remains an independent fallback. A timeout/error on either
+  // lane must never prevent the other lane from being attempted.
+  const candidates: MessengerGrokAuth[] = directAuth
+    ? [directAuth, resolvedAuth]
+    : [resolvedAuth]
+  const diagnostics: Array<{ authMode: string; status: number | 'network'; reason?: string }> = []
 
-  const fallbackAuth = directXaiWebAuth(auth)
-  let fallbackStatus: number | null = null
-  if (fallbackAuth) {
-    const fallback = await request(fallbackAuth)
-    fallbackStatus = fallback.response.status
-    const parsed = parseIfUsable(fallback)
-    if (parsed) return parsed
+  for (let index = 0; index < candidates.length; index += 1) {
+    let selectedAuth = candidates[index]
+    try {
+      let result = await request(selectedAuth)
+      if (AUTH_FAILURE_STATUS.has(result.response.status) && selectedAuth.apiKey === resolvedAuth.apiKey) {
+        authCache = null
+        resolvedAuth = await resolveCachedAuth(true)
+        selectedAuth = resolvedAuth
+        result = await request(selectedAuth)
+      }
+      const parsed = parseIfUsable(result)
+      if (parsed) return parsed
+      diagnostics.push({ authMode: selectedAuth.authMode, status: result.response.status })
+    } catch (err) {
+      diagnostics.push({
+        authMode: selectedAuth.authMode,
+        status: 'network',
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'request failed',
+      })
+    }
   }
 
   console.warn('[system-assistant] web research transport exhausted', {
-    primaryAuthMode: auth.authMode,
-    primaryStatus: result.response.status,
-    directKeyFallbackConfigured: Boolean(fallbackAuth),
-    fallbackStatus,
+    directKeyPrimaryConfigured: Boolean(directAuth),
+    attempts: diagnostics,
   })
-  if (fallbackStatus && fallbackStatus >= 400) throw new Error(`Web research failed (${fallbackStatus})`)
-  if (!result.response.ok) throw new Error(`Web research failed (${result.response.status})`)
-  throw new Error('Web research returned no citation-linked sources')
+  const last = diagnostics.at(-1)
+  if (last?.status && typeof last.status === 'number' && last.status >= 400) {
+    throw new Error(`Web research failed (${last.status})`)
+  }
+  throw new Error(last?.reason || 'Web research returned no citation-linked sources')
 }
