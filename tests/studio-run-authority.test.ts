@@ -48,6 +48,27 @@ describe('studio run authority domain contract', () => {
     })).toEqual({ claimed: false, reason: 'LEASE_STILL_ACTIVE' })
   })
 
+  test('rejects an unsupported schema version before claiming a pending stage', () => {
+    const unsupportedSchema = {
+      ...stage, schemaVersion: 'studio.run-stage/999', state: 'pending', leaseOwner: null, leaseExpiresAt: null,
+    } as unknown as StageSnapshot
+    expect(claimStage(unsupportedSchema, {
+      leaseOwner: 'worker-c', now: '2026-09-29T11:00:00.000Z', leaseExpiresAt: '2026-09-29T12:00:00.000Z',
+    })).toEqual({ claimed: false, reason: 'INVALID_STAGE_STATE' })
+  })
+
+  test('rejects an unsupported schema version before transitioning a running stage', () => {
+    const unsupportedSchema = { ...stage, schemaVersion: 'studio.run-stage/999' } as unknown as StageSnapshot
+    expect(advance(unsupportedSchema)).toEqual({ allowed: false, reason: 'INVALID_STAGE_STATE' })
+  })
+
+  test('fails closed when claiming a stage with an unknown runtime state', () => {
+    const unknownState = { ...stage, state: 'future-state' } as unknown as StageSnapshot
+    expect(claimStage(unknownState, {
+      leaseOwner: 'worker-c', now: '2026-09-29T11:00:00.000Z', leaseExpiresAt: '2026-09-29T12:00:00.000Z',
+    })).toEqual({ claimed: false, reason: 'INVALID_STAGE_STATE' })
+  })
+
   test('rejects claims when fence or version cannot be safely incremented', () => {
     const expiredStage = { ...stage, leaseExpiresAt: '2026-09-29T10:00:00.000Z' }
     const request = {
@@ -63,6 +84,16 @@ describe('studio run authority domain contract', () => {
     const result = transitionStage(stage, { fence: 3, leaseOwner: 'worker-a', now: '2026-09-29T11:30:00.000Z', nextState: 'done', predecessor: { runId: stage.runId, stageId: stage.stageId, version: stage.version } })
     expect(result).toEqual({ allowed: false, reason: 'STALE_FENCE' })
     expect(stage.currentFence).toBe(4)
+  })
+
+  test('rejects transition version overflow while allowing the last safe increment', () => {
+    const maxSafeVersionStage = { ...stage, version: Number.MAX_SAFE_INTEGER }
+    expect(advance(maxSafeVersionStage)).toEqual({ allowed: false, reason: 'INVALID_STAGE_STATE' })
+
+    const lastSafeIncrement = advance({ ...stage, version: Number.MAX_SAFE_INTEGER - 1 })
+    expect(lastSafeIncrement.allowed).toBe(true)
+    if (!lastSafeIncrement.allowed) throw new Error('expected safe boundary transition')
+    expect(lastSafeIncrement.stage.version).toBe(Number.MAX_SAFE_INTEGER)
   })
 
   test('rejects expired lease and wrong owner independently of the current fence', () => {

@@ -47,6 +47,7 @@ export function claimStage(
   current: StageSnapshot,
   request: { leaseOwner: string; now: string; leaseExpiresAt: string },
 ): StageClaim {
+  if (current.schemaVersion !== 'studio.run-stage/1') return { claimed: false, reason: 'INVALID_STAGE_STATE' }
   const now = Date.parse(request.now)
   const requestedExpiry = Date.parse(request.leaseExpiresAt)
   if (!required(request.leaseOwner) || !Number.isFinite(now) || !Number.isFinite(requestedExpiry) || requestedExpiry <= now ||
@@ -55,6 +56,7 @@ export function claimStage(
     !Number.isSafeInteger(current.currentFence + 1) || !Number.isSafeInteger(current.version + 1)) {
     return { claimed: false, reason: 'INVALID_CLAIM' }
   }
+  if (!isStageState(current.state)) return { claimed: false, reason: 'INVALID_STAGE_STATE' }
   if (current.state === 'done' || current.state === 'failed' || current.state === 'cancelled') {
     return { claimed: false, reason: 'INVALID_STAGE_STATE' }
   }
@@ -84,6 +86,7 @@ export function transitionStage(
     predecessor: { runId: string; stageId: string; version: number }
   },
 ): StageTransition {
+  if (current.schemaVersion !== 'studio.run-stage/1') return { allowed: false, reason: 'INVALID_STAGE_STATE' }
   if (request.predecessor.runId !== current.runId || request.predecessor.stageId !== current.stageId ||
     !Number.isSafeInteger(request.predecessor.version) || request.predecessor.version !== current.version) {
     return { allowed: false, reason: 'PREDECESSOR_MISMATCH' }
@@ -99,7 +102,8 @@ export function transitionStage(
   if (!Number.isFinite(expires) || !Number.isFinite(now) || now >= expires) {
     return { allowed: false, reason: 'LEASE_EXPIRED' }
   }
-  if (!validTransition(current.state, request.nextState)) {
+  if (!isStageState(current.state) || !isStageState(request.nextState) || !validTransition(current.state, request.nextState) ||
+    !Number.isSafeInteger(current.version + 1)) {
     return { allowed: false, reason: 'INVALID_STAGE_STATE' }
   }
   return { allowed: true, stage: { ...current, state: request.nextState, version: current.version + 1 } }
@@ -112,6 +116,11 @@ function validTransition(from: StageSnapshot['state'], to: StageSnapshot['state'
     checkpointed: ['running', 'done', 'failed', 'cancelled'], done: [], failed: [], cancelled: [],
   }
   return transitions[from].includes(to)
+}
+
+function isStageState(value: unknown): value is StageSnapshot['state'] {
+  return value === 'pending' || value === 'claimed' || value === 'running' || value === 'checkpointed' ||
+    value === 'done' || value === 'failed' || value === 'cancelled'
 }
 
 export interface RunSubmission {
