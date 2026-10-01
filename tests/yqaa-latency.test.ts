@@ -16,13 +16,19 @@ describe('YQAA latency routing', () => {
     expect(reply).toContain('https://market.yousafeconsultancy.com')
   })
 
-  it('does not let a later greeting hide an unanswered substantive question', async () => {
+  it('lets a trivial latest greeting bypass stale unresolved history without swallowing substantive latest messages', async () => {
     const { getDeterministicYqaaReply } = await import('@/lib/assistantFastReplies')
-    const reply = getDeterministicYqaaReply([
+    const greeting = getDeterministicYqaaReply([
       { role: 'user', content: 'I need help with an Australian student visa refusal' },
       { role: 'user', content: 'Hi' },
     ])
-    expect(reply).toBeNull()
+    expect(greeting).toContain('YQAA')
+
+    const substantiveLatest = getDeterministicYqaaReply([
+      { role: 'user', content: 'Hi' },
+      { role: 'user', content: 'I need help with an Australian student visa refusal' },
+    ])
+    expect(substantiveLatest).toBeNull()
   })
 
   it('keeps generic brand/platform questions on the lightweight core path', async () => {
