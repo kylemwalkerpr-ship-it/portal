@@ -232,23 +232,28 @@ describe('YQAA provider pin and fallback policy', () => {
     expect(classifyYqaaProviderFailure(new Error('DeepSeek is not configured')).kind).toBe('configuration')
   })
 
-  it('selects the pinned first-party DeepSeek adapter only after an eligible Grok failure', async () => {
+  it('hydrates the AI vault before the pinned DeepSeek fallback after an eligible Grok failure', async () => {
     jest.resetModules()
     const adapterComplete = jest.fn(async () => ({ text: 'Fallback answer', model: 'deepseek-flash', provider: 'deepseek-v41-flash' }))
+    const refreshAiVault = jest.fn(async () => ['DEEPSEEK_API_KEY'])
     jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrok: jest.fn(async () => { throw new Error('request timed out') }) }))
     jest.doMock('@/lib/contentAiRegistry', () => ({ DEEPSEEK_V41_FLASH_PIN: 'deepseek-v41-flash', adapterFor: jest.fn(() => ({ complete: adapterComplete })) }))
+    jest.doMock('@/lib/contentAiProviderCore', () => ({ refreshAiVault }))
     process.env.YQAA_PRIMARY_PROVIDER = 'grok'
     process.env.YQAA_FALLBACK_PROVIDER = 'deepseek-v41-flash'
     try {
       const { generateYqaaAnswer } = await import('@/lib/yqaaGeneration')
       const result = await generateYqaaAnswer('public system', [{ role: 'user', content: 'question' }])
       expect(result).toMatchObject({ text: 'Fallback answer', provider: 'deepseek-v41-flash', fallback: true, failureEvidence: { kind: 'timeout', eligible: true } })
+      expect(refreshAiVault).toHaveBeenCalledTimes(1)
+      expect(refreshAiVault.mock.invocationCallOrder[0]).toBeLessThan(adapterComplete.mock.invocationCallOrder[0])
       expect(adapterComplete).toHaveBeenCalledTimes(1)
     } finally {
       delete process.env.YQAA_PRIMARY_PROVIDER
       delete process.env.YQAA_FALLBACK_PROVIDER
       jest.dontMock('@/lib/superGrokAssistant')
       jest.dontMock('@/lib/contentAiRegistry')
+      jest.dontMock('@/lib/contentAiProviderCore')
     }
   })
 

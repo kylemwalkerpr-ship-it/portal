@@ -1,5 +1,6 @@
 import { adapterFor, DEEPSEEK_V41_FLASH_PIN, type CommissionedProviderPin } from '@/lib/contentAiRegistry'
 import { callSystemSuperGrok, type SystemAssistantTurn } from '@/lib/superGrokAssistant'
+import { refreshAiVault } from '@/lib/contentAiProviderCore'
 
 export type YqaaProvider = 'grok' | 'deepseek-v41-flash'
 export type YqaaFailureKind = 'timeout' | 'network' | 'rate_limit' | 'server_error' | 'authentication' | 'configuration' | 'invalid_output' | 'other'
@@ -64,6 +65,12 @@ export async function generateYqaaAnswer(system: string, turns: SystemAssistantT
   } catch (error) {
     const evidence = classifyYqaaProviderFailure(error)
     if (!selection.fallback || !evidence.eligible) throw error
+
+    // YQAA's primary Grok path has its own auth resolver, but the commissioned
+    // DeepSeek adapter reads credentials through contentAiEnv(). Hydrate that
+    // vault overlay only when an eligible fallback is actually needed so the
+    // normal Grok path pays no vault-read latency tax.
+    await refreshAiVault()
     const generated = await generateWithProvider(selection.fallback, system, turns)
     return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: evidence }
   }
