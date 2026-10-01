@@ -65,12 +65,23 @@ export function isValidKnownAmount(amount: KnownAmount): boolean {
     && hasValidLedgerEvidence(amount.evidence)
 }
 
+/** Runtime guard for estimates that are safe to present as numeric durations. */
+export function isValidEstimatedAmount(amount: EstimatedAmount): boolean {
+  if (!amount || typeof amount.value !== 'number' || typeof amount.unit !== 'string' || typeof amount.method !== 'string' || typeof amount.methodVersion !== 'string') return false
+  return Number.isFinite(amount.value)
+    && amount.value >= 0
+    && Boolean(amount.unit.trim())
+    && Boolean(amount.method.trim())
+    && Boolean(amount.methodVersion.trim())
+}
+
 export function ledgerAmountLabel(amount: LedgerAmount | ChargedAmount): string {
   switch (amount.state) {
     case 'known':
       if (!isValidKnownAmount(amount)) return 'UNKNOWN'
       return `${amount.value} ${'currency' in amount ? amount.currency : amount.unit}`
     case 'estimated':
+      if (!isValidEstimatedAmount(amount)) return 'UNKNOWN'
       return `Estimated ${amount.value} ${amount.unit}`
     case 'unknown':
       return 'UNKNOWN'

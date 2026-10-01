@@ -44,6 +44,35 @@ describe('Studio resource ledger presentation contract', () => {
     })).toBe('Estimated 3 seconds')
   })
 
+  it('fails closed for malformed estimated duration metadata while preserving legitimate zero', () => {
+    const invalidEstimates = [
+      { state: 'estimated', value: Number.NaN, unit: 'seconds', method: 'fixture', methodVersion: '1' },
+      { state: 'estimated', value: Number.POSITIVE_INFINITY, unit: 'seconds', method: 'fixture', methodVersion: '1' },
+      { state: 'estimated', value: -1, unit: 'seconds', method: 'fixture', methodVersion: '1' },
+      { state: 'estimated', value: 3, unit: '   ', method: 'fixture', methodVersion: '1' },
+      { state: 'estimated', value: 3, unit: 'seconds', method: '  ', methodVersion: '1' },
+      { state: 'estimated', value: 3, unit: 'seconds', method: 'fixture', methodVersion: '\t' },
+    ]
+    for (const projected of invalidEstimates) {
+      expect(ledgerAmountLabel(projected as StudioResourceLedgerSnapshot['projected'])).toBe('UNKNOWN')
+      const html = renderToStaticMarkup(React.createElement(StudioEstateShell, {
+        ledger: {
+          ...fixture,
+          projected,
+          observed: fixture.observed,
+          charged: { state: 'known', value: 0, unit: 'USD', currency: 'USD', evidence: { source: 'fixture', observedAt: '2026-09-29T12:00:00Z', window: 'monthly' } },
+        } as StudioResourceLedgerSnapshot,
+        dependencies: [{ name: 'Estate evidence', state: 'available' }],
+        decision: { outcome: 'NO_ACTION', rationale: 'Sufficient evidence supports no intervention.' },
+      }))
+      expect(html).toContain('aria-label="Projected: UNKNOWN"')
+      expect(html).not.toContain('NaN')
+      expect(html).not.toContain('Estimated 3')
+      expect(html).toContain('data-outcome="ABSTAIN"')
+    }
+    expect(ledgerAmountLabel({ state: 'estimated', value: 0, unit: 'seconds', method: 'fixture', methodVersion: '1' })).toBe('Estimated 0 seconds')
+  })
+
   it('accepts fractional-second observedAt provenance', () => {
     const fractional = {
       state: 'known', value: 0, unit: 'CPU-seconds',

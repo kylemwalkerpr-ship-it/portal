@@ -1,6 +1,7 @@
 import React from 'react'
 import {
   isValidKnownAmount,
+  isValidEstimatedAmount,
   ledgerAmountLabel,
   type LedgerAmount,
   type StudioResourceLedgerSnapshot,
@@ -40,6 +41,7 @@ export function StudioEstateShell({ ledger, dependencies, decision }: StudioEsta
   const hasBlockingAmount = amounts.some((amount) =>
     amount.state === 'unknown'
     || amount.state === 'unavailable'
+    || (amount.state === 'estimated' && !isValidEstimatedAmount(amount))
     || (amount.state === 'known' && !isValidKnownAmount(amount))
   )
   const hasInvalidChargedCurrency = ledger.charged.state === 'known'
