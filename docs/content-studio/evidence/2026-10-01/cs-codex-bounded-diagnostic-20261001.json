@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "elapsed": 10.37,
+  "marker_seen": true,
+  "signals": {
+    "quota": false,
+    "usage limit": false,
+    "rate limit": false,
+    "unauthorized": false,
+    "401": false,
+    "403": false,
+    "connection": false,
+    "timed out": false,
+    "not found": false
+  }
+}

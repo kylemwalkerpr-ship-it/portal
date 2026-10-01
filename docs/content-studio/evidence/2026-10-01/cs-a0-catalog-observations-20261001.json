@@ -1,0 +1,83 @@
+{
+  "project_id": "krggzrxxnqfsbbklatxl",
+  "observed_at": "2026-10-01",
+  "scope": "Read-only six-relation policy and role_table_grants catalog; not effective authenticated API testing",
+  "policies": [
+    {
+      "tablename": "content_jobs",
+      "policyname": "Service role full access",
+      "roles": "{service_role}",
+      "cmd": "ALL",
+      "qual": "true",
+      "with_check": "true"
+    },
+    {
+      "tablename": "seo_engine_runs",
+      "policyname": "Engine full access",
+      "roles": "{public}",
+      "cmd": "ALL",
+      "qual": "true",
+      "with_check": "true"
+    },
+    {
+      "tablename": "studio_specialist_signals",
+      "policyname": "Specialist signals full access",
+      "roles": "{public}",
+      "cmd": "ALL",
+      "qual": "true",
+      "with_check": "true"
+    }
+  ],
+  "grants": [
+    {
+      "table_name": "content_jobs",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "content_studio_evidence_items",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "content_studio_stage_events",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "content_studio_writing_contracts",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "seo_engine_runs",
+      "grantee": "anon",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "seo_engine_runs",
+      "grantee": "authenticated",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "seo_engine_runs",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "studio_specialist_signals",
+      "grantee": "anon",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "studio_specialist_signals",
+      "grantee": "authenticated",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    },
+    {
+      "table_name": "studio_specialist_signals",
+      "grantee": "service_role",
+      "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+    }
+  ]
+}

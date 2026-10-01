@@ -1,0 +1,19 @@
+{
+  "headRefOid": "06452a21361ada02e40f666b553c29b3b9361750",
+  "isDraft": true,
+  "mergeStateStatus": "CLEAN",
+  "state": "OPEN",
+  "checks": [
+    {
+      "name": "Focused Content Studio tests",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Build and deploy Worker",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    }
+  ],
+  "fresh_main": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9"
+}
