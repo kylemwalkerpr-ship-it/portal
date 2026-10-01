@@ -569,7 +569,7 @@ const SERVICE_JSONLD = {
     name: 'YouSafe Consultancy',
     url: 'https://yousafeconsultancy.com',
   },
-  serviceType: 'Immigration and Tenancy Legal Marketplace',
+  serviceType: 'Immigration support, document preparation, and tenancy services marketplace',
   areaServed: [
     { '@type': 'Country', name: 'United States' },
     { '@type': 'Country', name: 'United Kingdom' },

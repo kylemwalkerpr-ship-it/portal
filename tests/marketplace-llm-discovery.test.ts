@@ -7,9 +7,12 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 const MARKET_AGENTS = [
   'OAI-SearchBot',
   'ChatGPT-User',
+  'GPTBot',
   'PerplexityBot',
   'Perplexity-User',
   'Claude-User',
+  'Claude-SearchBot',
+  'ClaudeBot',
 ]
 
 describe('marketplace LLM discovery', () => {
@@ -17,13 +20,13 @@ describe('marketplace LLM discovery', () => {
   const llms = read('public/llms.txt')
   const landing = read('app/marketplace/PublicMarketplaceLanding.tsx')
 
-  test('robots stay host-aware: market lists five agents, portal keeps only the wildcard and no sitemap', () => {
+  test('robots stay host-aware: market lists eight agents, portal keeps only the wildcard and no sitemap', () => {
     expect(robots).toContain("const MARKET_HOST = 'market.yousafeconsultancy.com'")
     expect(robots).toContain("const PORTAL_HOST = 'portal.yousafeconsultancy.com'")
     expect(robots).toContain("userAgent: '*'")
     expect(robots).toContain("allow: '/'")
     expect(robots).toContain("disallow: ['/api/']")
-    expect(robots).not.toContain("'/_next/static/'")
+    expect(robots).not.toContain("/_next/static/")
     expect(robots).toContain('if (host === MARKET_HOST)')
     for (const agent of MARKET_AGENTS) {
       expect(robots).toContain("'" + agent + "'")
@@ -51,13 +54,12 @@ describe('marketplace LLM discovery', () => {
     expect(llms).toMatch(/licensed attorneys/i)
     expect(llms).toContain('https://legal.yousafeconsultancy.com')
     expect(llms).toContain('https://market.yousafeconsultancy.com/')
-    expect(llms).toMatch(/private account utilities/i)
     expect(llms).not.toMatch(/^## Optional/m)
     expect(llms).not.toMatch(/escrow|encrypted transactions|compliance/i)
     expect(llms).toContain('https://yousafeconsultancy.com')
-    expect(llms).not.toContain('https://portal.yousafeconsultancy.com/sign-in/student')
-    expect(llms).not.toContain('https://portal.yousafeconsultancy.com/sign-up/attorney')
-    expect(llms).toContain('https://payhip.com/YousafeConsultancy')
+    expect(llms).not.toMatch(/portal\.yousafeconsultancy\.com\/sign-(?:in|up)/i)
+    expect(llms).not.toMatch(/payhip\.com/i)
+    expect(llms).toMatch(/private account utilities/i)
   })
 
   test('Service JSON-LD keeps a stable market @id and organization provider @id', () => {
