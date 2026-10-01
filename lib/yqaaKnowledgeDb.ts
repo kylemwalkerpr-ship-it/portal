@@ -61,7 +61,7 @@ export function explicitYqaaJurisdiction(query: string): string | null {
   if (/\b(australia|australian|subclass\s*(?:500|485)|home affairs)\b/i.test(value)) return 'Australia'
   if (/\b(canada|canadian|ircc|pgwp|study permit)\b/i.test(value)) return 'Canada'
   if (/\b(united kingdom|britain|british|ukvi|\buk\b)\b/i.test(value)) return 'United Kingdom'
-  if (/\b(united states|america|american|uscis|\busa\b|\bu\.?s\.?\b|f-?1)\b/i.test(value)) return 'United States'
+  if (/\b(united states|america|american|uscis|\busa\b|\bu\.?s\.?\b|f-?1|optional practical training|stem opt|post-completion opt|pre-completion opt)\b/i.test(value) || /\bOPT\b/.test(value)) return 'United States'
   return null
 }
 

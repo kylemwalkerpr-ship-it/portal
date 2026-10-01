@@ -8,6 +8,49 @@ function isGreeting(text: string): boolean {
   return /^(hi|hello|hey|hiya|hi there|hello there|hey there|hi you|good morning|good afternoon|good evening)[!.?\s]*$/.test(normalize(text))
 }
 
+function isGratitude(text: string): boolean {
+  return /^(thanks|thank you|thank you so much|thanks a lot|many thanks|appreciate it|much appreciated)[!.?\s]*$/.test(normalize(text))
+}
+
+function isGoodbye(text: string): boolean {
+  return /^(bye|goodbye|see you|see ya|talk later|thanks bye|thank you bye)[!.?\s]*$/.test(normalize(text))
+}
+
+function asksAssistantIdentity(text: string): boolean {
+  const q = normalize(text).replace(/[?.!]+$/g, '')
+  return /^(who are you|what are you|what is yqaa|who is yqaa|are you an ai|are you ai)$/.test(q)
+}
+
+function asksAssistantCapabilities(text: string): boolean {
+  const q = normalize(text).replace(/[?.!]+$/g, '')
+  return /^(what can you do|what can you help me with|how can you help me|how can you help|what do you help with|what are you able to do|help me understand what you can do)$/.test(q)
+}
+
+function trivialLatestReply(text: string): string | null {
+  if (isGreeting(text)) {
+    return "Hi — I'm **YQAA**, the **YouSafe Quick Assistance Agent**. I'm ready to help with YouSafe services, Marketplace options, orders, documents, billing, or general study and immigration planning. What can I help you with?"
+  }
+  if (isGratitude(text)) {
+    return "You're welcome — happy to help. If you have another YouSafe, Marketplace, study, immigration, document, billing, or general support question, just send it here."
+  }
+  if (isGoodbye(text)) {
+    return "You're welcome. Take care — YQAA will be here if you need help again."
+  }
+  if (asksAssistantIdentity(text)) {
+    return "I'm **YQAA — the YouSafe Quick Assistance Agent**, YouSafe's AI-powered support assistant. I can answer general questions, help you navigate YouSafe services and Marketplace options, explain public study/immigration information, and point you to the right next step."
+  }
+  if (asksAssistantCapabilities(text)) {
+    return [
+      "I can help you with **YouSafe services and Marketplace navigation**, **orders and documents**, **billing/platform questions**, and **general study or immigration information** across the United States, United Kingdom, Canada, and Australia.",
+      '',
+      "For case-specific legal strategy or another situation that truly needs professional judgment, I'll tell you and connect you to the appropriate human support path. Otherwise, I’ll answer directly here.",
+      '',
+      "Tell me what you need help with and, if relevant, which country it concerns.",
+    ].join('\n')
+  }
+  return null
+}
+
 function asksCompanyOverview(text: string): boolean {
   const q = normalize(text)
   return (
@@ -46,11 +89,11 @@ export function getDeterministicYqaaReply(turns: SystemAssistantTurn[]): string 
   if (!pendingUsers.length) return null
 
   const last = pendingUsers[pendingUsers.length - 1].content
-  const earlierSubstantive = pendingUsers.slice(0, -1).some((turn) => !isGreeting(turn.content))
 
-  if (isGreeting(last) && !earlierSubstantive) {
-    return "Hi — I'm **YQAA**, the **YouSafe Quick Assistance Agent**. I'm ready to help with YouSafe services, Marketplace options, orders, documents, billing, or general study and immigration planning. What can I help you with?"
-  }
+  // Truly trivial latest-message intents are context-safe and should never pay
+  // the retrieval/Jev/model latency tax because of older unresolved history.
+  const trivialReply = trivialLatestReply(last)
+  if (trivialReply) return trivialReply
 
   if (pendingUsers.some((turn) => asksCompanyOverview(turn.content))) {
     return [
@@ -83,4 +126,4 @@ export function getDeterministicYqaaReply(turns: SystemAssistantTurn[]): string 
   return null
 }
 
-export const assistantFastReplyInternals = { isGreeting, asksCompanyOverview, asksServicesOverview }
+export const assistantFastReplyInternals = { isGreeting, isGratitude, isGoodbye, asksAssistantIdentity, asksAssistantCapabilities, asksCompanyOverview, asksServicesOverview }

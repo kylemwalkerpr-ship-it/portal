@@ -15,7 +15,7 @@ const weakJev = () => ({ available: true, advisory: {
 
 async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
-  jev?: unknown[]; web?: unknown[]; webError?: boolean
+  jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
@@ -31,10 +31,14 @@ async function setup(opts: {
   const escalateToSupport = jest.fn(async () => ({ conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }))
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
-  jest.doMock('@/lib/yqaaWebResearch', () => ({ researchYqaaPublicWeb }))
+  jest.doMock('@/lib/yqaaWebResearch', () => ({ ...jest.requireActual('@/lib/yqaaWebResearch'), researchYqaaPublicWeb }))
   jest.doMock('@/lib/yqaaGeneration', () => ({ generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
   jest.doMock('@/lib/chatEscalation', () => ({ ...jest.requireActual('@/lib/chatEscalation'), escalateToSupport }))
-  jest.doMock('@/lib/assistantFastReplies', () => ({ getDeterministicYqaaReply: () => null }))
+  if (opts.useRealFastReplies) {
+    jest.dontMock('@/lib/assistantFastReplies')
+  } else {
+    jest.doMock('@/lib/assistantFastReplies', () => ({ getDeterministicYqaaReply: () => null }))
+  }
   jest.doMock('@/lib/centralAssistantKnowledge', () => ({
     ...jest.requireActual('@/lib/centralAssistantKnowledge'),
     buildCentralAssistantKnowledge: jest.fn(async ({ curatedChunks }: { curatedChunks: Array<{ sourceUrl?: string }> }) =>
@@ -52,6 +56,19 @@ async function setup(opts: {
 }
 
 describe('YQAA final evidence ladder', () => {
+  test('freshness-sensitive latest OPT question forces official web research even with a high-confidence fresh KB', async () => {
+    const official = { ...kbChunk('official-web'), id: 'opt-web', sourceKey: 'xai:web_search',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ jev: [clearJev(), clearJev()], web: [official] })
+    const result = await flow.ask('What are the latest OPT rules for F-1 students?')
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
+    expect(flow.requestJevAdvisory).toHaveBeenCalledTimes(2)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
   test('high-confidence fresh KB and clear Jev answer without web', async () => {
     const flow = await setup()
     const result = await flow.ask('Explain general housing rules in the United States')
@@ -176,6 +193,30 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
     expect(result.body.reply).toContain(authoritative.sourceUrl)
+  })
+
+  test('trivial capability question bypasses retrieval, Jev, web, and model even with stale unresolved history', async () => {
+    const flow = await setup({ useRealFastReplies: true })
+    const response = await (async () => {
+      const { POST } = await import('@/app/api/chat/route')
+      const res = await POST(new Request('https://usa.yousafeconsultancy.com/api/chat', {
+        method: 'POST',
+        headers: { Origin: 'https://usa.yousafeconsultancy.com', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [
+          { role: 'user', content: 'I have a complicated work permit question' },
+          { role: 'user', content: 'how can you help me?' },
+        ] }),
+      }))
+      return await res.json() as Record<string, any>
+    })()
+
+    expect(response.provider).toBe('system-fast-path')
+    expect(response.reply).toContain('YouSafe services and Marketplace navigation')
+    expect(flow.loadYqaaEvidence).not.toHaveBeenCalled()
+    expect(flow.requestJevAdvisory).not.toHaveBeenCalled()
+    expect(flow.researchYqaaPublicWeb).not.toHaveBeenCalled()
+    expect(flow.generateYqaaAnswer).not.toHaveBeenCalled()
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
   })
 
   test('ordinary help language stays with YQAA while an explicit human request hands off', async () => {

@@ -1,4 +1,5 @@
 import { resolveMessengerGrokAuth, type MessengerGrokAuth } from '@/lib/messengerAi'
+import { XAI_API_BASE_DEFAULT } from '@/lib/xaiSuperGrokOAuth'
 
 export type SystemAssistantTurn = {
   role: 'user' | 'assistant'
@@ -241,42 +242,144 @@ export function resetSystemAssistantAuthCache(): void {
   authCache = null
 }
 
-/** One bounded xAI Responses web call using the same Grok/SuperGrok auth as answers. */
+export type SystemWebSearchSource = {
+  url: string
+  title?: string
+  snippet?: string
+}
+
+function sentenceBefore(text: string, index: number): string {
+  const before = text.slice(Math.max(0, index - 900), Math.max(0, index))
+  return before.split(/(?<=[.!?])\s+/).at(-1)?.trim() || before.trim()
+}
+
+export function parseSystemWebSearchResponse(raw: string): {
+  text: string
+  citations: string[]
+  webSearchCalls: number
+  sources: SystemWebSearchSource[]
+} {
+  const data = JSON.parse(raw) as Record<string, any>
+  const text = parseResponsesContent(raw).slice(0, 5000)
+  const citationSet = new Set<string>()
+  const sources = new Map<string, SystemWebSearchSource>()
+  const addSource = (candidate: unknown, title?: unknown, snippet?: unknown) => {
+    const url = typeof candidate === 'string' ? candidate.trim() : ''
+    if (!/^https:\/\//i.test(url)) return
+    citationSet.add(url)
+    const prior = sources.get(url)
+    sources.set(url, {
+      url,
+      title: String(title || prior?.title || '').trim() || undefined,
+      snippet: String(snippet || prior?.snippet || '').trim().slice(0, 1200) || undefined,
+    })
+  }
+
+  if (Array.isArray(data.citations)) {
+    for (const url of data.citations) addSource(url)
+  }
+
+  let outputWebSearchCalls = 0
+  for (const item of Array.isArray(data.output) ? data.output : []) {
+    if (!item || typeof item !== 'object') continue
+    if (item.type === 'web_search_call') {
+      outputWebSearchCalls += 1
+      const actionSources = item.action?.sources
+      if (Array.isArray(actionSources)) {
+        for (const source of actionSources) {
+          addSource(source?.url || source?.link, source?.title || source?.name, source?.snippet || source?.text || source?.description)
+        }
+      }
+    }
+    if (item.type !== 'message' || !Array.isArray(item.content)) continue
+    for (const content of item.content) {
+      if (!content || typeof content !== 'object') continue
+      const blockText = typeof content.text === 'string' ? content.text : ''
+      for (const annotation of Array.isArray(content.annotations) ? content.annotations : []) {
+        const start = Number(annotation?.start_index)
+        const snippet = Number.isFinite(start) && start >= 0 ? sentenceBefore(blockText, start) : ''
+        addSource(annotation?.url, annotation?.title, snippet)
+      }
+    }
+  }
+
+  const inline = /\[\[\d+\]\]\((https:\/\/[^\s)]+)\)/g
+  for (const match of text.matchAll(inline)) addSource(match[1], undefined, sentenceBefore(text, match.index || 0))
+
+  const usageCalls = Number(
+    data.usage?.server_side_tool_usage_details?.web_search_calls ??
+    data.usage?.server_side_tool_usage?.web_search_calls ??
+    0,
+  )
+  const webSearchCalls = Math.max(Number.isFinite(usageCalls) ? usageCalls : 0, outputWebSearchCalls)
+  return { text, citations: [...citationSet], webSearchCalls, sources: [...sources.values()] }
+}
+
+function directXaiWebAuth(current: MessengerGrokAuth): MessengerGrokAuth | null {
+  const apiKey = process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
+  if (!apiKey || apiKey === current.apiKey) return null
+  return {
+    apiKey,
+    baseURL: XAI_API_BASE_DEFAULT,
+    model: process.env.XAI_MODEL?.trim() || current.model,
+    authMode: 'env',
+  }
+}
+
+/** One bounded xAI Responses web call with current-schema source extraction and a direct-key retry. */
 export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
-): Promise<{ text: string; citations: string[]; webSearchCalls: number }> {
+): Promise<{ text: string; citations: string[]; webSearchCalls: number; sources: SystemWebSearchSource[] }> {
   let auth = await resolveCachedAuth()
-  const request = () => postJsonWithRetry(
-    `${auth.baseURL}/responses`,
+  const request = (selectedAuth: MessengerGrokAuth) => postJsonWithRetry(
+    `${selectedAuth.baseURL}/responses`,
     {
       method: 'POST',
-      headers: headersFor(auth),
+      headers: headersFor(selectedAuth),
       body: JSON.stringify({
-        model: auth.model,
+        model: selectedAuth.model,
         input: [
-          { role: 'system', content: 'Research this public general question using web search. Summarize only verifiable facts from the requested jurisdiction. Cite source URLs. Do not give personalized legal advice or infer private facts.' },
+          { role: 'system', content: 'Research this public general question using web search. Use primary/official sources for regulated or YMYL topics. Summarize only verifiable facts from the requested jurisdiction. Cite source URLs. Do not give personalized legal advice or infer private facts.' },
           { role: 'user', content: question },
         ],
         tools: [{ type: 'web_search', ...(allowedDomains?.length ? { filters: { allowed_domains: allowedDomains.slice(0, 5) } } : {}) }],
+        include: ['web_search_call.action.sources'],
         reasoning: { effort: 'low' },
         max_output_tokens: 900,
         store: false,
       }),
     },
-    12_000,
+    18_000,
     1,
   )
-  let result = await request()
+
+  let result = await request(auth)
   if (AUTH_FAILURE_STATUS.has(result.response.status)) {
     authCache = null
     auth = await resolveCachedAuth(true)
-    result = await request()
+    result = await request(auth)
   }
-  if (!result.response.ok || result.text.length > 65_536) throw new Error(`Web research failed (${result.response.status})`)
-  const data = JSON.parse(result.text) as Record<string, any>
-  const text = parseResponsesContent(result.text).slice(0, 5000)
-  const citations = Array.isArray(data.citations) ? data.citations.filter((url: unknown): url is string => typeof url === 'string') : []
-  const webSearchCalls = Number(data.usage?.server_side_tool_usage?.web_search_calls ?? data.usage?.server_side_tool_usage_details?.web_search_calls ?? 0)
-  return { text, citations, webSearchCalls: Number.isFinite(webSearchCalls) ? webSearchCalls : 0 }
+
+  const parseIfUsable = (candidate: { response: Response; text: string }) => {
+    if (!candidate.response.ok || candidate.text.length > 65_536) return null
+    try {
+      const parsed = parseSystemWebSearchResponse(candidate.text)
+      return parsed.webSearchCalls > 0 && (parsed.sources.length > 0 || parsed.citations.length > 0) ? parsed : null
+    } catch { return null }
+  }
+
+  const first = parseIfUsable(result)
+  if (first) return first
+
+  const fallbackAuth = directXaiWebAuth(auth)
+  if (fallbackAuth) {
+    const fallback = await request(fallbackAuth)
+    const parsed = parseIfUsable(fallback)
+    if (parsed) return parsed
+    if (!fallback.response.ok) throw new Error(`Web research failed (${fallback.response.status})`)
+  }
+
+  if (!result.response.ok) throw new Error(`Web research failed (${result.response.status})`)
+  throw new Error('Web research returned no citation-linked sources')
 }

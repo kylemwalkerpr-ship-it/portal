@@ -104,6 +104,25 @@ describe('assistant deterministic fast replies', () => {
     expect(reply).toContain('https://market.yousafeconsultancy.com/')
   })
 
+  it('fast-paths trivial latest-message intents even when older history is unresolved', async () => {
+    const { getDeterministicYqaaReply } = await import('@/lib/assistantFastReplies')
+
+    const greeting = getDeterministicYqaaReply([
+      { role: 'user', content: 'I need help with a complicated work permit issue' },
+      { role: 'user', content: 'hello' },
+    ])
+    expect(greeting).toContain('YouSafe Quick Assistance Agent')
+
+    const capabilities = getDeterministicYqaaReply([
+      { role: 'user', content: 'I need help with a complicated work permit issue' },
+      { role: 'user', content: 'how can you help me?' },
+    ])
+    expect(capabilities).toContain('YouSafe services and Marketplace navigation')
+
+    expect(getDeterministicYqaaReply([{ role: 'user', content: 'thank you' }])).toContain("You're welcome")
+    expect(getDeterministicYqaaReply([{ role: 'user', content: 'who are you?' }])).toContain('YQAA')
+  })
+
   it('keeps specific service questions on the grounded AI path', async () => {
     const { getDeterministicYqaaReply } = await import('@/lib/assistantFastReplies')
     expect(getDeterministicYqaaReply([
