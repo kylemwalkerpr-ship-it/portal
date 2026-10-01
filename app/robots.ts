@@ -71,6 +71,8 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           'PerplexityBot',
           'Perplexity-User',
           'Claude-User',
+          'Claude-SearchBot',
+          'ClaudeBot',
         ],
         allow: '/',
         disallow: ['/api/'],

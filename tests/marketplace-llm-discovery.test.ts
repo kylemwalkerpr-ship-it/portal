@@ -11,6 +11,8 @@ const MARKET_AGENTS = [
   'PerplexityBot',
   'Perplexity-User',
   'Claude-User',
+  'Claude-SearchBot',
+  'ClaudeBot',
 ]
 
 describe('marketplace LLM discovery', () => {
@@ -18,7 +20,7 @@ describe('marketplace LLM discovery', () => {
   const llms = read('public/llms.txt')
   const landing = read('app/marketplace/PublicMarketplaceLanding.tsx')
 
-  test('robots stay host-aware: market lists six agents, portal keeps only the wildcard and no sitemap', () => {
+  test('robots stay host-aware: market lists eight agents, portal keeps only the wildcard and no sitemap', () => {
     expect(robots).toContain("const MARKET_HOST = 'market.yousafeconsultancy.com'")
     expect(robots).toContain("const PORTAL_HOST = 'portal.yousafeconsultancy.com'")
     expect(robots).toContain("userAgent: '*'")
@@ -57,6 +59,7 @@ describe('marketplace LLM discovery', () => {
     expect(llms).toContain('https://yousafeconsultancy.com')
     expect(llms).not.toMatch(/portal\.yousafeconsultancy\.com\/sign-(?:in|up)/i)
     expect(llms).not.toMatch(/payhip\.com/i)
+    expect(llms).toMatch(/private account utilities/i)
   })
 
   test('Service JSON-LD keeps a stable market @id and organization provider @id', () => {
