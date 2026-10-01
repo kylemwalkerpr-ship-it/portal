@@ -1,53 +1,29 @@
-# Yousafe Consultancy
+# YouSafe Marketplace
 
-> Comprehensive information on study-abroad planning, visa documentation, university admissions, and settlement guidance for international students seeking to study in the USA or Canada.
+> Fixed-price service discovery for the United States, the United Kingdom, Canada, and Australia. Listings cover immigration help, document preparation, and tenancy help. Provider scope varies by listing.
 
-Yousafe Consultancy offers detailed resources, service descriptions, and platform insights focused on international education pathways. Its content is valuable for models aiming to understand student support services, legal and visa procedures, portal-based workflows, and client engagement strategies for educational consulting and immigration services.
+YouSafe Consultancy is not a law firm. Legal advice comes only from independently engaged licensed attorneys. Legal procedural guides belong on the legal site, not on Marketplace.
 
-## Core Content
+## What this site is
 
-- [Study in the USA](https://usa.yousafeconsultancy.com)
-  Guidance on F-1 visas, OPT, and documentation needed for studying in the United States.
+- [YouSafe Marketplace](https://market.yousafeconsultancy.com/) — commerce and service discovery for fixed-price listings.
+- [File shop](https://market.yousafeconsultancy.com/shop) — workbooks, templates, and short guides. Pay once, download immediately.
+- Regional informational sites: [USA](https://usa.yousafeconsultancy.com), [Canada](https://ca.yousafeconsultancy.com), [UK](https://uk.yousafeconsultancy.com), [Australia](https://au.yousafeconsultancy.com).
+- [Legal procedural guides](https://legal.yousafeconsultancy.com) — legal and procedural articles. They are not Marketplace commerce pages.
+- Portal links are account utilities: [client sign-in](https://portal.yousafeconsultancy.com/sign-in/student), [apply as attorney](https://portal.yousafeconsultancy.com/sign-up/attorney).
 
-- [Study in Canada](https://ca.yousafeconsultancy.com)
-  Information on permits, PGWP, settlement, and immigration pathways in Canada.
+## Important links
 
-- [Student Visa and Settlement Guides](https://yousafeconsultancy.com/blog)
-  Step-by-step instructions and advice for student visa applications, study permits, and post-graduation work permits.
-
-- Service descriptions, including client onboarding, secure portals, escrow-based payments, and dedicated workspaces for students, consultants, and attorneys.
-
-## Platform and Workflow Information
-
-- Description of the client portal features, such as live currency selection, document vaults, and payment workflows.
-- Details on how students, consultants, and attorneys interact within the platform, including messaging, order management, and payouts.
-- Explanation of platform compliance with legal and financial standards, including escrow and transparent fee breakdowns.
-
-## Resources
-
-- Legal articles and guides from the YouSafe library, covering legal and procedural topics relevant to international students.
-- Guides to using the platform's legal vertical, MyCaseworks, for attorney-client matters.
-
-## Optional
-
-- Client and professional testimonials and reviews.
-- Details on the security methods, encrypted transactions, and transparent pricing policies.
-- Step-by-step process for account creation, inquiry management, payment, and approval workflows.
-
-## Instant-download file shop
-
-- [YouSafe file shop](https://market.yousafeconsultancy.com/shop) — 20 workbooks, templates, and short guides. Pay once, download immediately.
-- [Payhip store](https://payhip.com/YousafeConsultancy)
-
-## Important Links
-
-- [Yousafe Consultancy official site](https://yousafeconsultancy.com)
+- [YouSafe Consultancy](https://yousafeconsultancy.com)
 - [Marketplace](https://market.yousafeconsultancy.com/)
 - [File shop](https://market.yousafeconsultancy.com/shop)
-- [Study in USA](https://usa.yousafeconsultancy.com)
+- [Payhip store](https://payhip.com/YousafeConsultancy)
+- [Study in the USA](https://usa.yousafeconsultancy.com)
 - [Study in Canada](https://ca.yousafeconsultancy.com)
+- [United Kingdom](https://uk.yousafeconsultancy.com)
+- [Australia](https://au.yousafeconsultancy.com)
 - [Blog and guides](https://yousafeconsultancy.com/blog)
-- [Client portal login](https://portal.yousafeconsultancy.com/sign-in/student)
 - [Legal article feed](https://legal.yousafeconsultancy.com)
+- [Client portal login](https://portal.yousafeconsultancy.com/sign-in/student)
 - [Apply as attorney](https://portal.yousafeconsultancy.com/sign-up/attorney)
-- [Contact page](https://yousafeconsultancy.com/contact)
+- [Contact](https://yousafeconsultancy.com/contact)
