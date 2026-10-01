@@ -1,0 +1,113 @@
+{
+  "ok": true,
+  "read_only": true,
+  "pipeline": {
+    "task": {
+      "session": "studio-a4-claim-freshness-correction-v3",
+      "workspace": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929",
+      "requested_lane": "auto",
+      "provider": "codex",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "mode": "workspace-write",
+      "verification_count": 3,
+      "artifact_count": 0,
+      "capabilities": []
+    },
+    "policy": {
+      "codex_tier1_precedence": true,
+      "allow_freebuff_fallback": true,
+      "allow_native_fallback": true,
+      "no_silent_substitution": true,
+      "prohibit_fresh_retry_after_mutation": true,
+      "min_jev_confidence": 0.85
+    },
+    "context": {
+      "current_state": "BLOCKED",
+      "verification_state": "BLOCKED",
+      "mutation_seen": false,
+      "active_lease_lane": null,
+      "active_mission_id": null
+    },
+    "resume": {
+      "lane_id": "codex",
+      "model": "gpt-6-luna",
+      "checkpoint_ref": "01a0efdb-059c-7591-b685-a080abed3301",
+      "exact_checkpoint_proven": true,
+      "mutation_seen": false,
+      "lease_conflict": false
+    },
+    "lanes": [
+      {
+        "lane_id": "codex",
+        "model": "gpt-6-luna",
+        "available": false,
+        "tier": 1,
+        "operations": [
+          "admit",
+          "observe",
+          "resume"
+        ],
+        "reason": "probe_timeout",
+        "authenticated": null,
+        "live_e2e": null,
+        "family": "codex"
+      },
+      {
+        "lane_id": "native-deepseek",
+        "model": "deepseek-flash",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "provider_unavailable",
+        "authenticated": true,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "native-grok",
+        "model": "grok-4.7",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "capability_unavailable",
+        "authenticated": null,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "freebuff",
+        "model": "z-ai/glm-5.3-flash",
+        "available": true,
+        "tier": 2,
+        "operations": [
+          "observe",
+          "admit",
+          "resume"
+        ],
+        "reason": null,
+        "authenticated": true,
+        "live_e2e": true,
+        "family": "freebuff"
+      }
+    ]
+  },
+  "decision": {
+    "action": "BLOCK",
+    "lane_id": null,
+    "model": null,
+    "confidence": 0.62,
+    "reason": "jev_low_confidence",
+    "jev_decision": "START_FREEBUFF",
+    "probabilities": {
+      "BLOCK": 0.19,
+      "START_FREEBUFF": 0.81
+    }
+  }
+}

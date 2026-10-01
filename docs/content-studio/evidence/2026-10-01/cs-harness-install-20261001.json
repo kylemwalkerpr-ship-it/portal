@@ -1,0 +1,8 @@
+{
+  "backup_path": "/Users/phantomdarne/.local/state/yousafe-deepseek-bridge/backups/pre-schema12-20261001T191938Z.sqlite3",
+  "backup_bytes": 421224448,
+  "backup_integrity": "ok",
+  "main_head": "d2d983cbe9500f2ca7b0793091c72e834cb757dd",
+  "main_ref_uchg": true,
+  "ref_restore_note": "Merge auto-maintenance packed main. Normal Git update-ref restored identical reviewed loose ref via original head then reviewed head, followed immediately by uchg; no working tree edits."
+}

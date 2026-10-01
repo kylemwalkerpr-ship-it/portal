@@ -184,3 +184,22 @@ Dependency qualification: matching package/lock file hashes alone did not establ
 
 
 Root final candidate fullsuite PASS:2,160 tests/67skipped in128.604s with PYTHONPATH=src, log /tmp/cs-harness-v9-host-full-pythonpath-20261001.log. Reviewed exact996f4f... committed normally through brokeredGit as7cb9ca3eb37b7f22ae8d28edb0acee22183b477e, clean candidate. Normal isolated merge into currentmain8422 produced d2d983cbe9500f2ca7b0793091c72e834cb757dd, clean/conflict-free, preserves Grok4.7 and other-chat changes. Merged-source fullsuite and independent merged review pending; live mainref stilluchg/schema11. Runtimev2 naturalterminal required before reload.
+
+
+Merged harness d2d983cbe9500f2ca7b0793091c72e834cb757dd/treeb082a702e2c9723db7c1a5d876c365c45fbc5b6e independent Sol review PASS: candidate-only eight files identical, main-only nine files identical, three overlaps preserve Grok4.7 and collector/preflight behavior. Root merged fullsuite PASS:2,163 tests/67skipped,120.232s, /tmp/cs-harness-integrated-host-full-20261001.log. Live installation eligible after currentruntimev2 naturalterminal/sharedquiescence, coherent schema11 backup and immediate mainref uchg restoration. A4 normalized exactrequest recomputed matches e64121c1ef4acc40f03b7426ce79d08cdd889174bc5054fc3053179dfa0aa49b; no registration/replay yet.
+
+
+### Reviewed harness installed — 2026-10-01
+
+Runtimev2 naturally stopped BLOCKED/quota_exhausted, resumable originalthread01a0f7fb-2f3a-7b80-9664-7b9e463cd651; no nativeexec/domainleases/pendingqueue active beforeinstall. Coherent live schema11 SQLitebackup421224448bytes/integrityok/private0600 saved pre-schema12-20261001T191938Z.sqlite3. Normal broker ff-only merge installed reviewed d2d983cbe9500f2ca7b0793091c72e834cb757dd. Git auto-maintenance packedmain and initialfinally chflags found no loosefile; standard Git update-ref restored reviewed loose reference using original then reviewed head, immediate uchg restoration verified; no workingtree edits, clean. Supported launchd singleton kickstart completed. Fresh livehealth schema12/supported12/4of4workers/statusok/readwriteok, faultcounter reset0 since reload; earlier historical39faults remain historical, not erased evidence. Exactinstallation/health JSON saved.
+
+A4 supported register_recovered_request accepted absent metadata once; original normalized hash e64121c1ef4acc40f03b7426ce79d08cdd889174bc5054fc3053179dfa0aa49b reverified. Original sameID pipeline_route pending; no provider replay/execute yet. Runtimev2 frozen partialsource independent Sol review pending; canonical BLOCKED preserved.
+
+Fresh Portal originmain e42d3eb9e41f92d8edfce4dba99f1072077ad0e9 supersedes earlier d67pin; #30293949e28/#303f19cc842/#31216c5d7b all remain open drafts/checksSUCCESS, none merged/deployed here. Portal currentmain changes require exactintegration review before furtherhelper/runtimepromotion. Production release/DDL/cloudactivation remains held; P12/P13 downstream of live architecture.
+
+
+### Post-install admission blocker and frozen runtime review
+
+Both read-only A4sameID routing observations prove exactcodexcheckpoint01a0efdb-059c-7591-b685-a080abed3301/no leaseconflict, but Codex liveprobe timesout. JevBLOCK at0.62 then0.60 (below0.85) with Freebuff STARTsuggestion; no execute/fallback/duplicatejob admitted. Preserve originalcheckpoint. This is a transient capability blocker, not authorization denial or rationale to reset attempts.
+
+Interrupted runtimev2 frozen aggregate12newfiles SHA091b79c9848c4569d6fa3ee56f104f69cc60b1a85fc8b7bcd5a3484f0d63f90c reviewed by distinct GPT6.1Sol. Mustfix: Number(v)==='1' predicates alwaysfalse; expected five-tablecounts4 butfixture totals6; advisorywait barrier expects two sessions while earlier sharedauthority FORUPDATE blockssecond before advisorylock; service-role admission expression calls revoked privatehash function beforeRPC; psql verbose permission output ERROR:42501 does not match SQLSTATE42501 regex; lost-ACK scenario retains admission output beforekill; receipt omits sessionEvents and staleactiveCheck mislabels subsequentfailures. Narrow syntax/migrationorder83/ledgerpolicy69/trackedwhitespace checks pass; actual TS hash fixture c05d74... consistent. Real PG/TS/Jest not run, no candidatecommit/CIacceptance/activation. Keep resumable v2thread and source frozen; next exactcontinuation must address these findings.

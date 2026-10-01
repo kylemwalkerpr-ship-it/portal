@@ -1,0 +1,55 @@
+{
+  "origin_main": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "prs": [
+    {
+      "baseRefName": "main",
+      "headRefOid": "93949e28fb74de8b3ee58eeaf01349c38994004c",
+      "isDraft": true,
+      "number": 302,
+      "state": "OPEN",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/pull/302",
+      "checks": [
+        {
+          "name": "Focused Content Studio tests",
+          "conclusion": "SUCCESS"
+        },
+        {
+          "name": "Build and deploy Worker",
+          "conclusion": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "baseRefName": "fix/studio-gate-service-role-prereq-20260925",
+      "headRefOid": "f19cc842e33dc32c9345ef58b42f182be195122e",
+      "isDraft": true,
+      "number": 303,
+      "state": "OPEN",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/pull/303",
+      "checks": [
+        {
+          "name": "Verify against isolated local Supabase",
+          "conclusion": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefOid": "16c5d7b343185c5c84e631afaf7c782771df091e",
+      "isDraft": true,
+      "number": 312,
+      "state": "OPEN",
+      "url": "https://github.com/kylemwalkerpr-ship-it/portal/pull/312",
+      "checks": [
+        {
+          "name": "Focused Content Studio tests",
+          "conclusion": "SUCCESS"
+        },
+        {
+          "name": "Build and deploy Worker",
+          "conclusion": "SUCCESS"
+        }
+      ]
+    }
+  ]
+}
