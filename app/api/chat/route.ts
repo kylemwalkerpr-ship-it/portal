@@ -22,6 +22,7 @@ import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import {
   buildYqaaLiveResearchContext,
+  buildYqaaVerifiedWebDigest,
   guardVerifiedLiveResearchDisclosure,
   isYqaaLiveWebSourceKey,
 } from '@/lib/yqaaWebEvidence'
@@ -310,12 +311,54 @@ export async function POST(req: Request) {
       'Continue helping through YQAA. Give the most useful general answer supported by canonical/public evidence. If a current or YouSafe-specific fact cannot be verified, say that plainly and give the closest verified self-service next step. Do not invent specifics or claim freshness, certainty, eligibility, or outcomes that the evidence does not support.',
     ].join('\n')
     const systemKnowledge = [baseSystemKnowledge, liveResearchContext, evidenceLimit].filter(Boolean).join('\n\n')
+    const verifiedLiveResearch = webEvidenceCount > 0 && (webResearchStatus === 'verified' || webResearchStatus === 'retrieved')
     const modelStartedAt = Date.now()
-    const result = await generateYqaaAnswer(systemKnowledge, cleaned)
+    let result
+    try {
+      // generateYqaaAnswer already performs the commissioned compact Grok
+      // recovery and only crosses to DeepSeek when a real credential exists.
+      result = await generateYqaaAnswer(systemKnowledge, cleaned)
+    } catch (generationError) {
+      if (!verifiedLiveResearch) throw generationError
+      const digest = buildYqaaVerifiedWebDigest(publicEvidence)
+      if (!digest) throw generationError
+      const modelMs = Date.now() - modelStartedAt
+      const totalMs = Date.now() - requestStartedAt
+      console.warn('[system-assistant] model synthesis unavailable after verified web research', {
+        generation: generationError instanceof Error ? generationError.message.slice(0, 160) : 'unknown',
+        webEvidenceCount,
+        totalMs,
+      })
+      return withCors(
+        req,
+        {
+          reply: digest,
+          provider: 'system-ai-live-evidence',
+          supportApiUrl: SUPPORT_WIDGET_API,
+          marketplaceRecommendation,
+          retryable: true,
+          origin: {
+            surface: inquiryOrigin.surface,
+            hostname: inquiryOrigin.hostname,
+            pathname: inquiryOrigin.pathname,
+          },
+        },
+        {
+          status: 200,
+          headers: {
+            'Server-Timing': timingHeader([
+              ['knowledge', knowledgeMs],
+              ['jev', jevMs],
+              ['model', modelMs],
+              ['total', totalMs],
+            ]),
+          },
+        },
+      )
+    }
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
-    const verifiedLiveResearch = webEvidenceCount > 0 && (webResearchStatus === 'verified' || webResearchStatus === 'retrieved')
     const researchGuardedText = guardVerifiedLiveResearchDisclosure(pricingGuard.text, verifiedLiveResearch)
     const webCitations = publicEvidence.filter((chunk) => isYqaaLiveWebSourceKey(chunk.sourceKey))
       .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
