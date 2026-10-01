@@ -8,6 +8,7 @@ describe('YQAA xAI web-search transport', () => {
     else process.env.XAI_API_KEY = originalKey
     jest.resetModules()
     jest.clearAllMocks()
+    jest.dontMock('@opennextjs/cloudflare')
   })
 
   test('recognizes current Responses API web_search_call output and annotation/source citations without a legacy usage counter', async () => {
@@ -28,6 +29,37 @@ describe('YQAA xAI web-search transport', () => {
     expect(parsed.webSearchCalls).toBe(1)
     expect(parsed.citations).toContain('https://www.uscis.gov/opt')
     expect(parsed.sources[0]).toMatchObject({ url: 'https://www.uscis.gov/opt', title: 'OPT' })
+  })
+
+  test('reads the commissioned direct xAI key from Cloudflare Worker bindings when Node process.env does not expose secrets', async () => {
+    delete process.env.XAI_API_KEY
+    jest.doMock('@/lib/messengerAi', () => ({
+      resolveMessengerGrokAuth: jest.fn(async () => ({
+        apiKey: 'oauth-token', baseURL: 'https://api.x.ai/v1', model: 'grok-4.6', authMode: 'supergrok',
+      })),
+    }))
+    jest.doMock('@opennextjs/cloudflare', () => ({
+      getCloudflareContext: () => ({ env: { XAI_API_KEY: 'worker-direct-key', XAI_MODEL: 'grok-4.6' } }),
+    }))
+    const first = JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'No search evidence.' }] }], usage: {} })
+    const second = JSON.stringify({
+      citations: ['https://www.uscis.gov/opt'],
+      output: [
+        { type: 'web_search_call', action: { sources: [{ url: 'https://www.uscis.gov/opt', snippet: 'USCIS OPT source.' }] } },
+        { type: 'message', content: [{ type: 'output_text', text: 'Current USCIS OPT guidance.[[1]](https://www.uscis.gov/opt)' }] },
+      ],
+      usage: { server_side_tool_usage_details: { web_search_calls: 1 } },
+    })
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(new Response(first, { status: 200 }))
+      .mockResolvedValueOnce(new Response(second, { status: 200 })) as any
+
+    const { callSystemSuperGrokWebSearch } = await import('@/lib/superGrokAssistant')
+    const result = await callSystemSuperGrokWebSearch('latest OPT guidance', ['uscis.gov'])
+    expect(result.webSearchCalls).toBe(1)
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    const headers = (global.fetch as jest.Mock).mock.calls[1][1].headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer worker-direct-key')
   })
 
   test('retries the web-search request with the commissioned direct xAI key when the primary auth path returns no citation-linked search evidence', async () => {

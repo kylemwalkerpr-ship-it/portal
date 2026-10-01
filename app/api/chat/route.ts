@@ -259,7 +259,8 @@ export async function POST(req: Request) {
           safety = { answer: false, reason: 'web_evidence_insufficient' }
           webResearchStatus = 'insufficient'
         }
-      } catch {
+      } catch (err) {
+        console.warn('[system-assistant] web research failed', err instanceof Error ? err.message.slice(0, 180) : 'unknown')
         safety = { answer: false, reason: 'web_research_failed' }
         webResearchStatus = 'failed'
       }

@@ -1,5 +1,6 @@
 import { resolveMessengerGrokAuth, type MessengerGrokAuth } from '@/lib/messengerAi'
 import { XAI_API_BASE_DEFAULT } from '@/lib/xaiSuperGrokOAuth'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type SystemAssistantTurn = {
   role: 'user' | 'assistant'
@@ -316,12 +317,26 @@ export function parseSystemWebSearchResponse(raw: string): {
 }
 
 function directXaiWebAuth(current: MessengerGrokAuth): MessengerGrokAuth | null {
-  const apiKey = process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
+  let apiKey = ''
+  let model = ''
+  try {
+    const workerEnv = getCloudflareContext().env as CloudflareEnv & {
+      XAI_API_KEY?: string
+      GROK_API_KEY?: string
+      XAI_MODEL?: string
+    }
+    apiKey = workerEnv.XAI_API_KEY?.trim() || workerEnv.GROK_API_KEY?.trim() || ''
+    model = workerEnv.XAI_MODEL?.trim() || ''
+  } catch {
+    // Local/test execution can fall back to Node-style server env.
+  }
+  apiKey ||= process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
+  model ||= process.env.XAI_MODEL?.trim() || ''
   if (!apiKey || apiKey === current.apiKey) return null
   return {
     apiKey,
     baseURL: XAI_API_BASE_DEFAULT,
-    model: process.env.XAI_MODEL?.trim() || current.model,
+    model: model || current.model,
     authMode: 'env',
   }
 }
@@ -373,13 +388,21 @@ export async function callSystemSuperGrokWebSearch(
   if (first) return first
 
   const fallbackAuth = directXaiWebAuth(auth)
+  let fallbackStatus: number | null = null
   if (fallbackAuth) {
     const fallback = await request(fallbackAuth)
+    fallbackStatus = fallback.response.status
     const parsed = parseIfUsable(fallback)
     if (parsed) return parsed
-    if (!fallback.response.ok) throw new Error(`Web research failed (${fallback.response.status})`)
   }
 
+  console.warn('[system-assistant] web research transport exhausted', {
+    primaryAuthMode: auth.authMode,
+    primaryStatus: result.response.status,
+    directKeyFallbackConfigured: Boolean(fallbackAuth),
+    fallbackStatus,
+  })
+  if (fallbackStatus && fallbackStatus >= 400) throw new Error(`Web research failed (${fallbackStatus})`)
   if (!result.response.ok) throw new Error(`Web research failed (${result.response.status})`)
   throw new Error('Web research returned no citation-linked sources')
 }
