@@ -88,6 +88,23 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
   })
 
+  test('retrieved Browser evidence remains usable when second Jev is unavailable and the model is told live web research succeeded', async () => {
+    const official = { ...kbChunk('official-web'), id: 'browser-opt', sourceKey: 'web:cloudflare_browser',
+      sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
+      source: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students' }
+    const flow = await setup({ confidence: 0.2, jev: [weakJev(), { available: false, reason: 'timeout' }], web: [official] })
+    const result = await flow.ask('What are the latest OPT rules for F-1 students?')
+    expect(result.body.provider).toBe('system-ai')
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    const systemPrompt = String((flow.generateYqaaAnswer.mock.calls as any[][])[0][0])
+    expect(systemPrompt).toContain('LIVE WEB RESEARCH SUCCEEDED')
+    expect(systemPrompt).toContain('Do not say that web search, internet access, or live research is unavailable')
+    expect(systemPrompt).toContain(official.sourceUrl)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.escalateToSupport).not.toHaveBeenCalled()
+  })
+
   test('weak KB searches official web, sends combined evidence to Jev, and retains citations', async () => {
     const official = { ...kbChunk('official-web'), id: 'web-1', sourceKey: 'xai:web_search',
       sourceUrl: 'https://www.hud.gov/program_offices/housing', source: 'https://www.hud.gov/program_offices/housing' }

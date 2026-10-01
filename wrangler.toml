@@ -39,6 +39,14 @@ id = "a60944658f974790acc6c74a35c661aa"
 [ai]
 binding = "AI"
 
+# ── Browser Rendering ───────────────────────────────────────────────────
+# Credential-free public-web fallback for YQAA live research. xAI web_search
+# remains primary; Browser Run is used only when that transport fails or
+# returns no citation-linked evidence. YMYL research remains official-domain
+# constrained in lib/yqaaWebResearch.ts.
+[browser]
+binding = "BROWSER"
+
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"

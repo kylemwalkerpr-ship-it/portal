@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 
 describe('YQAA public web research', () => {
-  afterEach(() => { jest.resetModules(); jest.dontMock('@/lib/superGrokAssistant') })
+  afterEach(() => { jest.resetModules(); jest.dontMock('@/lib/superGrokAssistant'); jest.dontMock('@opennextjs/cloudflare') })
 
   test('Australia on a USA host restricts xAI search and accepts only Australia official citations', async () => {
     const callSystemSuperGrokWebSearch = jest.fn(async (_question: string, _domains?: string[]) => ({
@@ -51,6 +51,7 @@ describe('YQAA public web research', () => {
     jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch: async () => ({
       text: 'A plausible uncited answer.', citations: [], webSearchCalls: 1,
     }) }))
+    jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: {} }) }))
     const { researchYqaaPublicWeb } = await import('@/lib/yqaaWebResearch')
     expect(await researchYqaaPublicWeb('What are current visa rules in Canada?')).toEqual([])
   })

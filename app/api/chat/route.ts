@@ -240,7 +240,7 @@ export async function POST(req: Request) {
     let jevMs = Date.now() - jevStartedAt
     let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     let webEvidenceCount = 0
-    let webResearchStatus: 'skipped' | 'verified' | 'insufficient' | 'failed' = 'skipped'
+    let webResearchStatus: 'skipped' | 'verified' | 'retrieved' | 'insufficient' | 'failed' = 'skipped'
     const freshnessRequiresWeb = yqaaNeedsFreshWebResearch(lastUser.content)
     if (safety.reason !== 'high_stakes_handoff' &&
         (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
@@ -254,7 +254,7 @@ export async function POST(req: Request) {
           const secondJev = await requestJevAdvisory(advisoryContext)
           jevMs += Date.now() - secondJevStartedAt
           safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
-          webResearchStatus = safety.answer ? 'verified' : 'insufficient'
+          webResearchStatus = safety.answer ? 'verified' : 'retrieved'
         } else {
           safety = { answer: false, reason: 'web_evidence_insufficient' }
           webResearchStatus = 'insufficient'
@@ -296,6 +296,12 @@ export async function POST(req: Request) {
       origin: inquiryOrigin,
       curatedChunks: publicEvidence,
     })
+    const liveWebNotice = webEvidenceCount > 0 ? [
+      '# LIVE WEB RESEARCH SUCCEEDED',
+      `Live public-web evidence was retrieved this turn from ${webEvidenceCount} source${webEvidenceCount === 1 ? '' : 's'}.`,
+      'Use the supplied web evidence and cite its source URLs for freshness-sensitive claims.',
+      'Do not say that web search, internet access, or live research is unavailable on this turn.',
+    ].join('\n') : ''
     const evidenceLimit = safety.answer ? '' : [
       '# CURRENT TURN EVIDENCE LIMIT',
       `Evidence check: ${safety.reason.replace(/_handoff$/, '')}.`,
@@ -303,13 +309,13 @@ export async function POST(req: Request) {
       'This evidence limitation is not, by itself, a reason to create a human-support handoff.',
       'Continue helping through YQAA. Give the most useful general answer supported by canonical/public evidence. If a current or YouSafe-specific fact cannot be verified, say that plainly and give the closest verified self-service next step. Do not invent specifics or claim freshness, certainty, eligibility, or outcomes that the evidence does not support.',
     ].join('\n')
-    const systemKnowledge = evidenceLimit ? `${baseSystemKnowledge}\n\n${evidenceLimit}` : baseSystemKnowledge
+    const systemKnowledge = [baseSystemKnowledge, liveWebNotice, evidenceLimit].filter(Boolean).join('\n\n')
     const modelStartedAt = Date.now()
     const result = await generateYqaaAnswer(systemKnowledge, cleaned)
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
-    const webCitations = publicEvidence.filter((chunk) => chunk.sourceKey === 'xai:web_search')
+    const webCitations = publicEvidence.filter((chunk) => chunk.sourceKey === 'xai:web_search' || chunk.sourceKey === 'web:cloudflare_browser')
       .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
     const missingCitations = webCitations.filter((url) => !pricingGuard.text.includes(url))
     const finalText = missingCitations.length

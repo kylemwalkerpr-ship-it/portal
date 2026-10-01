@@ -23,9 +23,16 @@ declare global {
   /** KV namespace for page-level data caching (configured in wrangler.toml). */
   const PAGE_CACHE: KVNamespace | undefined
 
+  interface BrowserQuickActionBinding {
+    quickAction(action: 'links' | 'markdown' | 'content', options: Record<string, unknown>): Promise<Response>
+  }
+
   interface CloudflareEnv {
     /** KV namespace for page-level data caching. */
     PAGE_CACHE: KVNamespace
+
+    /** Cloudflare Browser Rendering binding used by YQAA public-web fallback. */
+    BROWSER: BrowserQuickActionBinding
 
     /** Content assets directory binding. */
     ASSETS: Fetcher
