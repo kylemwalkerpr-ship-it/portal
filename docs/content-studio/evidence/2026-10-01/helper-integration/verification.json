@@ -1,0 +1,22 @@
+{
+  "head": "16c5d7b343185c5c84e631afaf7c782771df091e",
+  "base": "d67f6ca87c5eaafe1b67aa6bb5330fc6ba1c74e2",
+  "pr": "https://github.com/kylemwalkerpr-ship-it/portal/pull/312",
+  "tests": {
+    "suites": 4,
+    "passed": 53,
+    "exit_code": 0
+  },
+  "types": {
+    "command": "npx tsc --noEmit --pretty false",
+    "repo_config_unchanged": true,
+    "exit_code": 0
+  },
+  "dependency_reuse": {
+    "supervised_symlink": true,
+    "package_and_lock_hashes_match": true,
+    "no_install": true
+  },
+  "runtime_active": false,
+  "deployed": false
+}
