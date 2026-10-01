@@ -20,6 +20,7 @@ import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneratio
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
+import { isYqaaLiveWebSourceKey } from '@/lib/yqaaWebEvidence'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -309,7 +310,7 @@ export async function POST(req: Request) {
     const modelMs = Date.now() - modelStartedAt
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
-    const webCitations = publicEvidence.filter((chunk) => chunk.sourceKey === 'xai:web_search')
+    const webCitations = publicEvidence.filter((chunk) => isYqaaLiveWebSourceKey(chunk.sourceKey))
       .map((chunk) => chunk.sourceUrl).filter((url): url is string => Boolean(url))
     const missingCitations = webCitations.filter((url) => !pricingGuard.text.includes(url))
     const finalText = missingCitations.length
