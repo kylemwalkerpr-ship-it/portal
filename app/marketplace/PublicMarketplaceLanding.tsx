@@ -851,6 +851,12 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
         </div>
       </section>
 
+      {/* Most requested — curated in lib/marketHomeMostRequested.ts. Sits
+          directly under the hero so its heading and first cards land above
+          the fold on a 1440x900 desktop; the trust strip follows it. */}
+      <MostRequestedRail cards={data.mostRequested ?? []} />
+      <MarketHomeCategoryTiles tiles={MARKET_HOME_CATEGORY_TILES} />
+
       {/* Trust strip — factual, compact (see trustItems above). */}
       <div className="trust" data-trust-strip="">
         <div className="wrap trust-inner">
@@ -860,10 +866,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
           ))}
         </div>
       </div>
-
-      {/* Most requested — curated in lib/marketHomeMostRequested.ts. */}
-      <MostRequestedRail cards={data.mostRequested ?? []} />
-      <MarketHomeCategoryTiles tiles={MARKET_HOME_CATEGORY_TILES} />
 
       <section className="cw-files-band" aria-label="Open the file shop">
         <div className="wrap cw-files-band-inner">
