@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
+import { postGigMetric } from '@/lib/gigMetricsClient'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { Card, ErrorState, EmptyState, Btn } from '../design/shared'
@@ -316,10 +317,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         )
       }
 
-      requestJson('/api/gig-metrics/event', {
-        method: 'POST',
-        body: JSON.stringify({ gig_id: loaded.id, event_type: 'click' }),
-      }).catch(() => {})
+      postGigMetric({ gig_id: loaded.id, event_type: 'click' })
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -370,10 +368,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         }),
       })
       idemKeyRef.current = null
-      requestJson('/api/gig-metrics/event', {
-        method: 'POST',
-        body: JSON.stringify({ gig_id: gig.id, event_type: 'purchase' }),
-      }).catch(() => {})
+      postGigMetric({ gig_id: gig.id, event_type: 'purchase' })
       const orderId = payload?.orderId || payload?.order?.id || null
       const url = payload?.url || (orderId ? marketplaceOrdersHref(orderId) : null)
       setPlacedOrderId(orderId)
@@ -417,10 +412,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
       window.localStorage.setItem(SAVED_GIGS_KEY, JSON.stringify(nextSaved))
       setIsSaved(!isSaved)
       if (!isSaved) {
-        requestJson('/api/gig-metrics/event', {
-          method: 'POST',
-          body: JSON.stringify({ gig_id: gig.id, event_type: 'save' }),
-        }).catch(() => {})
+        postGigMetric({ gig_id: gig.id, event_type: 'save' })
       }
     } catch (e) {
       console.error('Failed to save gig:', e)
@@ -443,10 +435,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
       alert('Link copied to clipboard!')
     }
     if (gig?.id) {
-      requestJson('/api/gig-metrics/event', {
-        method: 'POST',
-        body: JSON.stringify({ gig_id: gig.id, event_type: 'share' }),
-      }).catch(() => {})
+      postGigMetric({ gig_id: gig.id, event_type: 'share' })
     }
   }
 

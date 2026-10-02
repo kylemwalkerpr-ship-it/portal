@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
+import { postGigMetric } from '@/lib/gigMetricsClient'
 import type { CSSProperties } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -497,10 +498,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
       // per gig (the per-gig loop was 20 Worker invocations per browse).
       const impressionIds = (data.gigs || []).map((g: any) => g.id).filter(Boolean)
       if (impressionIds.length > 0) {
-        requestJson('/api/gig-metrics/event', {
-          method: 'POST',
-          body: JSON.stringify({ gig_ids: impressionIds, event_type: 'impression' }),
-        }).catch(() => {})
+        postGigMetric({ gig_ids: impressionIds, event_type: 'impression' })
       }
     } catch (e: any) {
       setError(e.message)
