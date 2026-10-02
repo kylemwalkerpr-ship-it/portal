@@ -1,0 +1,38 @@
+name: Upload Gig Cover Stock
+
+# Uploads the committed stock gig covers in data/gig-cover-stock/ to the public
+# gig-gallery Storage bucket. Storage only: it never writes the gigs table.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data/gig-cover-stock/**'
+      - 'scripts/upload-gig-cover-stock.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-gig-cover-stock
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload covers to gig-gallery and verify public URLs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --ignore-scripts
+      - name: Upload and verify
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+        run: node scripts/upload-gig-cover-stock.mjs
