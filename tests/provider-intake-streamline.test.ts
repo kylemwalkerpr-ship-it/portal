@@ -387,5 +387,6 @@ describe('form + banner UX pins', () => {
     ]) {
       expect(src(file)).not.toMatch(/regulated consultant|credentialed consultant/i)
     }
+    expect(src('components/marketplace/FeaturedBriefsGrid.tsx')).not.toContain("'Reg.'")
   })
 })
