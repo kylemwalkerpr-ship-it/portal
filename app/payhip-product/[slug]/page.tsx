@@ -7,6 +7,8 @@ import {
   getPayhipBatches24RelatedProducts,
 } from '@/lib/payhipBatches24'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import { GET_MATCHED_PATH, getPackReviewUpsell } from '@/lib/packReviewUpsell'
+import TrackedCtaLink from '@/components/attribution/TrackedCtaLink'
 
 const MARKET = 'https://market.yousafeconsultancy.com'
 const PAYHIP = 'https://shop.yousafeconsultancy.com/b'
@@ -79,6 +81,7 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
   const apexUrl = `${APEX}/${product.apexSlug}`
   const related = getPayhipBatches24RelatedProducts(product)
   const boundary = truthBoundary(product.productNumber)
+  const reviewUpsell = getPackReviewUpsell(product.slug)
 
   const productJsonLd = {
     '@context': 'https://schema.org',
@@ -155,6 +158,53 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
             <a href={apexUrl} target="_blank" rel="noopener noreferrer">Read the product workflow guide →</a>
           </section>
 
+          <section className="ys-ap-section ys-ap-review" id="professional-review">
+            <p className="ys-ap-kicker">Want a professional to check it?</p>
+            {reviewUpsell.primary ? (
+              <>
+                <h2>Have a US attorney review your application before you file</h2>
+                <p>
+                  Finish the workbook, then book a fixed-fee review: {reviewUpsell.primary.outcome} Payment is held
+                  in escrow until you approve the delivery.
+                </p>
+                <TrackedCtaLink
+                  href={`/gigs/${reviewUpsell.primary.slug}`}
+                  ctaId={`pack_review_upsell:${product.slug}:${reviewUpsell.primary.slug}`}
+                  className="ys-ap-review-cta"
+                >
+                  {reviewUpsell.primary.title}, from ${reviewUpsell.primary.priceUsd} →
+                </TrackedCtaLink>
+              </>
+            ) : (
+              <>
+                <h2>Get a fixed-fee offer for your specific case</h2>
+                <p>
+                  Describe your situation in a few minutes. A provider on the YouSafe Marketplace replies with a
+                  fixed-fee offer, and nothing is charged unless you accept it.
+                </p>
+                <TrackedCtaLink
+                  href={GET_MATCHED_PATH}
+                  ctaId={`pack_review_upsell:${product.slug}:get-matched`}
+                  className="ys-ap-review-cta"
+                >
+                  Describe your case free →
+                </TrackedCtaLink>
+              </>
+            )}
+            {reviewUpsell.secondary ? (
+              <p className="ys-ap-review-secondary">
+                {reviewUpsell.secondary.when}{' '}
+                <TrackedCtaLink
+                  href={`/gigs/${reviewUpsell.secondary.gig.slug}`}
+                  ctaId={`pack_review_upsell:${product.slug}:${reviewUpsell.secondary.gig.slug}`}
+                >
+                  {reviewUpsell.secondary.gig.title}, from ${reviewUpsell.secondary.gig.priceUsd} →
+                </TrackedCtaLink>
+              </p>
+            ) : null}
+            <p className="ys-ap-review-note">YouSafe Consultancy is not a law firm. Reviews are delivered by independent providers.</p>
+          </section>
+
           {product.authorityLinks.length > 0 ? (
             <section className="ys-ap-section">
               <p className="ys-ap-kicker">Current authority layer</p>
@@ -196,5 +246,5 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
 }
 
 const PRODUCT_CSS = `
-.ys-audited-product{width:min(1160px,calc(100vw - 36px));margin:0 auto;padding:34px 0 80px;color:var(--ys-ink,#0f172a);font-family:var(--font-outfit),'Outfit',system-ui,sans-serif}.ys-ap-crumbs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;color:var(--ys-inkSoft,#526072);font-size:13px}.ys-ap-crumbs a{color:inherit;text-decoration:none;font-weight:700}.ys-ap-hero{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(310px,.72fr);gap:44px;align-items:center;padding:46px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:24px;background:radial-gradient(120% 180% at 90% -20%,var(--ys-paper3,#e8ebee),var(--ys-vellum,#fff) 58%)}.ys-ap-kicker{margin:0 0 10px;font-size:11px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;color:var(--ys-teal,#111827)}.ys-ap-copy h1{max-width:19ch;margin:0;font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:clamp(34px,5vw,56px);line-height:1.04;letter-spacing:-.035em}.ys-ap-lede{max-width:66ch;margin:18px 0 22px;color:var(--ys-inkMid,#334155);font-size:17px;line-height:1.65}.ys-ap-tags{display:flex;flex-wrap:wrap;gap:8px}.ys-ap-tags a{padding:7px 11px;border:1px solid var(--ys-rule,rgba(15,23,42,.12));border-radius:999px;background:#fff;color:var(--ys-inkMid,#334155);font-size:12px;font-weight:750;text-decoration:none}.ys-ap-tags a:hover{border-color:rgba(15,23,42,.34)}.ys-ap-buybox{overflow:hidden;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:18px;background:#fff;box-shadow:0 24px 48px -34px rgba(15,23,42,.35)}.ys-ap-buybox>img{display:block;width:100%;height:230px;object-fit:cover}.ys-ap-buybox-body{padding:20px}.ys-ap-buybox-body p{margin:0 0 10px;font-size:13px;font-weight:800}.ys-ap-buybox-body strong{display:block;font-size:38px;line-height:1}.ys-ap-buybox-body>span{display:block;margin:8px 0 20px;color:var(--ys-inkSoft,#526072);font-size:12px}.ys-ap-buybox-body>a{display:block;padding:13px 18px;border-radius:999px;background:var(--ys-teal,#111827);color:#fff;text-align:center;text-decoration:none;font-weight:850}.ys-ap-buybox-body small{display:block;margin-top:12px;color:var(--ys-inkSoft,#526072);font-size:11px;line-height:1.45}.ys-ap-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:44px;margin-top:54px;align-items:start}.ys-ap-section{padding:0 0 38px;margin-bottom:38px;border-bottom:1px solid var(--ys-rule,rgba(15,23,42,.1))}.ys-ap-section h2,.ys-ap-note h2{margin:0 0 14px;font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:28px;letter-spacing:-.025em}.ys-ap-section>p:not(.ys-ap-kicker),.ys-ap-note p{color:var(--ys-inkMid,#334155);font-size:15px;line-height:1.7}.ys-ap-guide>a,.ys-ap-note>a{color:var(--ys-teal,#111827);font-weight:850}.ys-ap-authority{display:grid;gap:9px}.ys-ap-authority a{padding:13px 15px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:12px;color:var(--ys-ink,#0f172a);font-size:14px;font-weight:800;text-decoration:none}.ys-ap-related{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.ys-ap-related>a{overflow:hidden;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:14px;background:#fff;color:inherit;text-decoration:none}.ys-ap-related img{display:block;width:100%;height:150px;object-fit:cover}.ys-ap-related span{display:grid;gap:7px;padding:14px}.ys-ap-related strong{font-size:14px;line-height:1.35}.ys-ap-related small{color:var(--ys-inkSoft,#526072);font-weight:800}.ys-ap-note{position:sticky;top:96px;padding:22px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:18px;background:var(--ys-paper2,#f8fafc)}@media(max-width:820px){.ys-ap-hero,.ys-ap-layout{grid-template-columns:1fr}.ys-ap-hero{padding:26px}.ys-ap-note{position:static}.ys-ap-related{grid-template-columns:1fr}}@media(max-width:520px){.ys-audited-product{width:min(100% - 24px,1160px);padding-top:22px}.ys-ap-hero{padding:20px;border-radius:18px}.ys-ap-copy h1{font-size:34px}.ys-ap-buybox>img{height:200px}}
+.ys-audited-product{width:min(1160px,calc(100vw - 36px));margin:0 auto;padding:34px 0 80px;color:var(--ys-ink,#0f172a);font-family:var(--font-outfit),'Outfit',system-ui,sans-serif}.ys-ap-crumbs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;color:var(--ys-inkSoft,#526072);font-size:13px}.ys-ap-crumbs a{color:inherit;text-decoration:none;font-weight:700}.ys-ap-hero{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(310px,.72fr);gap:44px;align-items:center;padding:46px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:24px;background:radial-gradient(120% 180% at 90% -20%,var(--ys-paper3,#e8ebee),var(--ys-vellum,#fff) 58%)}.ys-ap-kicker{margin:0 0 10px;font-size:11px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;color:var(--ys-teal,#111827)}.ys-ap-copy h1{max-width:19ch;margin:0;font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:clamp(34px,5vw,56px);line-height:1.04;letter-spacing:-.035em}.ys-ap-lede{max-width:66ch;margin:18px 0 22px;color:var(--ys-inkMid,#334155);font-size:17px;line-height:1.65}.ys-ap-tags{display:flex;flex-wrap:wrap;gap:8px}.ys-ap-tags a{padding:7px 11px;border:1px solid var(--ys-rule,rgba(15,23,42,.12));border-radius:999px;background:#fff;color:var(--ys-inkMid,#334155);font-size:12px;font-weight:750;text-decoration:none}.ys-ap-tags a:hover{border-color:rgba(15,23,42,.34)}.ys-ap-buybox{overflow:hidden;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:18px;background:#fff;box-shadow:0 24px 48px -34px rgba(15,23,42,.35)}.ys-ap-buybox>img{display:block;width:100%;height:230px;object-fit:cover}.ys-ap-buybox-body{padding:20px}.ys-ap-buybox-body p{margin:0 0 10px;font-size:13px;font-weight:800}.ys-ap-buybox-body strong{display:block;font-size:38px;line-height:1}.ys-ap-buybox-body>span{display:block;margin:8px 0 20px;color:var(--ys-inkSoft,#526072);font-size:12px}.ys-ap-buybox-body>a{display:block;padding:13px 18px;border-radius:999px;background:var(--ys-teal,#111827);color:#fff;text-align:center;text-decoration:none;font-weight:850}.ys-ap-buybox-body small{display:block;margin-top:12px;color:var(--ys-inkSoft,#526072);font-size:11px;line-height:1.45}.ys-ap-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:44px;margin-top:54px;align-items:start}.ys-ap-section{padding:0 0 38px;margin-bottom:38px;border-bottom:1px solid var(--ys-rule,rgba(15,23,42,.1))}.ys-ap-section h2,.ys-ap-note h2{margin:0 0 14px;font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:28px;letter-spacing:-.025em}.ys-ap-section>p:not(.ys-ap-kicker),.ys-ap-note p{color:var(--ys-inkMid,#334155);font-size:15px;line-height:1.7}.ys-ap-guide>a,.ys-ap-note>a{color:var(--ys-teal,#111827);font-weight:850}.ys-ap-authority{display:grid;gap:9px}.ys-ap-authority a{padding:13px 15px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:12px;color:var(--ys-ink,#0f172a);font-size:14px;font-weight:800;text-decoration:none}.ys-ap-related{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.ys-ap-related>a{overflow:hidden;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:14px;background:#fff;color:inherit;text-decoration:none}.ys-ap-related img{display:block;width:100%;height:150px;object-fit:cover}.ys-ap-related span{display:grid;gap:7px;padding:14px}.ys-ap-related strong{font-size:14px;line-height:1.35}.ys-ap-related small{color:var(--ys-inkSoft,#526072);font-weight:800}.ys-ap-review-cta{display:inline-block;margin-top:6px;padding:12px 18px;border-radius:999px;background:var(--ys-teal,#111827);color:#fff;text-decoration:none;font-weight:850}.ys-ap-review-secondary a{color:var(--ys-teal,#111827);font-weight:850}.ys-ap-review-note{font-size:12px!important;color:var(--ys-inkSoft,#526072)!important}.ys-ap-note{position:sticky;top:96px;padding:22px;border:1px solid var(--ys-rule,rgba(15,23,42,.1));border-radius:18px;background:var(--ys-paper2,#f8fafc)}@media(max-width:820px){.ys-ap-hero,.ys-ap-layout{grid-template-columns:1fr}.ys-ap-hero{padding:26px}.ys-ap-note{position:static}.ys-ap-related{grid-template-columns:1fr}}@media(max-width:520px){.ys-audited-product{width:min(100% - 24px,1160px);padding-top:22px}.ys-ap-hero{padding:20px;border-radius:18px}.ys-ap-copy h1{font-size:34px}.ys-ap-buybox>img{height:200px}}
 `
