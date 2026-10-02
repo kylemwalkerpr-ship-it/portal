@@ -18,7 +18,13 @@ export default function SignInClient() {
   const searchParams = useSearchParams()
   const [referrer, setReferrer] = useState<string | null>(null)
   const segments = pathname.split('/').filter(Boolean)
-  const legacyLane = segments[1] && LEGACY_SIGN_IN_LANES.has(segments[1].toLowerCase()) ? segments[1] : null
+  // Detected after mount only: the prerendered shell (and the Clerk sub-screens
+  // rewritten onto it) must hydrate with identical markup on every path.
+  const [legacyLane, setLegacyLane] = useState<string | null>(null)
+  useEffect(() => {
+    setLegacyLane(segments[1] && LEGACY_SIGN_IN_LANES.has(segments[1].toLowerCase()) ? segments[1] : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
   const returnTo = useMemo(
     () => pickReturnTo(new URLSearchParams(searchParams.toString()), PORTAL_ORIGIN),
     [searchParams],
@@ -47,16 +53,6 @@ export default function SignInClient() {
     }
   }, [])
 
-  if (legacyLane) {
-    return (
-      <div style={{
-        minHeight: '100vh', background: '#F7F8FA', color: '#0F172A',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        Opening secure sign-in...
-      </div>
-    )
-  }
 
   return (
     <AuthShell
@@ -66,13 +62,20 @@ export default function SignInClient() {
       laneLabel="account"
       previousUrl={previousUrl}
     >
-      <SignIn
-        routing="path"
-        path="/sign-in"
-        {...(returnTo ? { forceRedirectUrl: returnTo } : { fallbackRedirectUrl: `${PORTAL_ORIGIN}/dashboard` })}
-        signUpUrl={signUpUrl}
-        appearance={clerkAppearance}
-      />
+      {/* Lane URLs (prerendered shells, e.g. /sign-in/student) render the SAME shell copy
+          (the static-cache deploy gate checks for it) and immediately replace to the
+          canonical document; Clerk mounts only on the canonical path. */}
+      {legacyLane ? (
+        <p style={{ textAlign: 'center', color: '#4A4F5B', padding: '24px 0' }}>Opening secure sign-in…</p>
+      ) : (
+        <SignIn
+          routing="path"
+          path="/sign-in"
+          {...(returnTo ? { forceRedirectUrl: returnTo } : { fallbackRedirectUrl: `${PORTAL_ORIGIN}/dashboard` })}
+          signUpUrl={signUpUrl}
+          appearance={clerkAppearance}
+        />
+      )}
     </AuthShell>
   )
 }

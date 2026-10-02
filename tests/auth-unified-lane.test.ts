@@ -221,3 +221,20 @@ describe('forced password change gate (feature-flag safe)', () => {
     expect(clerkBody).not.toContain('currentUser()')
   })
 })
+
+describe('auth lane shells keep the deploy-gate marker', () => {
+  const fs = require('node:fs') as typeof import('node:fs')
+  for (const file of ['app/sign-in/[[...rest]]/SignInClient.tsx', 'app/sign-up/[[...rest]]/SignUpClient.tsx']) {
+    test(`${file} renders its AuthShell title on every prerendered lane`, () => {
+      const source = fs.readFileSync(file, 'utf8')
+      // The static-cache gate requires the AuthShell title in EVERY lane
+      // document (/sign-in/student, ...). No early return may skip the shell.
+      expect(source).not.toMatch(/if \(legacyLane\) \{\s*return/)
+      const returns = source.match(/\n  return \(/g) ?? []
+      expect(returns).toHaveLength(1)
+      expect(source).toMatch(/<AuthShell[\s\S]{0,600}?title="([^"]{20,})"/)
+      // Lane detection happens after mount so every shell hydrates identically.
+      expect(source).toContain('const [legacyLane, setLegacyLane] = useState<string | null>(null)')
+    })
+  }
+})

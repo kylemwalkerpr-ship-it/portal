@@ -19,7 +19,13 @@ export default function SignUpClient() {
   const searchParams = useSearchParams()
   const [referrer, setReferrer] = useState<string | null>(null)
   const segments = pathname.split('/').filter(Boolean)
-  const legacyLane = segments[1] && LEGACY_SIGN_UP_LANES.has(segments[1].toLowerCase()) ? segments[1].toLowerCase() : null
+  // Detected after mount only: the prerendered shell (and the Clerk sub-screens
+  // rewritten onto it) must hydrate with identical markup on every path.
+  const [legacyLane, setLegacyLane] = useState<string | null>(null)
+  useEffect(() => {
+    setLegacyLane(segments[1] && LEGACY_SIGN_UP_LANES.has(segments[1].toLowerCase()) ? segments[1].toLowerCase() : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
   const source = searchParams.get('source')
   const intent =
     normalizeAuthIntent(searchParams.get('intent')) ??
@@ -61,18 +67,6 @@ export default function SignUpClient() {
     }
   }, [])
 
-  if (legacyLane) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#F7F8FA', color: '#0F172A',
-        }}
-      >
-        Opening secure sign-up...
-      </div>
-    )
-  }
 
   const isProvider = intent === 'provider' || intent === 'attorney' || intent === 'consultant' || intent === 'regulated_adviser'
 
@@ -88,14 +82,21 @@ export default function SignUpClient() {
       laneLabel={isProvider ? 'provider' : 'account'}
       previousUrl={previousUrl}
     >
-      <SignUp
-        routing="path"
-        path="/sign-up"
-        forceRedirectUrl={afterSignUpUrl}
-        signInUrl={signInUrl}
-        unsafeMetadata={{ signupIntent: intent ?? undefined, signupSource: source ?? undefined }}
-        appearance={clerkAppearance}
-      />
+      {/* Lane URLs (prerendered shells, e.g. /sign-up/student) render the SAME shell copy
+          (the static-cache deploy gate checks for it) and immediately replace to the
+          canonical document; Clerk mounts only on the canonical path. */}
+      {legacyLane ? (
+        <p style={{ textAlign: 'center', color: '#4A4F5B', padding: '24px 0' }}>Opening secure sign-up…</p>
+      ) : (
+        <SignUp
+          routing="path"
+          path="/sign-up"
+          forceRedirectUrl={afterSignUpUrl}
+          signInUrl={signInUrl}
+          unsafeMetadata={{ signupIntent: intent ?? undefined, signupSource: source ?? undefined }}
+          appearance={clerkAppearance}
+        />
+      )}
     </AuthShell>
   )
 }
