@@ -42,7 +42,8 @@
     "full_repository_tsc": "NOT_RUN",
     "hosted_ci": "NOT_RUN",
     "focused_jest_log": "docs/content-studio/evidence/2026-10-02/cs-a1-codec-jest.log",
-    "focused_jest_after_kernel_correction": "PASS 1 suite, 9 tests at combined head 1df43fd3"
+    "focused_jest_after_kernel_correction": "PASS 1 suite, 9 tests at combined head 1df43fd3",
+    "focused_jest_after_review_correction": "PASS 1 suite, 10 tests on source delta over e378236ba3284fcc9be5928270326bafc86dd419"
   },
   "frozen_kernel_reconciliation": {
     "accidental_path_collision": "Initial aggregator write used existing tracked contracts/registry.ts; restored byte-for-byte from worktree HEAD before continuing.",
@@ -57,11 +58,11 @@
   },
   "source_sha256": {
     "lib/contentStudioV3/contracts/canonicalSchema.ts": "e66502d67e3683375fd36c05c2931d015804e983d47c052da9e8d1be0555554a",
-    "lib/contentStudioV3/contracts/semantic.ts": "9e9d38223d0a5653039b9b73f5f7fc8ea3acc2166907bccbba762f4d8b6a8d15",
+    "lib/contentStudioV3/contracts/semantic.ts": "f2c9477ef21df8a6bcb10e35635e033d81171293c7edd5a3a46888ffea1a05b6",
     "lib/contentStudioV3/contracts/opportunity.ts": "de040fe01e81b49286e3fd1986d92abae84503605c82a004814f77375ae13baa",
     "lib/contentStudioV3/contracts/decision.ts": "866cc76686396bb2fd5d1d4fb580b7d0ee49af007b788f1b33a3b19d86e1e716",
     "lib/contentStudioV3/contracts/normativeRegistry.ts": "10b90735834086ce801d72d289db6fa614170170f974a95dd55fbd3061194e7b",
-    "tests/content-studio-v3/normativeCodecs.test.ts": "807f5b23564e154978c698963cea0b7e55b462786302b1f7b6d40457ab1388f9"
+    "tests/content-studio-v3/normativeCodecs.test.ts": "5a8be4fb25a8a72189b2ec56468c0863c45ece0f2995a36e8ec65408f0f9607f"
   },
   "not_implemented_by_packet": [
     "GateEvaluation",
@@ -82,5 +83,6 @@
     "D6 schema enforces one-to-six subjects; the canonical subject shape has no article/offer role tag, so role/cardinality grounding remains external.",
     "Exact-lock hosted CI and independent review are pending; no push, merge, migration, route activation or deployment."
   ],
-  "kernel_correction_commit": "54a5d5f8d7fb7f29c3bedaa8c40c2b326f2ae566"
+  "kernel_correction_commit": "54a5d5f8d7fb7f29c3bedaa8c40c2b326f2ae566",
+  "independent_review_finding": "Corrected: relation types prefixed CANDIDATE_ or SHOULD_ reject AUTHORITATIVE authorityClass, per architecture \u00a711.4."
 }

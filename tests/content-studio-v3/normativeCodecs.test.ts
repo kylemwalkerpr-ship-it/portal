@@ -139,6 +139,24 @@ describe('inactive normative codec registry', () => {
     expect(opportunity.eligibleActions).toEqual([])
   })
 
+  test('candidate and SHOULD relation types cannot claim authoritative status', () => {
+    const relationContext: CodecRegistryContext = {
+      schemaVersion: context.schemaVersion,
+      registries: Object.fromEntries(Object.entries(context.registries).map(([name, registry]) => [
+        name,
+        name === 'relationType'
+          ? { ...registry, values: [...registry.values, 'CANDIDATE_COLLISION_WITH', 'SHOULD_REPLACED_BY'] }
+          : registry,
+      ])),
+    }
+    expect(valid('SemanticRelation', {
+      ...relation, relationType: 'CANDIDATE_COLLISION_WITH', authorityClass: 'AUTHORITATIVE',
+    }, relationContext).ok).toBe(false)
+    expect(valid('SemanticRelation', {
+      ...relation, relationType: 'SHOULD_REPLACED_BY', authorityClass: 'AUTHORITATIVE',
+    }, relationContext).ok).toBe(false)
+  })
+
   test('fails closed when a registry-backed reference has no supplied versioned context', () => {
     const result = validateNormativeContract('SemanticIdentity', { ...identity, language: 'en' })
     expect(result.ok).toBe(false)

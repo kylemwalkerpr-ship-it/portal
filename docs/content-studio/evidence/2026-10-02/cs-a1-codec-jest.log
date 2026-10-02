@@ -1,8 +1,9 @@
 PASS tests/content-studio-v3/normativeCodecs.test.ts
   inactive normative codec registry
-    ✓ accepts exact canonical fixtures without promoting ambiguity, candidate facts, or blocked actions (21 ms)
+    ✓ accepts exact canonical fixtures without promoting ambiguity, candidate facts, or blocked actions (23 ms)
+    ✓ candidate and SHOULD relation types cannot claim authoritative status (4 ms)
     ✓ fails closed when a registry-backed reference has no supplied versioned context (1 ms)
-    ✓ rejects unknown properties recursively, missing fields, numeric strings and closed-enum aliases (7 ms)
+    ✓ rejects unknown properties recursively, missing fields, numeric strings and closed-enum aliases (9 ms)
     ✓ rejects malformed instants, hashes, sparse arrays and custom prototypes (3 ms)
     ✓ does not invoke getters while rejecting hostile data (1 ms)
     ✓ enforces D0 subject cardinality while keeping D6 bounded without inventing subject roles (6 ms)
@@ -11,7 +12,7 @@ PASS tests/content-studio-v3/normativeCodecs.test.ts
     ✓ delegates structured hashing to the frozen kernel serializer
 
 Test Suites: 1 passed, 1 total
-Tests:       9 passed, 9 total
+Tests:       10 passed, 10 total
 Snapshots:   0 total
-Time:        0.364 s, estimated 1 s
+Time:        0.407 s, estimated 1 s
 Ran all test suites matching tests/content-studio-v3/normativeCodecs.test.ts.

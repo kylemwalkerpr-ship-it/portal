@@ -78,6 +78,13 @@ export function validateSemanticRelation(input: unknown, context?: CodecRegistry
   const result = validateNode(semanticRelationSchema, input, context)
   if (!result.ok) return result
   const range = input as SemanticRelation
+  if (
+    (range.relationType.startsWith('CANDIDATE_') || range.relationType.startsWith('SHOULD_')) &&
+    range.authorityClass === 'AUTHORITATIVE'
+  ) {
+    const issue: CodecIssue = { path: '$.authorityClass', code: 'invalid_value', message: 'CANDIDATE_* and SHOULD_* relations cannot be authoritative.' }
+    return { ok: false, issues: [issue] }
+  }
   if (range.validFrom && range.validTo && Date.parse(range.validFrom) > Date.parse(range.validTo)) {
     const issue: CodecIssue = { path: '$', code: 'invalid_value', message: 'validFrom must not be later than validTo.' }
     return { ok: false, issues: [issue] }
