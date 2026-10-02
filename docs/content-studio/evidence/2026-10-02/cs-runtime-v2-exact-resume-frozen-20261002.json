@@ -1,0 +1,73 @@
+{
+  "observed_at": "2026-10-02T04:24:40.665731+00:00",
+  "job": "cs-command-admission-verification-correction-20261001-v2",
+  "attempt": "c0d5725d-59ca-40b6-a75b-9d7f05c381ed",
+  "state": "COMPLETED",
+  "generation": 2,
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "status": "?? .github/workflows/studio-command-admission-test.yml\n?? app/api/content-studio/v3/runs/route.ts\n?? app/api/content-studio/v3/runs/routeCore.ts\n?? docs/content-studio/release/2026-10-01-command-admission-evidence.md\n?? lib/studioRuntime/commandAdmission.ts\n?? lib/studioRuntime/contracts.ts\n?? lib/studioRuntime/repository.ts\n?? scripts/test-studio-command-admission.mjs\n?? supabase/migrations/20261001000000_studio_command_admission.sql\n?? tests/content-studio-v3/commandAdmission.test.ts\n?? tests/content-studio-v3/runAdmissionRoute.test.ts\n?? tests/sql/studio-command-admission.sql\n",
+  "files": [
+    {
+      "path": ".github/workflows/studio-command-admission-test.yml",
+      "bytes": 11346,
+      "sha256": "6662dbee7f812a37ec90f32dda933417aa89fe4656bfa53363e7a4ebfe2f4b00"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/route.ts",
+      "bytes": 311,
+      "sha256": "e80b759e9f91c6c73d940012b4e5e680c5f759ff4fb964da12b55a0758848823"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/routeCore.ts",
+      "bytes": 2179,
+      "sha256": "ba3187980bf16fb7ed8fad5df3bf44a40c29022ef269125c553b6ffb9a8b8efd"
+    },
+    {
+      "path": "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+      "bytes": 8332,
+      "sha256": "7165e4fc14d127c9b7a54b4f5ed027bebbe53da1b36b33f100406822c5f18528"
+    },
+    {
+      "path": "lib/studioRuntime/commandAdmission.ts",
+      "bytes": 1926,
+      "sha256": "b4f3565a9106253f77f228ea336c3d8b8ad895d3c064cb735e3e0620404cb7f2"
+    },
+    {
+      "path": "lib/studioRuntime/contracts.ts",
+      "bytes": 7697,
+      "sha256": "fe6ed43c9b9620abfd25eb953a319f052e3da6fa2db137aed0589148860ac04a"
+    },
+    {
+      "path": "lib/studioRuntime/repository.ts",
+      "bytes": 1252,
+      "sha256": "40df8704e7eebe73897e1bd9a5c344063f8748e5bc2f56b052763200f97ae6bb"
+    },
+    {
+      "path": "scripts/test-studio-command-admission.mjs",
+      "bytes": 33563,
+      "sha256": "de7afbdba35befa35a3f4f48f7f2f806f435e5077fe341396c5f61d04310b78b"
+    },
+    {
+      "path": "supabase/migrations/20261001000000_studio_command_admission.sql",
+      "bytes": 17542,
+      "sha256": "622fb99853d44befa6bbaea26ab2afa0ef441498acb83edba8432f7555d6e901"
+    },
+    {
+      "path": "tests/content-studio-v3/commandAdmission.test.ts",
+      "bytes": 5478,
+      "sha256": "ba04ea147a67e2d7e429eb5321089fee8b2e5fe9c378efcc88f8ceae7d2d0d27"
+    },
+    {
+      "path": "tests/content-studio-v3/runAdmissionRoute.test.ts",
+      "bytes": 3900,
+      "sha256": "22094410f306f301bf1dfd5aee57ee7ab69835568f7bcd9c5e915d9db7a820b4"
+    },
+    {
+      "path": "tests/sql/studio-command-admission.sql",
+      "bytes": 14014,
+      "sha256": "f330f0f1bdfb1afe8ccbdeb970eaa4eb6cd9c335bd3843f7d833ca4d92f9dcda"
+    }
+  ],
+  "manifest_sha256": "06b9e3e301a536ccd85e9b16d9a77bc327f424380daaa48586ac56b50a864664",
+  "scope": "FROZEN_SOURCE_READ_ONLY_REVIEW_PENDING"
+}

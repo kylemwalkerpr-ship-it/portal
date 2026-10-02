@@ -1,0 +1,54 @@
+{
+  "observed_at": "2026-10-02T04:18:11.325990+00:00",
+  "workspace": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929",
+  "head": "3307055d7476da847fb80712c1bb3a8a57efde35",
+  "status": " M lib/studioClaimFreshness/index.ts\n M tests/studio-claim-freshness.test.ts\n",
+  "files": [
+    {
+      "path": "lib/studioClaimFreshness/index.ts",
+      "sha256": "dadc1e024ecb0547e1705bb69026272b6ea7e4edf55f24b63fe71970bbe1e56b",
+      "bytes": 11641
+    },
+    {
+      "path": "tests/studio-claim-freshness.test.ts",
+      "sha256": "8b95c5cbec74fc02bc126f51ff02ceed66f92bea866a9610a308eb4d372d0416",
+      "bytes": 8273
+    }
+  ],
+  "aggregate_sha256": "938579fe88f032d8aa34376fed13aac525e7e3a29e7cd568c735a95445c8cc4a",
+  "patch_sha256": "15cfc82d7132ad103cb635ca0c1d3d3ce7e3e9532d7d810cd8a8e06d6d5c5285",
+  "diff_stat": " lib/studioClaimFreshness/index.ts    | 24 +++++++++++++++++++-----\n tests/studio-claim-freshness.test.ts | 32 +++++++++++++++++++++++++++-----\n 2 files changed, 46 insertions(+), 10 deletions(-)\n",
+  "verification": "broker native verification.passed; no additional checks run by monitor",
+  "attempt": {
+    "id": "648bb973-d4e0-4265-a0b9-c04b4a186336",
+    "state": "COMPLETED",
+    "reason": "completed",
+    "native_record_id": "01a0efdb-059c-7591-b685-a080abed3301",
+    "native_state": "verification.passed",
+    "state_generation": 3,
+    "updated_at": "2026-10-02T04:17:39.027222+00:00"
+  },
+  "events": [
+    {
+      "kind": "LANE_RESUMED",
+      "state": "COMPLETED",
+      "reason": "completed",
+      "native_state": "verification.passed",
+      "payload_json": "{\"attempt_id\": \"648bb973-d4e0-4265-a0b9-c04b4a186336\", \"state_generation\": 3, \"resumable\": false, \"checkpoint_kind\": null, \"checkpoint_reference\": null, \"checkpoint_digest\": null, \"observation_evidence\": {\"verification\": {\"count\": 3, \"exit\": 0, \"failed_index\": null}}}"
+    },
+    {
+      "kind": "LANE_RESUME_CLAIMED",
+      "state": "RESUMING",
+      "reason": "resume_claimed",
+      "native_state": null,
+      "payload_json": "{\"resume_claim_id\": \"14c7bc70-1639-419f-a6ea-c364986de7a5\"}"
+    },
+    {
+      "kind": "LANE_ADMITTED",
+      "state": "BLOCKED",
+      "reason": "quota_exhausted",
+      "native_state": "turn.failed",
+      "payload_json": "{\"resumable\": true, \"checkpoint_kind\": \"PROVIDER_CHECKPOINT\", \"checkpoint_reference\": \"01a0efdb-059c-7591-b685-a080abed3301\", \"checkpoint_digest\": null}"
+    }
+  ]
+}

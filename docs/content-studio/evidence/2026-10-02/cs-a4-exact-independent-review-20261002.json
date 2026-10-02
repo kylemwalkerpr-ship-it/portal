@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "studio.independent-review/1",
+  "reviewer": "GPT-6.1 Sol",
+  "status": "PASS_NARROW_COMPONENT",
+  "reviewedAt": "2026-10-02T04:19:34.430894+00:00",
+  "head": "3307055d7476da847fb80712c1bb3a8a57efde35",
+  "aggregateSha256": "938579fe88f032d8aa34376fed13aac525e7e3a29e7cd568c735a95445c8cc4a",
+  "patchSha256": "15cfc82d7132ad103cb635ca0c1d3d3ce7e3e9532d7d810cd8a8e06d6d5c5285",
+  "files": {
+    "lib/studioClaimFreshness/index.ts": "dadc1e024ecb0547e1705bb69026272b6ea7e4edf55f24b63fe71970bbe1e56b",
+    "tests/studio-claim-freshness.test.ts": "8b95c5cbec74fc02bc126f51ff02ceed66f92bea866a9610a308eb4d372d0416"
+  },
+  "mustFix": [],
+  "findings": [
+    "Consequential supplied human review failures now BLOCK; non-consequential claims retain no review requirement.",
+    "Calendar component validation rejects normalization of impossible dates and invalid clock/offset fields.",
+    "Explicit empty provenance list fails immutable identity join; omitted optional provenance preserves compatibility.",
+    "Empty source evidence/observation identities abstain; knownChangedAt or changed sourceId invalidates freshness.",
+    "Existing exact review binding comparisons remain intact; activation flag stays false; no authority or release consumer added."
+  ],
+  "verification": {
+    "independentAdversarialProbes": {
+      "status": "PASS",
+      "count": 25,
+      "node": "v26.0.0",
+      "script": "/tmp/cs-a4-independent-probes-20261002.ts"
+    },
+    "gitDiffCheck": "PASS",
+    "sourceFreezeRecheck": "PASS",
+    "nativeAcceptedVerification": "Separate broker receipt; not substituted for host CI"
+  },
+  "limits": [
+    "Pure evaluation of caller-supplied facts; does not authenticate reviewer, source authority, epoch, owner, or persist release approval.",
+    "Independent direct probes use Node 26; official project Node22 typecheck/Jest/hosted CI remains required before production integration.",
+    "Optional provenance and string-based supplied source snapshot binding do not constitute actual durable source snapshot recomputation.",
+    "No production migration, deployment, publication, phase-gate promotion or full A4 completion asserted."
+  ],
+  "entireComponentPromotionReview": {
+    "status": "NOT_ACCEPTED",
+    "reviewedAt": "2026-10-02T04:21:05.962407+00:00",
+    "productionBase": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+    "eligibleComponentPaths": [
+      "lib/studioClaimFreshness/index.ts",
+      "tests/studio-claim-freshness.test.ts"
+    ],
+    "mustFix": [
+      {
+        "id": "A4-FULL-1",
+        "priority": "high",
+        "source": "lib/studioClaimFreshness/index.ts: MAX_AGE lookup and initial input validation",
+        "repro": "claim.volatility='toString' returns NO_ACTION and function freshnessMaxAgeMs (omitted by JSON serialization)",
+        "required": "Closed enum membership before MAX_AGE lookup; own-key or explicit allowlist; reject prototype keys and unknown strings."
+      },
+      {
+        "id": "A4-FULL-2",
+        "priority": "high",
+        "source": "reviewReasons; source identity loop; scalar input checks",
+        "repro": "Numeric principalId/reviewerId, observationId/evidenceIdentity accepted as NO_ACTION",
+        "required": "Runtime nonempty typed string validation for required source/support/claim/review/provenance identities and review bindings; keep invalid consequential reviewer failures BLOCK and malformed source facts fail closed."
+      },
+      {
+        "id": "A4-FULL-3",
+        "priority": "medium",
+        "source": "Scalar input validation / instant parsing",
+        "repro": "1,000,000-character source evidenceIdentity accepted as NO_ACTION",
+        "required": "Explicit documented scalar/string/time/hash/locator bounds enforced before parsing/joins; tests oversized and malformed inputs."
+      }
+    ],
+    "independentBoundaryProbes": {
+      "node": "v26.0.0",
+      "count": 4,
+      "status": "CONFIRMED_FAILURES",
+      "script": "/tmp/cs-a4-full-component-boundary-probes-20261002.ts"
+    },
+    "integrationWarning": "Old worktree snapshot differs production across62paths with6592deletions; use fresh production worktree and only the two A4 paths. Full baseline helper is245lines and tests137lines, all reviewed. Narrow correction PASS does not approve initial helper promotion.",
+    "sourceFreezeRecheck": "UNCHANGED"
+  }
+}

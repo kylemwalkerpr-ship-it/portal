@@ -1,0 +1,75 @@
+{
+  "observed_at": "2026-10-02T04:26:23.072401+00:00",
+  "kind": "runtime-original-exact-resume-monitor-and-preliminary-review",
+  "job": "cs-command-admission-verification-correction-20261001-v2",
+  "attempt": "c0d5725d-59ca-40b6-a75b-9d7f05c381ed",
+  "state": "COMPLETED",
+  "native_state": "verification.passed",
+  "state_generation": 2,
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "manifest_sha256": "06b9e3e301a536ccd85e9b16d9a77bc327f424380daaa48586ac56b50a864664",
+  "freeze": "/tmp/cs-runtime-v2-exact-resume-frozen-20261002.json",
+  "response": "/tmp/cs-runtime-v2-exact-resume-execute-20261002.json",
+  "source_unchanged_since_freeze": true,
+  "acceptance": "NOT_ACCEPTED_PENDING_INDEPENDENT_REVIEW",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "must-fix",
+      "paths": [
+        "scripts/test-studio-command-admission.mjs:270",
+        "tests/sql/studio-command-admission.sql:38",
+        "supabase/migrations/20261001000000_studio_command_admission.sql:196,224"
+      ],
+      "detail": "Two sessions cannot both wait on scoped advisory lock: first takes authority row FOR UPDATE then advisory, second waits on first transaction authority row lock. Require actual owned blocking chain."
+    },
+    {
+      "id": "R2",
+      "severity": "must-fix",
+      "paths": [
+        "scripts/test-studio-command-admission.mjs:293,294,348"
+      ],
+      "detail": "Three predicates Number(v)==='1' are always false; deterministic JavaScript predicate probe confirmed count1 false."
+    },
+    {
+      "id": "R3",
+      "severity": "must-fix",
+      "paths": [
+        "scripts/test-studio-command-admission.mjs:185-186"
+      ],
+      "detail": "requireDenied tests literal SQLSTATE 42501; actual psql verbose format ERROR: 42501: is rejected. Actual extracted requireDenied function tested with synthetic representative stderr yields false-negative."
+    },
+    {
+      "id": "R4",
+      "severity": "must-fix",
+      "paths": [
+        "scripts/test-studio-command-admission.mjs:170-172,423",
+        "supabase/migrations/20261001000000_studio_command_admission.sql:247,250"
+      ],
+      "detail": "Hostile search_path service_role invocation computes private command_request_hash inline, despite service_role EXECUTE revoked. Compute hash from real exported candidate TypeScript before role switch and pass literal."
+    },
+    {
+      "id": "R5",
+      "severity": "review-needed",
+      "paths": [
+        ".github/workflows/studio-command-admission-test.yml:44,47"
+      ],
+      "detail": "Default PR checkout is merge ref while candidateSha labels head; exact-head workflow should checkout explicit PR head or distinguish tested merge source acceptance."
+    }
+  ],
+  "improvements": [
+    "before/after five-relation race counts avoid prior wrong constant",
+    "lost-response DO discards receipt before COMMIT and independent visibility design; predicates still broken",
+    "activeCheck set before independent scopes",
+    "workflow structured receipt includes sessionEvents"
+  ],
+  "verification_scope": {
+    "broker_original_verify": "PASS_STATIC_ONLY",
+    "synthetic_parser_and_numeric_predicate": "DEFECT_CONFIRMED",
+    "candidate_TypeScript": "NOT_RUN",
+    "Jest": "NOT_RUN",
+    "real_PostgreSQL17": "NOT_RUN",
+    "production_activation": "HELD"
+  },
+  "next": "Independent GPT-6.1 Sol review then distinct terminal bounded correction; original job must never replay."
+}

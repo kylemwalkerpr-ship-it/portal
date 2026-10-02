@@ -1,0 +1,8 @@
+{
+  "source_writers_max": 2,
+  "heavy_checks_held": true,
+  "free_memory_floor_percent": 40,
+  "free_swap_floor_mib": 500,
+  "free_disk_floor_gib": 4,
+  "basis": "A4 native 39MiB; runtime only static verifiers; swap usage improved"
+}

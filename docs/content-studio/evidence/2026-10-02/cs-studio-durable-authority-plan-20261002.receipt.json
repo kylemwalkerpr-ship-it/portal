@@ -1,0 +1,16 @@
+{
+  "status": "READ_ONLY_PLAN_NOT_ADMITTED",
+  "planPath": "/tmp/cs-studio-durable-authority-plan-20261002.md",
+  "planSha256": "8dd385fa9592e65081abc1aa6b128c24589abbead3b2f92d33192979f8af61ec",
+  "observedOriginMain": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+  "readHead": "c305086c59d83f50135edd367f0d5e8399879619",
+  "frozenAdmissionPlanSha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+  "allEightNormativePinsMatch": true,
+  "sourceEdits": false,
+  "migrationApplied": false,
+  "businessRowsRead": false,
+  "nativeExecutionAdmitted": false,
+  "productionAuthority": "DENY_ONLY_DEPENDENCY_UNIMPLEMENTED",
+  "a0MapAcceptance": "NOT_ACCEPTED",
+  "timestamp": "2026-10-02T04:22:10.597085+00:00"
+}
