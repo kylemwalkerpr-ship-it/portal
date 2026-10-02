@@ -5,7 +5,13 @@ import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBy
 import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
 import { attributionCaptureCookies } from './lib/attribution/cookies'
 import { clientUatMeansSignedIn, requestNeedsClerkHandoffState } from './lib/clerkHandoffState'
-import { getCanonicalPortalAuthRedirect, signInUrlForProtectedPath } from './lib/auth/portalAuthRedirect'
+import {
+  getCanonicalPortalAuthRedirect,
+  isPortalAuthRootPath,
+  marketAuthModalUrl,
+  signedInAuthRootDestination,
+  signInUrlForProtectedPath,
+} from './lib/auth/portalAuthRedirect'
 import { passwordChangeRedirect } from './lib/auth/mustChangePassword'
 import { getMarketplaceTemplatesRedirectUrl } from './lib/marketplaceTemplatesRedirect'
 import {
@@ -334,9 +340,13 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
     pathname === '/register' ||
     pathname.startsWith('/user')
   ) {
-    // One hop straight to the canonical portal document (lane URLs and legacy
-    // return params are normalized here instead of in a second portal 301).
+    // Auth documents open the branded modal right here on the Market home
+    // (same host, one hop; a `#/sso-callback` fragment is inherited and
+    // completed by MarketplaceAuthNav). Clerk protocol requests and Clerk
+    // sub-screens, /dashboard and /user keep the one hop to the portal.
     const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
+    const modal = pathname.startsWith('/dashboard') || pathname.startsWith('/user') ? null : marketAuthModalUrl(portalUrl)
+    if (modal) return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
     const canonical = getCanonicalPortalAuthRedirect(portalUrl) ?? portalUrl
     return withCorsHeaders(NextResponse.redirect(canonical, { status: 302 }), req)
   }
@@ -524,6 +534,20 @@ const clerkHandler = clerkMiddleware(
       return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 
+    // Portal auth roots reached with a session hint (the anonymous case is
+    // answered before Clerk in middleware()): a signed-in user goes to the
+    // allow-listed return_to or their dashboard (the dashboard resolves the DB
+    // role); a stale hint goes to the Market modal. Clerk protocol requests
+    // (tickets, handshakes) and Clerk sub-screens keep the embedded component.
+    if (hostname === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD') && isPortalAuthRootPath(pathname)) {
+      const modal = marketAuthModalUrl(req.nextUrl)
+      if (modal) {
+        const { userId: authRootUserId } = await auth()
+        if (authRootUserId) return NextResponse.redirect(signedInAuthRootDestination(req.nextUrl))
+        return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
+      }
+    }
+
     if (pathname !== '/' && isPublicRoute(req)) {
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
@@ -545,6 +569,15 @@ const clerkHandler = clerkMiddleware(
 
     if (pathname === '/') {
       if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))
+      // Portal has no public landing page: a signed-out visitor (including a
+      // stale `__client_uat` right after Clerk's hosted sign-out, whose
+      // after-sign-out URL is portal /) always lands on the Market home.
+      if (hostname === PORTAL_HOST) {
+        return withCorsHeaders(
+          NextResponse.redirect(new URL(`/${search}`, `https://${MARKET_HOST}`), { status: 302 }),
+          req,
+        )
+      }
       return withPathHeaders(NextResponse.next(), pathname, search, lang)
     }
 
@@ -609,6 +642,16 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
     if (pathname === '/' && !handoffInProgress && !signedInHint) {
       const marketHome = new URL(`/${req.nextUrl.search}`, `https://${MARKET_HOST}`)
       return withCorsHeaders(NextResponse.redirect(marketHome, { status: 302 }), req)
+    }
+
+    // No standalone portal sign-in page: an anonymous /sign-in, /sign-up or any
+    // retired lane/alias opens the branded modal on the Market home in ONE
+    // 302 (intent + return_to preserved). `marketAuthModalUrl` returns null for
+    // Clerk protocol requests (`__clerk_ticket`, `__clerk_status`, ...) and for
+    // Clerk sub-screens, which keep the embedded component below.
+    if (!handoffInProgress && !signedInHint) {
+      const modal = marketAuthModalUrl(req.nextUrl)
+      if (modal) return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
     }
 
     // Portal keeps ONLY /sign-in and /sign-up. Every retired lane URL
