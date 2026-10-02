@@ -13,6 +13,8 @@ import {
   getPayhipBatch1CrossSells,
 } from '@/lib/payhipBatch1Commercial'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import { GET_MATCHED_PATH, getPackReviewUpsell } from '@/lib/packReviewUpsell'
+import TrackedCtaLink from '@/components/attribution/TrackedCtaLink'
 
 const SHOP_CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 
@@ -78,6 +80,7 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
     ? `${displayIncludes.length} complete preparation packs`
     : `${displayIncludes.length} guided sections`)
   const crossSells = getPayhipBatch1CrossSells(slug, IMMIGRATION_SHOP_PRODUCTS)
+  const reviewUpsell = getPackReviewUpsell(slug)
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -165,6 +168,52 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
               <li>Flag missing, unsigned, expired, untranslated or inconsistent evidence.</li>
               <li>Open the current government instructions and make the final filing decision from those sources.</li>
             </ol>
+          </section>
+
+          <section className="ys-pack-section ys-pack-review" id="professional-review">
+            <p className="ys-pack-kicker">Want a professional to check it?</p>
+            {reviewUpsell.primary ? (
+              <>
+                <h2>Have a US attorney review your application before you file</h2>
+                <p>
+                  Finish the workbook, then book a fixed-fee review: {reviewUpsell.primary.outcome} Payment is held
+                  in escrow until you approve the delivery.
+                </p>
+                <TrackedCtaLink
+                  href={`/gigs/${reviewUpsell.primary.slug}`}
+                  ctaId={`pack_review_upsell:${slug}:${reviewUpsell.primary.slug}`}
+                  className="ys-pack-review-cta"
+                >
+                  {reviewUpsell.primary.title}, from ${reviewUpsell.primary.priceUsd} →
+                </TrackedCtaLink>
+              </>
+            ) : (
+              <>
+                <h2>Get a fixed-fee offer for your specific case</h2>
+                <p>
+                  Describe your situation in a few minutes. A provider on the YouSafe Marketplace replies with a
+                  fixed-fee offer, and nothing is charged unless you accept it.
+                </p>
+                <TrackedCtaLink
+                  href={GET_MATCHED_PATH}
+                  ctaId={`pack_review_upsell:${slug}:get-matched`}
+                  className="ys-pack-review-cta"
+                >
+                  Describe your case free →
+                </TrackedCtaLink>
+              </>
+            )}
+            {reviewUpsell.secondary ? (
+              <p className="ys-pack-review-secondary">
+                {reviewUpsell.secondary.when}{' '}
+                <TrackedCtaLink
+                  href={`/gigs/${reviewUpsell.secondary.gig.slug}`}
+                  ctaId={`pack_review_upsell:${slug}:${reviewUpsell.secondary.gig.slug}`}
+                >
+                  {reviewUpsell.secondary.gig.title}, from ${reviewUpsell.secondary.gig.priceUsd} →
+                </TrackedCtaLink>
+              </p>
+            ) : null}
           </section>
 
           {commercial ? (
@@ -286,6 +335,10 @@ const PACK_CSS = `
   .ys-pack-sources a,.ys-pack-guide > a { color:var(--ys-teal,#111827); font-size:14px; font-weight:800; }
   .ys-pack-guide-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
   .ys-pack-guide-links a { padding:7px 10px; border-radius:999px; border:1px solid var(--ys-rule,rgba(15,23,42,.12)); color:var(--ys-inkMid,#334155); font-size:12px; font-weight:700; text-decoration:none; }
+  .ys-pack-review { padding:28px; border:1px solid rgba(22,114,74,.25); border-radius:18px; background:rgba(22,114,74,.05); }
+  .ys-pack-review-cta { display:inline-block; margin-top:6px; padding:12px 18px; border-radius:999px; background:var(--ys-teal,#111827); color:#fff; font-size:14px; font-weight:800; text-decoration:none; }
+  .ys-pack-review-secondary { margin:16px 0 0; font-size:14px; }
+  .ys-pack-review-secondary a { color:var(--ys-teal,#111827); font-weight:800; }
   .ys-pack-cross { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
   .ys-pack-cross-card { overflow:hidden; border:1px solid var(--ys-rule,rgba(15,23,42,.10)); border-radius:14px; background:#fff; color:inherit; text-decoration:none; }
   .ys-pack-cross-card img { width:100%; height:112px; object-fit:cover; display:block; }
