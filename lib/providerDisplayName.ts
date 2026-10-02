@@ -48,7 +48,7 @@ export function providerDisplayLabel(
 ): string {
   const fallback =
     String(providerType || '').toLowerCase() === 'consultant'
-      ? 'Regulated consultant'
+      ? 'Consultant'
       : 'Licensed attorney'
   return providerDisplayName(provider, fallback)
 }

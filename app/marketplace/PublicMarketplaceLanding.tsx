@@ -650,7 +650,7 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
     eyebrow: 'US · UK · CA · AU — fixed-fee, no consultation traps',
     h1: <>Talk to an attorney about your case — <em>by the brief, not the hour.</em></>,
     lede:
-      'A vetted marketplace of licensed immigration attorneys, regulated consultants and tenancy specialists. ' +
+      'A vetted marketplace of licensed immigration attorneys, reviewed consultants and tenancy specialists. ' +
       'Pick a fixed-fee brief, review samples and timelines, and pay only when the work clears review.',
   },
   us: {
@@ -664,7 +664,7 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
     eyebrow: 'United Kingdom · ILR · Spouse · Skilled Worker · § Tenancy',
     h1: <>U.K. immigration & tenancy briefs — <em>fixed fee, no surprises.</em></>,
     lede:
-      'OISC-regulated consultants and U.K. solicitors handling Spouse visas, ILR, Skilled Worker COS, Graduate Route, ' +
+      'Immigration consultants and U.K. solicitors handling Spouse visas, ILR, Skilled Worker COS, Graduate Route, ' +
       'and Renters Rights Act 2025 disputes. Each brief is scoped and priced upfront.',
   },
   ca: {
@@ -980,7 +980,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
         <div className="wrap">
           <div className="seller-card">
             <div>
-              <span className="mono-eyebrow">For attorneys &amp; regulated consultants</span>
+              <span className="mono-eyebrow">For attorneys &amp; consultants</span>
               <h2>Take on the <em>cases you want.</em> Skip the intake calls.</h2>
               <p>List fixed-fee briefs in your wheelhouse, choose your jurisdictions, and let clients arrive vetted, scoped, and pre-paid. Funds are escrowed before you begin work; payouts release on client approval.</p>
               <div className="actions">

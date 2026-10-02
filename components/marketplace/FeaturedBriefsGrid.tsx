@@ -742,7 +742,7 @@ export function FeaturedBriefsGrid({
                     )}
                     <span className="info">
                       <b>{g.providerName}</b>
-                      <span>{g.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
+                      <span>{g.provider_type === 'attorney' ? 'Licensed attorney' : 'Consultant'}</span>
                     </span>
                     <span className="pro">{proLabel}</span>
                   </div>

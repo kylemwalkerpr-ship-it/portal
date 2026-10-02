@@ -118,7 +118,7 @@ export function MarketplaceGigTrustBar() {
               <strong className="ys-gig-trust-provider-name">{name}</strong>
             )}
             <span className="ys-gig-trust-role">
-              {gig.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}
+              {gig.provider_type === 'attorney' ? 'Licensed attorney' : 'Consultant'}
             </span>
           </div>
         </div>

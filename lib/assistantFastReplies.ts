@@ -107,7 +107,7 @@ export function getDeterministicYqaaReply(turns: SystemAssistantTurn[]): string 
 
   if (asksServicesOverview(last)) {
     return [
-      'YouSafe offers services through **verified attorneys and credentialed consultants** across these Marketplace areas:',
+      'YouSafe offers services through **bar-verified attorneys and reviewed consultants** across these Marketplace areas:',
       '',
       '- **Immigration Services** — study permits, work permits, permanent-residence pathways, family sponsorship, visitor visas, and citizenship support.',
       '- **Education & Admissions** — university and graduate admissions, scholarships, test preparation, and academic mentoring.',
