@@ -1,0 +1,62 @@
+{
+  "scope": "unused npx cache entries only",
+  "entries": [
+    {
+      "cache": "d77349f55c2be1c0",
+      "bytes": 224833536,
+      "active": false
+    },
+    {
+      "cache": "b8d86e6551a4f492",
+      "bytes": 52416512,
+      "active": false
+    },
+    {
+      "cache": "a1b5715b105835db",
+      "bytes": 132059136,
+      "active": false
+    },
+    {
+      "cache": "4b4c857f6efdfb61",
+      "bytes": 216911872,
+      "active": true
+    },
+    {
+      "cache": "1d6e82a4126006c4",
+      "bytes": 32768,
+      "active": false
+    },
+    {
+      "cache": "a2c0cadc3f27b8f8",
+      "bytes": 217088,
+      "active": false
+    },
+    {
+      "cache": "8b377f6eec906bc4",
+      "bytes": 251990016,
+      "active": false
+    },
+    {
+      "cache": "69c381f8ad94b576",
+      "bytes": 5382144,
+      "active": false
+    },
+    {
+      "cache": "aa8e5c70f9d8d161",
+      "bytes": 132059136,
+      "active": false
+    },
+    {
+      "cache": "32026684e21afda6",
+      "bytes": 214384640,
+      "active": false
+    },
+    {
+      "cache": "fd45a72a545557e9",
+      "bytes": 11264000,
+      "active": false
+    }
+  ],
+  "freed_bytes": 1024638976,
+  "free_disk_bytes": 4671778816
+}

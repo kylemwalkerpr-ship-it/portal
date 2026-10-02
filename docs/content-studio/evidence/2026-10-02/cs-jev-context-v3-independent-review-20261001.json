@@ -1,0 +1,17 @@
+{
+  "verdict": "PASS",
+  "patch_sha256": "f597eaa5907700d748ab34930da50a5e1feb80676bd783fbe5158788ab2c9aa6",
+  "must_fix": [],
+  "reviewed": [
+    "UTF8 byte limit8192 enforced before parse; recursive duplicate-key rejection; exact envelope/evidence/verifier field shapes; typed Freebuff enum decoding and contradictory success/failure unknown; legacy failure conservative BLOCKED; no schema/floor/eligibility change",
+    "Atomic ordinary and resume expected_generation+1 proofs; consistent Store read transaction; rejected stale CAS adds zero events"
+  ],
+  "isolated_probes": [
+    "Malformed/oversized/duplicate/extra fields and Freebuff contradictions final collector regressions PASS",
+    "Bounded current Codex/Freebuff proofs PASS",
+    "Malformed numeric/valid-marker verifier proofs UNKNOWN PASS",
+    "Real isolated Store resume claim generation2 to accepted generation3 final collector COMPLETED PASS",
+    "Rejected stale persistence unchanged event list PASS"
+  ],
+  "limitations": "Root fullsuite required separately; probes used temporary SQLite fixture only, no live daemon/broker writes. First combined probe setup collided with fixture native ID after focused regressions; fresh isolated fixture corrected and passed."
+}

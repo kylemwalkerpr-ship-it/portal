@@ -1,0 +1,14 @@
+{
+  "old": "d2d983cbe9500f2ca7b0793091c72e834cb757dd",
+  "installed": "e0bfee6162fe2b7db1775ef683983a88933acbea",
+  "clean": true,
+  "main_ref_uchg": true,
+  "schema_change": false,
+  "old_unrelated_prepared_receipt_preserved": "yqaa-jev-deepseek-openclaw-20260929-v19",
+  "quiescence": {
+    "native_exec": 0,
+    "pending_jobs": 0,
+    "active_domain_leases": 0,
+    "queued_domain_requests": 0
+  }
+}

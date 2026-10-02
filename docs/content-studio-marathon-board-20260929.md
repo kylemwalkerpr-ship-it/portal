@@ -230,3 +230,12 @@ Jevcontextv2 exactpatch6d8cc4d9043c7f786ffcf921d62ca78e163e1cd9ff80c6f6ef11b0f00
 
 
 V2 fullhostsuite2169tests/67skip PASS102.342s unchanged6d8cc4...; semanticNOT_ACCEPTED stillholds. V3 narrowbounds correction JevSTART_CODEX0.96 authenticatedliveLuna admittedONCE executioncs-jev-verification-context-bounds-repair-20261001-v3, attemptc6615f5d-f466-421a-b628-d913eb015714. PREPARED/nativeIDnull during synchronouswork not permissiontoreplay. RequestSHAb3feb057e5cc5304eeea40901cd9aa58016759e5f34b407592d8d0cd504daad4. FreshPortal originmain010407; #302/#303 unchangeddrafts/unmerged, #312merged. Runtimev2 exactquota checkpoint/requesthash reconciled unchanged; no resumeclaim/route/execute. Kernelpacket readonlypreparation only; A0v3 admissionheld.
+
+
+### Live Jev context repair and exact A4 continuation — 2026-10-02
+
+Reviewed bounded collector correction f597eaa5907700d748ab34930da50a5e1feb80676bd783fbe5158788ab2c9aa6 independent SolPASS/full2171tests67skipPASS107.575s. Committed e0bfee6162fe2b7db1775ef683983a88933acbea and normalbrokerffintegrated/livekickstart afteractualnativezero/queuezero/domainzero; mainrefuchg immediatelyrestored, clean/schema12unchanged. Loadedhealth4workers/dbreadwriteOK/fault0; lowdiskwarningrecurs2.96GB beforecleanup. Preserved unrelated Sep30PREPAREDreceipt without mutation; no nativeexecution attributabletoit observed.
+
+Unusednpxcachecleanup recovered1,024,638,976bytes, kept active npx entry; disk4,671,778,816bytesobserved, heavybuildheld. A4originalsameID/context nowverificationUNKNOWN/quota_exhausted with exactcheckpoint proven; JevRESUME_CODEX0.97. Rootinitiated originalstablepayload pipeline_executeONCE PID18115, responsepending; nofreshjob/modelsubstitute. Runtimev2 samecheckpointread-onlyroute underway only, noexecute. A0v3/sourcekernel packetsawaitcapacity; fullarchitectureruntime stillincomplete; #302/#303/P12/P13/productionSQL/publication remainheld.
+
+Runtimev2 originalsameID JevRESUME_CODEX0.95/normalized9bbb87f... exactoriginalcheckpoint01a0f7fb-2f3a-7b80-9664-7b9e463cd651/verificationUNKNOWN quota correctlyrepresented. Noexecute: freshmemory41% belowparallel42% admissionfloor whileA4nativeactive. ExecutequeuedafterA4naturalterminal/capacity, notnewattempt/fallback.
