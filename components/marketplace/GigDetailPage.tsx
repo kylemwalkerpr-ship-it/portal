@@ -501,7 +501,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
   const hasServiceOrders = serviceOrderCount > 0
   const publicProviderName = providerDisplayName(
     gig.provider,
-    gig.provider_type === 'consultant' ? 'Regulated consultant' : 'Licensed attorney',
+    gig.provider_type === 'consultant' ? 'Consultant' : 'Licensed attorney',
   )
   const summaryText = stripHtmlComments(String(gig.pitch || gig.seo_description || '')).trim()
   const descriptionPlainText = stripHtmlComments(String(gig.description || '')).trim()

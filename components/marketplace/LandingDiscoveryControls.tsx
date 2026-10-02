@@ -103,7 +103,7 @@ export function LandingDiscoveryControls({ categoryCounts, country }: Props) {
           <p className="ys-landing-filter-title">Provider type</p>
           <div className="ys-landing-filter-list">
             <a href={filterLink('provider_type=attorney')}><span>Licensed attorneys</span><span>→</span></a>
-            <a href={filterLink('provider_type=consultant')}><span>Regulated consultants</span><span>→</span></a>
+            <a href={filterLink('provider_type=consultant')}><span>Consultants</span><span>→</span></a>
             <a href={filterLink('min_rating=4.5')}><span>Rated 4.5 and above</span><span>★</span></a>
           </div>
         </Popover>

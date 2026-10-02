@@ -363,7 +363,29 @@ describe('form + banner UX pins', () => {
 
   test('FAQ bar-check wording is unchanged', () => {
     expect(src('components/design/landing/FAQ.tsx')).toContain(
-      'Every attorney on the panel is bar-verified in their stated jurisdiction; every consultant is credentialed (CICC, OISC, or equivalent). We check their licences on intake and again on every renewal cycle.',
+      'Every attorney on the panel is bar-verified in their stated jurisdiction;',
     )
+  })
+
+  test('consultant copy no longer claims every consultant is credentialed', () => {
+    const faq = src('components/design/landing/FAQ.tsx')
+    expect(faq).toContain(
+      'consultants are reviewed before approval, and any credential they list (CICC, OISC, or equivalent) is verified first.',
+    )
+    expect(faq).not.toContain('every consultant is credentialed')
+    expect(src('components/design/landing/FinalCTA.tsx')).toContain('Bar-verified attorneys and reviewed consultants only')
+    for (const file of [
+      'components/design/landing/FinalCTA.tsx',
+      'components/marketplace/GigDetailPage.tsx',
+      'components/marketplace/HeroCaseFileSlideshow.tsx',
+      'components/marketplace/FeaturedBriefsGrid.tsx',
+      'components/marketplace/MarketplaceGigTrustBar.tsx',
+      'components/marketplace/LandingDiscoveryControls.tsx',
+      'app/marketplace/PublicMarketplaceLanding.tsx',
+      'lib/providerDisplayName.ts',
+      'lib/assistantFastReplies.ts',
+    ]) {
+      expect(src(file)).not.toMatch(/regulated consultant|credentialed consultant/i)
+    }
   })
 })

@@ -216,7 +216,7 @@ export default function HeroCaseFileSlideshow({
             )}
             <div className="attorney-name">
               <b>{slide.providerName}</b>
-              <span>{slide.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
+              <span>{slide.provider_type === 'attorney' ? 'Licensed attorney' : 'Consultant'}</span>
             </div>
             {slide.review_count > 0 ? (
               <div className="stars" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>

@@ -115,7 +115,7 @@ describe('listing record -> landing card mapping', () => {
     })
     expect(card?.jx).toBe('ca')
     // Blank provider names fall through providerDisplayName's chain, never to an
-    // empty string rendered next to "Regulated consultant".
+    // empty string rendered next to "Consultant".
     expect(card?.providerName).toBe('YouSafe provider')
   })
 

@@ -27,7 +27,7 @@ describe('providerDisplayName — blank-name gig card fix', () => {
   })
 
   it('providerDisplayLabel is role-aware', () => {
-    expect(providerDisplayLabel({ full_name: '' }, 'consultant')).toBe('Regulated consultant')
+    expect(providerDisplayLabel({ full_name: '' }, 'consultant')).toBe('Consultant')
     expect(providerDisplayLabel({ full_name: '' }, 'attorney')).toBe('Licensed attorney')
     expect(providerDisplayLabel({ full_name: 'Jane' }, 'attorney')).toBe('Jane')
   })
