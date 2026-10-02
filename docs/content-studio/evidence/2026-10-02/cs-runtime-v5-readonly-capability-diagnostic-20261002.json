@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-02T10:20:10.949878+00:00",
+  "kind": "single existing CodexCliProbe read-only ephemeral exact model diagnostic",
+  "model": "gpt-6-luna",
+  "source_execute": false,
+  "exit_code": 0,
+  "marker_present": true,
+  "stdout_bytes": 24,
+  "stderr_bytes": 660,
+  "flags": {
+    "quota": false,
+    "http401": false,
+    "http429": false,
+    "model_unavailable": false,
+    "stream_failure": false,
+    "auth_expired": false
+  },
+  "lane": {
+    "lane_id": "codex",
+    "model": "gpt-6-luna",
+    "available": true,
+    "tier": 1,
+    "operations": [
+      "admit",
+      "observe",
+      "resume"
+    ],
+    "reason": null,
+    "authenticated": true,
+    "live_e2e": true,
+    "family": "codex"
+  }
+}

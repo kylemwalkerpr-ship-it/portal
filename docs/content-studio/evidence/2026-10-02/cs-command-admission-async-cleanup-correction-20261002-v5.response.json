@@ -1,0 +1,117 @@
+{
+  "decision": {
+    "action": "BLOCK",
+    "lane_id": null,
+    "model": null,
+    "confidence": 1.0,
+    "reason": "no_eligible_lane",
+    "jev_decision": "BLOCK",
+    "probabilities": {
+      "BLOCK": 1.0
+    }
+  },
+  "pipeline": {
+    "task": {
+      "session": "cs-command-admission-async-cleanup-correction-20261002-v5",
+      "workspace": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-20261001",
+      "requested_lane": "codex",
+      "provider": "codex",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "mode": "workspace-write",
+      "verification_count": 3,
+      "artifact_count": 0,
+      "capabilities": []
+    },
+    "policy": {
+      "codex_tier1_precedence": true,
+      "allow_freebuff_fallback": true,
+      "allow_native_fallback": true,
+      "no_silent_substitution": true,
+      "prohibit_fresh_retry_after_mutation": true,
+      "min_jev_confidence": 0.85
+    },
+    "context": {
+      "current_state": null,
+      "verification_state": null,
+      "current_attempt_id": null,
+      "state_generation": null,
+      "attempt_reason": null,
+      "attempt_native_state": null,
+      "attempt_resumable": null,
+      "checkpoint_kind": null,
+      "checkpoint_ref": null,
+      "checkpoint_digest": null,
+      "mutation_seen": false,
+      "active_lease_lane": null,
+      "active_mission_id": null
+    },
+    "resume": null,
+    "lanes": [
+      {
+        "lane_id": "codex",
+        "model": "gpt-6-luna",
+        "available": false,
+        "tier": 1,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "probe_failed",
+        "authenticated": null,
+        "live_e2e": null,
+        "family": "codex"
+      },
+      {
+        "lane_id": "native-deepseek",
+        "model": "deepseek-flash",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "provider_unavailable",
+        "authenticated": true,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "native-grok",
+        "model": "grok-4.7",
+        "available": false,
+        "tier": 2,
+        "operations": [
+          "admit",
+          "observe"
+        ],
+        "reason": "capability_unavailable",
+        "authenticated": true,
+        "live_e2e": null,
+        "family": "native"
+      },
+      {
+        "lane_id": "freebuff",
+        "model": "z-ai/glm-5.3-flash",
+        "available": true,
+        "tier": 2,
+        "operations": [
+          "observe",
+          "admit",
+          "resume"
+        ],
+        "reason": null,
+        "authenticated": true,
+        "live_e2e": true,
+        "family": "freebuff"
+      }
+    ]
+  },
+  "execution_id": "cs-command-admission-async-cleanup-correction-20261002-v5",
+  "idempotent_replay": false,
+  "observation": null,
+  "ok": true,
+  "executed": false,
+  "read_only": false,
+  "artifacts": []
+}

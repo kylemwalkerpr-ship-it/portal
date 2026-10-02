@@ -1,0 +1,13 @@
+{
+  "status": "SAVED_ONLY_HOLD_NOT_ADMITTED",
+  "created_utc": "2026-10-02T10:19:02.434991+00:00",
+  "files": {
+    "/tmp/cs-a1-authority-inactive-contracts-20261002-v1.design.md": "ffff9287a8d059b523e1ffd117621a83981f389b96926e172fa33db5a173d843",
+    "/tmp/cs-a1-authority-inactive-contracts-20261002-v1.acceptance.json": "de5d6119ad456bb1ad9bb7d68f3a1e411e355321de0bab891241ac5934269f3b",
+    "/tmp/cs-a1-authority-inactive-contracts-20261002-v1.request.json": "7facb5607f743cd1f24467d089097855edcb94e26a4dce98f993ae1d536785dc"
+  },
+  "source_or_production_mutated": false,
+  "worktree_created": false,
+  "kernel_dependency": "PENDING",
+  "real_pg": "NOT_RUN"
+}

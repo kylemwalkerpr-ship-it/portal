@@ -1,0 +1,43 @@
+{
+  "status": "SAVED_ONLY_HOLD",
+  "allowed_new_paths": [
+    "lib/studioAuthority/contracts.ts",
+    "lib/studioAuthority/repository.ts",
+    "tests/content-studio-v3/authorityContracts.test.ts",
+    "tests/sql/studio-authority-locks.sql",
+    "scripts/test-studio-authority-locks.mjs"
+  ],
+  "resolver_success_keys": [
+    "available",
+    "allowed",
+    "projectId",
+    "actorIssuer",
+    "actorSubject",
+    "actionKind",
+    "subjectId",
+    "inputRef",
+    "snapshotRef",
+    "authorizationEvidenceId",
+    "ownerVersion",
+    "policyVersion",
+    "authorityEpoch"
+  ],
+  "resolver_success_key_count": 13,
+  "bindings_only_count": 11,
+  "unavailable": {
+    "available": false,
+    "reason": "AUTHORITY_BINDING_UNAVAILABLE"
+  },
+  "lock_tiers": [
+    "project_authority_epoch",
+    "policy",
+    "owner_subject",
+    "scoped_admission_key",
+    "run_stage"
+  ],
+  "kernel_dependency": "PENDING_ROOT_EXACT_EXPORT_AND_HASH_FREEZE",
+  "production_mutation_authorized": false,
+  "fixture_trust": "DISPOSABLE_TEST_DATABASE_ONLY",
+  "hosted_pg_status": "NOT_RUN",
+  "design_sha256": "ffff9287a8d059b523e1ffd117621a83981f389b96926e172fa33db5a173d843"
+}
