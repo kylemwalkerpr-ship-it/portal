@@ -41,7 +41,8 @@
     "git_diff_cached_check": "PASS",
     "full_repository_tsc": "NOT_RUN",
     "hosted_ci": "NOT_RUN",
-    "focused_jest_log": "docs/content-studio/evidence/2026-10-02/cs-a1-codec-jest.log"
+    "focused_jest_log": "docs/content-studio/evidence/2026-10-02/cs-a1-codec-jest.log",
+    "focused_jest_after_kernel_correction": "PASS 1 suite, 9 tests at combined head 1df43fd3"
   },
   "frozen_kernel_reconciliation": {
     "accidental_path_collision": "Initial aggregator write used existing tracked contracts/registry.ts; restored byte-for-byte from worktree HEAD before continuing.",
@@ -80,5 +81,6 @@
     "Hashes are format-validated; no canonical fact-hash preimage/domain rule was invented.",
     "D6 schema enforces one-to-six subjects; the canonical subject shape has no article/offer role tag, so role/cardinality grounding remains external.",
     "Exact-lock hosted CI and independent review are pending; no push, merge, migration, route activation or deployment."
-  ]
+  ],
+  "kernel_correction_commit": "54a5d5f8d7fb7f29c3bedaa8c40c2b326f2ae566"
 }
