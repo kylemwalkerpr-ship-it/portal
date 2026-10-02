@@ -1,0 +1,11 @@
+{
+  "status": "READ_ONLY_EXPECTED_COMPARISON_NOT_IMPLEMENTED",
+  "path": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-a4-reviewed-integration-20261002/lib/studioClaimFreshness/index.ts",
+  "sourceSha256": "2bf5e7c77a9b5ef9846ea07598e12032df83256b76b6a0767ad7aa2864ee1cb1",
+  "expectedSourceSha256": "d51bb70220c23eb6ca5cd1b4689f77b5c1758418041a275fb58ab0b520f8bf05",
+  "oldExpression": "(support as Record<string, unknown>).relation === 'contradicts' && (support as Record<string, unknown>).state === 'known'",
+  "expectedExpression": "support.relation === 'contradicts' && support.state === 'known'",
+  "runtimeReason": "Type assertions erase at TS emission; removing casts preserves guards, property access order and comparison operands exactly. ClaimSupportV1 declares relation/state.",
+  "scope": "one expression line only; no test/behavior/dependency/authority changes",
+  "verification": "Hosted exacthead full typecheck rerun needed after native source implementation; no source edit, compiler invocation or functional test in this receipt."
+}

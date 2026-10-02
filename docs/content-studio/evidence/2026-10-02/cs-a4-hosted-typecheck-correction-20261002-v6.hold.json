@@ -1,0 +1,10 @@
+{
+  "state": "SAVED_ONLY_CAPACITY_HOLD",
+  "requestPath": "/tmp/cs-a4-hosted-typecheck-correction-20261002-v6.hold.request.json",
+  "requestSha256": "242ba6c2338887481c016ae0201b0f8bc25444781fdda76e4ea0ebb3acabb896",
+  "head": "a256a2aa8cef7d8f54fb200e3b96f5f90031a9f9",
+  "sourceSha256": "2bf5e7c77a9b5ef9846ea07598e12032df83256b76b6a0767ad7aa2864ee1cb1",
+  "reason": "disk2.17GiB below4GiB guard; no route/execute/job/attempt admission",
+  "executionId": "cs-a4-hosted-typecheck-correction-20261002-v6",
+  "at": "2026-10-02T09:44:49.998506+00:00"
+}

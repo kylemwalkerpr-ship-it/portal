@@ -1,0 +1,23 @@
+{
+  "action": "pipeline_execute",
+  "execution_id": "cs-command-admission-async-cleanup-correction-20261002-v5",
+  "session": "cs-command-admission-async-cleanup-correction-20261002-v5",
+  "cwd": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-20261001",
+  "requested_lane": "codex",
+  "provider": "codex",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "mode": "workspace-write",
+  "domains": [
+    "scripts/test-studio-command-admission.mjs",
+    "docs/content-studio/release/2026-10-01-command-admission-evidence.md"
+  ],
+  "artifacts": [],
+  "capabilities": [],
+  "objective": "HOLD: SAVED ONLY, NOT RELEASED OR ADMITTED. Coordinator must establish memory>=40%, swapfree>=500MiB,disk>=4GiB,max2 native source writers before replacing this hold draft with explicit released executor briefing BEFORE FIRST admission. Never route/execute this HOLD draft.\nDistinct v5 correction for completed v4, not replay. Read applicable AGENTS and /tmp/cs-runtime-v4-full-independent-review-20261002.json V4-1, exact twelve-file v4 freeze /tmp/cs-command-admission-independent-review-correction-20261002-v4.frozen.json aggregate8cbeed24eebb13a511fa2607fe19e82ee55971917f5dba450773bdabf3232f8a and frozen plan SHA4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e. Only scripts/test-studio-command-admission.mjs and docs/content-studio/release/2026-10-01-command-admission-evidence.md may change. All other source bytes/pins/SQL remain unchanged.\nImmediate rejection observation on every owned asyncPsql returned promise; track each owned asynchronous operation outcome and allSettled-drain all outcomes in finally alongside owned child closures. Preserve actual rejection when later awaited; observation must not turn failure into success. Barrier wait failure, SQL startup failure/lock timeout, and cleanup child termination must yield bounded sanitized FAIL receipt and complete owned-child cleanup, never fatal unhandled rejection before receipt. Add meaningful dependency-free Node22 --self-test exercising actual helpers with failed child and barrier/cleanup outcomes; verify no unhandled rejection and error survives later await. Do not duplicate a toy topology unrelated to actual helpers. Keep cleanup bounded and kill only owned processes. Do not introduce real database calls into selftest. Preserve exact-head receipts and existing parsers/numeric tests and hosted PG requirements.\nNo commit/stage/push/merge/install/build/PG/Docker/Supabase/DDL/workflow launch/deploy/provider/auth/keychain/env dump/OpenClaw/Helm/nested workers. Native executor is source-only and must not recheck supervisor resource/auth/routing/ps/sysctl/Jev gates; outer unified harness handles them after release. Local checks Node22 syntax and --self-test plus diff/explicit untracked whitespace only. Genuine failed-child red/green outcome evidence under this unique /tmp prefix. Production resolver remains deny-only, route503; automatic production migration application hold remains, real PG/full TSC/Jest/hosted workflow NOT_RUN. Freeze all twelve hashes, verify ten untouched paths unchanged, preserve historical receipts and report PASS/FAIL/NOT_RUN honestly. No full architecture live claim.",
+  "verify": [
+    "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node --check scripts/test-studio-command-admission.mjs",
+    "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node scripts/test-studio-command-admission.mjs --self-test",
+    "git diff --check"
+  ]
+}

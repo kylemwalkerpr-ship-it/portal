@@ -1,0 +1,20 @@
+{
+  "action": "pipeline_execute",
+  "execution_id": "cs-a4-hosted-typecheck-correction-20261002-v6",
+  "session": "studio-a4-hosted-typecheck-correction-v6",
+  "cwd": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-a4-reviewed-integration-20261002",
+  "objective": "SOURCE EXECUTION ON HOLD: supervisor must release and freeze a new eligible request before execution. Once released, source executor must not recheck supervisor resources, authentication, or routing. Distinct bounded v6 type-only repair for PR339 exact HEAD a256a2aa8cef7d8f54fb200e3b96f5f90031a9f9. Read AGENTS and /tmp/cs-a4-pr339-failed-check-20261002.log. Edit ONLY lib/studioClaimFreshness/index.ts. Hosted focused36991177251 passed; full36991177255 failed TS2352 twice at line249: direct ClaimSupportV1 casts to Record<string,unknown>. Preserve emitted runtime behavior exactly. Prefer direct typed relation/state accesses under existing object guard, or minimal legitimate type narrowing consistent untrusted supplied facts; no changes to conditions, bounds, priorities, validation, APIs, tests, or dependencies. Perform light standalone exact TypeScript semantic diagnostic if existing compiler available without installs/downloads; no full project TSC/Jest/build. Report old/new source hashes, tiny diff, verification command/exits and limits. No commit/push/merge/PR/deploy. No ps/sysctl/auth probes/Jev/nested routing/OpenClaw/Helm/keychain. Supervisor independently admits Jev>=.85 with memory>=40%, swapfree>=500MiB,disk>=4GiB,max2 source writers. Existing completed A4 jobs must never replay.",
+  "requested_lane": "codex",
+  "provider": "codex",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "mode": "workspace-write",
+  "verify": [
+    "git diff --check"
+  ],
+  "artifacts": [],
+  "capabilities": [],
+  "domains": [
+    "studio-a4-claim-freshness"
+  ]
+}
