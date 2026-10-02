@@ -701,7 +701,7 @@ export function FeaturedBriefsGrid({
       >
         {cards.map((g, idx) => {
           const tag = `${(g.jx ?? (country === 'all' ? (g.jx ?? 'us') : country)).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
-          const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
+          const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reviewed'
           const cardCountry = g.jx ?? (country !== 'all' ? country : 'us')
           const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
           const href = g.slug
