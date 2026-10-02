@@ -1,0 +1,10 @@
+# Cloudflare Workers Static Assets custom headers (applies only to files served
+# from .open-next/assets, not to Worker/SSR responses).
+# The Clerk sign-in modal on market.yousafeconsultancy.com loads the brand logo
+# from portal with crossorigin="anonymous", so these public brand images need CORS.
+/logo.png
+  Access-Control-Allow-Origin: *
+/logo.svg
+  Access-Control-Allow-Origin: *
+/logo-stacked.png
+  Access-Control-Allow-Origin: *
