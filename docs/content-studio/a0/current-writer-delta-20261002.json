@@ -1,0 +1,808 @@
+{
+  "schemaVersion": "studio.a0-current-writer-delta/1",
+  "inventoryDate": "2026-10-02",
+  "inventoryTitle": "A0 current writer and holder delta",
+  "workingTreeCommit": "67e29190bad545387e23f418ec95d6aac5ba53fd",
+  "historicalMapsCommit": "67e29190bad545387e23f418ec95d6aac5ba53fd",
+  "historicalSourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "deltaReviewSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+  "currentSourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+  "currentMainRevalidation": "All 45 reviewed source objects were re-read with git show from currentSourceCommit and matched the frozen SHA-256 and byte counts.",
+  "engineeringInventoryOnly": true,
+  "positiveAuthorityReleased": false,
+  "sourceCounterfactualScope": {
+    "included": "Source code, workflow configuration, migration files, identifiers, and metadata/effect descriptions only.",
+    "excluded": [
+      "Business rows",
+      "PII",
+      "Credential values",
+      "Network access",
+      "SQL execution",
+      "Heavy checks",
+      "Dependency installation"
+    ]
+  },
+  "liveEffectiveGrantsStatus": "NOT_RUN",
+  "currentAppliedLedgerStatus": "NOT_RUN",
+  "currentAppliedLedgerStatusMeaning": "No live catalog, effective grant, function owner/search_path, PostgREST surface, storage policy, or applied migration ledger probe was performed.",
+  "historicalMapSha256": {
+    "schema-map.json": "dc8e93d3baab3120d8f11a8c294e7550c965125231921eef2266928a82e196f2",
+    "migration-ledger.json": "6a8a47dce33eee337e84dbb977399d48051a0844e81acb832cecdb29290deaab",
+    "legacy-disposition.json": "56f1275a9048b273e34647d294ea533b88edd768c87e46bbec6b53fcf8612cea",
+    "privilege-matrix.json": "3552ef4b38441b2e6e97f26de2063ab6192f1eb1cf1f8779d0971d313aece42b",
+    "runtime-baseline.json": "b13558e130849705e18f1e53dc816c9e601e2d0110e80821bedd7b02c4e5c32c",
+    "estate-targets.json": "772e73ddbfc653ab76e6965371fca5a96e7a1282d68cd6abe6f7ff742bfe6db4",
+    "release-sinks.json": "04555b2605b505d4c7239902f7143993a56d59d20fa29b92afe2b2c65e9d1bb5"
+  },
+  "sourcePins": [
+    {
+      "path": ".github/workflows/rhythm-scan-weekly.yml",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "30da21a6d2db55f4f4ed6d5ab604634e67f882a789bb769013618637241fff30",
+      "bytes": 1547,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": ".github/workflows/sync-yqaa-knowledge.yml",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "56f5a041be9b751450fc0636ca91e188ecf17e3b5e5b35d005872118fea868b7",
+      "bytes": 2290,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": ".github/workflows/upload-gig-cover-stock.yml",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "fb4d3ae9ebdd5efa8df98379e9b518a57e82605ce799b9f332dd4cc03dbd0f15",
+      "bytes": 1128,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/account/password/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "7aac7699b757b3ac1e1a113ac6ac32fca49b837e5e6afa146588f5fa379deadd",
+      "bytes": 2034,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/admin/attorney-applications/[id]/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "b877b8e5d7fba76631b542433f2fc8e20f98fe91dfae8c38da818fb568d73eb4",
+      "bytes": 1998,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/admin/attorney-applications/bulk/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "2ba36b6001955e931e10d7706bfb6ca432509c90f21225dd5ac6372f2c8c5824",
+      "bytes": 5768,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/admin/consultant-applications/[id]/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "5be8a7c6935999c5089cd3604636f6d330d061c9aa96e7c43b90b7b7ad1f892e",
+      "bytes": 2002,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/admin/consultant-applications/bulk/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "6adfc03edd8166dac30d3a5df9af928988883fbd10bae46c577a2e6ebeba8da0",
+      "bytes": 5759,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/attorney/apply/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "3cd47c8a6e76375affdf1ea87368b7407499a8f989aa7f7d1ec4e9d0a856b33f",
+      "bytes": 5119,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/consultant/intake/submit/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "0a00e0c9b6c091ead07a9ab1fd1bdd23053728f15e8dabc259a15e3fe2e865e3",
+      "bytes": 5522,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/marketplace/gigs/[slug]/reputation/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "68c72733905416dcc5e9c88a7f28965963fc3acbf9e296e829eeaf13e459a4a4",
+      "bytes": 5785,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/marketplace/gigs/[slug]/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "642c15b28c75b17bb5be4d9f4be94d5c86e8d3fdbb65e1287a18b3c432983cf6",
+      "bytes": 6899,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/marketplace/gigs/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "9eae960fdf3eff5afe5bf7d4cff8ede47a29269cd63d4afcde87f731aee048d6",
+      "bytes": 14724,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/onboarding/role/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "a0b4141817bdae8396880761657cd6fb599497e92dbc120b7b5d5f0f175fd426",
+      "bytes": 1952,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/profile/sync-lane/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "4a66bdbba8979ca5f4f0df195bbd4e00e6246eb773e7a45743cf6ab37e145a68",
+      "bytes": 653,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/provider/apply/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "793e91bad16490661c5ec803b9eded4d2062acaec0a04f7466d3b3b653b2d8f8",
+      "bytes": 6013,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/sellers/[id]/reviews/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "dad8741aecc2bb6d926d4b484ea0fce5aab359720fdb21c1222c7959781ec093",
+      "bytes": 4732,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/sellers/[id]/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "d36cd246334274be39921d1a1118ae3f3ccf9f323e16814fa92181ed7904dcbe",
+      "bytes": 7697,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/sellers/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "6080329c9f6a3904251736d0f0f52fd456f8f3de95578574b9c7e05c30ddf460",
+      "bytes": 7830,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "app/api/webhooks/clerk/route.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "87487ff08da88add293fa831ea1074874094ab503ac4b4354132112e2eeed554",
+      "bytes": 1425,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/clerkIdentity.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "2917dcabf99193f6389743a0738af5f73b37903bf381d96f319167bde692582d",
+      "bytes": 2156,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/clerkWebhook.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "997e928152ee6c1f34808d2cf12cbe00c7d61f1680ddaeb419c32c3dbc28a155",
+      "bytes": 4787,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/marketAuthHandoff.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "ac7052653a63b310e6a3b16b4a395b7358c68f01c46389f1f19a9aa683ad1e1a",
+      "bytes": 5960,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/mustChangePassword.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "695843e35b80a08edf7a36a6b4ddd229930e861ee9aa5a5d1ec38b3b1bf8fa5b",
+      "bytes": 4306,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/portalAuthRedirect.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "232b3808e626150ef7bbdb13c56e9017a3e63463bd884fde54e852fb3219f879",
+      "bytes": 13857,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/returnTo.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "b9626ac29991e83633cca2b59bb35c5c78ce278da08e3bcd45e239e40e579fe7",
+      "bytes": 7001,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/roles.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "1a609ad95fa146ba253c8b14336345e7719fc3fb5e155c2230f2fca301ba39c1",
+      "bytes": 7536,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/serverAuthRedirect.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "04266676624373926071477e194503a11bbf5217bf23488f39e57fa9d181211c",
+      "bytes": 1062,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/ysAuthModal.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "38758df8f0523d8f83c9f7f3a664615652d12126fc278f9cf878e6c4373eada1",
+      "bytes": 5368,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/auth/ysClerkAppearance.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "b8c1562ab9bd99906b1f3924ea559f58259ba6d500e91f0b036e544f6c6119df",
+      "bytes": 2720,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/clerk/providerProvisioning.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "46e780c98fe900d2690658923e15e366848a92f7894686c77598f1f619d596ad",
+      "bytes": 13183,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/provider/application.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "d988b10f055a3a42a64f33c4da0ec34c49a0259ec603db8eb0ac8fed21d576d6",
+      "bytes": 21181,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/provider/barNumber.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "f6b552b812de878ed31eff9f176675f5cb9128af08d25b9cd671bcb639434d39",
+      "bytes": 768,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/provider/decision.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "29b2f9e4a8388f63873fd62673d049dcd668a391ce41459587b05322127bddee",
+      "bytes": 8668,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "lib/provider/decisionSummary.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "49214fef8929c60b1437c6ea5bb63c3ec0c46eb5d48ca5ea5ecef946a85c90b0",
+      "bytes": 845,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/clerk/provision-provider-accounts.ts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "5b9de48718de9c006d14077ec0867f296226a07ef9bdc206998603b6001f090f",
+      "bytes": 12119,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/run-rhythm-scan.mts",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "13c20bcc7ed494023fd504a435fdef3ad08fc37e368972ecfd37550a9b093e0e",
+      "bytes": 1982,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/smoke-prod.mjs",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "a8e2c166bedf28e53c8a0c991d5d20a07abdbe62085daefaabe8df0748c36c8c",
+      "bytes": 13334,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/sync-yqaa-knowledge.mjs",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "ea038029d5eadf361569990bf5c55be702d8ff485585ccc3a9bf37985f1a7189",
+      "bytes": 6601,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/upload-gig-cover-stock.mjs",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "9e1dabe8740a8acf0e9a93bf507a47c372095f74e4ba25b56d0c720aefe1458d",
+      "bytes": 2733,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "scripts/verify-market-landing-payload.mjs",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "00b633ce8ae3d0b32258305d47d9efb6c71c53a0f42451cfd8463782efb8dc92",
+      "bytes": 15439,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "supabase/migrations/20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "5c07a4321ac8d75102cb8d9620441dfe42a1c32f88509a2545bd1ae7c396daef",
+      "bytes": 9753,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "supabase/migrations/20261002080000_yqaa_finalize_safeupdate_newer_run_guard.sql",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "61f7b686acf9f82348ea151969f1db942787026c8983f6a562f6d0649660be8c",
+      "bytes": 7320,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "supabase/migrations/20261002091500_marketplace_featured_boost.sql",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "bc828fa3dbfad9be4ae2e82162122d3d6d8759e7ecce48bfe46593a9779d7fd3",
+      "bytes": 5092,
+      "revalidatedFromGitObject": true
+    },
+    {
+      "path": "supabase/migrations/20261002093500_fix_recompute_gig_rank_ambiguous_alias.sql",
+      "reviewedSourceCommit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "de9021b8ae535c9115ba5aaf538c73481e68d3a4e2877f08793f7cf06bd9bb29",
+      "bytes": 3459,
+      "revalidatedFromGitObject": true
+    }
+  ],
+  "writers": [
+    {
+      "id": "CLERK_WEBHOOK",
+      "title": "Clerk webhook identity/profile mirror",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "app/api/webhooks/clerk/route.ts",
+        "lib/auth/clerkWebhook.ts"
+      ],
+      "trigger": "POST webhook after Svix event verification; missing webhook secret returns a no-op response, so runtime configuration is not established by source.",
+      "effects": [
+        "profiles.clerk_user_id",
+        "profiles.email",
+        "profiles.username",
+        "profiles.full_name",
+        "clerk.publicMetadata"
+      ],
+      "mutationDetail": "Links an existing profile by backend external ID or verified primary email; updates profile identity fields; user deletion soft-unlinks the profile; mirrors DB role/status back into Clerk public metadata.",
+      "authorityBoundary": "Identity synchronization only. It does not create a project grant or write project authority metadata.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "configurationActivationStatus": "UNVERIFIED",
+      "studioProjectGrantAuthority": false,
+      "closureNotes": "Retry/idempotence, relink collisions, and revoke/cutover ordering must be included in any future complete writer closure."
+    },
+    {
+      "id": "PROFILE_FIND_LINK_CREATE",
+      "title": "Shared profile lookup, linking, and provisioning helper",
+      "directOrTransitive": "DIRECT",
+      "sourcePaths": [
+        "lib/auth/roles.ts"
+      ],
+      "trigger": "Called from onboarding/provider identity flows.",
+      "effects": [
+        "profiles.clerk_user_id",
+        "profiles.role",
+        "profiles.status",
+        "profiles.email",
+        "profiles.full_name",
+        "profiles.optional_vertical"
+      ],
+      "mutationDetail": "Verified-email fallback can link an existing profile; create/upsert writes base profile role/status and identity fields, with a fallback shape that omits optional vertical metadata.",
+      "authorityBoundary": "Mixed read and identity/provisioning mutation; not a read-only authentication helper and not a project grant.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false,
+      "closureNotes": "Profile collision handling and root identity/epoch decisions are prerequisites to any positive v3 principal binding."
+    },
+    {
+      "id": "ONBOARD_CLIENT",
+      "title": "Self-service client onboarding",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "app/api/onboarding/role/route.ts",
+        "lib/auth/roles.ts"
+      ],
+      "trigger": "POST by a verified Clerk identity; existing-profile path can return early.",
+      "effects": [
+        "profiles.role",
+        "profiles.status",
+        "profiles.clerk_user_id",
+        "profiles.email",
+        "clerk.publicMetadata"
+      ],
+      "mutationDetail": "Finds, links, or creates a profile as client/active and mirrors role/status to Clerk metadata.",
+      "authorityBoundary": "Client self-service profile provisioning; not tenant/project registration and not an object-action grant.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false
+    },
+    {
+      "id": "PROVIDER_APPLY",
+      "title": "Provider application and profile role/status writer",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "app/api/provider/apply/route.ts",
+        "app/api/attorney/apply/route.ts",
+        "app/api/consultant/intake/submit/route.ts",
+        "lib/auth/roles.ts",
+        "lib/provider/application.ts"
+      ],
+      "trigger": "Verified Clerk identity submits attorney or consultant application; staff/client activity restrictions apply on the provider route.",
+      "effects": [
+        "profiles.clerk_user_id",
+        "profiles.role",
+        "profiles.status",
+        "profiles.full_name",
+        "provider_applications",
+        "attorney_applications",
+        "consultant_applications",
+        "clerk.publicMetadata"
+      ],
+      "mutationDetail": "Profile lookup/link/create plus role/status/profile updates, application insert/update, and Clerk metadata mirror.",
+      "authorityBoundary": "Application submission and profile-role mutation do not establish qualified-human credentials or project action grants.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false,
+      "closureNotes": "Explicit link/import deny policy is required before binding a v3 principal or reviewer identity."
+    },
+    {
+      "id": "PROVIDER_ADMIN_DECISION",
+      "title": "Admin provider approval/rejection and listing activation",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "lib/provider/decision.ts",
+        "app/api/admin/attorney-applications/[id]/route.ts",
+        "app/api/admin/attorney-applications/bulk/route.ts",
+        "app/api/admin/consultant-applications/[id]/route.ts",
+        "app/api/admin/consultant-applications/bulk/route.ts"
+      ],
+      "trigger": "Admin-authenticated individual or bulk attorney/consultant decision routes.",
+      "effects": [
+        "provider_applications",
+        "attorney_applications",
+        "consultant_applications",
+        "profiles.role",
+        "profiles.status",
+        "attorneys",
+        "consultants",
+        "provider_records",
+        "provider_listings",
+        "application_events",
+        "clerk.publicMetadata",
+        "email"
+      ],
+      "mutationDetail": "Updates application status/review fields; may update non-staff profile role/status; upserts provider credential-like records; invokes listing activation; mirrors role/status to Clerk; records application events and sends email. Multi-sink calls are not one common root transaction.",
+      "authorityBoundary": "Ordinary provider approval is not studio reviewer credential verification/remit and does not grant project actions.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioReviewerQualificationAuthority": false,
+      "studioProjectGrantAuthority": false,
+      "closureNotes": "Partial failure, backfill provenance, and cross-sink compensation require explicit treatment."
+    },
+    {
+      "id": "PROVISIONING_OPERATOR",
+      "title": "Local provider account provisioner and operator SQL path",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "scripts/clerk/provision-provider-accounts.ts",
+        "lib/clerk/providerProvisioning.ts"
+      ],
+      "trigger": "Local operator script using Clerk Backend API; optional direct Supabase relink or generated recovery artifacts for later operator execution.",
+      "effects": [
+        "clerk.users",
+        "clerk.publicMetadata",
+        "profiles.clerk_user_id"
+      ],
+      "mutationDetail": "Creates Clerk Backend API users and metadata; optional Service Role direct profile relink; alternatively emits restricted-permission backup/relink/restore SQL, links, and credential export artifacts for operator use.",
+      "authorityBoundary": "Local operator and generated SQL are separate identity-writer paths. Neither grants a default principal from email/username.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false,
+      "closureNotes": "Treat generated SQL as a real identity writer and preserve its backup/relink inverse and provenance. Inventory did not inspect generated CSV/temp credentials or export rows."
+    },
+    {
+      "id": "PROVISIONING_SQL_RELINK_RESTORE",
+      "title": "Generated SQL relink and restore helpers",
+      "directOrTransitive": "DIRECT_AND_TRANSITIVE",
+      "sourcePaths": [
+        "lib/clerk/providerProvisioning.ts",
+        "scripts/clerk/provision-provider-accounts.ts"
+      ],
+      "trigger": "Helper generates guarded profile clerk_user_id relink/restore SQL; an operator executes it through the Management SQL/API path.",
+      "effects": [
+        "profiles.clerk_user_id"
+      ],
+      "mutationDetail": "Updates a profile from placeholder/current Clerk ID to target ID; restore helper reverses the identity switch. SQL generation and external execution are separate stages.",
+      "authorityBoundary": "Identity binding mutation and rollback are authority relevant; generated SQL is not migration-only.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false
+    },
+    {
+      "id": "PASSWORD_METADATA",
+      "title": "Password setup metadata writer",
+      "directOrTransitive": "DIRECT",
+      "sourcePaths": [
+        "app/api/account/password/route.ts",
+        "lib/auth/mustChangePassword.ts"
+      ],
+      "trigger": "Authenticated Clerk user submits password completion route.",
+      "effects": [
+        "clerk.publicMetadata",
+        "clerk.publicMetadata.mustChangePassword",
+        "clerk.publicMetadata.passwordChangedAt",
+        "clerk.publicMetadata.tempPasswordExpiresAt",
+        "clerk.user.password"
+      ],
+      "mutationDetail": "Backend API metadata patch updates password-gate timestamps/flags; browser user.updatePassword is an external identity write. Inventory records operation type only and reads no password value.",
+      "authorityBoundary": "Password-gate clearance is not a project grant.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false
+    },
+    {
+      "id": "RETIRED_SYNC_LANE_TRANSITIVE",
+      "title": "Retired sync-lane endpoint with transitive identity writes",
+      "directOrTransitive": "TRANSITIVE",
+      "sourcePaths": [
+        "app/api/profile/sync-lane/route.ts",
+        "lib/portalAuth.ts"
+      ],
+      "trigger": "POST sync-lane route; business role-promotion path is now a no-op, but request still calls requirePortalUser.",
+      "effects": [
+        "profiles.clerk_user_id",
+        "profiles.email",
+        "profiles.country_code"
+      ],
+      "mutationDetail": "Authentication/profile resolution retains the identity/profile mutation footprint through the transitive requirePortalUser call.",
+      "businessRolePromotion": "RETIRED",
+      "authorityBoundary": "Retired business role sink does not make the endpoint globally read-only; no project grant is created.",
+      "sharedLockStatus": "CURRENT_NO_SHARED_LOCK",
+      "studioProjectGrantAuthority": false
+    }
+  ],
+  "credentialHolders": [
+    {
+      "id": "RUNTIME_CLERK_WEBHOOK",
+      "holder": "Portal runtime webhook handler",
+      "credentialNames": [
+        "CLERK_WEBHOOK_SECRET",
+        "Supabase Service Role capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Svix verification and privileged profile/Clerk mirror effects."
+    },
+    {
+      "id": "RUNTIME_ROLE_METADATA",
+      "holder": "Portal runtime identity/profile routes",
+      "credentialNames": [
+        "Supabase Service Role capability",
+        "Clerk Backend API capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Profile role/status/link writes and Clerk public metadata mirrors."
+    },
+    {
+      "id": "LOCAL_CLERK_PROVISIONER",
+      "holder": "Local operator running provider provision script",
+      "credentialNames": [
+        "CLERK_SECRET_KEY",
+        "optional Supabase Service Role capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Clerk user creation/metadata and optional profile relink."
+    },
+    {
+      "id": "LOCAL_SQL_OPERATOR",
+      "holder": "Operator executing generated SQL or Supabase Management SQL",
+      "credentialNames": [
+        "Supabase Management API capability",
+        "optional Supabase Service Role capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Profile identity relink/restore via generated SQL; effective grants not probed."
+    },
+    {
+      "id": "ACTIONS_YQAA_MANAGEMENT_SQL",
+      "holder": "GitHub Actions YQAA sync step",
+      "credentialNames": [
+        "SUPABASE_ACCESS_TOKEN",
+        "SUPABASE_PROJECT_REF",
+        "Supabase Service Role capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "YQAA ingestion and privileged finalize path; actual token/API scope not probed."
+    },
+    {
+      "id": "ACTIONS_STORAGE_UPLOAD",
+      "holder": "GitHub Actions gig cover workflow",
+      "credentialNames": [
+        "Supabase Service Role capability"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Public gig-gallery object upload and URL verification; not gigs table DML."
+    },
+    {
+      "id": "ACTIONS_RHYTHM_SCAN",
+      "holder": "GitHub Actions rhythm scan workflow",
+      "credentialNames": [
+        "Supabase Service Role capability/JWT"
+      ],
+      "effectiveScopeStatus": "UNVERIFIED",
+      "role": "Rhythm alert scan/write on Actions runner; not Worker runtime measurement."
+    }
+  ],
+  "workflowChanges": [
+    {
+      "path": ".github/workflows/rhythm-scan-weekly.yml",
+      "executionSurface": "ACTIONS_RUNNER",
+      "schedule": "Mondays 06:00 UTC",
+      "entrypoint": "scripts/run-rhythm-scan.mts -> existing runRhythmScan",
+      "effect": "Writes content_rhythm_alerts; retains Supabase Service Role/JWT holder capability. Runtime moved to Actions runner with changed execution/CPU boundary, not Worker cron.",
+      "writesGigsTable": false,
+      "reconcileLegacyWorkerCron": true,
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799"
+    },
+    {
+      "path": ".github/workflows/sync-yqaa-knowledge.yml",
+      "executionSurface": "ACTIONS_RUNNER",
+      "schedule": "Daily 03:17 UTC",
+      "entrypoint": "scripts/sync-yqaa-knowledge.mjs finalize path",
+      "effect": "Adds step-scoped Supabase Management API token/project-ref inputs alongside existing service-role ingestion; script may call finalize RPC or Management SQL query path.",
+      "managementSqlHolderAdded": true,
+      "concurrency": "yqaa-knowledge-sync; cancel-in-progress false",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799"
+    },
+    {
+      "path": ".github/workflows/upload-gig-cover-stock.yml",
+      "executionSurface": "ACTIONS_RUNNER",
+      "trigger": "push to main for data paths and manual dispatch",
+      "entrypoint": "scripts/upload-gig-cover-stock.mjs",
+      "effect": "Uploads objects to public gig-gallery Storage and verifies public URLs. This is external storage publication, distinct from Git publication and structured facts.",
+      "writesGigsTable": false,
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799"
+    }
+  ],
+  "migrationChanges": {
+    "historicalEditedPath": "supabase/migrations/20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+    "historicalRecordedSha256": "df77e80214173de42aafdcabbb663552b30f99944cead75e2742f393d364f578",
+    "historicalRecordedSourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+    "currentSha256": "5c07a4321ac8d75102cb8d9620441dfe42a1c32f88509a2545bd1ae7c396daef",
+    "currentSourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+    "currentAppliedStatus": "UNKNOWN",
+    "currentAppliedLedgerStatus": "NOT_RUN",
+    "newPaths": [
+      "supabase/migrations/20261002080000_yqaa_finalize_safeupdate_newer_run_guard.sql",
+      "supabase/migrations/20261002091500_marketplace_featured_boost.sql",
+      "supabase/migrations/20261002093500_fix_recompute_gig_rank_ambiguous_alias.sql"
+    ],
+    "newMigrationEffects": [
+      {
+        "path": "supabase/migrations/20261002080000_yqaa_finalize_safeupdate_newer_run_guard.sql",
+        "effect": "Replaces YQAA finalize function with newer-run safety guard; corpus finalization/supersession remains a privileged SQL effect."
+      },
+      {
+        "path": "supabase/migrations/20261002091500_marketplace_featured_boost.sql",
+        "effect": "Defines gig rank featured boost and marketplace search text-rank behavior; source comment says function definition does not itself feature rows."
+      },
+      {
+        "path": "supabase/migrations/20261002093500_fix_recompute_gig_rank_ambiguous_alias.sql",
+        "effect": "Replaces recompute_gig_rank function implementation and updates gigs rank fields when invoked."
+      }
+    ],
+    "functionEffects": [
+      "public.finalize_yqaa_knowledge_ingestion: YQAA corpus finalization/supersession",
+      "public.recompute_gig_rank: gigs rank recomputation",
+      "public.marketplace_search_matches: search result ranking/projection"
+    ],
+    "automaticMainApplyHoldPreserved": true,
+    "historicalOneRowLedgerMismatch": "Preserve as a dated historical observation; no fresh ledger reconciliation performed."
+  },
+  "unknowns": [
+    "Live webhook configuration and secret activation are unverified.",
+    "Effective database grants, RLS, function ownership/search_path, trigger callers, PostgREST exposure, and Storage policies are unverified.",
+    "Clerk public metadata can lag or fail; verified identity does not itself grant project scope.",
+    "Source callgraph is a bounded delta, not proof that every live writer has been enumerated.",
+    "Shared-lock coverage cannot be claimed for Clerk webhook, operator SQL, Management SQL, or raw service-role DML.",
+    "No qualified-human or project-grant conclusion is made from provider status, profile role, email, or username."
+  ],
+  "postReviewDelta": [
+    {
+      "status": "M",
+      "path": "components/marketplace/GigDetailPage.tsx",
+      "sha256": "cf7b6367d689d314681ee07c2d2d19d9b2ed57c67bda244edbae5e078e62cbd3",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    },
+    {
+      "status": "M",
+      "path": "components/marketplace/GigDiscoveryPage.tsx",
+      "sha256": "f62c7154d7b9342c97b065d6efae523a829b3b6b1b2a147f4ced967dc415e108",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    },
+    {
+      "status": "A",
+      "path": "lib/gigMetricsClient.ts",
+      "sha256": "c431e26896b7dfde2e4d2ebcdf05e01b6163f581a45b4ebdbdc8b94f2f27c525",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    },
+    {
+      "status": "A",
+      "path": "lib/studioClaimFreshness/index.ts",
+      "sha256": "d51bb70220c23eb6ca5cd1b4689f77b5c1758418041a275fb58ab0b520f8bf05",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    },
+    {
+      "status": "A",
+      "path": "tests/gig-metrics-client.test.ts",
+      "sha256": "26683d175fbfe08453250065c663f499babe9bca4e640494b5ed1dbe8a0bd8ea",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    },
+    {
+      "status": "A",
+      "path": "tests/studio-claim-freshness.test.ts",
+      "sha256": "84f1d95549f4c26af0c29d2c3fa1198a8efa9319fa81095701adf8295d77ba3a",
+      "source_commit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "classification": "NON_AUTHORITY_CLIENT_METRICS_OR_INACTIVE_A4_COMPONENT"
+    }
+  ],
+  "postReviewDeltaDisposition": "The six paths are pinned at current main. A4 component remains inactive and anonymous client metrics add no authority; no authority activation is inferred.",
+  "defaultDisposition": "DENY_PENDING_REAL_AUTHORITY_AND_ALL_WRITER_CLOSURE",
+  "scopeBoundary": "This dated engineering inventory is not full A0 exit, permission to activate authority, production DDL approval, route activation, or release-gate completion.",
+  "supportingSourcePins": [
+    {
+      "path": "lib/portalAuth.ts",
+      "sourceCommit": "1ffef045e182a68d429bdbc9d86c506117db3799",
+      "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+      "bytes": 9724,
+      "revalidatedFromGitObject": true,
+      "relationship": "Unchanged transitive requirePortalUser dependency cited by the retired sync-lane writer; outside the frozen 45-path delta review set."
+    }
+  ]
+}
