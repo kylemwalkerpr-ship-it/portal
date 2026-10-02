@@ -1,0 +1,49 @@
+{
+  "caches": [
+    {
+      "cache": ".npm/_npx",
+      "KiB": 211828,
+      "entries": [
+        {
+          "name": "4b4c857f6efdfb61",
+          "KiB": 211828
+        }
+      ]
+    },
+    {
+      "cache": ".cache/uv",
+      "KiB": 7824
+    },
+    {
+      "cache": "Library/pnpm/store",
+      "KiB": 7748412
+    }
+  ],
+  "activeReferences": [
+    {
+      "pid": "42325",
+      "npxEntries": [
+        "4b4c857f6efdfb61"
+      ]
+    },
+    {
+      "pid": "75546",
+      "npxEntries": [
+        "4b4c857f6efdfb61"
+      ]
+    },
+    {
+      "pid": "65464",
+      "npxEntries": [
+        "4b4c857f6efdfb61"
+      ]
+    },
+    {
+      "pid": "65490",
+      "npxEntries": [
+        "4b4c857f6efdfb61"
+      ]
+    }
+  ],
+  "deletions": false
+}

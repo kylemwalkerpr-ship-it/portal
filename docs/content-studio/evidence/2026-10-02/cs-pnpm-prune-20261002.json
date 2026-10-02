@@ -1,0 +1,11 @@
+{
+  "operation": "supported pnpm store prune",
+  "exitCode": 0,
+  "diskFreeBeforeBytes": 1376174080,
+  "diskFreeAfterBytes": 2328543232,
+  "reclaimedBytes": 952369152,
+  "stdout": "",
+  "stderr": "! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-12.8.1.tgz\nDownloading the pnpm 12.8.1 binary for darwin-arm64...\nChecking 14 registered project(s) for global virtual store usage\nRemoved 1325 packages from global virtual store\nRemoved 77618 files (2904284916 bytes)\nRemoved 1693 packages\n",
+  "preserved": "installed node_modules and active npx",
+  "timestamp": "2026-10-02T09:43:58.393743+00:00"
+}
