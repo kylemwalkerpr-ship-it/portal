@@ -1,0 +1,12 @@
+{
+  "review": "PASS exact type-assertion erasure only; prior entirecomponentreview preserved",
+  "fixCommit": "a1c91ce09b7aabedd171fe6bb31342424476191a",
+  "freshMain": "c5031c21743b156afc29d2579ff0bdbee81ea4cf",
+  "head": "25ae07d620cdfd58b33d4cbb267e5ecc82f40c1e",
+  "productionDiffPaths": [
+    "lib/studioClaimFreshness/index.ts",
+    "tests/studio-claim-freshness.test.ts"
+  ],
+  "sourceHash": "d51bb70220c23eb6ca5cd1b4689f77b5c1758418041a275fb58ab0b520f8bf05",
+  "hostedChecks": "PENDING"
+}

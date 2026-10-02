@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "stdout": "{\"ok\": true, \"worktree\": {\"path\": \"/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-a1-contract-kernel-20261002\", \"repo_root\": \"/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-reviewed-helpers-integration-20261001\", \"branch\": \"feat/studio-a1-contract-kernel-20261002\", \"base_ref\": \"5ec169fd2dd67bf09fd4d85e739f20ea4809797b\", \"status\": \"active\", \"managed\": true}}\n",
+  "stderr": "",
+  "target": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-a1-contract-kernel-20261002",
+  "base": "5ec169fd2dd67bf09fd4d85e739f20ea4809797b",
+  "route_called": false,
+  "execute_called": false
+}
