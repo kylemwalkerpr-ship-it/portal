@@ -25,6 +25,7 @@ import {
   profileStatusAfterSubmit,
   validateProviderApplication,
 } from '@/lib/provider/application'
+import { providerApplicationReceivedEmail, sendEmail } from '@/lib/email'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +90,7 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   let applicationId: string | null = null
+  let isNewApplication = false
   if (existing && OPEN_APPLICATION_STATUSES.includes(existing.status)) {
     const { data: updated, error } = await db.from(table).update(row).eq('id', existing.id).select('id').single()
     if (error) {
@@ -103,6 +105,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not save your application.' }, { status: 500 })
     }
     applicationId = inserted?.id ?? null
+    isNewApplication = true
   }
 
   const nextStatus = profileStatusAfterSubmit(profile.role === role ? profile.status : null)
@@ -117,5 +120,33 @@ export async function POST(req: Request) {
 
   await mirrorProfileToClerk(userId, { role, status: nextStatus })
 
-  return NextResponse.json({ ok: true, application_id: applicationId, role, status: nextStatus })
+  // "We received your application" — once per new application, best-effort
+  // (never fails the submit). Re-saves of an open application don't re-send.
+  let confirmationEmail: 'sent' | 'skipped' | 'failed' | 'not_new' = 'not_new'
+  const recipient = profile.email || identity?.email || null
+  if (isNewApplication) {
+    if (!recipient) {
+      confirmationEmail = 'skipped'
+    } else {
+      try {
+        const email = providerApplicationReceivedEmail({
+          fullName: data.full_name,
+          lane: role === 'consultant' ? 'consultant' : 'attorney',
+          licensed: data.provider_type !== 'consultant',
+        })
+        confirmationEmail = await sendEmail({ to: recipient, subject: email.subject, html: email.html })
+      } catch (err) {
+        confirmationEmail = 'failed'
+        console.error('[provider/apply] confirmation email failed', err instanceof Error ? err.message : err)
+      }
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    application_id: applicationId,
+    role,
+    status: nextStatus,
+    confirmation_email: confirmationEmail,
+  })
 }

@@ -34,6 +34,8 @@ export interface YsAuthOptions {
 export interface ClerkModalLike {
   openSignIn: (props?: Record<string, unknown>) => void
   openSignUp: (props?: Record<string, unknown>) => void
+  closeSignIn?: () => void
+  closeSignUp?: () => void
 }
 
 export function resolveDestination(returnTo?: string | null): string {
@@ -75,10 +77,57 @@ export function signUpModalProps(options: YsAuthOptions = {}) {
   }
 }
 
+/**
+ * In-modal "Sign in" / "Sign up" footer link. Left to Clerk, it navigates to
+ * signInUrl / signUpUrl through the Next router, which on Market restores a
+ * stale URL and closes the modal without opening the other one (or reloads
+ * the page). Instead we swap modals in place, keeping return_to + intent.
+ */
+let lastOpened: { mode: 'sign-in' | 'sign-up'; options: YsAuthOptions; clerk: ClerkModalLike } | null = null
+let switchInstalled = false
+
+/** Which modal the footer link should switch to, or null to let Clerk handle it. */
+export function footerSwitchTarget(currentMode: 'sign-in' | 'sign-up' | null, linkText: string | null | undefined): 'sign-in' | 'sign-up' | null {
+  const text = (linkText ?? '').trim().toLowerCase()
+  if (currentMode === 'sign-up' && /^sign\s*in\b/.test(text)) return 'sign-in'
+  if (currentMode === 'sign-in' && /^sign\s*up\b/.test(text)) return 'sign-up'
+  return null
+}
+
+export function handleModalFooterClick(event: { target: EventTarget | null; preventDefault(): void; stopImmediatePropagation(): void }): boolean {
+  const target = event.target as (Element & { closest?: (sel: string) => Element | null }) | null
+  const link = target?.closest?.('.cl-footerActionLink')
+  if (!link || !lastOpened) return false
+  const next = footerSwitchTarget(lastOpened.mode, link.textContent)
+  if (!next) return false
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  const { clerk, options } = lastOpened
+  if (next === 'sign-in') {
+    clerk.closeSignUp?.()
+    openYsSignIn(clerk, options)
+  } else {
+    clerk.closeSignIn?.()
+    openYsSignUp(clerk, options)
+  }
+  return true
+}
+
+function installModalSwitch(): void {
+  if (switchInstalled || typeof document === 'undefined') return
+  switchInstalled = true
+  // Capture phase: runs before Clerk's own link handler.
+  document.addEventListener('click', (event) => { handleModalFooterClick(event) }, true)
+}
+
 export function openYsSignIn(clerk: ClerkModalLike, options: YsAuthOptions = {}): void {
+  lastOpened = { mode: 'sign-in', options, clerk }
+  installModalSwitch()
   clerk.openSignIn(signInModalProps(options))
 }
 
 export function openYsSignUp(clerk: ClerkModalLike, options: YsAuthOptions = {}): void {
+  lastOpened = { mode: 'sign-up', options, clerk }
+  installModalSwitch()
   clerk.openSignUp(signUpModalProps(options))
 }
