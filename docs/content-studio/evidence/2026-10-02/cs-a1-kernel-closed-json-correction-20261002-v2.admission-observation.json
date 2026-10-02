@@ -1,0 +1,21 @@
+{
+  "observed_at": "2026-10-02T15:10:10.651363+00:00",
+  "status": "RELEASED_REQUEST_ROUTE_PENDING_EXECUTION_WITHHELD",
+  "head_baseline_match": true,
+  "four_baseline_hashes_match": true,
+  "job_count_observed": 0,
+  "disk_GiB_observed": 6.00465,
+  "memory_free_percent_observed": 40,
+  "swap_free_MiB_observed": 870.38,
+  "preexisting_native_wrapper_pair_pids": [
+    24221,
+    24222
+  ],
+  "kernel_writer_observed": false,
+  "released_request_sha256": "c51e923c129dc790187cf2d277dea23b89081e70975d4b305d7d72005d21b7bf",
+  "route_attempt_count": 1,
+  "route_process_pid": 85859,
+  "route_receipt_path": "/tmp/cs-a1-kernel-closed-json-correction-20261002-v2.released.route.json",
+  "pipeline_execute_issued": false,
+  "hold_reason": "Concurrent harness routedCodex dirty shim safety/provenance unverified; root instructed observe only; no route replay."
+}

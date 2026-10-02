@@ -1,0 +1,560 @@
+{
+  "observed_at": "2026-10-02T15:09:46.617462+00:00",
+  "mode": "read-only diagnosis; no job execution or daemon change",
+  "head": "e0bfee6162fe2b7db1775ef683983a88933acbea",
+  "pins": {
+    "src/bridge/server.py": "e54c13e6aabd109613d7f740f0f8efd482643bdfbc6faad14b5fdf1e986eb823",
+    "src/bridge/client.py": "02816cce5706058a5b8849cff1e12c5aaf7f921100ea264cc9dfabebd2fc7bef",
+    "src/bridge/pipeline_state.py": "38057f580e01de1bd319879f5658e1ad2e4872991fcb2ff81ee64137584c7c4a",
+    "src/bridge/codex_execution_lane.py": "4061e65a4c03568db194ebee1b9e7253824e6c97f818737f97c5f685b0bc5c54",
+    "src/remote_bridge/routed_lane.py": "bb7e0dd5c86a3dcf61b0fa6e53c9587a33f405ba478cf0c6cf1eae7353fa1d7e",
+    "src/remote_bridge/codex_smart.py": "f3c4b5c93840ebbaefcf59de454b9a3a8ec34d1855f7e7a92016c9d185390291"
+  },
+  "finding": "Working server is modified to use untracked RoutedCodexLane, whose probe advertises admit/observe only and whose resume command raises invalid_checkpoint. Base HEAD CodexLaneAdapter supports broker exact checkpoint resume. Reload alone cannot solve this and could activate unreviewed concurrent modifications.",
+  "evidence": [
+    "server.py35 import RoutedCodexLane;292 instantiation",
+    "routed_lane.py33 operations admit/observe;44-48 explicit resume rejection",
+    "codex_smart.py15 accepts fresh exec eight-argument contract only",
+    "pipeline_state.py253 live Codex probe advertises resume, so snapshot admit/observe also suggests loaded probe drift or routed capability intersection; full daemon provenance remains unproven"
+  ],
+  "safe_repair_acceptance": [
+    "Confirm ownership of dirty server/client/untracked remote_bridge and freeze source before isolated repair; no reset or cherry-pick unowned files.",
+    "Implement exact provider UUID resume in routed launcher/shim, not direct base adapter bypass. Existing launcher must choose explicit resume, preserve model gpt-6-luna, effort, cwd, sandbox and network=false, connector disabling. No latest/all resume shortcuts.",
+    "Populate RoutedCodexLane thread-local context for resume as for admit; retain bounded child process receipt, native model/effort/cwd proof, owned cancellation and verification.",
+    "Advertise resume only after implementation and deterministic regression coverage.",
+    "Regression: same broker attempt, same native thread, exactly one concurrent resume claim, generation-fenced artifact/verification acknowledgement, rejected malformed/mismatched thread, no fresh START when exact checkpoint exists.",
+    "Then normal reviewed commit/install only after all unrelated actual workers quiescent; supported kickstart; fresh authenticated capability route must return RESUME above Jev floor before one exact original payload execution."
+  ],
+  "supported_reload_reference": "bridge/client.py778 uses launchctl kickstart -k gui/$(id -u)/com.yousafe.deepseek-bridge; no reload performed",
+  "runtime_checkpoint": {
+    "job": "cs-command-admission-hosted-mock-type-correction-20261002-v6",
+    "attempt": "1db51457-bac9-4cd2-a69a-1445ff1baf63",
+    "native_thread": "01a0fc3c-853b-71d2-b318-ff22b0125508"
+  },
+  "limitations": [
+    "No daemon private state or credentials inspected.",
+    "No resource quiescence globally established.",
+    "No source edits, broker mutation, route execution or restart."
+  ],
+  "sanitized_process_observation": [
+    {
+      "pid": 746,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 771,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 813,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 814,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 826,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 879,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-pahn_gzf/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 906,
+      "ppid": 879,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-pahn_gzf/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 1642,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 1905,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 1909,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 3482,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 3525,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 3578,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 3581,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 3609,
+      "ppid": 692,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 4004,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 4472,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 5396,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 5397,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 7275,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 8374,
+      "ppid": 1,
+      "class": "bridge daemon",
+      "cwd": "/Users/phantomdarne/.local/share/yousafe-deepseek-bridge/src",
+      "workspace_flags": []
+    },
+    {
+      "pid": 9012,
+      "ppid": 94102,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 9025,
+      "ppid": 9012,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 9029,
+      "ppid": 94102,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 9043,
+      "ppid": 9029,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 10989,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-4pztcd_p/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 11017,
+      "ppid": 10989,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-4pztcd_p/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 13268,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 15372,
+      "ppid": 15250,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.npm/_npx/4b4c857f6efdfb61/node_modules/@wonderwhy-er/desktop-commander/dist",
+      "workspace_flags": []
+    },
+    {
+      "pid": 15390,
+      "ppid": 15372,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.npm/_npx/4b4c857f6efdfb61/node_modules/@wonderwhy-er/desktop-commander/dist",
+      "workspace_flags": []
+    },
+    {
+      "pid": 16986,
+      "ppid": 55126,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne",
+      "workspace_flags": []
+    },
+    {
+      "pid": 24463,
+      "ppid": 55126,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/Documents/GitHub/support-saas-ahrefs-r2-20260923",
+      "workspace_flags": []
+    },
+    {
+      "pid": 24883,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 35303,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 42320,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46462,
+      "ppid": 24846,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/Documents/GitHub/support-saas-ahrefs-r2-20260923",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46463,
+      "ppid": 24846,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/Documents/GitHub/support-saas-ahrefs-r2-20260923",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46467,
+      "ppid": 24846,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/Documents/GitHub/support-saas-ahrefs-r2-20260923",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46765,
+      "ppid": 55785,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.codex/plugins/cache/openai-bundled/chrome/26.917.62051/extension-host/macos/arm64",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46818,
+      "ppid": 46765,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.codex",
+      "workspace_flags": []
+    },
+    {
+      "pid": 46863,
+      "ppid": 46818,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/Documents/Codex/2026-10-02/hi",
+      "workspace_flags": []
+    },
+    {
+      "pid": 47119,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 53692,
+      "ppid": 53630,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.codex/plugins/cache/openai-bundled/chrome/26.917.62051/extension-host/macos/arm64",
+      "workspace_flags": []
+    },
+    {
+      "pid": 55126,
+      "ppid": 82952,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne",
+      "workspace_flags": []
+    },
+    {
+      "pid": 56011,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-4x9n4pb3/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 56033,
+      "ppid": 56011,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-4x9n4pb3/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 57373,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 62470,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 71939,
+      "ppid": 1642,
+      "class": "codex process",
+      "cwd": "/",
+      "workspace_flags": []
+    },
+    {
+      "pid": 79329,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-59iru6c0/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 79357,
+      "ppid": 79329,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-59iru6c0/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 80085,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-zk3p3amn/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 80109,
+      "ppid": 80085,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-zk3p3amn/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 82952,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne",
+      "workspace_flags": []
+    },
+    {
+      "pid": 83128,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-k1pwz_iz/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 83150,
+      "ppid": 83128,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-k1pwz_iz/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 84378,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-u2iiuj6m/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 84402,
+      "ppid": 84378,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-u2iiuj6m/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 84750,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-xia551wj/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 84770,
+      "ppid": 84750,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-xia551wj/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 88722,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-ycri9cm2/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 88745,
+      "ppid": 88722,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-ycri9cm2/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 90812,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-9cbm2k1g/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 90832,
+      "ppid": 90812,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-9cbm2k1g/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 92342,
+      "ppid": 92295,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.npm/_npx/4b4c857f6efdfb61/node_modules/@wonderwhy-er/desktop-commander/dist",
+      "workspace_flags": []
+    },
+    {
+      "pid": 92360,
+      "ppid": 92342,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.npm/_npx/4b4c857f6efdfb61/node_modules/@wonderwhy-er/desktop-commander/dist",
+      "workspace_flags": []
+    },
+    {
+      "pid": 94469,
+      "ppid": 94102,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 94476,
+      "ppid": 94469,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 94489,
+      "ppid": 94102,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 94496,
+      "ppid": 94489,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne/.openclaw",
+      "workspace_flags": []
+    },
+    {
+      "pid": 96997,
+      "ppid": 1,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-1cmc895a/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 97025,
+      "ppid": 96997,
+      "class": "codex process",
+      "cwd": "/private/tmp/ysrb-native-1cmc895a/repo",
+      "workspace_flags": []
+    },
+    {
+      "pid": 24221,
+      "ppid": 81844,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne",
+      "workspace_flags": []
+    },
+    {
+      "pid": 24222,
+      "ppid": 24221,
+      "class": "codex process",
+      "cwd": "/Users/phantomdarne",
+      "workspace_flags": []
+    }
+  ],
+  "launcher_pin": "1ad9704092d91edf4d8a9fd27e2529edcb874ca5ea30b98fb573540d304d095e"
+}
