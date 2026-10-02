@@ -1,0 +1,43 @@
+{
+  "bucket": "gig-gallery",
+  "kind": "recompressed",
+  "note": "Visually-lossless WebP re-encodes of oversized provider-uploaded PNG covers, same pixel dimensions. Originals stay in storage untouched.",
+  "covers": [
+    {
+      "gig_id": "8098a9ac-c6d4-4860-a3ab-adc0db42e10a",
+      "provider_id": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07",
+      "slug": "provide-immigration-expert-lawyer-services",
+      "file": "76b967fd-e7f6-553b-ad60-e0dd77d0e7e9-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/8098a9ac-c6d4-4860-a3ab-adc0db42e10a/76b967fd-e7f6-553b-ad60-e0dd77d0e7e9-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "id": "76b967fd-e7f6-553b-ad60-e0dd77d0e7e9",
+      "size": 158352,
+      "sha256": "e2eb4780259357af72efa1a4adb3c1f3ea13f98f2df09a72d1fc486d0a48f4f8",
+      "replaces_original": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/8098a9ac-c6d4-4860-a3ab-adc0db42e10a/36bd0710-b1be-45bb-b376-655bcac72cc6-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.png",
+      "encoding": "WebP lossy q95 smartSubsample (graphic)"
+    },
+    {
+      "gig_id": "d032b787-fad9-47d5-bce4-c85681534d5e",
+      "provider_id": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07",
+      "slug": "draft-education-petitions-us-schools-expert-advice",
+      "file": "fcc99bd1-2f34-589e-8568-8696feff96e7-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/d032b787-fad9-47d5-bce4-c85681534d5e/fcc99bd1-2f34-589e-8568-8696feff96e7-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "id": "fcc99bd1-2f34-589e-8568-8696feff96e7",
+      "size": 158352,
+      "sha256": "e2eb4780259357af72efa1a4adb3c1f3ea13f98f2df09a72d1fc486d0a48f4f8",
+      "replaces_original": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/d032b787-fad9-47d5-bce4-c85681534d5e/6ec7f246-10d8-40f6-a2d6-10156955516f-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.png",
+      "encoding": "WebP lossy q95 smartSubsample (graphic)"
+    },
+    {
+      "gig_id": "f77e35d4-a3e5-44a2-be90-85ae35236824",
+      "provider_id": "78ffc497-84dc-47d9-bf09-706932a2435d",
+      "slug": "edit-thesis-admissions-essay-us-university-applications",
+      "file": "aea88868-9351-53b2-8b79-928e11e9b9fc-portrait-handsome-young-man-closeup.webp",
+      "path": "78ffc497-84dc-47d9-bf09-706932a2435d/f77e35d4-a3e5-44a2-be90-85ae35236824/aea88868-9351-53b2-8b79-928e11e9b9fc-portrait-handsome-young-man-closeup.webp",
+      "id": "aea88868-9351-53b2-8b79-928e11e9b9fc",
+      "size": 190360,
+      "sha256": "61ec1a902fc28da8fbccddb4c9b63fb5be19bed7be8e0a9c8516e27e8a0e810f",
+      "replaces_original": "78ffc497-84dc-47d9-bf09-706932a2435d/f77e35d4-a3e5-44a2-be90-85ae35236824/a1afab73-8ee7-4238-9781-441e19514cd0-portrait-handsome-young-man-closeup.png",
+      "encoding": "WebP lossy q89 smartSubsample, lossless alpha (portrait cut-out)"
+    }
+  ]
+}
