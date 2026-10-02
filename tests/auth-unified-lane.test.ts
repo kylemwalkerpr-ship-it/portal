@@ -90,9 +90,9 @@ describe('intents and canonical auth URLs', () => {
 
   test('buildAuthUrl emits the one canonical URL shape', () => {
     expect(buildAuthUrl('sign-up', { returnTo: `${M}/gigs/a`, intent: 'student', extra: { service: 'h1b', gig: null } })).toBe(
-      `${P}/sign-up?return_to=${encodeURIComponent(`${M}/gigs/a`)}&intent=client&service=h1b`,
+      `${M}/?ys_sign_up=1&intent=client&return_to=${encodeURIComponent(`${M}/gigs/a`)}&service=h1b`,
     )
-    expect(buildAuthUrl('sign-in', { returnTo: 'https://evil.example' })).toBe(`${P}/sign-in`)
+    expect(buildAuthUrl('sign-in', { returnTo: 'https://evil.example' })).toBe(`${M}/?ys_sign_in=1`)
   })
 })
 

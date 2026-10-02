@@ -1,5 +1,6 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import { listPaidTemplates } from '@/lib/templateEntitlements'
 import { getTemplatePack } from '@/lib/template-packs'
 import MyTemplatesView from '@/components/student/MyTemplatesView'
@@ -15,7 +16,7 @@ export const metadata = {
 // paid for, so the page is automatically empty for anyone who hasn't.
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in?return_to=/dashboard/templates')
+  if ('error' in auth) redirectForPortalAuthFailure(auth, '/dashboard/templates')
 
   const { data: profile } = await auth.db
     .from('profiles')

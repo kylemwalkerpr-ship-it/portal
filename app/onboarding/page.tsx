@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { redirectToMarketAuth } from '@/lib/auth/serverAuthRedirect'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getVerifiedClerkIdentity } from '@/lib/auth/clerkIdentity'
@@ -31,7 +32,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   const params = await searchParams
   const returnTo = normalizeReturnTo(params.return_to ?? null) ?? `${PORTAL_ORIGIN}/dashboard`
   const userId = await getClerkUserId()
-  if (!userId) redirect(`/sign-in?return_to=${encodeURIComponent(`${PORTAL_ORIGIN}/onboarding?return_to=${encodeURIComponent(returnTo)}`)}`)
+  // return_to cannot nest a second return_to (the allow-list strips it), so the
+  // modal returns to /onboarding with the intent hint; onboarding then forwards.
+  if (!userId) redirectToMarketAuth(params.intent ? `/onboarding?intent=${encodeURIComponent(params.intent)}` : '/onboarding', { intent: params.intent ?? null })
 
   const identity = await getVerifiedClerkIdentity(userId)
   const intent = normalizeAuthIntent(params.intent) ?? normalizeAuthIntent(identity?.signupIntent)

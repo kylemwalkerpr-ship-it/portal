@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { AttorneyIntakeWizard } from '@/components/marketplace/AttorneyIntakeWizard'
 
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
 export default async function AttorneyIntakePage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in?return_to=/dashboard/attorney/intake')
+    redirectForPortalAuthFailure(auth, '/dashboard/attorney/intake')
   }
   if (auth.role === 'consultant') {
     redirect('/dashboard?goto=settings')

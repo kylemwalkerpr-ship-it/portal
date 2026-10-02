@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { redirectToMarketAuth } from '@/lib/auth/serverAuthRedirect'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getVerifiedClerkIdentity } from '@/lib/auth/clerkIdentity'
@@ -24,7 +25,7 @@ export default async function ProviderApplicationPage({ searchParams }: { search
   if (params.type) self.searchParams.set('type', params.type)
   const userId = await getClerkUserId()
   if (!userId) {
-    redirect(`/sign-up?intent=provider&return_to=${encodeURIComponent(self.toString())}`)
+    redirectToMarketAuth(self.toString(), { mode: 'sign-up', intent: params.type ?? 'provider' })
   }
 
   const identity = await getVerifiedClerkIdentity(userId)

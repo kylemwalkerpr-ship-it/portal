@@ -157,18 +157,37 @@ export function normalizeAuthIntent(value: unknown): AuthIntent | null {
   return VALID_INTENTS.has(lower) ? (lower as AuthIntent) : null
 }
 
-/** Build the single canonical portal auth URL. */
+/** Query flag the Market home reads to auto-open the branded Clerk modal. */
+export const MARKET_AUTH_MODE_FLAGS: Readonly<Record<AuthMode, string>> = {
+  'sign-in': 'ys_sign_in',
+  'sign-up': 'ys_sign_up',
+}
+
+/**
+ * Build the single canonical auth URL: the Market home with the branded Clerk
+ * modal open (`market/?ys_sign_in=1|ys_sign_up=1&intent=&return_to=`).
+ *
+ * The portal has no standalone sign-in page any more; linking or redirecting
+ * to portal `/sign-in` only costs an extra hop that 302s here. `return_to` is
+ * allow-listed (estate origins, https, never an auth document) and `intent`
+ * only ever carries a self-service lane (client / provider / attorney /
+ * consultant / regulated_adviser) — admin and support are never intents.
+ */
 export function buildAuthUrl(
   mode: AuthMode,
   options: { returnTo?: string | null; intent?: string | null; extra?: Record<string, string | null | undefined> } = {},
 ): string {
-  const url = new URL(`/${mode}`, PORTAL_ORIGIN)
-  const returnTo = normalizeReturnTo(options.returnTo ?? null)
-  if (returnTo) url.searchParams.set(RETURN_TO_PARAM, returnTo)
+  const url = new URL('/', MARKET_ORIGIN)
+  url.searchParams.set(MARKET_AUTH_MODE_FLAGS[mode], '1')
   const intent = normalizeAuthIntent(options.intent)
   if (intent) url.searchParams.set('intent', intent)
+  const returnTo = normalizeReturnTo(options.returnTo ?? null)
+  if (returnTo) url.searchParams.set(RETURN_TO_PARAM, returnTo)
   for (const [key, value] of Object.entries(options.extra ?? {})) {
-    if (value) url.searchParams.set(key, value)
+    if (!value) continue
+    if (key === 'intent' || ALL_RETURN_TO_PARAMS.includes(key)) continue
+    if (key === MARKET_AUTH_MODE_FLAGS['sign-in'] || key === MARKET_AUTH_MODE_FLAGS['sign-up']) continue
+    url.searchParams.set(key, value)
   }
   return url.toString()
 }

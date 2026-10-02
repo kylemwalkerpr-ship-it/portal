@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { redirectToMarketAuth } from '@/lib/auth/serverAuthRedirect'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeVertical } from '@/lib/platformConfig'
@@ -81,7 +82,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   const params = await searchParams
   const requestedVertical = params.vertical ? normalizeVertical(params.vertical) : null
   const userId = await getClerkUserId()
-  if (!userId) redirect('/sign-in')
+  if (!userId) redirectToMarketAuth(requestedVertical ? `/dashboard?vertical=${encodeURIComponent(requestedVertical)}` : '/dashboard')
 
   const identity = await getVerifiedClerkIdentity(userId)
 

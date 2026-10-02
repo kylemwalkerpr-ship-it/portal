@@ -35,7 +35,7 @@ export default function HomeClient({ gigs }: HomeClientProps) {
           Services. Practices onward scrolls normally so the rest of the page
           reads as a progressive landing page instead of a stacked deck. */}
       <div className="stack-wrapper">
-        <div className="stack-section"><Hero onSignup={() => { window.location.href = '/sign-up?intent=client' }} /></div>
+        <div className="stack-section"><Hero onSignup={() => { window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client' }} /></div>
         <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
       </div>
       <TwoPractices />
