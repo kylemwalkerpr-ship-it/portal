@@ -122,6 +122,9 @@
 .cw-market .suggest span.lbl { font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--ys-onPaperSoft, rgba(15,23,42,0.72)); letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
 .cw-market .suggest a { display: inline-flex; align-items: center; padding: 7px 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; color: #FFFFFF; font-weight: 600; transition: background .15s, color .15s, border-color .15s, transform .15s; }
 .cw-market .suggest a:hover { background: #fff; border-color: #FFFFFF; color: var(--ys-ink, #0F172A); transform: translateY(-1px); }
+.cw-market .get-matched-cta { margin: 14px 0 0; font-size: 14px; }
+.cw-market .get-matched-cta a { color: #FFFFFF; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.cw-market .get-matched-cta a:hover { text-decoration-thickness: 2px; }
 
 .cw-market .hero-card { position: relative; background: #fff; border: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); border-radius: 16px; padding: 20px 22px 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 16px 40px -24px rgba(15,23,42,0.18); transition: transform .15s, box-shadow .15s; }
 .cw-market .hero-card-link:hover .hero-card { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15,23,42,0.06), 0 20px 44px -24px rgba(15,23,42,0.24); }

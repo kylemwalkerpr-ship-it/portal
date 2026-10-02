@@ -618,6 +618,12 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
         ↩ Full refund if your specialist never delivers.
       </div>
 
+      <div style={{ fontFamily: F.ui, fontSize: 12, textAlign: 'center', margin: '0 0 12px' }}>
+        <a href="/get-matched" style={{ color: T.inkMid, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+          Not sure this fits? Describe your case free →
+        </a>
+      </div>
+
       <div style={{ display: 'flex', gap: '8px' }}>
         {gigId ? (
           <SaveGigButton
