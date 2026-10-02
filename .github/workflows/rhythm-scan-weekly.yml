@@ -4,6 +4,11 @@ name: Rhythm Scan Weekly
 # that slipped through the gate, persists alerts to content_rhythm_alerts, and
 # posts the flagged list to the admin dashboard. Can also be run on demand
 # from the Actions tab.
+#
+# The scan runs on the Actions runner (scripts/run-rhythm-scan.mts), not via
+# POST /api/cron/rhythm-scan-weekly: scanning hundreds of drafts through the
+# full quality gate exceeds the Workers Free-plan per-request limit (503 /
+# error 1102, failing weekly since 2026-09-21). Same runRhythmScan(), same rows.
 on:
   schedule:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC
@@ -14,26 +19,29 @@ on:
         required: false
         default: '500'
 
+concurrency:
+  group: rhythm-scan-weekly
+  cancel-in-progress: false
+
 jobs:
   rhythm-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Trigger weekly rhythm scan
-        run: |
-          set -euo pipefail
-          URL="${PORTAL_URL:-https://portal.yousafeconsultancy.com}/api/cron/rhythm-scan-weekly"
-          LIMIT="${LIMIT:-500}"
-          echo "POST $URL (limit=$LIMIT)"
-          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$URL" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json" \
-            -d "{\"limit\":${LIMIT}}")
-          echo "HTTP $code"
-          cat /tmp/resp.json || true
-          echo
-          test "$code" = "200"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run weekly rhythm scan
+        run: npx -y tsx scripts/run-rhythm-scan.mts
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          PORTAL_URL: ${{ vars.PORTAL_URL }}
-          LIMIT: ${{ github.event.inputs.limit || '500' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+          RHYTHM_LIMIT: ${{ github.event.inputs.limit || '500' }}

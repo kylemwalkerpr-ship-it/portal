@@ -322,7 +322,7 @@ describe('middleware wiring', () => {
 
     // Fail-closed means "rejoin the existing Clerk path": auth enforcement,
     // authorized parties and the /api 401 + /dashboard bounce are untouched.
-    expect(clerkBody).toContain('const { userId } = await auth()')
+    expect(clerkBody).toContain('const { userId, sessionClaims } = await auth()')
     expect(clerkBody).toContain("if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))")
     expect(clerkBody).toContain("error: 'Unauthorized'")
     expect(clerkBody).toContain('authorizedParties:')
@@ -335,7 +335,7 @@ describe('middleware wiring', () => {
     const portalHandler = middleware.slice(start, end)
 
     expect(portalHandler).toContain('withPathHeaders(NextResponse.next(), pathname, search, lang)')
-    expect(portalHandler).toContain('anonymousSignInRedirectUrl(req, pathname, search)')
+    expect(portalHandler).toContain('getCanonicalPortalAuthRedirect(req.nextUrl)')
     expect(portalHandler).not.toContain('await auth()')
     expect(portalHandler).not.toContain('/dashboard')
   })

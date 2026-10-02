@@ -166,7 +166,7 @@ export const CATEGORIES: Category[] = [
   {
     id: 'academic-writing',
     name: 'Academic Writing & Application Support',
-    description: 'Application essays, SOPs, scholarship essays, research writing, and editing',
+    description: 'Editing and feedback for application essays, SOPs, scholarship essays, and research papers (no ghostwriting)',
     icon: '✍️',
     vertical: 'study-abroad',
     popular: true,
@@ -182,9 +182,11 @@ export const CATEGORIES: Category[] = [
         order: 1,
       },
       {
+        // id kept as 'sop-writing' (stored in gigs.subcategory and used in URLs);
+        // only the public label changed to reflect editing-only positioning.
         id: 'sop-writing',
-        name: 'SOP Writing',
-        description: 'Statement of purpose and SOP drafting for graduate and professional programs',
+        name: 'SOP Editing',
+        description: 'Statement of purpose review and editing for graduate and professional programs (no ghostwriting)',
         keywords: ['sop', 'statement of purpose', 'letter of intent', 'program rationale', 'study plan'],
         popular: true,
         order: 2,
@@ -198,9 +200,10 @@ export const CATEGORIES: Category[] = [
         order: 3,
       },
       {
+        // id kept as 'research-writing' (stored in gigs.subcategory and used in URLs).
         id: 'research-writing',
-        name: 'Research Writing',
-        description: 'Research papers, theses, dissertations, and academic manuscripts',
+        name: 'Research Editing',
+        description: 'Editing and proofreading for research papers, theses, dissertations, and academic manuscripts',
         keywords: ['research paper', 'thesis', 'dissertation', 'academic paper', 'manuscript'],
         popular: false,
         order: 4,
@@ -690,6 +693,7 @@ export const CATEGORY_SOURCE_LABELS: Record<CategoryId, string[]> = {
     'Common App Essay',
   ],
   'sop-writing': [
+    'SOP Editing',
     'SOP Writing',
     'Statement of Purpose',
     'Letter of Intent',
@@ -702,6 +706,7 @@ export const CATEGORY_SOURCE_LABELS: Record<CategoryId, string[]> = {
     'Grant Essay',
   ],
   'research-writing': [
+    'Research Editing',
     'Research Paper Writing',
     'Thesis Writing',
     'Dissertation Support',

@@ -4,7 +4,7 @@ import { T } from './tokens'
 import { Check, Arrow } from './icons'
 
 const MARKET = 'https://market.yousafeconsultancy.com/'
-const PORTAL_SIGNUP = 'https://portal.yousafeconsultancy.com/sign-up/student'
+const PORTAL_SIGNUP = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client'
 
 const PROMISE = [
   'Funds parked in escrow until you approve the work',

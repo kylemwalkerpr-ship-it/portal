@@ -97,11 +97,23 @@ const securityHeaders = [
   { key: 'Content-Security-Policy',   value: "frame-ancestors 'self'" },
 ]
 
-const legacyMarketplaceRedirects = [{
-  source: '/marketplace/:path*',
-  destination: 'https://market.yousafeconsultancy.com/:path*',
-  permanent: true,
-}]
+// The bare `/marketplace` root must be its own rule and must come first.
+// On the OpenNext/Cloudflare runtime the wildcard rule below matches the bare
+// path with an empty `:path*` and emits the literal `Location: /:path*`
+// (a 404) instead of substituting nothing. Live evidence 2026-10-02:
+// `/marketplace` -> 308 `/:path*`, `/marketplace?q=PGWP` -> 308 `/:path*?q=PGWP`.
+const legacyMarketplaceRedirects = [
+  {
+    source: '/marketplace',
+    destination: 'https://market.yousafeconsultancy.com/',
+    permanent: true,
+  },
+  {
+    source: '/marketplace/:path*',
+    destination: 'https://market.yousafeconsultancy.com/:path*',
+    permanent: true,
+  },
+]
 
 // Phase-A-cleared Payhip products 10-36. Rewriting only these exact public
 // shop URLs leaves the already-shipped Batch-1 immigration pages untouched.

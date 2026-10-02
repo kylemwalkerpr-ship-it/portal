@@ -1,6 +1,7 @@
 import { GigBuilderWizardNew } from '@/components/marketplace/GigBuilderWizardNew'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import SellerShell from '@/components/seller/SellerShell'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
@@ -9,7 +10,7 @@ const MARKETPLACE_URL = 'https://market.yousafeconsultancy.com/'
 
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/gigs/new')
+  if ('error' in auth) redirectForPortalAuthFailure(auth, '/dashboard/gigs/new')
   if (auth.role === 'client') redirect(MARKETPLACE_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
 

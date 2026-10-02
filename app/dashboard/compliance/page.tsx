@@ -1,5 +1,6 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import SellerShell from '@/components/seller/SellerShell'
 import SellerComplianceView from '@/components/seller/SellerComplianceView'
 
@@ -7,7 +8,7 @@ const MARKETPLACE_URL = 'https://market.yousafeconsultancy.com/'
 
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/compliance')
+  if ('error' in auth) redirectForPortalAuthFailure(auth, '/dashboard/compliance')
   if (auth.role === 'client') redirect(MARKETPLACE_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
 

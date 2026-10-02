@@ -4,7 +4,7 @@ import React from 'react'
 import { useClerk } from '@clerk/nextjs'
 import { C } from '@/components/design/shared'
 import dynamic from 'next/dynamic'
-import { roleLabel, signInForLane } from '@/lib/roleLanes'
+import { roleLabel } from '@/lib/roleLanes'
 // BuyerDashboardWidgets is rendered inside StudentApp (components/design/student.jsx)
 // for the client/student role. Import kept here for reference.
 import { BuyerDashboardWidgets } from '@/components/marketplace/BuyerDashboardWidgets'
@@ -18,65 +18,17 @@ import { IntakeTodoBanner } from '@/components/marketplace/IntakeTodoBanner'
 const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
-export default function DashboardClient({ role, status, userName, userId, expectedRole, errorState }) {
+export default function DashboardClient({ role, status, userName, userId, expectedRole = null, applicationStatus = null, errorState }) {
   const { signOut } = useClerk()
   const loggingOut = React.useRef(false)
 
-  // First-mount lane bridge. SignUpClient writes the requested lane to
-  // BOTH sessionStorage AND a SameSite=Lax cookie before kicking off
-  // OAuth — the cookie is what the server (app/dashboard/page.tsx)
-  // already used to provision the profile on the right lane. This
-  // client-side bridge is the belt-and-braces fallback for cases
-  // where the server-side cookie was missed (HTTPS/dev mismatches,
-  // older sessions, in-flight tabs) — it POSTs /api/profile/sync-lane
-  // to promote the freshly-provisioned 'client' profile post-hoc.
-  //
-  // The server-side sync-lane route guards against promoting users
-  // who already have client activity, so this is safe to call on
-  // every mount — it's a no-op for anyone who isn't a brand-new
-  // sign-up. Both stores are cleared after the call regardless of
-  // outcome so a stale lane can't survive across visits.
-  const clearLaneStores = React.useCallback(() => {
+  // The old sign-up "lane bridge" (sessionStorage/cookie -> /api/profile/sync-lane)
+  // is retired: roles are chosen on /onboarding and stored in the DB. Clear any
+  // stale lane stores left by older sign-up pages.
+  React.useEffect(() => {
     try { window.sessionStorage.removeItem('ys.requestedLane') } catch {}
     try { document.cookie = 'ys_requested_lane=; Max-Age=0; Path=/; SameSite=Lax' } catch {}
   }, [])
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    let stored: string | null = null
-    try { stored = window.sessionStorage.getItem('ys.requestedLane') } catch {}
-    if (!stored) {
-      // Fall back to the cookie if sessionStorage is empty (popup OAuth,
-      // cross-tab restore, etc.). Cookie was written by SignUpClient
-      // and is the same value sessionStorage would have held.
-      try {
-        const m = document.cookie.match(/(?:^|;\s*)ys_requested_lane=([^;]+)/)
-        if (m) stored = decodeURIComponent(m[1])
-      } catch {}
-    }
-    if (!stored || stored === 'client') return
-    // Don't re-fire when we already landed on the right role — the
-    // server-side cookie path already handled it.
-    if (stored === role) {
-      clearLaneStores()
-      return
-    }
-    fetch('/api/profile/sync-lane', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lane: stored }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((d: any) => {
-        clearLaneStores()
-        if (d?.promoted) {
-          window.location.reload()
-        }
-      })
-      .catch(() => {
-        clearLaneStores()
-      })
-  }, [role, clearLaneStores])
 
   const handleLogout = React.useCallback(() => {
     // Prevent double-clicks / concurrent calls
@@ -122,7 +74,7 @@ export default function DashboardClient({ role, status, userName, userId, expect
           <div style={{ fontSize: '44px', marginBottom: '18px' }}>!</div>
           <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Account needs a quick refresh</h2>
           <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
-            Your account was recently reactivated, but the session still needs to reconnect cleanly. Sign out, then sign in again using the correct role option.
+            Your account was recently reactivated, but the session still needs to reconnect cleanly. Sign out, then sign in again.
           </p>
           <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
             Sign out and retry
@@ -132,42 +84,34 @@ export default function DashboardClient({ role, status, userName, userId, expect
     )
   }
 
-  if (expectedRole && role !== expectedRole) {
-    const handleSwitchRoute = () => {
-      const target = signInForLane(expectedRole)
-      // Same watchdog pattern as handleLogout above — guards against
-      // Clerk's signOut stalling without resolving.
-      window.setTimeout(() => { window.location.replace(target) }, 3000)
-      signOut({ redirectUrl: target }).catch(() => {
-        window.location.replace(target)
-      })
-    }
+  // No "wrong lane" sign-out any more: the dashboard renders by the DB role.
+  void expectedRole
 
+  if (status === 'pending' && (role === 'consultant' || role === 'attorney')) {
+    const isConsultant = role === 'consultant'
+    const wizardHref = isConsultant ? '/dashboard/consultant/intake' : null
+    const applicationHref = `/onboarding/provider?type=${isConsultant ? 'consultant' : 'attorney'}`
     return (
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
-        <div style={{ textAlign: 'center', maxWidth: '440px', padding: '40px' }}>
-          <div style={{ fontSize: '44px', marginBottom: '18px' }}>↔</div>
-          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Use the correct sign-in route</h2>
-          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
-            This browser is signed in as a {roleLabel(role)} account, but this link is for {roleLabel(expectedRole)} access. Sign out and use the right route to keep accounts separate.
-          </p>
-          <button onClick={handleSwitchRoute} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
-            Sign out and continue
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (status === 'pending' && role === 'consultant') {
-    return (
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
-        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '460px', padding: '40px' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
-          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Application Under Review</h2>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>
+            {isConsultant ? 'Consultant application under review' : 'Provider application under review'}
+          </h2>
           <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
-            Thank you for applying to become a YouSafe consultant. Our team will review your profile and you'll be notified once approved.
+            Thank you for applying to YouSafe. Our team verifies your details{isConsultant ? '' : ' against the official licence / register'} and emails you when a decision is made.
+            {applicationStatus === 'needs_info' ? ' We need a little more information — please update your application.' : ''}
           </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+            <a href={applicationHref} style={{ color: '#fff', background: '#3C3B6E', borderRadius: 8, padding: '10px 16px', fontWeight: 700, textDecoration: 'none', fontSize: '14px' }}>
+              Review or update application
+            </a>
+            {wizardHref && (
+              <a href={wizardHref} style={{ color: '#3C3B6E', border: '1px solid #3C3B6E', borderRadius: 8, padding: '10px 16px', fontWeight: 700, textDecoration: 'none', fontSize: '14px' }}>
+                Build your public profile
+              </a>
+            )}
+          </div>
           <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
             Sign out
           </button>
@@ -178,23 +122,6 @@ export default function DashboardClient({ role, status, userName, userId, expect
 
   if (role === 'attorney' && (status === 'incomplete' || !status)) {
     return <AttorneyApplyForm onLogout={handleLogout} defaultFullName={userName} />
-  }
-
-  if (status === 'pending' && role === 'attorney') {
-    return (
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
-        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
-          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Attorney Application Under Review</h2>
-          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
-            Thank you for applying to join the YouSafe attorney panel. Our team will review your application and email you when a decision is made.
-          </p>
-          <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    )
   }
 
   if (status === 'declined' && role === 'attorney') {

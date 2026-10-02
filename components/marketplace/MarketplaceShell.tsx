@@ -130,7 +130,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
   const handleCta = () => {
     if (!cta) return
     if (cta.view === 'open-portal') {
-      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_messages_empty'
+      window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_messages_empty'
       return
     }
     if (cta.view === 'browse') {
@@ -573,7 +573,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           <ThemePicker />
         </div>
         <div className="ys-shell-aux ys-shell-auth" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-          <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
+          <MarketplaceAuthNav signUpHref="https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_shell" />
         </div>
         <button
           type="button"
@@ -701,7 +701,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   // When a nav button is clicked, update state AND URL so browser history works
   const handleNav = React.useCallback((view: Section) => {
     if (view === 'open-portal') {
-      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_messages_empty'
+      window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_messages_empty'
       return
     }
     setSection(view)
@@ -790,6 +790,10 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     <div className="cw-market" style={{ minHeight: '100dvh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
       {/* Base CSS for the pattern picker ::before pseudo-element and
           consistent marketplace styling across ALL pages (landing + siblings). */}
+      {/* Keep literal tag names (angle-bracket + "style"/"script") out of this
+          CSS text, comments included: React's server renderer escapes them
+          inside <style> (as a CSS escape), the client string differs, and
+          hydration fails with React #418 on the Market home. */}
       <style>{`
         /* Pattern contract (single source of truth, mirrored in the landing):
            the fixed ::before texture sits ABOVE the shell's solid paper fill
@@ -798,7 +802,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
            The motif is DATA: the shared theme store writes --ys-pattern-* on
            documentElement AND on every mounted .cw-market root
            (components/marketplace/market-theme.ts) and this rule only consumes
-           it. No component injects a <style> tag, so a second picker (mobile
+           it. No component injects a style tag, so a second picker (mobile
            drawer, remount, nested root) can never rewrite the canvas. The
            fallbacks keep the shipped default when the variables are absent. */
         .cw-market::before {

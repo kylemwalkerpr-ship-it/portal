@@ -24,8 +24,9 @@ describe('portal sign-out destinations', () => {
     expect(source).toContain("const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'")
   })
 
-  test('role-switch sign-out still continues to the requested role sign-in route', () => {
+  test('the wrong-lane sign-out loop is gone (role comes from the DB, not the sign-in URL)', () => {
     const source = read('app/dashboard/client.tsx')
-    expect(source).toContain('signOut({ redirectUrl: target })')
+    expect(source).not.toContain('signOut({ redirectUrl: target })')
+    expect(source).not.toContain('expectedRole !== role')
   })
 })

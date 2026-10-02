@@ -7,6 +7,7 @@ import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { orderWithBoostedFirst } from '@/lib/marketHomeMostRequested'
 import {
   assertMarketplaceBuildEstateNonEmpty,
   assertMarketplaceBuildServiceRoleAuthority,
@@ -173,7 +174,10 @@ function excerpt(value: string | null): string {
 }
 
 export default async function MarketplaceServicesHub() {
-  const gigs = await loadActiveGigs()
+  // Curated high-intent gigs (lib/marketHomeMostRequested.ts BOOSTED_GIG_SLUGS)
+  // lead the default order; everything else keeps newest-first. Static: the
+  // reorder runs once at build time with the rest of this page.
+  const gigs = orderWithBoostedFirst(await loadActiveGigs())
   const featured = gigs.slice(0, 24)
   const grouped = CATEGORIES.map((category) => ({
     ...category,

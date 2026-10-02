@@ -1,48 +1,19 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { ESTATE_ORIGINS } from '@/lib/auth/returnTo'
+import { ysClerkEmbeddedAppearance } from '@/lib/auth/ysClerkAppearance'
 
 const MARKET_ORIGIN = 'https://market.yousafeconsultancy.com'
 
-const FAMILY_ORIGINS = new Set([
-  'https://yousafeconsultancy.com',
-  'https://www.yousafeconsultancy.com',
-  'https://usa.yousafeconsultancy.com',
-  'https://ca.yousafeconsultancy.com',
-  'https://uk.yousafeconsultancy.com',
-  'https://legal.yousafeconsultancy.com',
-  'https://portal.yousafeconsultancy.com',
-  MARKET_ORIGIN,
-  'https://support.yousafeconsultancy.com',
-])
+/** The ONE estate allow-list lives in lib/auth/returnTo.ts. */
+const FAMILY_ORIGINS = ESTATE_ORIGINS
 
-export const clerkAppearance = {
-  variables: {
-    colorPrimary: '#3C3B6E',
-    colorText: '#1d2433',
-    colorTextSecondary: '#4a4f5b',
-    colorBackground: '#ffffff',
-    colorInputBackground: '#f7f3ea',
-    colorInputText: '#1d2433',
-    borderRadius: '8px',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  },
-  elements: {
-    rootBox: 'ys-clerk-root',
-    cardBox: 'ys-clerk-card-box',
-    card: 'ys-clerk-card',
-    headerTitle: 'ys-clerk-title',
-    headerSubtitle: 'ys-clerk-subtitle',
-    socialButtonsBlockButton: 'ys-clerk-social-button',
-    formButtonPrimary: 'ys-clerk-primary-button',
-    footerActionLink: 'ys-clerk-link',
-    formFieldInput: 'ys-clerk-input',
-    formFieldLabel: 'ys-clerk-label',
-    dividerLine: 'ys-clerk-divider-line',
-    dividerText: 'ys-clerk-divider-text',
-    identityPreviewEditButton: 'ys-clerk-link',
-  },
-}
+/**
+ * Embedded-page appearance (AuthShell). Same YouSafe theme as the shared modal
+ * (lib/auth/ysClerkAppearance.ts), using the current Clerk v7 variable names.
+ */
+export const clerkAppearance = ysClerkEmbeddedAppearance
 
 function cleanLegacyMarketplaceReturnTo(value: string): string | null {
   const matchesLegacyNamespace =

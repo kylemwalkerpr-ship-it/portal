@@ -47,6 +47,31 @@ async function rest(resource, { method = 'GET', body, prefer } = {}) {
   return text ? JSON.parse(text) : null
 }
 
+// Replacing ~25k chunks (search-vector trigger + indexes) takes longer than the
+// 8s statement_timeout PostgREST's `authenticator` role enforces (SQLSTATE
+// 57014). When the Supabase Management API credentials are present (CI), run
+// the same finalizer once over the Management SQL endpoint as `postgres`,
+// which has no role-level timeout. Without them, fall back to the RPC.
+const MGMT_TOKEN = String(process.env.SUPABASE_ACCESS_TOKEN || '').trim()
+const MGMT_REF = String(process.env.SUPABASE_PROJECT_REF || '').trim()
+const RUN_ID_RE = /^yqaa_kb_\d{8}T\d{6}Z$/
+
+async function finalizeRun(runId) {
+  if (MGMT_TOKEN && MGMT_REF) {
+    if (!RUN_ID_RE.test(String(runId))) throw new Error(`refusing to finalize unexpected run id ${JSON.stringify(runId)}`)
+    const { createManagementSqlClient } = await import('./supabase-management-sql.mjs')
+    // maxAttempts: 1 — never blindly re-run a finalizer whose outcome is unknown.
+    const client = createManagementSqlClient({ projectRef: MGMT_REF, accessToken: MGMT_TOKEN, maxAttempts: 1 })
+    const rows = await client.query(`select public.finalize_yqaa_knowledge_ingestion('${runId}') as result`)
+    return rows?.[0]?.result ?? null
+  }
+  return rest('rpc/finalize_yqaa_knowledge_ingestion', {
+    method: 'POST',
+    body: { p_run_id: runId },
+    prefer: 'return=representation',
+  })
+}
+
 function batches(items, size) {
   const out = []
   for (let index = 0; index < items.length; index += size) out.push(items.slice(index, index + size))
@@ -124,11 +149,7 @@ try {
 
   // The finalizer validates the staged counts and replaces the visible corpus
   // in one database transaction. Upload failures leave the prior snapshot intact.
-  const finalized = await rest('rpc/finalize_yqaa_knowledge_ingestion', {
-    method: 'POST',
-    body: { p_run_id: manifest.run_id },
-    prefer: 'return=representation',
-  })
+  const finalized = await finalizeRun(manifest.run_id)
 
   if (finalized?.status === 'rejected') {
     throw new Error(`YQAA ingestion run ${manifest.run_id} was superseded by ${finalized.problem?.run_id || 'a newer run'}`)

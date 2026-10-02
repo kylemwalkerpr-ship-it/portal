@@ -31,7 +31,10 @@ export function ImmigrationPackRail() {
               pack.includes[0] || 'Application preparation organizer',
               pack.includes[1] || 'Document checklist',
             ],
-        price: String(pack.price_usd),
+        // Batch 1 prices are already applied by applyPayhipBatch1Commercial;
+        // Batches 2–4 sell at the audited Payhip price the /shop pages show
+        // (e.g. STEM OPT $18.99, not the legacy $29 catalogue value).
+        price: String(commercial?.priceUsd ?? audited?.price ?? pack.price_usd),
         href: `/shop/${pack.slug}`,
         cover: audited?.imageUrl ?? commercial?.cover.imageUrl ?? '/shop/covers/immigration-prep-pack.svg',
         published: true,

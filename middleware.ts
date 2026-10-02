@@ -4,8 +4,16 @@ import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
 import { deleteTrackingQueryParams, stripTrackingParams } from './lib/trackingParams'
 import { attributionCaptureCookies } from './lib/attribution/cookies'
-import { createMarketplaceSignInHandoffUrl, getSafeMarketplaceSignInReturnTo, shouldRedirectLegacyStudentSignIn } from './lib/marketplaceSignInHandoff'
 import { clientUatMeansSignedIn, requestNeedsClerkHandoffState } from './lib/clerkHandoffState'
+import {
+  getCanonicalPortalAuthRedirect,
+  anonymousPortalRootDestination,
+  isPortalAuthRootPath,
+  marketAuthModalUrl,
+  signedInAuthRootDestination,
+  marketSignInUrlForProtectedPath,
+} from './lib/auth/portalAuthRedirect'
+import { passwordChangeRedirect } from './lib/auth/mustChangePassword'
 import { getMarketplaceTemplatesRedirectUrl } from './lib/marketplaceTemplatesRedirect'
 import {
   createLazyRequestCookieSnapshot,
@@ -329,10 +337,19 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
     pathname.startsWith('/dashboard/') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
+    pathname === '/login' ||
+    pathname === '/register' ||
     pathname.startsWith('/user')
   ) {
+    // Auth documents open the branded modal right here on the Market home
+    // (same host, one hop; a `#/sso-callback` fragment is inherited and
+    // completed by MarketplaceAuthNav). Clerk protocol requests and Clerk
+    // sub-screens, /dashboard and /user keep the one hop to the portal.
     const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
-    return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
+    const modal = pathname.startsWith('/dashboard') || pathname.startsWith('/user') ? null : marketAuthModalUrl(portalUrl)
+    if (modal) return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
+    const canonical = getCanonicalPortalAuthRedirect(portalUrl) ?? portalUrl
+    return withCorsHeaders(NextResponse.redirect(canonical, { status: 302 }), req)
   }
 
   if (
@@ -357,21 +374,12 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
 }
 
 /**
- * Anonymous answer for the retired `/login` and `/register` aliases: the
- * student sign-in lane with a `return_to`, exactly what the Clerk handler's
- * `!userId` branch returns for any non-public portal document. Extracted so the
- * anonymous fast path and the Clerk path can never drift apart.
+ * Anonymous answer for a protected portal document: the Market modal in ONE
+ * hop (`market/?ys_sign_in=1&return_to=<abs>[&intent=]`). The retired portal
+ * `/sign-in?return_to=…` intermediate hop is gone. Pure URL work (1102 budget).
  */
-function anonymousSignInRedirectUrl(req: NextRequest, pathname: string, search: string): URL {
-  const lane = req.nextUrl.searchParams.get('lane')
-  const laneSegment =
-    lane === 'consultant' ? 'consultant'
-    : lane === 'admin' ? 'admin'
-    : lane === 'attorney' ? 'attorney'
-    : 'student'
-  const signInUrl = new URL(`/sign-in/${laneSegment}`, req.nextUrl.origin)
-  signInUrl.searchParams.set('return_to', `${pathname}${search}`)
-  return signInUrl
+function anonymousSignInRedirectUrl(req: NextRequest): URL {
+  return marketSignInUrlForProtectedPath(req.nextUrl)
 }
 
 /**
@@ -394,19 +402,16 @@ function handlePortalAnonymousDocumentRequest(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl
   const lang = resolveLanguage(req)
 
-  if (req.nextUrl.searchParams.size > 0) {
-    const cleaned = stripTrackingParams(new URL(req.url))
-    if (cleaned !== null) {
-      const dest = new URL(cleaned, req.url)
-      return withCorsHeaders(withAttributionCapture(NextResponse.redirect(dest, { status: 301 }), req), req)
-    }
-  }
+  // Portal is noindex and auth-only: UTM/click-id parameters are NOT stripped
+  // here (they were dropping campaign attribution on sign-up links). Market
+  // host keeps its SEO consolidation 301.
 
   // `/login` and `/register` are retired aliases with no portal route. The
-  // anonymous answer is the student sign-in lane with `return_to` — the same
-  // 307 the Clerk handler used to emit for them, minus Clerk's session work.
+  // canonical redirect at the top of middleware() answers them; this is the
+  // defensive fallback should that ever be bypassed.
   if (PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS.has(pathname)) {
-    return NextResponse.redirect(anonymousSignInRedirectUrl(req, pathname, search))
+    const canonical = getCanonicalPortalAuthRedirect(req.nextUrl) ?? new URL('/sign-in', req.nextUrl.origin)
+    return NextResponse.redirect(canonical, { status: 301 })
   }
 
   if (isAllowedCorsPreflight(req)) {
@@ -464,8 +469,10 @@ const clerkHandler = clerkMiddleware(
     // Caseworks cluster CTAs append utm_* to market category URLs. Google
     // indexes those variants as distinct "Excluded by noindex" rows (100+
     // of the GSC noindex count). Always consolidate to the clean canonical.
+    // Portal is excluded on purpose: it is noindex, and stripping UTMs from
+    // portal sign-up links lost campaign attribution (auth audit 2026-10-02).
     if (
-      (hostname === MARKET_HOST || hostname === PORTAL_HOST) &&
+      hostname === MARKET_HOST &&
       req.nextUrl.searchParams.size > 0
     ) {
       const cleaned = stripTrackingParams(new URL(req.url))
@@ -528,6 +535,20 @@ const clerkHandler = clerkMiddleware(
       return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 
+    // Portal auth roots reached with a session hint (the anonymous case is
+    // answered before Clerk in middleware()): a signed-in user goes to the
+    // allow-listed return_to or their dashboard (the dashboard resolves the DB
+    // role); a stale hint goes to the Market modal. Clerk protocol requests
+    // (tickets, handshakes) and Clerk sub-screens keep the embedded component.
+    if (hostname === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD') && isPortalAuthRootPath(pathname)) {
+      const modal = marketAuthModalUrl(req.nextUrl)
+      if (modal) {
+        const { userId: authRootUserId } = await auth()
+        if (authRootUserId) return NextResponse.redirect(signedInAuthRootDestination(req.nextUrl))
+        return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
+      }
+    }
+
     if (pathname !== '/' && isPublicRoute(req)) {
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
@@ -545,10 +566,19 @@ const clerkHandler = clerkMiddleware(
       }
     }
 
-    const { userId } = await auth()
+    const { userId, sessionClaims } = await auth()
 
     if (pathname === '/') {
       if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))
+      // Portal has no public landing page: a signed-out visitor (including a
+      // stale `__client_uat` right after Clerk's hosted sign-out, whose
+      // after-sign-out URL is portal /) always lands on the Market home.
+      if (hostname === PORTAL_HOST) {
+        return withCorsHeaders(
+          NextResponse.redirect(new URL(`/${search}`, `https://${MARKET_HOST}`), { status: 302 }),
+          req,
+        )
+      }
       return withPathHeaders(NextResponse.next(), pathname, search, lang)
     }
 
@@ -573,7 +603,22 @@ const clerkHandler = clerkMiddleware(
           headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) },
         })
       }
-      return NextResponse.redirect(anonymousSignInRedirectUrl(req, pathname, search))
+      return NextResponse.redirect(anonymousSignInRedirectUrl(req))
+    }
+
+    // Forced first-sign-in password change (provisioned provider accounts).
+    // Reads only the already-verified session claims: no network, no DB. A
+    // session without the claim/flag is a no-op, so this is inert until the
+    // Clerk session-token claim is configured.
+    const passwordRedirect = passwordChangeRedirect(pathname, search, sessionClaims, req.nextUrl.origin)
+    if (passwordRedirect) {
+      if (pathname.startsWith('/api/')) {
+        return new NextResponse(JSON.stringify({ error: 'Password change required', mustChangePassword: true }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) },
+        })
+      }
+      return NextResponse.redirect(passwordRedirect)
     }
 
     return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
@@ -587,7 +632,7 @@ const clerkHandler = clerkMiddleware(
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
   const getRequestCookies = createLazyRequestCookieSnapshot(() => req.cookies.getAll())
 
-  // Retire the anonymous portal landing and the public student sign-in page.
+  // Retire the anonymous portal landing and canonicalize the auth documents.
   // Keep active Clerk protocol URLs and signed-in root behavior on Clerk's path.
   if (requestHostname(req) === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD')) {
     const { pathname, searchParams } = req.nextUrl
@@ -596,16 +641,30 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
     const signedInHint = clientUatMeansSignedIn(req.cookies.get('__client_uat')?.value)
 
     if (pathname === '/' && !handoffInProgress && !signedInHint) {
-      const marketHome = new URL(`/${req.nextUrl.search}`, `https://${MARKET_HOST}`)
-      return withCorsHeaders(NextResponse.redirect(marketHome, { status: 302 }), req)
+      // Fresh visitor (no __client_uat) -> Market sign-in modal; a signed-out
+      // browser (__client_uat=0, e.g. Clerk's hosted sign-out) -> plain Market home.
+      const destination = anonymousPortalRootDestination(req.nextUrl, req.cookies.get('__client_uat')?.value)
+      return withCorsHeaders(NextResponse.redirect(destination, { status: 302 }), req)
     }
 
-    if (shouldRedirectLegacyStudentSignIn(pathname, searchParams) && !handoffInProgress && !signedInHint) {
-      const returnTo = getSafeMarketplaceSignInReturnTo(searchParams.get('return_to'))
-      return withCorsHeaders(
-        NextResponse.redirect(createMarketplaceSignInHandoffUrl(returnTo), { status: 302 }),
-        req,
-      )
+    // No standalone portal sign-in page: an anonymous /sign-in, /sign-up or any
+    // retired lane/alias opens the branded modal on the Market home in ONE
+    // 302 (intent + return_to preserved). `marketAuthModalUrl` returns null for
+    // Clerk protocol requests (`__clerk_ticket`, `__clerk_status`, ...) and for
+    // Clerk sub-screens, which keep the embedded component below.
+    if (!handoffInProgress && !signedInHint) {
+      const modal = marketAuthModalUrl(req.nextUrl)
+      if (modal) return withCorsHeaders(NextResponse.redirect(modal, { status: 302 }), req)
+    }
+
+    // Portal keeps ONLY /sign-in and /sign-up. Every retired lane URL
+    // (/sign-in/student, /sign-up/attorney, /login, ...) gets one 301 to the
+    // canonical document with a single normalized absolute `return_to`. Pure
+    // URL work (no crypto) and it never touches `__clerk*` requests. This
+    // replaces the old /sign-in/student -> market modal -> portal bounce.
+    const canonical = getCanonicalPortalAuthRedirect(req.nextUrl)
+    if (canonical) {
+      return withCorsHeaders(NextResponse.redirect(canonical, { status: 301 }), req)
     }
   }
 

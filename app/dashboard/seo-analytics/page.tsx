@@ -1,12 +1,13 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import SellerShell from '@/components/seller/SellerShell'
 import GigSEOAnalyticsWrapper from '@/components/marketplace/GigSEOAnalyticsWrapper'
 
 export default async function SEOAnalyticsPage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in?redirect=/dashboard/seo-analytics')
+    redirectForPortalAuthFailure(auth, '/dashboard/seo-analytics')
   }
 
   // Only attorneys and consultants can access this page

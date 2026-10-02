@@ -152,30 +152,13 @@ begin
   -- running run may still be staging; it wins once it is eligible to finalize.
   -- Completed runs remain eligible in the comparison so a delayed older
   -- finalizer can never roll the live corpus backward.
-  select newer.run_id
+  select run_id
     into v_newer_run_id
-    from public.yqaa_knowledge_ingestion_runs as newer
-   where newer.run_id <> p_run_id
-     and (newer.started_at, newer.run_id) > (v_started_at, p_run_id)
-     and (
-       newer.status = 'completed'
-       or (
-         newer.status = 'running'
-         and coalesce(newer.source_count, 0) > 0
-         and coalesce(newer.chunk_count, 0) > 0
-         and (
-           select count(*)
-             from public.yqaa_knowledge_sources_staging as staged_sources
-            where staged_sources.ingestion_run_id = newer.run_id
-         ) = newer.source_count
-         and (
-           select count(*)
-             from public.yqaa_knowledge_chunks_staging as staged_chunks
-            where staged_chunks.ingestion_run_id = newer.run_id
-         ) = newer.chunk_count
-       )
-     )
-   order by newer.started_at desc, newer.run_id desc
+    from public.yqaa_knowledge_ingestion_runs
+   where run_id <> p_run_id
+     and status in ('running', 'completed')
+     and (started_at, run_id) > (v_started_at, p_run_id)
+   order by started_at desc, run_id desc
    limit 1;
 
   if found then

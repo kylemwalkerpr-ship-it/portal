@@ -178,7 +178,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
             variant="ghost"
             size="sm"
             onClick={() => {
-              window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student'
+              window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client'
             }}
           >
             Start an inquiry
@@ -241,7 +241,7 @@ export default function Nav({ onOpenSignIn }: NavProps) {
               My Account
             </button>
             <a
-              href="https://portal.yousafeconsultancy.com/sign-up/student"
+              href="https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client"
               className="ys-nav-drawer-link ys-nav-drawer-cta"
               onClick={closeMenu}
             >

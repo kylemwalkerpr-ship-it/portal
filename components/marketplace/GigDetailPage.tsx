@@ -708,7 +708,6 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
               seller={{
                 id: gig.provider_id,
                 full_name: gig.provider?.full_name,
-                email: gig.provider?.email,
                 role: gig.provider_type,
                 avg_rating: gig.provider_avg_rating,
                 review_count: gig.provider_review_count,
@@ -756,7 +755,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
           <span className="ys-floating-message-copy">
             <strong>Message {publicProviderName}</strong>
             <small>
-              {gig.provider_is_online ? 'Online' : 'Available'}
+              {gig.provider_is_online === true ? 'Online' : 'Send a message'}
               {gig.provider_response_time ? ` · Avg. response: ${gig.provider_response_time}` : ''}
             </small>
           </span>

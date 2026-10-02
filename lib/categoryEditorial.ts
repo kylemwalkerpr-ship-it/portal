@@ -142,7 +142,7 @@ export const CATEGORY_EDITORIAL: Record<string, CategoryEditorial> = {
   },
   'sop-writing': {
     body: [
-      'SOP and statement-of-purpose support works best when program choice and research themes are already shortlisted. Align the essay with transcripts and visa study narratives to avoid contradictions.',
+      'SOP editing works best when program choice and research themes are already shortlisted and you have a draft of your own. Editors review and refine your statement; they should not write it for you. Align the essay with transcripts and visa study narratives to avoid contradictions.',
     ],
   },
   'scholarship-essays': {
@@ -152,7 +152,7 @@ export const CATEGORY_EDITORIAL: Record<string, CategoryEditorial> = {
   },
   'research-writing': {
     body: [
-      'Research writing and thesis support should define literature review, editing, or methodology coaching clearly. Academic integrity policies prohibit undisclosed ghostwriting of assessed work.',
+      'Research editing should define its scope clearly: proofreading, line editing, citation and style-guide consistency, or structural feedback on a draft you wrote. Academic integrity policies prohibit ghostwriting of assessed work, and many institutions ask you to disclose third-party editing.',
     ],
   },
   'proofreading-editing': {

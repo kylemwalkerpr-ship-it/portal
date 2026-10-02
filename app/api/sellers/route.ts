@@ -131,7 +131,7 @@ export async function GET() {
       member_since: profile.created_at,
       rating_count: ratingCount,
       rating_avg: ratingAvg,
-      is_online: attorney.available !== false,
+      is_online: null, // presence is not measured; `available` carries the real toggle
       total_orders: gigStats?.totalOrders || 0,
       total_gigs: gigStats?.totalGigs || 0,
       verified: profile.status === 'active',
@@ -177,7 +177,7 @@ export async function GET() {
       member_since: profile.created_at,
       rating_count: ratingCount,
       rating_avg: ratingAvg,
-      is_online: consultant.available !== false,
+      is_online: null, // presence is not measured; `available` carries the real toggle
       total_orders: gigStats?.totalOrders || 0,
       total_gigs: gigStats?.totalGigs || 0,
       verified: profile.status === 'active',

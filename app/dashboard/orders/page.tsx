@@ -2,12 +2,13 @@ import { OrderKanbanPage } from '@/components/design/fiverr-workbench'
 import SellerShell from '@/components/seller/SellerShell'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 
 const MARKETPLACE_ORDERS_URL = 'https://market.yousafeconsultancy.com/?view=orders'
 
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/orders')
+  if ('error' in auth) redirectForPortalAuthFailure(auth, '/dashboard/orders')
   if (auth.role === 'client') redirect(MARKETPLACE_ORDERS_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
   return (

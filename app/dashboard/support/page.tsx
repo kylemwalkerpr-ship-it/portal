@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { SupportShell } from '@/components/support/SupportShell'
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 export default async function SupportPage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in/student?return_to=/dashboard/support')
+    redirectForPortalAuthFailure(auth, '/dashboard/support')
   }
   if (!['support', 'admin'].includes(auth.role)) {
     redirect('/dashboard')
