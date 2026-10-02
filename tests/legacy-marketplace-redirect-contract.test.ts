@@ -29,6 +29,22 @@ describe('legacy Marketplace URL consolidation', () => {
     expect(legacy?.permanent).toBe(true)
   })
 
+  test('sends the bare /marketplace root to the Market home, ahead of the wildcard', async () => {
+    // Without this rule OpenNext answered `/marketplace` with the literal
+    // `Location: /:path*` (404), breaking old hub links and GSC URLs.
+    const rules = await nextConfig.redirects!()
+    const rootIndex = rules.findIndex((rule) => rule.source === '/marketplace')
+    const wildcardIndex = rules.findIndex((rule) => rule.source === '/marketplace/:path*')
+    expect(rootIndex).toBeGreaterThanOrEqual(0)
+    expect(rootIndex).toBeLessThan(wildcardIndex)
+    const root = rules[rootIndex]
+    expect(root.destination).toBe('https://market.yousafeconsultancy.com/')
+    expect(root.destination).not.toContain(':path')
+    expect(root.permanent).toBe(true)
+    expect(root).not.toHaveProperty('has')
+    expect(root).not.toHaveProperty('missing')
+  })
+
   test('keeps the retired namespace out of every rewrite table', async () => {
     const rewrites = await nextConfig.rewrites!()
     const tables = Array.isArray(rewrites)
