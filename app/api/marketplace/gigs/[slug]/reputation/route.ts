@@ -1,6 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { loadCountableBuyerIds } from '@/lib/marketplace/countableBuyers'
 
 const ACTIVE_QUEUE_STATUSES = [
   'created',
@@ -30,6 +31,7 @@ const EXCLUDED_REPUTATION_STATUSES = new Set([
 
 const HISTORY_PAGE_SIZE = 1000
 const MAX_REPUTATION_HISTORY_ROWS = 5000
+const MAX_ACTIVE_QUEUE_ROWS = 1000
 
 export async function GET(_req: Request, context: { params: Promise<{ slug: string }> }) {
   const auth = await getOptionalPortalUser()
@@ -70,11 +72,14 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       .eq('provider_profile_id', gig.provider_id)
       .eq('provider_type', gig.provider_type)
       .maybeSingle(),
+    // Buyer ids (not just a count) so owner / staff / test buyers can be
+    // excluded with the same rule as the completed-order count.
     db
       .from('orders')
-      .select('id', { count: 'exact', head: true })
+      .select('client_id')
       .eq('gig_id', gig.id)
-      .in('status', ACTIVE_QUEUE_STATUSES),
+      .in('status', ACTIVE_QUEUE_STATUSES)
+      .limit(MAX_ACTIVE_QUEUE_ROWS),
   ])
 
   const providerGigs = providerGigsRes.data || []
@@ -82,6 +87,8 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
   const providerOrderCount = providerGigs.reduce((sum: number, row: any) => sum + Number(row.order_count || 0), 0)
   const sellerLevel = sellerLevelRes.data || null
   const providerHeadshot = (providerHeadshotRes.data as { headshot_url?: string | null } | null)?.headshot_url || null
+
+  const activeQueueRows = (activeQueueRes.error ? [] : activeQueueRes.data || []) as Array<{ client_id?: string | null }>
 
   // Repeat-client evidence is derived from existing orders. Paginate instead
   // of silently accepting Supabase's default row cap. If history grows beyond
@@ -119,10 +126,24 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     }
   }
 
+  // Owner, staff (admin/support) and is_test_account buyers never count toward
+  // the public activity figures (same rule as gigs.order_count). If buyer
+  // profiles can't be read, hide the figures instead of showing unfiltered ones.
+  const countableBuyers = await loadCountableBuyerIds(
+    db,
+    [...activeQueueRows.map((row) => row.client_id), ...clientOrderCounts.keys()],
+    gig.provider_id,
+  )
+  if (!countableBuyers) historyComplete = false
+  const activeQueueCount = countableBuyers && !activeQueueRes.error
+    ? activeQueueRows.filter((row) => row.client_id && countableBuyers.has(row.client_id)).length
+    : 0
+
   let repeatClientCount = 0
   let repeatOrderCount = 0
-  if (historyComplete) {
-    for (const count of clientOrderCounts.values()) {
+  if (historyComplete && countableBuyers) {
+    for (const [clientId, count] of clientOrderCounts.entries()) {
+      if (!countableBuyers.has(clientId)) continue
       if (count < 2) continue
       repeatClientCount += 1
       repeatOrderCount += count - 1
@@ -148,7 +169,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       seller_response_rate: sellerLevel?.response_rate ?? null,
       seller_cancellation_rate: sellerLevel?.cancellation_rate ?? null,
       seller_level_computed_at: sellerLevel?.computed_at || null,
-      active_queue_count: Number(activeQueueRes.count || 0),
+      active_queue_count: activeQueueCount,
       repeat_client_count: historyComplete ? repeatClientCount : null,
       repeat_order_count: historyComplete ? repeatOrderCount : null,
       repeat_history_complete: historyComplete,
