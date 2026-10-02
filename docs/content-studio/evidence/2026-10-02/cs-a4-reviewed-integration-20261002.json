@@ -1,0 +1,7 @@
+{
+  "head": "a256a2aa8cef7d8f54fb200e3b96f5f90031a9f9",
+  "status": "",
+  "log": "a256a2aa fix: preserve consequential review gates for malformed inputs\n3a198a0b fix: enforce consequential claim review and source freshness\n3489ee63 Add fail-closed Studio claim freshness contract",
+  "paths": "lib/studioClaimFreshness/index.ts\ntests/studio-claim-freshness.test.ts",
+  "hashesMatch": true
+}

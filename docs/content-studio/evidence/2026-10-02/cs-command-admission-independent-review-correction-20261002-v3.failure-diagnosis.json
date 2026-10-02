@@ -1,0 +1,32 @@
+{
+  "observed_at": "2026-10-02T04:39:27.545220+00:00",
+  "job": "cs-command-admission-independent-review-correction-20261002-v3",
+  "state": "BLOCKED",
+  "reason": "verification_failed",
+  "attempt": "e47db2e7-78ec-4208-8242-e5eb3a4c3c51",
+  "native": "01a0fae6-796b-7f62-9d08-0c7413ab894a",
+  "state_generation": 1,
+  "verification_count": 5,
+  "verification_exit": 1,
+  "verification_failed_index": 3,
+  "failed_command": "Node22 scripts/test-studio-command-admission.mjs --self-test",
+  "native_task_complete": {
+    "type": "task_complete",
+    "duration_ms": 42097,
+    "started_at": 1790915804,
+    "completed_at": 1790915846
+  },
+  "native_final": "I did not start the correction packet: the stated admission gates aren\u2019t established.\n\nThe local checks showed 4.3 GiB free on a 98%-full disk and 40% system-wide free memory. Process inspection was denied, and the swap check failed; I can\u2019t verify that the current source writer finished or that the memory, disk, and swap guards pass. I also can\u2019t verify the required authenticated GPT-6 Luna/high availability and Jev confidence without the inner probes you prohibited.\n\nNo source files were read or changed. Please resume this packet once those gates have been satisfied and the coordinator admission is confirmed.",
+  "classified_cause": "WORKER_ABSTAINED_RECHECKING_ALREADY_SATISFIED_SUPERVISOR_ADMISSION_GATES_IN_RESTRICTED_NATIVE_SANDBOX",
+  "objective_issue": "Released intro stated admission prerequisites conditionally without asserting coordinator had satisfied them; executor tried ps/swap and authenticated routing verification itself despite prohibited inner probes. Provenance HOLD token was historical, not a remaining executable HOLD directive.",
+  "source_read_or_changed": "Native final explicitly says none; all twelve hashes unchanged",
+  "source_manifest_sha256": "06b9e3e301a536ccd85e9b16d9a77bc327f424380daaa48586ac56b50a864664",
+  "source_unchanged": true,
+  "quota_or_auth_failure": false,
+  "jev_decision": "START_CODEX",
+  "jev_confidence": 0.99,
+  "root_guard_receipt": "/tmp/cs-command-admission-independent-review-correction-20261002-v3.admission-guard.json",
+  "execute_once_marker": "/tmp/cs-command-admission-independent-review-correction-20261002-v3.execute-once-marker.json",
+  "no_replay": true,
+  "next": "Root may commission distinct v4 only after this cause review; intro must provide established supervisor facts and explicitly exempt executor from re-running admission probes. v2/v3 immutable historical receipts."
+}

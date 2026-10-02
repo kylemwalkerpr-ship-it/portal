@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-10-02T04:32:54.182589+00:00",
+  "state": "RELEASED_SAVED_NOT_YET_ADMITTED",
+  "original_draft_sha256": "41f04685bd4f1f84abf92c1caa68c5e0e82be742cb14beb4507d16688b2f9360",
+  "request": "/tmp/cs-command-admission-independent-review-correction-20261002-v3.request.json",
+  "request_file_sha256": "916d50c1ad667ae6d6699619e5d09f32a31358456bf6302bf9a506500c7a962a",
+  "v3_jobs": 0,
+  "v3_attempts": 0,
+  "route": false,
+  "execute": false,
+  "conditional_guards": [
+    "one current source writer naturally terminal",
+    "memory>=40%",
+    "swap_free>=500MiB",
+    "disk_free>=4GiB",
+    "authenticated exact live Luna/high",
+    "Jev>=0.85"
+  ],
+  "production_autoapply_release": "HELD"
+}

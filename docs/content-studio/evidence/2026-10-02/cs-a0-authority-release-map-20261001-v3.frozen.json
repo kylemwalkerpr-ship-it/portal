@@ -1,0 +1,57 @@
+{
+  "observedAt": "2026-10-02T04:43:26.448922+00:00",
+  "executionId": "cs-a0-authority-release-map-20261001-v3",
+  "attemptId": "8908e899-7aad-4aa2-bab8-3bed2aab444a",
+  "nativeId": "01a0fad7-c826-7002-b743-0bc1b2d1e8ae",
+  "head": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "status": "?? docs/content-studio/a0/estate-targets.json\n?? docs/content-studio/a0/legacy-disposition.json\n?? docs/content-studio/a0/migration-ledger.json\n?? docs/content-studio/a0/privilege-matrix.json\n?? docs/content-studio/a0/release-sinks.json\n?? docs/content-studio/a0/runtime-baseline.json\n?? docs/content-studio/a0/schema-map.json\n",
+  "files": [
+    {
+      "path": "docs/content-studio/a0/schema-map.json",
+      "bytes": 88796,
+      "sha256": "bc6fd47de8ef598ee26dea4fe677a6ff12f0519414142853adab7f6ff1442f6b"
+    },
+    {
+      "path": "docs/content-studio/a0/migration-ledger.json",
+      "bytes": 54266,
+      "sha256": "6a8a47dce33eee337e84dbb977399d48051a0844e81acb832cecdb29290deaab"
+    },
+    {
+      "path": "docs/content-studio/a0/legacy-disposition.json",
+      "bytes": 18225,
+      "sha256": "417eb7e654adb668f879d4d54aa4a8f7b683df6e329dc52cd611d2522c22ef77"
+    },
+    {
+      "path": "docs/content-studio/a0/privilege-matrix.json",
+      "bytes": 9913,
+      "sha256": "1f3dc6712e10f7b03b6ed7ae6b6ab3e01aa4b2f45a6dc318c1b1a2a5f2fe1f9b"
+    },
+    {
+      "path": "docs/content-studio/a0/runtime-baseline.json",
+      "bytes": 3745,
+      "sha256": "b13558e130849705e18f1e53dc816c9e601e2d0110e80821bedd7b02c4e5c32c"
+    },
+    {
+      "path": "docs/content-studio/a0/estate-targets.json",
+      "bytes": 9481,
+      "sha256": "772e73ddbfc653ab76e6965371fca5a96e7a1282d68cd6abe6f7ff742bfe6db4"
+    },
+    {
+      "path": "docs/content-studio/a0/release-sinks.json",
+      "bytes": 39050,
+      "sha256": "6438e59923811e33fe2ec67738d7810a36dd3c5eac78c7f859478eb5e735989a"
+    }
+  ],
+  "aggregateSha256": "a9b0d54f800f9eb60e8bb2539f9fea0ef5b13d3d20dbe733ac220e9a1dc0891d",
+  "verify": {
+    "exit": 0,
+    "stdout": "PASS fixed7 source/hash/ref scope; exact frozen interface+locks; domains+bounded functions; executable authority/dispatch plans;7estate targets;workflow/sink inventory;catalog grants;canonical8\n",
+    "stderr": ""
+  },
+  "diffCheck": {
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "acceptance": "NOT_REVIEWED"
+}

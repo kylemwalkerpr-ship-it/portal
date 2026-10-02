@@ -1,0 +1,10 @@
+{
+  "observed_at": "2026-10-02T04:44:29.456571+00:00",
+  "state": "EXECUTE_INITIATED_ONCE_DO_NOT_REPLAY",
+  "request_sha256": "9fc58973134c7f910d3720679067ebaf21582d3fd3e8c0cd1ba67423b39db755",
+  "memory_free_percent": 41,
+  "swap_free_mib": 674.06,
+  "disk_free_bytes": 4647219200,
+  "other_native_trees": 0,
+  "jev_confidence": 0.99
+}

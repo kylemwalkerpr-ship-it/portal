@@ -1,0 +1,6 @@
+{
+  "previousStatus": "SAVED_ONLY_HOLD",
+  "previousSha256": "2a63e5d1a4d6bcc9d371f8d1fe64924af7caa4db9e602c0ffdeabb2333e9b54f",
+  "newStatus": "SOURCE_RELEASED_COORDINATOR_CAPACITY_ADMISSION_PENDING",
+  "requestSha256": "98bc7b279bc469eef82ed7dada69281d60a91c76c27bf6ffeaa7eae17d26b6db"
+}

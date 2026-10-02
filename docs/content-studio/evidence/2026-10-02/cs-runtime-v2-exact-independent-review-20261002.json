@@ -1,0 +1,83 @@
+{
+  "verdict": "MUST_FIX",
+  "reviewer": "independent GPT-6.1 Sol",
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "freezeManifestSha256": "06b9e3e301a536ccd85e9b16d9a77bc327f424380daaa48586ac56b50a864664",
+  "planSha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+  "all12FrozenFileHashesMatch": true,
+  "sourceEdits": false,
+  "sqlApplied": false,
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "high",
+      "path": "scripts/test-studio-command-admission.mjs:270",
+      "issue": "Both sessions cannot reach advisory wait: first owns fixture authority FOR UPDATE row lock before scoped advisory wait; second waits for authority row. Two-advisory-wait barrier inevitably times out.",
+      "fix": "Observe one owned session advisory waiting and other authority row waiting, or reviewed fixture lock arrangement preserving shared authority protocol. Prove overlap without impossible lock order."
+    },
+    {
+      "id": "R2",
+      "severity": "high",
+      "path": "scripts/test-studio-command-admission.mjs:293,294,348",
+      "issue": "Number(v)==='1' always false; lost-response and revocation barriers inevitably time out.",
+      "fix": "Compare Number(v)===1; independently prove correct barrier behavior."
+    },
+    {
+      "id": "R3",
+      "severity": "high",
+      "path": "scripts/test-studio-command-admission.mjs:185-186",
+      "issue": "Parser expects SQLSTATE 42501 literal; psql verbose errors show ERROR: 42501: permission denied; actual permission denials rejected as incorrect.",
+      "fix": "Parse actual psql verbose SQLSTATE field with bounded permission-error format; test positive permission denial and wrong-state failures."
+    },
+    {
+      "id": "R4",
+      "severity": "high",
+      "path": "scripts/test-studio-command-admission.mjs:423; admissionSql:172",
+      "issue": "Hostile service_role invocation evaluates private command_request_hash as service_role, whose EXECUTE is revoked. Fails before RPC invocation.",
+      "fix": "Compute candidate hash before SET ROLE, supply it as value; retain actual service_role admission call and private helper denials."
+    },
+    {
+      "id": "R5",
+      "severity": "high",
+      "path": "supabase/migrations/20261001000000_studio_command_admission.sql:209; tests/sql/studio-command-admission.sql:43-50",
+      "issue": "Frozen resolver contract available/allowed plus eleven binding fields does not return decisionId; admission requires it. Fixture adds unauthorized fourteenth field and masks incompatibility.",
+      "fix": "Implement exact frozen resolver contract. Do not silently extend durable authority contract. Reviewed future authority packet must own any new binding."
+    },
+    {
+      "id": "R6",
+      "severity": "high",
+      "path": ".github/workflows/apply-seo-factory-migrations.yml:4-14,53-59; scripts/migration-ledger-runner.mjs:123,149",
+      "issue": "Merging new SQL path to main automatically triggers production pending-migration application with repository secrets. Inactive route does not prevent SQL application.",
+      "fix": "Keep engineering migration out of production auto-discovery or implement explicitly reviewed durable migration hold before merge; do not merge current candidate."
+    },
+    {
+      "id": "R7",
+      "severity": "medium",
+      "path": ".github/workflows/studio-command-admission-test.yml:44-47",
+      "issue": "Candidate labeled PR head but default checkout tests merge ref; receipt records differing identities without enforcing exact-head requirement.",
+      "fix": "Checkout explicit approved candidate SHA and assert checkedOutSha equality, or clearly separate merge evidence and add genuine exact-head lane."
+    }
+  ],
+  "observations": [
+    "Production route remains 503 RUNTIME_NOT_ACTIVE without client creation; production authority resolver deny-only.",
+    "Single admission transaction SQL recomputes six-field UTF-8 length-prefixed hash, checks current authority before replay/insertion, atomically inserts five relations; no positive production activation proved.",
+    "Security definer fixed search_path, qualified tables, nonlogin owner, RLS, revoked raw DML and restricted admit_run execute seen statically.",
+    "Lost-ACK design now discards receipt in DO before commit and intends independent commit visibility; numeric barrier prevents execution proof.",
+    "12 files read; no installs, heavy tests, native-auth bypass, source edits, migration apply or workflow launch.",
+    "Hosted test workflow uses read-only permission, synthetic loopback fixture credentials and no production secrets."
+  ],
+  "verification": {
+    "hashFreeze": "PASS_READ_ONLY_HASH_RECOMPUTATION",
+    "frozenPlanHash": "PASS",
+    "numericAndDenialParserProbe": "CONFIRMED_FALSE",
+    "postgres": "NOT_RUN",
+    "candidateTsc": "NOT_RUN",
+    "candidateJest": "NOT_RUN"
+  },
+  "remainingGaps": [
+    "Need actual PG concurrency/ACL/crash/rollback receipts after corrections.",
+    "SQL malformed numeric type fixtures and exact required resolver shape need explicit tests.",
+    "Lost-ACK replay should explicitly assert same durable run and unchanged five-relation counts.",
+    "Canonical Unicode whitespace/control validation equivalence requires more cross-language invalid cases."
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "status": "NOT_ACCEPTED",
+  "reviewer": "GPT-6.1 Sol",
+  "scope": "Entire inactive A4 component, including original helper and v4 changes",
+  "reviewedAt": "2026-10-02T04:35:05.139278+00:00",
+  "productionBase": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+  "freeze": {
+    "head": "27d81c05c16d1256344daac1b292e9ce22b72f50",
+    "files": {
+      "lib/studioClaimFreshness/index.ts": "1dae2948655646c607133877bcbd1c733b98701cc3b2367d59e58c015b864451",
+      "tests/studio-claim-freshness.test.ts": "9ace864902bcf28b33ca4704a5d3c0120d655b86abd4355b050ab156a28e5cb4"
+    },
+    "aggregateSha256": "f7df685b3a28660ac45bf035cf64b55d866bf365c51265e05bdfa7d2a4029a44",
+    "patchSha256": "212a0b093ef25b5d48b309020a33f4507466390e757f625253294e47c13f9614",
+    "gitDiffCheckExit": 0,
+    "status": " M lib/studioClaimFreshness/index.ts\n M tests/studio-claim-freshness.test.ts\n"
+  },
+  "sourceFreezeRecheck": "UNCHANGED",
+  "originalFindings": "Prototype enum, numeric identities, scalar oversize acceptance repaired. Unicode whitespace rejected;256 admitted and257 rejected.",
+  "verification": {
+    "node": "v22.22.2",
+    "independentProbes": 13,
+    "script": "/tmp/cs-a4-v4-independent-probes-20261002.ts",
+    "fullSuite": "NOT_RUN",
+    "typecheck": "NOT_RUN",
+    "hostCI": "NOT_RUN"
+  },
+  "mustFix": [
+    {
+      "id": "A4-V4-1",
+      "priority": "high",
+      "area": "now===null review failure splice",
+      "repro": "now not-clock and reviewer validFrom/approvedAt not-date \u2192ABSTAIN with INPUT_INVALID only",
+      "required": "Distinguish intrinsic invalid reviewer date/ordering from evaluation-clock comparison failure. Preserve intrinsic REVIEWER_VALIDITY_INVALID/REVIEW_APPROVAL_TIME_INVALID and BLOCK even when now invalid. Invalid now plus otherwise valid review may ABSTAIN."
+    },
+    {
+      "id": "A4-V4-2",
+      "priority": "high",
+      "area": "malformed claim jurisdiction/remit reviewer mismatch splice",
+      "repro": "claim remitKey empty and reviewer jurisdiction US-NY vs claim US-CA \u2192ABSTAIN, real mismatch removed",
+      "required": "Preserve independently verifiable reviewer jurisdiction/remit mismatch. Suppress only inability to compare a malformed claim field; do not delete unrelated reviewer failure."
+    },
+    {
+      "id": "A4-V4-3",
+      "priority": "medium",
+      "area": "Array.every skips sparse slots; later source/support dereference throws",
+      "repro": "review null with sources Array(1) or claim.supports Array(1) \u2192catch ABSTAIN, losing HUMAN_REVIEW_MISSING BLOCK",
+      "required": "Validate dense arrays before processing, or indexed elements including holes. Consequential missing/invalid human review and known critical contradiction must survive malformed collections."
+    },
+    {
+      "id": "A4-V4-4",
+      "priority": "medium",
+      "area": "label() order",
+      "repro": "2MB spaces + id rejects eventually but trim scans/allocates before raw length guard",
+      "required": "Check raw UTF16 length<=256 before trim/nonempty validation as documented local resource bound; similarly bound scalars before expensive operations. Do not trim identity itself or silently normalize source IDs."
+    }
+  ],
+  "integration": "Copy only two A4 paths onto fresh main; no whole old snapshot integration. Activation flag remains false. No production authority/source authentication or release activation asserted."
+}

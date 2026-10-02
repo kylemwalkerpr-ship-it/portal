@@ -1,0 +1,25 @@
+{
+  "node": "v22.22.2",
+  "sourceHashes": {
+    "lib/studioClaimFreshness/index.ts": "2bf5e7c77a9b5ef9846ea07598e12032df83256b76b6a0767ad7aa2864ee1cb1",
+    "tests/studio-claim-freshness.test.ts": "84f1d95549f4c26af0c29d2c3fa1198a8efa9319fa81095701adf8295d77ba3a"
+  },
+  "sourceUnchanged": true,
+  "results": [
+    {
+      "script": "/tmp/cs-a4-v4-independent-probes-20261002.ts",
+      "exit": 0,
+      "stdout": "{\"node\":\"v22.22.2\",\"results\":[{\"name\":\"prototype volatility\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"numeric reviewer\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"REVIEWER_IDENTITY_MISSING\"],\"checkedAt\":\"2026-09-29T13:00:00Z\",\"freshnessMaxAgeMs\":86400000},{\"name\":\"numeric source\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"raw oversized padded ID\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"invalid clock plus truly invalid reviewer dates\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\",\"REVIEWER_VALIDITY_INVALID\",\"REVIEW_APPROVAL_TIME_INVALID\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"invalid claim remit plus actual reviewer remit mismatch\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\",\"REVIEWER_REMIT_MISMATCH\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"sparse sources plus missing review\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\",\"HUMAN_REVIEW_MISSING\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"sparse supports plus missing review\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\",\"HUMAN_REVIEW_MISSING\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"Unicode whitespace\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"256 ID boundary\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"NO_ACTION\",\"reasonCodes\":[],\"checkedAt\":\"2026-09-29T13:00:00Z\",\"freshnessMaxAgeMs\":86400000},{\"name\":\"257 ID boundary\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"null source\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"ABSTAIN\",\"reasonCodes\":[\"INPUT_INVALID_OR_UNBOUNDED\"],\"checkedAt\":null,\"freshnessMaxAgeMs\":null},{\"name\":\"array reviewer\",\"schemaVersion\":\"studio.claim-evaluation/1\",\"decision\":\"BLOCK\",\"reasonCodes\":[\"REVIEWER_NOT_HUMAN\",\"REVIEWER_IDENTITY_MISSING\",\"REVIEWER_CREDENTIAL_NOT_CURRENT\",\"REVIEWER_REMIT_MISMATCH\",\"REVIEWER_VALIDITY_INVALID\",\"REVIEW_APPROVAL_TIME_INVALID\",\"REVIEW_NOT_APPROVED\",\"REVIEW_BINDING_MISMATCH\"],\"checkedAt\":\"2026-09-29T13:00:00Z\",\"freshnessMaxAgeMs\":86400000}]}\n",
+      "stderr": "(node:45869) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929/lib/studioClaimFreshness/index.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929/package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    },
+    {
+      "script": "/tmp/cs-a4-v5-regressions-20261002.ts",
+      "exit": 0,
+      "stdout": "{\"node\":\"v22.22.2\",\"checks\":18,\"passed\":18}\n",
+      "stderr": "(node:45870) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929/lib/studioClaimFreshness/index.ts is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to /Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-claim-freshness-20260929/package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    }
+  ],
+  "fullSuite": "NOT_RUN",
+  "typecheck": "NOT_RUN",
+  "hostCI": "NOT_RUN"
+}

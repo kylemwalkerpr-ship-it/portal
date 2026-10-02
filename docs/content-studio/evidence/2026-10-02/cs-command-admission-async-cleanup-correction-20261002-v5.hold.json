@@ -1,0 +1,14 @@
+{
+  "status": "SAVED_ONLY_HOLD",
+  "admitted": false,
+  "executed": false,
+  "requestSha256": "6319f9cc2cfeb3b4225f8ee952e4bf274a818f7602d721d9ca2347ca9d019890",
+  "memoryFreePercent": 41,
+  "swapFreeMiB": 559.56,
+  "diskFreeGiB": 1.0640144348144531,
+  "requiredDiskGiB": 4,
+  "blocker": "disk_capacity",
+  "observedNativeWorkspace": "remote-bridge-v1-20261001",
+  "sourceEdited": false,
+  "timestamp": "2026-10-02T09:40:35.835414+00:00"
+}

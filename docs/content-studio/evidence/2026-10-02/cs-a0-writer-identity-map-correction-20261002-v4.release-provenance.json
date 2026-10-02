@@ -1,0 +1,9 @@
+{
+  "status": "RELEASED_PAYLOAD_SAVED_ADMISSION_WAITING_SLOT",
+  "heldOriginal": "/tmp/cs-a0-writer-identity-map-correction-20261002-v4.hold.request.json",
+  "heldSHA256": "ec1b7e6fdc76da23d1956440fb94586d2d41903b256e5bfe63e1d244699707ef",
+  "releasedRequest": "/tmp/cs-a0-writer-identity-map-correction-20261002-v4.released.request.json",
+  "releasedSHA256": "5a8858a0f8a6cebaeff3f6cd4fa3958a3fab0cd82813f12fced23a7fd9efce89",
+  "releaseAuthority": "root bounded design review and conditional next-slot authorization",
+  "condition": "one previous native writer naturally terminal; mem>=40%; swapfree>=500MiB; disk>=4GiB; no job/attempt; authenticated live Luna/high Jev>=0.85"
+}

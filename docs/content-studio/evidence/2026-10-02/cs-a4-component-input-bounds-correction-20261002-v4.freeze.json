@@ -1,0 +1,11 @@
+{
+  "head": "27d81c05c16d1256344daac1b292e9ce22b72f50",
+  "files": {
+    "lib/studioClaimFreshness/index.ts": "1dae2948655646c607133877bcbd1c733b98701cc3b2367d59e58c015b864451",
+    "tests/studio-claim-freshness.test.ts": "9ace864902bcf28b33ca4704a5d3c0120d655b86abd4355b050ab156a28e5cb4"
+  },
+  "aggregateSha256": "f7df685b3a28660ac45bf035cf64b55d866bf365c51265e05bdfa7d2a4029a44",
+  "patchSha256": "212a0b093ef25b5d48b309020a33f4507466390e757f625253294e47c13f9614",
+  "gitDiffCheckExit": 0,
+  "status": " M lib/studioClaimFreshness/index.ts\n M tests/studio-claim-freshness.test.ts\n"
+}

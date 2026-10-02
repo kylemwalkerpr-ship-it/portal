@@ -250,3 +250,25 @@ A0v3 freshJeVSTART0.99 authenticatedLuna/high admittedONCE PID22049/attempt8908e
 
 
 Runtimeoriginalv2 exactresume naturallyCOMPLETED/verification.passed/gen2, samenative01a0f7fb-2f3a-7b80-9664-7b9e463cd651/sameattemptc0d5725d...; noPG/TSC/Jestproof inferredfromstatic4checks. Frozen12newfiles andindependentSolreviewpending. A4distinctv4 exactrequestf8a69f71ee50f317f1130d131e47f96fc9ecb1214208fdaa194ed6a0bed4dd25 JevSTART0.99/Luna routedonce/PID24272 afterfreedruntimeslot/capacityguard. A0v3 continuesdisjoint. No productionSQL/newfeatureactivation; officialPGhostCI followssemanticacceptance.
+
+
+Runtimev2 independentMUST_FIX7 includesbarrier/numericparser/psql42501/serviceprivatehash/extraresolverdecisionId/exactheadCI andproductionmigrationautoapplyreleasehold. Distinctv3 preparedHOLD41f046... reviewedandRELEASEDbeforefirstadmission request916d50c1ad667ae6d6699619e5d09f32a31358456bf6302bf9a506500c7a962a; waitsfreeoneslot/guard, no v2replay. ExistingofficialmigrationworkflowautodiscoversnewSQLonmain; candidate mustremainunmergeduntilseniorreleaseevidence, no relocation/bypass.
+
+A4v4 naturallyCOMPLETED/verificationpassed/native01a0fadc-5ea2-7af3-93e4-4d72b50b1133/attempt9c3c6287... honestfocusedJestRED→20PASS,2dirtypaths aggregatef7df685b... preserved. Fullcomponentreviewpending, coordinatorflaggedmixedinvalidclock/reviewerdatecleanup andbound-checkorder forreproduction. No commit/PR/promotion yet. Runtimev3 cannowtakefreedslot afterfreshguard; A0v3stillactive.
+
+
+A4v4 fullreviewNOT_ACCEPTED: mixedinvalidclock erasesintrinsicreviewerdateBLOCK; malformedclaimremit erasesindependentjurisdictionmismatch; sparsecollectionsloseknownmissinghumanreviewBLOCK throughcatch; trimsbefore rawsizeguard. Originalprototype/identityacceptancefixed. Distinctv5 designreviewed/RELEASEDsourcepayload98bc7b279bc469eef82ed7dada69281d60a91c76c27bf6ffeaa7eae17d26b6db supersedesunadmittedHOLD2a63... beforefirstadmission; waitsfreeoneslot.
+
+Runtimev3 naturallyBLOCKED/verification_failed native01a0fae6-796b-7f62-9d08-0c7413ab894a/attempte47db2e7... gen1/5verifiers failedindex3(--selftest). Native42.097sturn abstainedbeforeanysourceread/write becausebriefingambiguouslyassignedsupervisorcapacity/authchecks; nativepsdenied/swapfailure, notquota/authfailure. All12hashesremain06b9...; preserve realBLOCKED no reroll/replay. Rootauthorizeddistinctv4 SOURCEbriefing withsupervisorgatesalreadyestablished andexecutornotassignedps/sysctl/auth/innerrouting; coordinatorretainsallcapacity/JeVguards. A0v3sourceprogresssubstantial continues20min; noacceptanceclaimed.
+
+
+A0v3 COMPLETED/verificationpassed/strictcontentverifierPASS 7JSON223476bytes aggregatea9b0d54f...; twoindependentsemanticreviewsMUST_FIX actualcronbehavior/event_log/profileidentitymutations and*/30schedulelabel. All296evidencehashes/56refs/7hosts/6holders/frozen13fieldresolver andplannedauthority/catalogboundaries verified. DistinctA0v4 RELEASED5a8858... JevSTART0.99/Luna/high oncePID45259/attempt01c26fe3-d95e-4949-b387-501b0553354f, newsemanticverifiergenuinelyRED onv3; no sourceacceptanceyet.
+
+A4v5 COMPLETED native01a0faed-b7ab-7160-b229-176794e0b434/attempt2e8c746a... final2sourceaggregatec9064ee8c08d91028c3eada3b45bb368ad311491da12bc56dfa3a74341258bbb stable, FINALNode22actual18assertionsPASS+13reviewprobesexpected. PriorJest24 ranintermediatehash NOTfinalevidence. PID40812/40813 earliermisattributedbyA4monitoractuallyRUNTIMEsource; no processkilled; noA4writerremains. Fullcomponentreviewpending; no commit/promotion. Runtimev4 actualsource40812/40813 activewith6fileschanged; no replays.
+
+
+### Reviewed A4 component PR and runtime failure-path hold — 2026-10-02T09:41:43.517114+00:00
+
+A4 final whole-component independent review PASS aggregatec9064ee8; source commit90c2875. Normal broker cherry-picked ONLY three two-file commits onto clean010407 main base: finalintegration a256a2aa8cef7d8f54fb200e3b96f5f90031a9f9, both exact final file hashes match, no unrelated deletions. Draft PR339 https://github.com/kylemwalkerpr-ship-it/portal/pull/339 created; focused run36991177251/full36991177255 IN_PROGRESS, no merge/deploy yet. Broker cherry-pick itself succeeded; reporting wrapper AttributeError reconciled from clean HEAD/three commits/hashes, no duplicate mutation.
+
+Runtimev4 naturally COMPLETED frozen8cbeed24; independent full review MUST_FIX new unobserved asyncPsql rejection/operation-drain cleanup findingV4-1. Prior seven source findings fixed or production migration release gate explicitly held; real PG NOT_RUN. Distinct v5 narrow script/evidence correction saved HOLD, never routed/executed: disk1.06–1.28GiB below4GiB guard. Other-chat remote bridge exec preserved. A0v4 naturally COMPLETED frozen4349348c; independent semantic re-review underway. Harness remains installed reviewed e0bfee; no new harness mutation. Full architecture NOT_DEPLOYED, productionSQL/publication/#302/#303 remain held; P12/P13 downstream.

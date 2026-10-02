@@ -1,0 +1,71 @@
+{
+  "reviewId": "A0_V3_SCHEMA_INDEPENDENT_20261002",
+  "reviewer": "independent GPT schema review",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "scope": [
+    "schema-map",
+    "migration-ledger",
+    "legacy-disposition",
+    "privilege-matrix"
+  ],
+  "fileHashes": {
+    "schema-map.json": "bc6fd47de8ef598ee26dea4fe677a6ff12f0519414142853adab7f6ff1442f6b",
+    "migration-ledger.json": "6a8a47dce33eee337e84dbb977399d48051a0844e81acb832cecdb29290deaab",
+    "legacy-disposition.json": "417eb7e654adb668f879d4d54aa4a8f7b683df6e329dc52cd611d2522c22ef77",
+    "privilege-matrix.json": "1f3dc6712e10f7b03b6ed7ae6b6ab3e01aa4b2f45a6dc318c1b1a2a5f2fe1f9b"
+  },
+  "frozenAggregate": "a9b0d54f800f9eb60e8bb2539f9fea0ef5b13d3d20dbe733ac220e9a1dc0891d",
+  "verdict": "MUST_FIX",
+  "findings": [
+    {
+      "id": "A0-SCHEMA-SEM-01",
+      "severity": "must-fix",
+      "file": "schema-map.json",
+      "paths": [
+        "writerInventory[WRITER-025].authorityBoundary",
+        "writerInventory[WRITER-027].authorityBoundary",
+        "writerInventory[WRITER-030].authorityBoundary",
+        "matching sourceEvidence.claim values"
+      ],
+      "problem": "Three cron POST boundaries repeat an inaccurate job creation/pipeline kickoff through route core claim. Retry operates on existing stored jobs; reconciler explicitly NEVER authors content and only stages/updates retry bookkeeping; daily orchestrates knowledge/planner/ranking/rewards/interlink/analytics and records seo_engine_runs. Generic claim obscures actual mutation ownership and cutover boundaries.",
+      "requiredFix": "Replace each boundary and paired claim with its observed distinct lifecycle/mutation behavior. Keep no current shared admission authority conclusion.",
+      "sources": [
+        "app/api/cron/content-studio-retry/route.ts:105, existing-job selection and runStoredContentJob call",
+        "app/api/cron/reconcile-content-jobs/route.ts:1-7,74,160",
+        "app/api/cron/seo-engine-daily/route.ts:51, imports and recordEngineRun calls"
+      ]
+    },
+    {
+      "id": "A0-SCHEMA-SEM-02",
+      "severity": "must-fix",
+      "file": "schema-map.json",
+      "paths": [
+        "writerInventory[WRITER-026].authorityBoundary",
+        "writerInventory[WRITER-028].authorityBoundary",
+        "matching sourceEvidence.claim values"
+      ],
+      "problem": "appendEvent and appendLog are described as audit_json append/update, but both select and update content_jobs.event_log. This identifies the wrong physical mutation boundary.",
+      "requiredFix": "Use event_log exact column in both boundaries and paired evidence claims.",
+      "sources": [
+        "app/api/cron/content-studio-retry/route.ts:93-103",
+        "app/api/cron/reconcile-content-jobs/route.ts:59-71"
+      ]
+    }
+  ],
+  "passedChecks": [
+    "Frozen plan SHA256 4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e independently recomputed from pinned git show.",
+    "Resolver available/allowed plus eleven binding fields is exact, without returned decisionId. Five initial lock boundaries preserved; current authority reread and all writers same protocol explicit.",
+    "Twelve authority domains mapped with existing identity/artifact/helper signals separated from NEW_PLANNED durable authorization; unavailable binding denies admission.",
+    "Authority and dispatch additive migration/API plans explicitly inactive and apply unauthorized, with execution-time collision recheck.",
+    "296 pinned evidence hashes across reviewed files matched current exact source bytes; 56 sourceRefs exist. Eight canonical manifest content pins match source hashes.",
+    "Catalog copied grants and three policy rows match supplied receipt; scope restricted to metadata, effectiveApiProof NOT_RUN. Broad public policy targets and service raw-DML hardening separated.",
+    "Clerk/profile admin explicitly does not establish tenant/project/action grants.",
+    "Migration 82-file inventory and historical 81 ledger/80 matched/unrelated YQAA mismatch are not promoted to current apply authority; three named applied Studio migrations NOT_REPLAY.",
+    "Legacy dispositions preserve completed phases and require reviewed cutover/one scheduler; no unknown-as-pass or permissive authority seed observed."
+  ],
+  "notes": [
+    "Five excerpt exact whitespace discrepancies are only stripped indentation; all source line contents match after strip. Adoption tooling pin at line76 points at fi rather than actual invocation line77: low-impact evidence precision improvement suggested, not blocking.",
+    "No SQL/provider/API role test, secrets read, install, full build, edit, commit or board write performed.",
+    "PASS applies only to enumerated passed checks; must-fix verdict blocks accepting frozen v3 aggregate unchanged."
+  ]
+}

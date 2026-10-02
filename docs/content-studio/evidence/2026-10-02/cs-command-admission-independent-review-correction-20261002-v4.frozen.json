@@ -1,0 +1,88 @@
+{
+  "observed_at": "2026-10-02T05:03:16.493357+00:00",
+  "job": "cs-command-admission-independent-review-correction-20261002-v4",
+  "attempt": {
+    "id": "3dd91350-f654-4a5a-87ca-47935d68f275",
+    "state": "COMPLETED",
+    "reason": "completed",
+    "native_state": "verification.passed",
+    "native_record_id": "01a0faed-d950-7ba0-a979-efb69e25362a",
+    "state_generation": 1
+  },
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "status": "?? .github/workflows/studio-command-admission-test.yml\n?? app/api/content-studio/v3/runs/route.ts\n?? app/api/content-studio/v3/runs/routeCore.ts\n?? docs/content-studio/release/2026-10-01-command-admission-evidence.md\n?? lib/studioRuntime/commandAdmission.ts\n?? lib/studioRuntime/contracts.ts\n?? lib/studioRuntime/repository.ts\n?? scripts/test-studio-command-admission.mjs\n?? supabase/migrations/20261001000000_studio_command_admission.sql\n?? tests/content-studio-v3/commandAdmission.test.ts\n?? tests/content-studio-v3/runAdmissionRoute.test.ts\n?? tests/sql/studio-command-admission.sql\n",
+  "files": [
+    {
+      "path": ".github/workflows/studio-command-admission-test.yml",
+      "bytes": 12970,
+      "sha256": "43b97f51140cfdbaa3404412c042dcb294e708692b01b31358e92d45b6ab9e80"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/route.ts",
+      "bytes": 311,
+      "sha256": "e80b759e9f91c6c73d940012b4e5e680c5f759ff4fb964da12b55a0758848823"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/routeCore.ts",
+      "bytes": 2179,
+      "sha256": "ba3187980bf16fb7ed8fad5df3bf44a40c29022ef269125c553b6ffb9a8b8efd"
+    },
+    {
+      "path": "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+      "bytes": 15706,
+      "sha256": "9d35748a9111ee9013fa1a08c62a7b53509a29119ab46f1587bdf1aeff1800ae"
+    },
+    {
+      "path": "lib/studioRuntime/commandAdmission.ts",
+      "bytes": 1926,
+      "sha256": "b4f3565a9106253f77f228ea336c3d8b8ad895d3c064cb735e3e0620404cb7f2"
+    },
+    {
+      "path": "lib/studioRuntime/contracts.ts",
+      "bytes": 7697,
+      "sha256": "fe6ed43c9b9620abfd25eb953a319f052e3da6fa2db137aed0589148860ac04a"
+    },
+    {
+      "path": "lib/studioRuntime/repository.ts",
+      "bytes": 1252,
+      "sha256": "40df8704e7eebe73897e1bd9a5c344063f8748e5bc2f56b052763200f97ae6bb"
+    },
+    {
+      "path": "scripts/test-studio-command-admission.mjs",
+      "bytes": 42205,
+      "sha256": "3d8b8222c90743c347403a9fe4b1e1a875b674ff62cdae4c721a22a95bf6fb91"
+    },
+    {
+      "path": "supabase/migrations/20261001000000_studio_command_admission.sql",
+      "bytes": 20630,
+      "sha256": "52b8452f617b4681252266967430039c51b4cd2a5e3536fa576e8004861040e3"
+    },
+    {
+      "path": "tests/content-studio-v3/commandAdmission.test.ts",
+      "bytes": 5887,
+      "sha256": "1aaa33daabc2351f326cb0b0bf9fd89ebe453e7daaf86f87360750a15089574c"
+    },
+    {
+      "path": "tests/content-studio-v3/runAdmissionRoute.test.ts",
+      "bytes": 3900,
+      "sha256": "22094410f306f301bf1dfd5aee57ee7ab69835568f7bcd9c5e915d9db7a820b4"
+    },
+    {
+      "path": "tests/sql/studio-command-admission.sql",
+      "bytes": 17325,
+      "sha256": "0e16747b01d83d8de94f8a751d892715b211c7306c402cd4bad72c1f305186ce"
+    }
+  ],
+  "manifest_sha256": "8cbeed24eebb13a511fa2607fe19e82ee55971917f5dba450773bdabf3232f8a",
+  "changed_since_v2": [
+    ".github/workflows/studio-command-admission-test.yml",
+    "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+    "scripts/test-studio-command-admission.mjs",
+    "supabase/migrations/20261001000000_studio_command_admission.sql",
+    "tests/content-studio-v3/commandAdmission.test.ts",
+    "tests/sql/studio-command-admission.sql"
+  ],
+  "source_acceptance": "PENDING_INDEPENDENT_REVIEW_AND_HOSTED_PG_PROOF",
+  "verification": "BROKER_STATIC5_ONLY",
+  "production_autoapply_release": "HELD"
+}

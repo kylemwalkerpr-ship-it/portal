@@ -1,0 +1,61 @@
+{
+  "verdict": "MUST_FIX",
+  "scope": "FULL_FROZEN_SOURCE_REVIEW_ONLY",
+  "candidateHead": "c305086c59d83f50135edd367f0d5e8399879619",
+  "frozenAggregate": "8cbeed24eebb13a511fa2607fe19e82ee55971917f5dba450773bdabf3232f8a",
+  "planSha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+  "all12FileHashesMatch": true,
+  "priorFindings": {
+    "R1": "SOURCE_FIXED: actual owned advisory/authority transaction blocking chain",
+    "R2": "SOURCE_FIXED: numericOne exact bounded count parser; independent selftest PASS",
+    "R3": "SOURCE_FIXED: verbose psql SQLSTATE parser; independent selftest PASS",
+    "R4": "SOURCE_FIXED: candidate hash computed before service_role switch; private helper denial tests",
+    "R5": "SOURCE_FIXED: exact13 resolver contract and invalid shape tests; decisionId trusted context audit only",
+    "R6": "HELD_UNRESOLVED_RELEASE_BLOCKER: automatic main migration application still exists; no merge authorized",
+    "R7": "SOURCE_FIXED: explicit exact candidate checkout and mismatch failure in harness/workflow receipts"
+  },
+  "mustFix": [
+    {
+      "id": "V4-1",
+      "severity": "medium",
+      "file": "scripts/test-studio-command-admission.mjs",
+      "lines": [
+        130,
+        145,
+        327,
+        328,
+        428,
+        555
+      ],
+      "issue": "Owned asyncPsql result promises are not rejection-observed until after separate barrier awaits. Any SQL startup/lock-timeout error while waiting, or cleanup termination after a barrier failure, rejects raceA/raceB/revoke unhandled under Node22. Finally waits childClosures only, not returned async operation promises. This can abort before the sanitized receipt and complete cleanup, contrary to always-capture failure requirements.",
+      "evidence": "Independent Node22.22.2 pure promise topology probe rejected an owned child outcome while awaiting closed-only cleanup, terminating before RECEIPT_WOULD_BE_WRITTEN. No database/session mutation used.",
+      "requiredFix": "Immediately attach rejection handling to every returned asyncPsql promise without swallowing awaited failures; track and allSettled-drain async operation results during finally alongside child closures. Add light failure-path selftest proving failed barrier/child termination yields sanitized receipt and owned-child cleanup, preserving FAIL."
+    }
+  ],
+  "verified": {
+    "node22ActualSelfTest": "PASS",
+    "node22HarnessSyntax": "PASS",
+    "all12FrozenHashes": "PASS",
+    "frozenPlanHash": "PASS",
+    "postgres": "NOT_RUN",
+    "candidateWholeTsc": "NOT_RUN",
+    "candidateStrictTsc": "NOT_RUN",
+    "candidateJest": "NOT_RUN"
+  },
+  "staticObservations": [
+    "Production route inactive503; production resolver deny-only; no provider/SQL/deploy/merge/commit calls in reviewed test packet.",
+    "LostACK source suppresses RPC receipt, independently witnesses committed ID/counts, kills owned sleeping backend, replays same ID with unchanged5 counts.",
+    "Precommit kill and fifth-insert deterministic rollback remain source prepared, actual PostgreSQL evidence pending.",
+    "SQL invalid epoch/Unicode whitespace/Cc cases added; exact cross-language byte contract preserved.",
+    "Private owner, restricted grants, RLS and fixed safe searchpath remain source acceptable for inactive packet.",
+    "Exact draftPR hosted test workflow remains synthetic loopback/read-only scope; project TSC/Jest/PG proof required before acceptance."
+  ],
+  "limitations": [
+    "This review is source-only and light probes; no PG functionality or production migration acceptance.",
+    "Production autoapply hold must remain before any merge.",
+    "PG malformed JSON lone surrogates/NUL fail at JSONB input boundary; no persistence possible but hosted behavior not proved."
+  ],
+  "noSourceEdits": true,
+  "noInstall": true,
+  "noSqlApply": true
+}

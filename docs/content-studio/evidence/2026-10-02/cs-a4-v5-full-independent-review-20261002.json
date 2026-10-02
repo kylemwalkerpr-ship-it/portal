@@ -1,0 +1,51 @@
+{
+  "status": "PASS_NARROW_COMPONENT",
+  "entireComponentReview": "PASS",
+  "reviewer": "GPT-6.1 Sol",
+  "reviewedAt": "2026-10-02T05:00:32.966231+00:00",
+  "productionBase": "010407026438a3f68e063f41ae0c0cd778ac6d50",
+  "freeze": {
+    "head": "27d81c05c16d1256344daac1b292e9ce22b72f50",
+    "files": {
+      "lib/studioClaimFreshness/index.ts": "2bf5e7c77a9b5ef9846ea07598e12032df83256b76b6a0767ad7aa2864ee1cb1",
+      "tests/studio-claim-freshness.test.ts": "84f1d95549f4c26af0c29d2c3fa1198a8efa9319fa81095701adf8295d77ba3a"
+    },
+    "aggregateSha256": "c9064ee8c08d91028c3eada3b45bb368ad311491da12bc56dfa3a74341258bbb",
+    "patchSha256": "2235576e882474b1147c7d6bf3367eef09c68609a17c1674e95d4e65aee47ab9",
+    "gitDiffCheckExit": 0,
+    "status": " M lib/studioClaimFreshness/index.ts\n M tests/studio-claim-freshness.test.ts\n",
+    "nativeProcessStatus": "  PID  PPID STAT ELAPSED COMM\n40812 56424 S      11:40 node\n40813 40812 S      11:40 /Users/phantomdarne/.nvm/versions/node/v22.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex\n"
+  },
+  "sourceFreezeRecheck": "UNCHANGED",
+  "mustFix": [],
+  "resolved": [
+    "Closed volatility enum rejects prototype/unknown keys before lookup.",
+    "Typed raw256-code-unit bounds enforced before trim; empty/Unicode-whitespace/numeric scalar identities rejected.",
+    "Reviewer intrinsic dates and interval ordering remain BLOCK with invalid evaluation clock; valid review plus invalid clock ABSTAIN.",
+    "Per-field jurisdiction/remit comparisons preserve independently provable mismatch without inventing mismatch for invalid claim label.",
+    "Bounded dense array checks include sparse holes; malformed source/support/provenance collections preserve missing-review and known critical contradiction BLOCK.",
+    "Caught later malformed property access preserves already captured hard review/contradiction reasons."
+  ],
+  "verification": {
+    "node": "v22.22.2",
+    "priorFailureAndBoundaryProbes": {
+      "count": 13,
+      "status": "EXPECTED_RESULTS",
+      "script": "/tmp/cs-a4-v4-independent-probes-20261002.ts"
+    },
+    "additionalAssertions": {
+      "count": 12,
+      "status": "PASS",
+      "script": "/tmp/cs-a4-v5-independent-extra-probes-20261002.ts"
+    },
+    "gitDiffCheck": "PASS",
+    "officialFinalHostedCI": "REQUIRED_NOT_RUN",
+    "historicalIntermediateJest": "NOT_FINAL_SOURCE_EVIDENCE"
+  },
+  "integration": "Entire eligible production delta comprises only new lib/studioClaimFreshness/index.ts and tests/studio-claim-freshness.test.ts. Copy exact frozen bytes onto fresh main; do not merge obsolete branch snapshot.",
+  "limits": [
+    "Inactive pure supplied-fact helper only; activation flag false; no production authority authentication, reviewer registry, durable source snapshot attestation, release approval, schema migration or A4 phase completion.",
+    "Node22 direct runtime probes do not substitute project TypeScript/Jest/build/official exact candidate hosted checks.",
+    "Opaque binding labels retain local256 scalar compatibility; do not claim canonical real reviewer or hash identity policy."
+  ]
+}
