@@ -5,7 +5,8 @@ import { useUser, useClerk } from '@clerk/nextjs'
 import { F } from './tokens'
 import styles from './MarketplaceAuthNav.module.css'
 import { AuthNavSkeleton } from './MarketplaceRouteSkeleton'
-import { getSafeMarketplaceSignInReturnTo, MARKETPLACE_RETURN_TO_QUERY, MARKETPLACE_SIGN_IN_QUERY } from '@/lib/marketplaceSignInHandoff'
+import { allowSignedInForward, readMarketAuthRequest, readSsoCallback, stripMarketAuthParams } from '@/lib/auth/marketAuthHandoff'
+import { normalizeReturnTo } from '@/lib/auth/returnTo'
 import { openYsSignIn, openYsSignUp } from '@/lib/auth/ysAuthModal'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
@@ -86,17 +87,45 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
 
   React.useEffect(() => {
     if (!isLoaded || typeof window === 'undefined') return
-    const url = new URL(window.location.href)
-    if (url.searchParams.get(MARKETPLACE_SIGN_IN_QUERY) !== '1') return
+    const href = window.location.href
 
-    const returnTo = getSafeMarketplaceSignInReturnTo(url.searchParams.get(MARKETPLACE_RETURN_TO_QUERY))
-    url.searchParams.delete(MARKETPLACE_SIGN_IN_QUERY)
-    url.searchParams.delete(MARKETPLACE_RETURN_TO_QUERY)
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
-    // Legacy `?ys_sign_in=1` deep links (bookmarks, old emails) still open the
-    // one shared branded modal in place.
-    openYsSignIn(clerk, { returnTo })
-  }, [clerk, isLoaded])
+    // 1) Clerk modal OAuth round-trip: `#/sso-callback?...` survives the
+    //    portal/market 302s; finish it here (the modal cannot read hash routes).
+    const sso = readSsoCallback(href)
+    if (sso) {
+      const clean = new URL(href)
+      clean.hash = ''
+      window.history.replaceState(window.history.state, '', stripMarketAuthParams(clean.toString()))
+      clerk.handleRedirectCallback(sso).catch(() => {
+        openYsSignIn(clerk, { returnTo: sso.signInForceRedirectUrl })
+      })
+      return
+    }
+
+    // 2) `?ys_sign_in=1` / `?ys_sign_up=1` (+ intent, return_to): the portal no
+    //    longer has its own sign-in page, so every portal auth URL lands here.
+    const request = readMarketAuthRequest(href)
+    if (!request) return
+    window.history.replaceState(window.history.state, '', stripMarketAuthParams(href))
+
+    if (isSignedIn) {
+      // Already signed in: go straight on (DB role decides the dashboard).
+      // Guarded so a portal that cannot see the session can't ping-pong.
+      let storage: Storage | null = null
+      try { storage = window.sessionStorage } catch { storage = null }
+      if (allowSignedInForward(storage, Date.now())) {
+        window.location.assign(normalizeReturnTo(request.returnTo) ?? `${PORTAL_URL}/dashboard`)
+      }
+      return
+    }
+
+    if (request.mode === 'sign-up') {
+      openYsSignUp(clerk, { returnTo: request.returnTo, intent: request.intent, source: 'portal_handoff' })
+    } else {
+      // Lane-aware: the intent rides into /onboarding if this turns into a sign-up.
+      openYsSignIn(clerk, { returnTo: request.returnTo, intent: request.intent })
+    }
+  }, [clerk, isLoaded, isSignedIn])
 
   React.useEffect(() => {
     // MarketplaceShell owns the hamburger drawer state. Keep this account
