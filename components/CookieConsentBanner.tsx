@@ -14,10 +14,34 @@ function saveConsent(value: Consent) {
 
 export default function CookieConsentBanner() {
   const [visible, setVisible] = React.useState(false)
+  const bannerRef = React.useRef<HTMLElement | null>(null)
 
   React.useEffect(() => {
     setVisible(readClientConsent() === 'unknown')
   }, [])
+
+  // The banner is fixed to the bottom of the viewport. While it is open,
+  // reserve the same height at the end of the page so nothing (e.g. a form's
+  // "Submit application" button) can be stuck underneath it.
+  React.useEffect(() => {
+    if (!visible) return
+    const el = bannerRef.current
+    if (!el || typeof document === 'undefined') return
+    const body = document.body
+    const previous = body.style.paddingBottom
+    const reserve = () => {
+      body.style.paddingBottom = `${Math.ceil(el.getBoundingClientRect().height) + 24}px`
+    }
+    reserve()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(reserve) : null
+    observer?.observe(el)
+    window.addEventListener('resize', reserve)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', reserve)
+      body.style.paddingBottom = previous
+    }
+  }, [visible])
 
   const choose = (value: Consent) => {
     saveConsent(value)
@@ -54,6 +78,8 @@ export default function CookieConsentBanner() {
   return (
     <>
       <aside
+        ref={bannerRef}
+        data-cookie-banner
         role="dialog"
         aria-label="Cookie preferences"
         aria-live="polite"

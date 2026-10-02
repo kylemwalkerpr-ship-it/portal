@@ -7,7 +7,8 @@
  */
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { sendEmail, consultantApprovalEmail, consultantDeclineEmail } from '@/lib/email'
+import { decideProviderApplication } from '@/lib/provider/decision'
+import { OPEN_APPLICATION_STATUSES } from '@/lib/provider/application'
 
 const VALID_ACTIONS = ['approve', 'decline', 'waitlist', 'assign', 'prioritise', 'delete'] as const
 type Action = typeof VALID_ACTIONS[number]
@@ -65,49 +66,21 @@ export async function POST(req: Request) {
   const now = new Date().toISOString()
 
   for (const app of ((apps ?? []) as AppRow[])) {
-    if (['approve', 'decline', 'waitlist'].includes(action) && app.status !== 'pending') {
+    const decidable = action === 'waitlist' ? app.status === 'pending' : OPEN_APPLICATION_STATUSES.includes(app.status)
+    if (['approve', 'decline', 'waitlist'].includes(action) && !decidable) {
       results.push({ id: app.id, ok: false, reason: `already ${app.status}` })
       continue
     }
 
     try {
-      if (action === 'approve') {
-        await db.from('consultant_applications').update({
-          status: 'approved', decided_at: now, decided_by: profile.id, decision_notes: notes || null, last_reviewed_at: now,
-        }).eq('id', app.id)
-        if (app.profile_id) {
-          await db.from('profiles').update({ status: 'active' }).eq('id', app.profile_id)
-          await db.from('consultants').upsert({
-            profile_id: app.profile_id,
-            application_id: app.id,
-            jurisdictions: app.jurisdictions,
-            specialties: app.specialties,
-            registration_number: app.registration_number,
-          }, { onConflict: 'profile_id' })
-        }
-        try {
-          const e = consultantApprovalEmail(app.full_name)
-          await sendEmail({ to: app.email, subject: e.subject, html: e.html })
-        } catch {}
-        await db.from('consultant_application_events').insert({
-          application_id: app.id, actor_id: profile.id,
-          event_type: 'approve', from_status: app.status, to_status: 'approved', notes,
-        }).then(() => null, () => null)
-        results.push({ id: app.id, ok: true, status: 'approved' })
-      } else if (action === 'decline') {
-        await db.from('consultant_applications').update({
-          status: 'declined', decided_at: now, decided_by: profile.id, decision_notes: notes || null, last_reviewed_at: now,
-        }).eq('id', app.id)
-        if (app.profile_id) await db.from('profiles').update({ status: 'declined' }).eq('id', app.profile_id)
-        try {
-          const e = consultantDeclineEmail(app.full_name)
-          await sendEmail({ to: app.email, subject: e.subject, html: e.html })
-        } catch {}
-        await db.from('consultant_application_events').insert({
-          application_id: app.id, actor_id: profile.id,
-          event_type: 'decline', from_status: app.status, to_status: 'declined', notes,
-        }).then(() => null, () => null)
-        results.push({ id: app.id, ok: true, status: 'declined' })
+      if (action === 'approve' || action === 'decline') {
+        // Same one-click path as the single PATCH: role/status, provider row,
+        // listings, Clerk metadata, applicant email and event log.
+        const r = await decideProviderApplication(db, {
+          lane: 'consultant', applicationId: app.id, action, adminProfileId: profile.id, notes,
+        })
+        if (r.ok) results.push({ id: app.id, ok: true, status: r.status })
+        else results.push({ id: app.id, ok: false, reason: (r as Extract<typeof r, { ok: false }>).error })
       } else if (action === 'waitlist') {
         await db.from('consultant_applications').update({
           status: 'waitlist', decision_notes: notes || null, last_reviewed_at: now,

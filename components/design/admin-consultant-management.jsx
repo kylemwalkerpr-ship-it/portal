@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import { decisionSummary, OPEN_DECISION_STATUSES } from '@/lib/provider/decisionSummary'
 
 /**
  * Admin → Consultant Management (Fiverr-scale review queue).
@@ -812,7 +813,7 @@ export default function AdminConsultantManagement() {
         })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d?.error || `${action} failed`)
-        flash('ok', `Application ${action}d.`)
+        flash('ok', decisionSummary(action, d))
       } else {
         // waitlist routed through bulk endpoint for code reuse
         await bulkAct('waitlist', notes)
@@ -821,6 +822,13 @@ export default function AdminConsultantManagement() {
       await load()
     } catch (e) { flash('err', e.message) }
     finally { setDecisionPending(false) }
+  }
+
+  // One-click approve / reject straight from the queue row (no drawer).
+  const [rowPending, setRowPending] = React.useState(null)
+  const decideRow = async (a, action) => {
+    setRowPending(a.id)
+    try { await decideOne(a.id, action, '') } finally { setRowPending(null) }
   }
 
   const onSort = col => {
@@ -992,17 +1000,18 @@ export default function AdminConsultantManagement() {
                   <Th onClick={() => onSort('risk_score')}>Risk{sortArrow('risk_score')}</Th>
                   <Th onClick={() => onSort('priority')}>Priority{sortArrow('priority')}</Th>
                   <Th onClick={() => onSort('status')}>Status{sortArrow('status')}</Th>
+                  <Th>Decision</Th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><Td colSpan={7} style={{ textAlign: 'center', color: MUTED, padding: 20 }}>Loading…</Td></tr>
+                  <tr><Td colSpan={8} style={{ textAlign: 'center', color: MUTED, padding: 20 }}>Loading…</Td></tr>
                 )}
                 {error && !loading && (
-                  <tr><Td colSpan={7} style={{ textAlign: 'center', color: RED, padding: 20 }}>{error}</Td></tr>
+                  <tr><Td colSpan={8} style={{ textAlign: 'center', color: RED, padding: 20 }}>{error}</Td></tr>
                 )}
                 {!loading && !error && apps.length === 0 && (
-                  <tr><Td colSpan={7} style={{ textAlign: 'center', color: MUTED, padding: 28 }}>No applications in this view.</Td></tr>
+                  <tr><Td colSpan={8} style={{ textAlign: 'center', color: MUTED, padding: 28 }}>No applications in this view.</Td></tr>
                 )}
                 {!loading && !error && apps.map(a => (
                   <tr key={a.id} style={{ borderTop: `1px solid ${BORDER2}`, cursor: 'pointer' }}
@@ -1031,6 +1040,26 @@ export default function AdminConsultantManagement() {
                       </span>
                     </Td>
                     <Td><StatusBadge status={a.status} /></Td>
+                    <Td onClick={e => e.stopPropagation()} style={{ cursor: 'default', whiteSpace: 'nowrap' }}>
+                      {OPEN_DECISION_STATUSES.includes(a.status) ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            data-testid="row-approve"
+                            disabled={rowPending === a.id || decisionPending}
+                            onClick={e => { e.stopPropagation(); decideRow(a, 'approve') }}
+                            style={btnPrimary(GREEN)}
+                          >{rowPending === a.id ? '…' : 'Approve'}</button>
+                          <button
+                            type="button"
+                            data-testid="row-reject"
+                            disabled={rowPending === a.id || decisionPending}
+                            onClick={e => { e.stopPropagation(); decideRow(a, 'decline') }}
+                            style={btnGhost(RED)}
+                          >Reject</button>
+                        </div>
+                      ) : <span style={{ fontSize: 11, color: DIM }}>—</span>}
+                    </Td>
                   </tr>
                 ))}
               </tbody>

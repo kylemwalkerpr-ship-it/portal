@@ -15,6 +15,7 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
 const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
 import { IntakeTodoBanner } from '@/components/marketplace/IntakeTodoBanner'
+import { StepIndicator } from '@/app/onboarding/provider/ProviderApplicationForm'
 const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
@@ -93,13 +94,14 @@ export default function DashboardClient({ role, status, userName, userId, expect
     const applicationHref = `/onboarding/provider?type=${isConsultant ? 'consultant' : 'attorney'}`
     return (
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
-        <div style={{ textAlign: 'center', maxWidth: '460px', padding: '40px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '560px', padding: '40px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}><StepIndicator current={2} /></div>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
           <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>
             {isConsultant ? 'Consultant application under review' : 'Provider application under review'}
           </h2>
           <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
-            Thank you for applying to YouSafe. Our team verifies your details{isConsultant ? '' : ' against the official licence / register'} and emails you when a decision is made.
+            Thank you for applying to YouSafe. We&apos;ve emailed you a confirmation. Our team verifies your {isConsultant ? 'credential with the issuing body' : 'licence with your bar / regulator'} (usually 1–2 business days) and emails you when a decision is made.
             {applicationStatus === 'needs_info' ? ' We need a little more information — please update your application.' : ''}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>

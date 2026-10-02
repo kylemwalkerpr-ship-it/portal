@@ -6,7 +6,16 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getVerifiedClerkIdentity } from '@/lib/auth/clerkIdentity'
 import { findOrLinkProfile, normalizeProviderType } from '@/lib/auth/roles'
 import { normalizeReturnTo, PORTAL_ORIGIN } from '@/lib/auth/returnTo'
-import { REGULATORS } from '@/lib/provider/application'
+import {
+  CONSULTANT_CREDENTIAL_BODIES,
+  CONSULTANT_SPECIALTIES,
+  formValuesFromApplication,
+  NON_US_BAR_JURISDICTIONS,
+  OPEN_APPLICATION_STATUSES,
+  REGULATORS,
+  US_BAR_JURISDICTIONS,
+  type ProviderFormValues,
+} from '@/lib/provider/application'
 import ProviderApplicationForm from './ProviderApplicationForm'
 
 export const dynamic = 'force-dynamic'
@@ -41,13 +50,39 @@ export default async function ProviderApplicationPage({ searchParams }: { search
     normalizeProviderType(params.type) ??
     (profile?.role === 'consultant' ? 'consultant' : profile?.role === 'attorney' ? 'attorney' : null)
 
+  // Resume: prefill from the open application ("Review or update application").
+  let initialValues: ProviderFormValues = {}
+  let hasOpenApplication = false
+  if (profile && initialType) {
+    const table = initialType === 'consultant' ? 'consultant_applications' : 'attorney_applications'
+    const { data: open } = await db
+      .from(table)
+      .select('*')
+      .eq('profile_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (open && OPEN_APPLICATION_STATUSES.includes(open.status)) {
+      initialValues = formValuesFromApplication(table, open)
+      hasOpenApplication = true
+    }
+  }
+
   const doneUrl = normalizeReturnTo(params.return_to ?? null) ?? `${PORTAL_ORIGIN}/dashboard`
 
   return (
     <ProviderApplicationForm
       initialType={initialType}
       defaultFullName={profile?.full_name || identity?.fullName || ''}
+      email={identity?.email ?? profile?.email ?? null}
+      draftKey={`ys-provider-application:v2:${userId}`}
+      initialValues={initialValues}
+      hasOpenApplication={hasOpenApplication}
       regulators={REGULATORS}
+      usBarJurisdictions={US_BAR_JURISDICTIONS}
+      nonUsBarJurisdictions={NON_US_BAR_JURISDICTIONS.map((j) => j.value)}
+      credentialBodies={CONSULTANT_CREDENTIAL_BODIES}
+      specialties={CONSULTANT_SPECIALTIES}
       doneUrl={doneUrl.includes('/onboarding') ? `${PORTAL_ORIGIN}/dashboard` : doneUrl}
     />
   )

@@ -11,7 +11,27 @@ type SendArgs = {
   from?: string
 }
 
-export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: SendArgs): Promise<void> {
+/**
+ * RFC 2606 / 6761 reserved domains (example.com, *.test, *.invalid, ...) and
+ * placeholder provider addresses never receive mail. Sending to them only
+ * bounces and hurts sender reputation, so E2E/test accounts are skipped.
+ */
+export function isReservedTestEmail(value: unknown): boolean {
+  if (typeof value !== 'string') return true
+  const email = value.trim().toLowerCase()
+  const at = email.lastIndexOf('@')
+  if (at < 1) return true
+  const domain = email.slice(at + 1)
+  if (['example.com', 'example.net', 'example.org'].includes(domain)) return true
+  if (/\.(example|test|invalid|localhost)$/.test(domain) || ['example', 'test', 'invalid', 'localhost'].includes(domain)) return true
+  return false
+}
+
+export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: SendArgs): Promise<'sent' | 'skipped'> {
+  if (isReservedTestEmail(to)) {
+    console.log('[email] skipped reserved/test address')
+    return 'skipped'
+  }
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.error('[email] RESEND_API_KEY missing — skipping send to', to)
@@ -31,6 +51,41 @@ export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: Send
     const text = await res.text().catch(() => '')
     throw new Error(`Resend ${res.status}: ${text}`)
   }
+  return 'sent'
+}
+
+/** Sent right after a provider submits the short application. */
+export function providerApplicationReceivedEmail(args: {
+  fullName: string
+  lane: 'attorney' | 'consultant'
+  licensed: boolean
+}): { subject: string; html: string } {
+  const name = escapeHtml(args.fullName || 'there')
+  const verify = args.licensed
+    ? 'We are now verifying your licence with your bar / regulator.'
+    : 'We are now verifying your credential with the issuing body.'
+  const subject = args.lane === 'attorney'
+    ? 'We received your YouSafe attorney application'
+    : 'We received your YouSafe consultant application'
+  return {
+    subject,
+    html: `
+<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111;">
+  <p>Hi ${name},</p>
+  <p>Thanks for applying to join YouSafe. Your application is <strong>under review</strong>.</p>
+  <ol>
+    <li>Account created ✓</li>
+    <li>Application submitted ✓</li>
+    <li><strong>Under review</strong>: ${verify} This usually takes 1–2 business days.</li>
+    <li>Approval and profile: once approved you'll get an email and can finish your public profile (practice areas, languages, capacity, bio).</li>
+  </ol>
+  <p>You can check or update your application at any time:
+  <a href="https://portal.yousafeconsultancy.com/dashboard">portal.yousafeconsultancy.com/dashboard</a></p>
+  <p>Questions? Reply to <a href="mailto:support@yousafeconsultancy.com">support@yousafeconsultancy.com</a>.</p>
+  <p>— The YouSafe team</p>
+</body></html>`.trim(),
+  }
 }
 
 export function attorneyApprovalEmail(fullName: string): { subject: string; html: string } {
@@ -43,6 +98,8 @@ export function attorneyApprovalEmail(fullName: string): { subject: string; html
   <p>${greeting}</p>
   <p>Your application to join the YouSafe attorney panel has been approved. You can now sign in and access the attorney dashboard:</p>
   <p><a href="https://market.yousafeconsultancy.com/?ys_sign_in=1&amp;intent=attorney&amp;return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fdashboard">Sign in to your YouSafe attorney dashboard</a></p>
+  <p><strong>Next step:</strong> finish your public profile (practice areas, languages, capacity, bio) so clients can find you:
+  <a href="https://portal.yousafeconsultancy.com/dashboard/attorney/intake">complete your profile</a>.</p>
   <p>Welcome aboard.</p>
   <p>— YouSafe Consultancy</p>
 </body></html>`.trim(),
@@ -74,6 +131,8 @@ export function consultantApprovalEmail(fullName: string): { subject: string; ht
   <p>${greeting}</p>
   <p>Your application to join the YouSafe consultant panel has been approved. You can now sign in, publish your profile, and start taking work:</p>
   <p><a href="https://portal.yousafeconsultancy.com/dashboard">portal.yousafeconsultancy.com/dashboard</a></p>
+  <p><strong>Next step:</strong> finish your public profile (specialties, languages, capacity, bio) so clients can find you:
+  <a href="https://portal.yousafeconsultancy.com/dashboard/consultant/intake">complete your profile</a>.</p>
   <p>Welcome aboard.</p>
   <p>— YouSafe Consultancy</p>
 </body></html>`.trim(),
