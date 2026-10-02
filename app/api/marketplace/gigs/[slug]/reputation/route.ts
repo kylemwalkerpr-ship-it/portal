@@ -41,7 +41,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   const { data: gig, error } = await db
     .from('gigs')
-    .select('id, slug, title, provider_id, provider_type, status, avg_rating, review_count, order_count, provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)')
+    .select('id, slug, title, provider_id, provider_type, status, avg_rating, review_count, order_count, provider:profiles!gigs_provider_id_fkey(id, full_name, username)')
     .eq('slug', slug)
     .single()
 

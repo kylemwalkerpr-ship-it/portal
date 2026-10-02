@@ -20,7 +20,12 @@ const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
  * rows (drawer, discovery page, dashboards) keeps getting `select('*')` +
  * tiers + provider. The landing grid needs 13 card fields, so `view=card`
  * returns exactly those (plus rank_score, which the route's own sort paths
- * read) and never the description/pitch/provider-email payload.
+ * read) and never the description/pitch payload.
+ *
+ * PRIVACY: this route is public and runs on the service-role client, so RLS
+ * does not protect `profiles.email`. Never embed `email` (or any other private
+ * profile column) in either projection below — see
+ * tests/marketplace-public-email-leak.test.ts.
  *
  * NOTE: `cover_image_url` is deliberately NOT named here — that column is
  * optional on some deployments and naming it raises PostgREST 42703 and
@@ -28,7 +33,7 @@ const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
  * exactly as the landing snapshot does.
  */
 const CARD_VIEW_SELECT =
-  'id, slug, title, category, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, email, country)'
+  'id, slug, title, category, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, country)'
 
 const CARD_VIEW_JURISDICTIONS = ['us', 'uk', 'ca', 'au']
 
@@ -108,7 +113,7 @@ export async function GET(req: Request) {
     .select(
       cardView
         ? CARD_VIEW_SELECT
-        : '*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)',
+        : '*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, username)',
       { count: 'exact' },
     )
     .eq('status', 'active')
