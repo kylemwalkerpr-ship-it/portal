@@ -387,7 +387,7 @@
 .cw-help-a { margin: 0; padding: 0 16px 12px; font-size: 12.5px; line-height: 1.55; color: var(--ys-inkMid, #334155); }
 
 /* ── Market home: "Most requested" rail + category tiles (MarketHomeOffers.tsx) ── */
-.cw-market .cw-most-requested { padding: 28px 0 8px; }
+.cw-market .cw-most-requested { padding: 20px 0 6px; }
 .cw-market .cw-mr-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .cw-market .cw-mr-head h2 { margin: 0; font-family: var(--font-fraunces), 'Fraunces', Georgia, serif; font-size: clamp(24px, 3vw, 32px); font-weight: 500; letter-spacing: -0.02em; color: var(--ys-ink, #0F172A); }
 .cw-market .cw-mr-head a { font-size: 14px; font-weight: 600; color: var(--ys-inkMid, #334155); }
@@ -405,7 +405,7 @@
 .cw-market .cw-mr-meta { margin-top: auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 12.5px; color: var(--ys-inkMid, #334155); }
 .cw-market .cw-mr-meta b { font-size: 16px; color: var(--ys-ink, #0F172A); }
 .cw-market .cw-mr-rush { flex-basis: 100%; font-size: 12px; color: var(--ys-inkSoft, #526072); }
-.cw-market .cw-home-tiles { padding: 14px 0 6px; }
+.cw-market .cw-home-tiles { padding: 12px 0 18px; }
 .cw-market .cw-home-tiles-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .cw-market .cw-home-tile { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); background: var(--ys-vellum, #FFFFFF); color: var(--ys-ink, #0F172A); }
 .cw-market .cw-home-tile:hover { border-color: rgba(15,23,42,0.28); }
