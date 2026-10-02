@@ -517,19 +517,28 @@ export function FeaturedBriefsGrid({
           transform: translateY(-2px);
           box-shadow: none;
         }
+        /* Fixed-aspect image slot: every card has the same plate height
+           whether it has a cover, no cover, or a cover that fails to load.
+           No cover: the branded plate (paper + ink wash + category glyph).
+           A cover that fails to load hides itself and leaves the branded
+           plate at the same size. */
         .cw-market .featured .gig .plate {
           position: relative;
           overflow: hidden;
           border: 0;
           border-radius: 12px;
-          background: ${T.paper2};
+          aspect-ratio: 16 / 10;
+          background: linear-gradient(135deg, ${T.paper2} 0%, color-mix(in srgb, ${T.ink} 9%, ${T.paper2}) 100%);
           box-shadow: inset 0 0 0 1px ${T.ruleSoft};
         }
+        .cw-market .featured .gig .plate::before { display: none; }
         .cw-market .featured .gig .plate::after { display: none; }
         .cw-market .featured .gig .plate-img {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
           width: 100%;
-          height: auto;
-          aspect-ratio: 16 / 10;
+          height: 100%;
           object-fit: cover;
           object-position: center;
           border-radius: 12px;
@@ -537,6 +546,7 @@ export function FeaturedBriefsGrid({
         }
         .cw-market .featured .gig:hover .plate-img { transform: scale(1.025); }
         .cw-market .featured .gig .plate-tag {
+          z-index: 2;
           left: 10px;
           bottom: 10px;
           padding: 5px 9px;
@@ -710,7 +720,13 @@ export function FeaturedBriefsGrid({
                 <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
                   {g.cover_image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img className="plate-img" src={g.cover_image_url} alt={`${g.title || 'Service'} — preview`} loading="lazy" />
+                    <img
+                      className="plate-img"
+                      src={g.cover_image_url}
+                      alt={`${g.title || 'Service'} — preview`}
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
+                    />
                   ) : (
                     <span className="plate-glyph">{glyphFor(g)}</span>
                   )}
