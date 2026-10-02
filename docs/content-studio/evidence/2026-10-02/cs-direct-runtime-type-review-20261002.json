@@ -1,0 +1,27 @@
+{
+  "verdict": "PASS",
+  "review_scope": "Independent read-only review of the direct runtime tiny test-only type fix; no merge or deployment approval.",
+  "worktree": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-reviewed-20261002",
+  "reviewed_head": "f0b6d9602b659f24326cc566ca66dccbd4ca128f",
+  "reviewed_target": "tests/content-studio-v3/commandAdmission.test.ts",
+  "reviewed_target_sha256": "95b40de82f4b3ba134bf11ae34e15053f5e283fcf46e5e0456158ab1d24a04c1",
+  "reviewed_target_git_blob": "e78dddc01bd57247638718e1a969f6458dba98fa",
+  "proof_read": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/cs-direct-runtime-type-fix-20261002.json",
+  "instructions_read": [
+    "worktree AGENTS.md",
+    "/Users/phantomdarne/Documents/GitHub/AGENTS.md"
+  ],
+  "transport_type_review": "Actual RpcTransport.rpc is a nongeneric, nonoverloaded method with the exact RPC literal and typed argument object, returning Promise<{data: unknown; error: unknown | null}>. Parameters<RpcTransport['rpc']> gives the correct two-element call tuple. jest.MockedFunction<RpcTransport['rpc']> checks the implementation and preserves typed mock.calls.",
+  "change_review": "Only a type import, typed mock declaration/rest arguments, and removal of the transport as any cast changed. The rest arguments have no runtime effects on this mock's returned receipt.",
+  "assertions_preserved": "All original expectations remain unchanged, including one RPC call, exact studio_core.admit_run name, accepted receipt, and malformed receipt ADMISSION_UNAVAILABLE rejection.",
+  "candidate_path_review": "Fresh git status --porcelain and git diff --name-only list only the target. No other tracked changes or untracked files were reported.",
+  "diff_check": "Fresh git diff --check exit 0; empty output.",
+  "independent_type_check": "PASS: fresh TypeScript 6.0.3 createProgram/getPreEmitDiagnostics, process exit 0. In-memory HEAD baseline reproduces only TS2493; actual working file has zero diagnostics.",
+  "type_check_scope": "Root is the target test; imported worktree sources are contracts.ts, repository.ts, commandAdmission.ts. Existing shared @types/jest 30.0.0 and @types/node 25.9.1 were read from yousafe-portal/node_modules.",
+  "type_check_options": "Parsed worktree tsconfig.json with noEmit:true, incremental:false, types:['jest','node'], typeRoots:['/Users/phantomdarne/Documents/GitHub/yousafe-portal/node_modules/@types'], ignoreDeprecations:'6.0'. Baseline used compiler-host readFile override only; no disk edits.",
+  "focused_jest": "NOT RUN per implementation proof: isolated worktree cannot resolve ts-jest transformer. Reviewer did not rerun Jest or alter dependencies.",
+  "qualification": "Focused type preflight is not a full repository typecheck, lockfile graph check, hosted CI check, or runtime Jest result. Root must verify hosted checks against the exact committed/pushed head.",
+  "must_fix": [],
+  "review_mutations": "Only this report was written outside the worktree. No source, dependency, config, SQL, harness, commit, push, or deployment changes.",
+  "production_sql_merge": "Held separately; this PASS does not approve production SQL merge."
+}

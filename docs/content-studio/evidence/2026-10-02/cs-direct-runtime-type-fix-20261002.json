@@ -1,0 +1,32 @@
+{
+  "task": "direct runtime tiny type fix only",
+  "worktree": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-reviewed-20261002",
+  "branch": "feat/studio-command-admission-reviewed-20261002",
+  "head": "f0b6d9602b659f24326cc566ca66dccbd4ca128f",
+  "target": "tests/content-studio-v3/commandAdmission.test.ts",
+  "baseline_working_git_blob_hash_before_type_fix": "8218343d7d6fdc58c03495db8860147907d45a0d",
+  "working_git_blob_hash_after_type_fix": "e78dddc01bd57247638718e1a969f6458dba98fa",
+  "working_sha256_after_type_fix": "95b40de82f4b3ba134bf11ae34e15053f5e283fcf46e5e0456158ab1d24a04c1",
+  "changed_paths": [
+    "tests/content-studio-v3/commandAdmission.test.ts"
+  ],
+  "git_status_short": "M tests/content-studio-v3/commandAdmission.test.ts",
+  "git_diff_check_exit_code": 0,
+  "git_diff_check_output": "",
+  "exact_working_diff_from_HEAD": "diff --git a/tests/content-studio-v3/commandAdmission.test.ts b/tests/content-studio-v3/commandAdmission.test.ts\nindex 67b44317..e78dddc0 100644\n--- a/tests/content-studio-v3/commandAdmission.test.ts\n+++ b/tests/content-studio-v3/commandAdmission.test.ts\n@@ -1,6 +1,6 @@\n import { STUDIO_ACTIONS, decodeRunCommand, hashRunCommand, type RunCommandInput, type VerifiedCommandContext } from '@/lib/studioRuntime/contracts'\n import { admitRun } from '@/lib/studioRuntime/commandAdmission'\n-import { createStudioRunRepository } from '@/lib/studioRuntime/repository'\n+import { createStudioRunRepository, type RpcTransport } from '@/lib/studioRuntime/repository'\n \n const command: RunCommandInput = {\n   actionKind: 'INGEST', subjectId: 'subject-1', inputRef: 'sha256:sealed-input', idempotencyKey: 'key-1',\n@@ -74,8 +74,8 @@ describe('admission orchestration and RPC adapter', () => {\n     })).toEqual({ kind: 'rejected', reason: 'AUTHORITY_BINDING_UNAVAILABLE' })\n   })\n   test('calls only the exact atomic SQL RPC and rejects malformed RPC receipts', async () => {\n-    const rpc = jest.fn(async () => ({ data: { kind: 'accepted', runId: 'r', status: 'QUEUED', lastEventSequence: 1 }, error: null }))\n-    const repo = createStudioRunRepository({ rpc } as any)\n+    const rpc: jest.MockedFunction<RpcTransport['rpc']> = jest.fn(async (..._args: Parameters<RpcTransport['rpc']>) => ({ data: { kind: 'accepted', runId: 'r', status: 'QUEUED', lastEventSequence: 1 }, error: null }))\n+    const repo = createStudioRunRepository({ rpc })\n     await expect(repo.admit(command, context, hashRunCommand(command), { runId: 'r', stageId: 's', eventId: 'e' }))\n       .resolves.toMatchObject({ kind: 'accepted' })\n     expect(rpc).toHaveBeenCalledTimes(1)\n",
+  "checks": [
+    {
+      "name": "focused TypeScript program: target test and imported modules",
+      "result": "PASS"
+    },
+    {
+      "name": "focused Jest",
+      "result": "NOT RUN: Jest failed to resolve ts-jest transformer from the isolated worktree; no dependency install performed"
+    },
+    {
+      "name": "open target file process reconciliation",
+      "result": "No open handle found at inspection time; process inventory output was limited to executable-name counts"
+    }
+  ],
+  "scope": "Only the assigned test file was edited. No commit, push, dependency, config, SQL, historical job, or harness changes."
+}

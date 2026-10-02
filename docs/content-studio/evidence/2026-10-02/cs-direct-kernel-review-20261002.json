@@ -1,0 +1,1053 @@
+{
+  "status": "PASS",
+  "reviewer": "Independent GPT-6.1 Sol; no cross-family claim",
+  "reviewScope": "All four complete contract source/test files, plus independent Node22 direct runtime probes",
+  "runtime": "v22.22.2",
+  "typescript": "6.0.3",
+  "qualification": "Install-free transpile runtime preflight using existing TS6.0.3; authored Jest tests and exact-lock hosted CI not run by this reviewer. Exact-lock CI remains required.",
+  "files": [
+    {
+      "path": "lib/contentStudioV3/contracts/registry.ts",
+      "bytes": 10755,
+      "sha256": "07cc998ce16e61f9848bc2a9ad6b5c238b86edfdc3c5e532ca7829d50d7ff735"
+    },
+    {
+      "path": "lib/contentStudioV3/contracts/schema.ts",
+      "bytes": 33725,
+      "sha256": "58c10aa8ae57519797f67273549ebe45bd6abe713ce1ca966224ce829660a16c"
+    },
+    {
+      "path": "lib/contentStudioV3/contracts/hashes.ts",
+      "bytes": 3848,
+      "sha256": "d31258f4d0a64de0c444296088ccdf3206ba15752f4eac08446ce27f7eeeaf28"
+    },
+    {
+      "path": "tests/content-studio-v3/contracts.test.ts",
+      "bytes": 18977,
+      "sha256": "fa1ee60086ca8e7ff48c6c7113c6fcfc775ac9f9b367e701c62fe668895587fb"
+    }
+  ],
+  "immutableRegistry": true,
+  "cases": [
+    {
+      "name": "ordinary JSON baseline",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "issues": [],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "JSON stringify/parse round trip",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "issues": [],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "negative finite readability/Flesch and transition density above100",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "issues": [],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "all50 metric kinds present with registered contexts",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "issues": [],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "extra subject",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.subject.extra",
+            "code": "extra_property",
+            "message": "Unexpected property extra."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "array masquerade subject",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.subject",
+            "code": "invalid_provenance",
+            "message": "Subject must be a plain object."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array sparse",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds sparse",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes sparse",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings sparse",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array sparse",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array extra",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds extra",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes extra",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings extra",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array extra",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array symbol",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds symbol",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes symbol",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings symbol",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array symbol",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array numeric nonindex",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds numeric nonindex",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes numeric nonindex",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings numeric nonindex",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array numeric nonindex",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array noncanonical index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds noncanonical index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes noncanonical index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings noncanonical index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array noncanonical index",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array negative zero index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds negative zero index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes negative zero index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings negative zero index",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array negative zero index",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array accessor",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds accessor",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes accessor",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings accessor",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array accessor",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array hidden element",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds hidden element",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes hidden element",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings hidden element",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array hidden element",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric array custom prototype getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "evidenceIds custom prototype getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.evidenceIds",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "inputHashes custom prototype getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.inputHashes",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "warnings custom prototype getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount.warnings",
+            "code": "invalid_provenance",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured array custom prototype getter",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "nested subject getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.searchVolume.subject",
+            "code": "invalid_provenance",
+            "message": "Subject must be a plain object."
+          },
+          {
+            "path": "$.observations.searchVolume",
+            "code": "invalid_relationship",
+            "message": "Query metrics require query subject and query/country scope."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "nested scope getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.searchVolume.scope",
+            "code": "invalid_provenance",
+            "message": "Scope must be an object."
+          },
+          {
+            "path": "$.observations.searchVolume",
+            "code": "invalid_relationship",
+            "message": "Query metrics require query subject and query/country scope."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "nested window getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.searchVolume.window",
+            "code": "invalid_provenance",
+            "message": "Window must be an object."
+          },
+          {
+            "path": "$.observations.searchVolume",
+            "code": "invalid_relationship",
+            "message": "Query metrics require query subject and query/country scope."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "nested collectionRef getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.searchVolume.collectionRef",
+            "code": "invalid_provenance",
+            "message": "Collection reference must be null or an object."
+          },
+          {
+            "path": "$.observations.searchVolume",
+            "code": "invalid_relationship",
+            "message": "Query metrics require query subject and query/country scope."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "root getter schemaVersion",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$",
+            "code": "invalid_snapshot",
+            "message": "Snapshot must be a plain JSON object."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "observation getter status",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.wordCount",
+            "code": "invalid_type",
+            "message": "Observation must be an object."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "metric object nested getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.altTextString.value[0]",
+            "code": "invalid_type",
+            "message": "Expected an object."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "extra object property containing getter",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.extra",
+            "code": "extra_property",
+            "message": "Unexpected property extra."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "cycle",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.extra",
+            "code": "extra_property",
+            "message": "Unexpected property extra."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON undefined 60",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON number 61",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON number 62",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON bigint 63",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON function 64",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON symbol 65",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 66",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 67",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 68",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 69",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 70",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 71",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 72",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured nonJSON object 73",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured cycle",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured inherited iterator getter",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "structured forged Array prototype iterator content corruption",
+      "pass": true,
+      "detail": {
+        "rejected": true,
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "forged Array prototype forEach callback corruption",
+      "pass": true,
+      "detail": {
+        "ok": false,
+        "issues": [
+          {
+            "path": "$.observations.schemaMarkupType.value",
+            "code": "invalid_value",
+            "message": "Expected a dense JSON array with at most 100 entries and no extra properties."
+          }
+        ],
+        "getterCalls": 0
+      }
+    },
+    {
+      "name": "valid strictJSON delegation and alias preservation",
+      "pass": true,
+      "detail": {
+        "golden": true,
+        "delegate": true
+      }
+    },
+    {
+      "name": "byte sensitivity and buffer slices",
+      "pass": true,
+      "detail": {
+        "pass": true
+      }
+    },
+    {
+      "name": "immutable registry and generated schema",
+      "pass": true,
+      "detail": {
+        "metricCount": 50,
+        "definitionSetHash": "915b0857bf00328d07eee5a89d57dcb93e501a73df01ae9d43e2363b714401f3"
+      }
+    }
+  ],
+  "total": 81,
+  "passed": 81,
+  "getterCalls": 0,
+  "sourceChanges": false,
+  "freeze": true,
+  "command": "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node /Users/phantomdarne/Documents/GitHub/portal-worktrees/cs-direct-kernel-review-20261002.probe.cjs",
+  "finalProof": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/cs-direct-kernel-correction-20261002.json",
+  "finalReviewNotes": [
+    "All81 independent direct Node22 probes executed after writer pause; exact hashes stable before/after load and probes.",
+    "Standard/frozen/null-prototype ordinary JSON and all50 present metrics accepted; malformed dense/sparse/descriptors and inherited/forged array prototypes rejected without getter invocation.",
+    "V2 delegation/golden bytes and exact-byte Unicode/newline/buffer behavior preserved.",
+    "Authored Jest and exact-lock hosted CI not executed by this reviewer; this review remains qualified existing-TS transpile runtime preflight."
+  ]
+}
