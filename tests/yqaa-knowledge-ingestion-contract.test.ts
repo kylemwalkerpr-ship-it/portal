@@ -26,6 +26,13 @@ describe('YQAA atomic ingestion contract', () => {
     expect(sync).not.toMatch(/method: 'DELETE'/)
   })
 
+  test('finalizes over the Management SQL endpoint when CI credentials exist (8s PostgREST timeout)', () => {
+    expect(sync).toContain("createManagementSqlClient({ projectRef: MGMT_REF, accessToken: MGMT_TOKEN, maxAttempts: 1 })")
+    expect(sync).toContain('const RUN_ID_RE = /^yqaa_kb_\\d{8}T\\d{6}Z$/')
+    expect(sync).toMatch(/if \(!RUN_ID_RE\.test\(String\(runId\)\)\) throw/)
+    expect(sync).toContain('select public.finalize_yqaa_knowledge_ingestion(')
+  })
+
   test('finalizer counts, replaces, and cleans up the same run in one transaction', () => {
     expect(tables).not.toContain('yqaa_knowledge_single_running_ingestion_idx')
     expect(tables).not.toMatch(/create\s+unique\s+index[^;]*on\s+public\.yqaa_knowledge_ingestion_runs[^;]*where\s+status\s*=\s*'running'/i)
