@@ -13,7 +13,11 @@
  *   --frontend-api U  Clerk Frontend API origin for --check (default: derived from
  *                     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, else https://clerk.portal.yousafeconsultancy.com)
  *
- * Env: CLERK_SECRET_KEY, SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY.
+ * Env: CLERK_SECRET_KEY. Optional SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (direct
+ * read + relink). Without them, pass --providers-json (fresh export of
+ * profiles via Supabase MCP) and the relink is emitted as SQL files
+ * (1-backup / 2-relink / 3-restore, all 0600 next to the CSV) to run through
+ * the Supabase MCP execute_sql tool: backup first, then relink.
  *
  * Safety:
  *   - Dry run unless --apply. Dry run performs only GET requests.
@@ -44,6 +48,10 @@ import {
   type ProviderProfile,
   summarizePlan,
   usernameOnlySupport,
+  backupProfilesSql,
+  type ProfileLink,
+  relinkProfilesSql,
+  restoreProfilesSql,
 } from '../../lib/clerk/providerProvisioning'
 
 const CLERK_API = 'https://api.clerk.com/v1'
@@ -152,6 +160,7 @@ async function main() {
   console.log(`Mode: ${apply ? 'APPLY' : 'DRY RUN'} · instance: ${isProductionSecretKey(key) ? 'production' : 'development'} · Clerk users: ${clerkUsers.length} · providers: ${scoped.length}`)
   printPlan(plan)
   console.log('Summary:', JSON.stringify(summary))
+  console.log(`Profile relink mode: ${db ? 'direct (service-role key present)' : 'SQL files for Supabase MCP execute_sql (backup -> relink -> restore)'}`)
 
   let capability: Awaited<ReturnType<typeof instanceCheck>> | null = null
   if (flag('--check') || apply) {
@@ -167,7 +176,10 @@ async function main() {
     console.log('Dry run only: nothing was created, updated or written. Re-run with --apply to provision.')
     return
   }
-  if (!db) die('--apply requires Supabase credentials (cannot link profiles from --providers-json).')
+  // Without Supabase credentials (the normal case on the operator box) the
+  // relink is NOT done here: Clerk users are created, then link SQL files are
+  // written next to the credentials CSV for the Supabase MCP (execute_sql).
+  const linkMode: 'db' | 'sql' = db ? 'db' : 'sql'
   if (summary.username_only > 0 && !capability?.usernameOnlyAccepted) {
     die('Instance does not accept username-only users yet (enable Username, make Email optional, keep Password on). Nothing was written.')
   }
@@ -189,6 +201,8 @@ async function main() {
   fs.writeSync(fd, credentialsCsvLine(CREDENTIALS_CSV_HEADER))
 
   const fullNames = new Map(scoped.map((p) => [p.id, p.full_name]))
+  const previousIds = new Map(scoped.map((p) => [p.id, p.clerk_user_id]))
+  const links: ProfileLink[] = []
   let created = 0
   let linked = 0
   const failures: string[] = []
@@ -209,12 +223,15 @@ async function main() {
           await clerk('GET', `/users/${encodeURIComponent(clerkUserId as string)}`)
           linked += 1
         }
-        const { error } = await db
-          .from('profiles')
-          .update({ clerk_user_id: clerkUserId })
-          .eq('id', item.profileId)
-          .not('clerk_user_id', 'like', 'user_%')
-        if (error) throw new Error(`profile link failed: ${error.message}`)
+        links.push({ profileId: item.profileId, clerkUserId: clerkUserId as string, previousClerkUserId: previousIds.get(item.profileId) ?? null })
+        if (linkMode === 'db') {
+          const { error } = await db
+            .from('profiles')
+            .update({ clerk_user_id: clerkUserId })
+            .eq('id', item.profileId)
+            .not('clerk_user_id', 'like', 'user_%')
+          if (error) throw new Error(`profile link failed: ${error.message}`)
+        }
         console.log(`ok   ${item.action.padEnd(13)} ${item.username} -> ${clerkUserId}`)
       } catch (e) {
         failures.push(`${item.username}: ${(e as Error).message}`)
@@ -223,6 +240,26 @@ async function main() {
     }
   } finally {
     fs.closeSync(fd)
+  }
+  if (linkMode === 'sql') {
+    const stamp = issuedAt.toISOString().replace(/[:.]/g, '-')
+    const dir = path.dirname(resolved)
+    const write = (name: string, body: string) => {
+      const file = path.join(dir, name)
+      const handle = fs.openSync(file, 'wx', 0o600)
+      fs.writeSync(handle, `${body}\n`)
+      fs.closeSync(handle)
+      return file
+    }
+    const ids = links.map((l) => l.profileId)
+    const files = [
+      write(`provider-relink-${stamp}.1-backup.sql`, backupProfilesSql(ids.length ? ids : scoped.map((p) => p.id))),
+      write(`provider-relink-${stamp}.2-relink.sql`, relinkProfilesSql(links)),
+      write(`provider-relink-${stamp}.3-restore.sql`, restoreProfilesSql(links)),
+      write(`provider-relink-${stamp}.links.json`, JSON.stringify(links, null, 2)),
+    ]
+    console.log(`Profiles NOT relinked yet (no Supabase credentials). Run via Supabase MCP execute_sql, in order:`)
+    for (const f of files) console.log(`  ${f}`)
   }
   console.log(`Done. created=${created} linked=${linked} failed=${failures.length}. Credentials: ${resolved} (0600).`)
   if (failures.length) process.exitCode = 2

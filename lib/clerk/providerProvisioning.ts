@@ -219,3 +219,72 @@ export function usernameOnlySupport(environment: any): { usernameEnabled: boolea
     usernameOnlyAccepted: usernameEnabled && !emailRequired && passwordEnabled,
   }
 }
+
+// ---------------------------------------------------------------------------
+// SQL link mode: no service-role key on the operator box. Clerk users are
+// created with CLERK_SECRET_KEY; the profiles.clerk_user_id relink is applied
+// separately through the Supabase MCP (execute_sql) using these statements,
+// after a backup SELECT of the affected rows.
+// ---------------------------------------------------------------------------
+
+export interface ProfileLink {
+  profileId: string
+  clerkUserId: string
+  /** The value the profile is expected to hold now (placeholder). */
+  previousClerkUserId: string | null
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CLERK_ID_RE = /^user_[A-Za-z0-9]{10,64}$/
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+function assertLinks(links: ProfileLink[]): void {
+  for (const l of links) {
+    if (!UUID_RE.test(l.profileId)) throw new Error(`invalid profile id: ${l.profileId}`)
+    if (!CLERK_ID_RE.test(l.clerkUserId)) throw new Error(`invalid Clerk user id for ${l.profileId}`)
+  }
+}
+
+/** Read-only backup of every row the relink will touch (run first, save the result). */
+export function backupProfilesSql(profileIds: string[]): string {
+  for (const id of profileIds) if (!UUID_RE.test(id)) throw new Error(`invalid profile id: ${id}`)
+  return (
+    `select id, clerk_user_id, email, username, role, status, updated_at\n` +
+    `from public.profiles\nwhere id in (${profileIds.map(sqlLiteral).join(', ')})\norder by username;`
+  )
+}
+
+/**
+ * Guarded relink: only rows still on a placeholder (`inactive:%`) or on the
+ * exact previous value are updated; already-linked `user_%` rows are never
+ * touched. RETURNING lets the operator confirm the count.
+ */
+export function relinkProfilesSql(links: ProfileLink[]): string {
+  assertLinks(links)
+  if (links.length === 0) return '-- nothing to relink'
+  const values = links
+    .map((l) => `  (${sqlLiteral(l.profileId)}::uuid, ${sqlLiteral(l.clerkUserId)}, ${l.previousClerkUserId ? sqlLiteral(l.previousClerkUserId) : 'null'})`)
+    .join(',\n')
+  return (
+    `update public.profiles p\nset clerk_user_id = v.clerk_user_id\nfrom (values\n${values}\n) as v(id, clerk_user_id, previous)\n` +
+    `where p.id = v.id\n  and p.clerk_user_id not like 'user\\_%'\n  and (p.clerk_user_id like 'inactive:%' or p.clerk_user_id = v.previous)\n` +
+    `returning p.id, p.username, p.clerk_user_id;`
+  )
+}
+
+/** Exact inverse of relinkProfilesSql (restores the previous placeholder ids). */
+export function restoreProfilesSql(links: ProfileLink[]): string {
+  assertLinks(links)
+  const restorable = links.filter((l) => l.previousClerkUserId)
+  if (restorable.length === 0) return '-- nothing to restore'
+  const values = restorable
+    .map((l) => `  (${sqlLiteral(l.profileId)}::uuid, ${sqlLiteral(l.clerkUserId)}, ${sqlLiteral(l.previousClerkUserId as string)})`)
+    .join(',\n')
+  return (
+    `update public.profiles p\nset clerk_user_id = v.previous\nfrom (values\n${values}\n) as v(id, clerk_user_id, previous)\n` +
+    `where p.id = v.id and p.clerk_user_id = v.clerk_user_id\nreturning p.id, p.username, p.clerk_user_id;`
+  )
+}

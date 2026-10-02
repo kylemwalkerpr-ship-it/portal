@@ -318,3 +318,38 @@ describe('market gate modal return target', () => {
     expect(gatedReturnTo('not a url', 'order')).toBe('https://market.yousafeconsultancy.com/')
   })
 })
+
+describe('SQL link mode (relink through Supabase MCP, no service-role key)', () => {
+  const { backupProfilesSql, relinkProfilesSql, restoreProfilesSql } = require('@/lib/clerk/providerProvisioning')
+  const links = [
+    { profileId: '18636eef-d115-41b4-8aeb-0baa71e8618b', clerkUserId: 'user_3DAbcdefGhijkLmnop', previousClerkUserId: 'inactive:providers.invalid:kyle-walker-academic-editor' },
+  ]
+
+  test('backup is a read-only select of exactly the affected rows', () => {
+    const sql = backupProfilesSql(links.map((l) => l.profileId))
+    expect(sql.startsWith('select ')).toBe(true)
+    expect(sql).toContain("'18636eef-d115-41b4-8aeb-0baa71e8618b'")
+    expect(sql).not.toMatch(/\b(update|delete|insert)\b/i)
+  })
+
+  test('relink only touches placeholder rows and never an existing user_ link', () => {
+    const sql = relinkProfilesSql(links)
+    expect(sql).toContain("set clerk_user_id = v.clerk_user_id")
+    expect(sql).toContain("p.clerk_user_id not like 'user\\_%'")
+    expect(sql).toContain("p.clerk_user_id like 'inactive:%'")
+    expect(sql).toContain('returning p.id, p.username, p.clerk_user_id;')
+    expect(relinkProfilesSql([])).toBe('-- nothing to relink')
+  })
+
+  test('restore is the exact inverse, guarded on the new id', () => {
+    const sql = restoreProfilesSql(links)
+    expect(sql).toContain('set clerk_user_id = v.previous')
+    expect(sql).toContain('p.clerk_user_id = v.clerk_user_id')
+    expect(sql).toContain("'inactive:providers.invalid:kyle-walker-academic-editor'")
+  })
+
+  test('rejects injection-shaped ids', () => {
+    expect(() => relinkProfilesSql([{ ...links[0], clerkUserId: "user_x'; drop table profiles;--" }])).toThrow()
+    expect(() => backupProfilesSql(["1' or '1'='1"])).toThrow()
+  })
+})
