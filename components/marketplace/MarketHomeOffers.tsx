@@ -19,20 +19,13 @@ export function MostRequestedRail({ cards }: { cards: MostRequestedCard[] }) {
         <ul className="cw-mr-grid">
           {cards.map((card, i) => (
             <li key={card.key}>
-              <a className={`cw-mr-card is-${card.kind}${card.imageUrl ? ' has-media' : ''}`} href={card.href}>
+              <a className={`cw-mr-card is-${card.kind}`} href={card.href}>
+                {/* Plain <img>, no wrapper or redundant attributes: the landing has a
+                    byte budget (market-root payload gate) and every attribute ships
+                    twice (HTML + RSC payload). CSS aspect-ratio reserves the box, so
+                    no width/height is needed for CLS. First row is eager (default). */}
                 {card.imageUrl ? (
-                  <span className="cw-mr-media">
-                    {/* Plain <img>: static markup, no hydration, no Worker image work.
-                        The first row sits near the fold, so it loads eagerly. */}
-                    <img
-                      src={card.imageUrl}
-                      alt=""
-                      width={1200}
-                      height={800}
-                      loading={i < 4 ? 'eager' : 'lazy'}
-                      decoding="async"
-                    />
-                  </span>
+                  <img src={card.imageUrl} alt="" loading={i < 4 ? undefined : 'lazy'} />
                 ) : null}
                 <span className="cw-mr-kicker">{card.kicker}</span>
                 <span className="cw-mr-title">{card.title}</span>

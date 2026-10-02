@@ -396,9 +396,8 @@
 .cw-market .cw-mr-card { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 168px; padding: 16px; border-radius: 14px; background: var(--ys-vellum, #FFFFFF); border: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); box-shadow: 0 6px 18px rgba(15,23,42,0.04); color: var(--ys-ink, #0F172A); }
 .cw-market .cw-mr-card:hover { border-color: rgba(15,23,42,0.28); }
 .cw-market .cw-mr-card.is-pack { background: var(--ys-paper2, #F1F3F5); }
-.cw-market .cw-mr-card.has-media { padding-top: 0; overflow: hidden; }
-.cw-market .cw-mr-media { display: block; margin: 0 -16px 6px; aspect-ratio: 3 / 2; background: var(--ys-paper2, #F1F3F5); overflow: hidden; }
-.cw-market .cw-mr-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cw-market .cw-mr-card:has(> img) { padding-top: 0; overflow: hidden; }
+.cw-market .cw-mr-card > img { display: block; width: calc(100% + 32px); max-width: none; margin: 0 -16px 6px; aspect-ratio: 1280 / 769; object-fit: cover; background: var(--ys-paper2, #F1F3F5); }
 .cw-market .cw-mr-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ys-inkSoft, #526072); }
 .cw-market .cw-mr-title { font-size: 16px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; }
 .cw-market .cw-mr-outcome { font-size: 13px; line-height: 1.45; color: var(--ys-inkMid, #334155); }

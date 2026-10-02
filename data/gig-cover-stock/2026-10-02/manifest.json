@@ -1,7 +1,8 @@
 {
   "bucket": "gig-gallery",
   "created": "2026-10-02",
-  "license": "Unsplash License — free commercial use, no attribution required (https://unsplash.com/license)",
+  "format": "1280x769 WebP (matches the existing gig cover plate ratio)",
+  "license": "Unsplash License - free commercial use, no attribution required (https://unsplash.com/license)",
   "note": "Stock topic photos only. They illustrate the service topic; the people shown are not the providers.",
   "covers": [
     {
@@ -11,7 +12,7 @@
       "id": "50c98381-a790-57fc-8c29-f184fbc9f1ff",
       "file": "50c98381-a790-57fc-8c29-f184fbc9f1ff-stock-cover.webp",
       "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/4fe28af9-942f-4f2e-90f8-128b382bd0bb/50c98381-a790-57fc-8c29-f184fbc9f1ff-stock-cover.webp",
-      "size": 32992,
+      "size": 33362,
       "source_page": "https://unsplash.com/photos/person-writing-on-white-paper-GJao3ZTX9gU",
       "photographer": "Cytonn Photography",
       "alt": "Hand completing a paper application form with a pen"
@@ -23,7 +24,7 @@
       "id": "0e102af8-043f-5359-a7a9-17c71c7f11da",
       "file": "0e102af8-043f-5359-a7a9-17c71c7f11da-stock-cover.webp",
       "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/8098a9ac-c6d4-4860-a3ab-adc0db42e10a/0e102af8-043f-5359-a7a9-17c71c7f11da-stock-cover.webp",
-      "size": 80990,
+      "size": 83776,
       "source_page": "https://unsplash.com/photos/united-states-passport-on-world-map-Cg3fyYZMQ58",
       "photographer": "Global Residence Index",
       "alt": "United States passport resting open on a world map"
@@ -35,7 +36,7 @@
       "id": "b9ef625b-abe9-56d5-a5b8-9c5e34f79ce3",
       "file": "b9ef625b-abe9-56d5-a5b8-9c5e34f79ce3-stock-cover.webp",
       "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/d032b787-fad9-47d5-bce4-c85681534d5e/b9ef625b-abe9-56d5-a5b8-9c5e34f79ce3-stock-cover.webp",
-      "size": 29810,
+      "size": 31194,
       "source_page": "https://unsplash.com/photos/man-writing-on-paper-OQMZwNd3ThU",
       "photographer": "Scott Graham",
       "alt": "Hands drafting a letter on paper at a desk"
@@ -47,7 +48,7 @@
       "id": "7fb6b098-adf0-5ad7-8101-995d2433274e",
       "file": "7fb6b098-adf0-5ad7-8101-995d2433274e-stock-cover.webp",
       "path": "78ffc497-84dc-47d9-bf09-706932a2435d/f77e35d4-a3e5-44a2-be90-85ae35236824/7fb6b098-adf0-5ad7-8101-995d2433274e-stock-cover.webp",
-      "size": 49568,
+      "size": 49594,
       "source_page": "https://unsplash.com/photos/person-writing-on-brown-wooden-table-near-white-ceramic-mug-s9CC2SKySJM",
       "photographer": "Unseen Studio",
       "alt": "Student writing an essay draft at a wooden table"
@@ -59,7 +60,7 @@
       "id": "982aaf9f-b9bb-5d04-9460-e82a13e4ea3e",
       "file": "982aaf9f-b9bb-5d04-9460-e82a13e4ea3e-stock-cover.webp",
       "path": "78ffc497-84dc-47d9-bf09-706932a2435d/3dd8743f-ab06-49e2-83ef-50ff291a317b/982aaf9f-b9bb-5d04-9460-e82a13e4ea3e-stock-cover.webp",
-      "size": 53574,
+      "size": 54252,
       "source_page": "https://unsplash.com/photos/photo-of-library-with-turned-on-lights-sfL_QOnmy00",
       "photographer": "Janko Ferlič",
       "alt": "Library stacks lit by hanging lights"
@@ -71,7 +72,7 @@
       "id": "6450cd9b-2178-52f4-8765-de654f274b08",
       "file": "6450cd9b-2178-52f4-8765-de654f274b08-stock-cover.webp",
       "path": "18636eef-d115-41b4-8aeb-0baa71e8618b/e069c0fd-dc2c-4b54-afb7-9e6c3057f5a3/6450cd9b-2178-52f4-8765-de654f274b08-stock-cover.webp",
-      "size": 126990,
+      "size": 129072,
       "source_page": "https://unsplash.com/photos/person-writing-on-a-book-fMD_Cru6OTk",
       "photographer": "Cathryn Lavery",
       "alt": "Writing a statement in a notebook beside coffee"
@@ -83,7 +84,7 @@
       "id": "59e13dc2-a78e-5b04-939f-4300f3a5d34d",
       "file": "59e13dc2-a78e-5b04-939f-4300f3a5d34d-stock-cover.webp",
       "path": "18636eef-d115-41b4-8aeb-0baa71e8618b/d59bd9d1-d882-4424-8f9a-831da83bf0b0/59e13dc2-a78e-5b04-939f-4300f3a5d34d-stock-cover.webp",
-      "size": 53906,
+      "size": 57026,
       "source_page": "https://unsplash.com/photos/white-printer-paper-beside-silver-laptop-computer-7iSEHWsxPLw",
       "photographer": "Markus Winkler",
       "alt": "Resume on a clipboard beside a laptop"
@@ -95,7 +96,7 @@
       "id": "ff1ab8a7-0abf-55a7-b04c-e0fa78a697d4",
       "file": "ff1ab8a7-0abf-55a7-b04c-e0fa78a697d4-stock-cover.webp",
       "path": "18636eef-d115-41b4-8aeb-0baa71e8618b/1364739b-a425-484c-9af2-0197ea15666c/ff1ab8a7-0abf-55a7-b04c-e0fa78a697d4-stock-cover.webp",
-      "size": 109826,
+      "size": 111848,
       "source_page": "https://unsplash.com/photos/papers-pens-and-highlighters-are-laid-out-for-studying-h6pUcouJ9BA",
       "photographer": "sara sanchez sabogal",
       "alt": "Proposal pages in a binder with pens and highlighters"
@@ -107,7 +108,7 @@
       "id": "0ddda99b-3047-51fe-b33d-1a1eb98acd3c",
       "file": "0ddda99b-3047-51fe-b33d-1a1eb98acd3c-stock-cover.webp",
       "path": "18636eef-d115-41b4-8aeb-0baa71e8618b/76608532-0a3a-42e6-ae03-10d0d70c07d2/0ddda99b-3047-51fe-b33d-1a1eb98acd3c-stock-cover.webp",
-      "size": 35114,
+      "size": 36024,
       "source_page": "https://unsplash.com/photos/person-holding-on-red-pen-while-writing-on-book-333oj7zFsdg",
       "photographer": "lilartsy",
       "alt": "Red pen marking corrections on a manuscript"
@@ -119,7 +120,7 @@
       "id": "14823fc4-2f6e-5cc7-ab2f-34fe01daaa5d",
       "file": "14823fc4-2f6e-5cc7-ab2f-34fe01daaa5d-stock-cover.webp",
       "path": "18636eef-d115-41b4-8aeb-0baa71e8618b/d5328b65-d775-41f1-af06-201e534f7b09/14823fc4-2f6e-5cc7-ab2f-34fe01daaa5d-stock-cover.webp",
-      "size": 95314,
+      "size": 93888,
       "source_page": "https://unsplash.com/photos/pile-of-open-paperback-books-LUGuCtvlk1Q",
       "photographer": "Gülfer ERGİN",
       "alt": "Pile of open reference books"
