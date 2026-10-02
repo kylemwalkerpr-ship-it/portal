@@ -134,4 +134,183 @@ describe('Studio claim support/freshness v1', () => {
     expect(invalidCalendarTime.checkedAt).toBeNull()
     expect(evaluateStudioClaimFreshness(null as unknown as ClaimEvaluationInputV1).decision).toBe('ABSTAIN')
   })
+
+  it('uses a closed volatility enum and always returns a finite age or null', () => {
+    for (const volatility of ['toString', 'constructor', '__proto__', 'valueOf', 'unknown', 1, null, {}, []]) {
+      const result = evaluateStudioClaimFreshness(input({ claim: { ...input().claim, volatility } as any }))
+      expect(result.decision).toBe('ABSTAIN')
+      expect(result.freshnessMaxAgeMs).toBeNull()
+      expect(result.reasonCodes).toContain('INPUT_INVALID_OR_UNBOUNDED')
+    }
+    for (const volatility of ['mutable-rule', 'procedure', 'stable-background'] as const) {
+      expect(Number.isFinite(evaluateStudioClaimFreshness(input({ claim: { ...input().claim, volatility } })).freshnessMaxAgeMs)).toBe(true)
+    }
+  })
+
+  it('rejects malformed source, support, provenance, claim and binding identities at runtime', () => {
+    const cases: Array<Partial<ClaimEvaluationInputV1>> = [
+      { claim: { ...input().claim, claimId: 123 } as any },
+      { claim: { ...input().claim, jurisdiction: '   ' } as any },
+      { claim: { ...input().claim, remitKey: 'x'.repeat(257) } as any },
+      { claim: { ...input().claim, supports: [{ sourceId: 123, relation: 'supports', state: 'unknown' }] } as any },
+      { sources: [{ ...source, sourceId: 123 } as any] },
+      { sources: [{ ...source, observationId: 123 } as any] },
+      { sources: [{ ...source, evidenceIdentity: 456 } as any] },
+      { sources: [{ ...source, evidenceIdentity: 'x'.repeat(1_000_000) }] },
+      { sources: [source, { ...source, sourceId: 'unused-source', observationId: 123 } as any] },
+      { sources: [{ ...source, sourceId: '   ' }] },
+      { sources: [{ ...source, passageLocator: 42 } as any] },
+      { provenanceRefs: [{ schemaVersion: 'studio.source-observation/1', observationId: 'used', sourceId: 'source', evidenceIdentity: 42 } as any] },
+    ]
+    for (const patch of cases) {
+      const result = evaluateStudioClaimFreshness(input(patch))
+      expect(result.decision).toBe('ABSTAIN')
+      expect(result.freshnessMaxAgeMs === null || Number.isFinite(result.freshnessMaxAgeMs)).toBe(true)
+    }
+    const malformedUnusedProvenance = evaluateStudioClaimFreshness(input({ provenanceRefs: [
+      { schemaVersion: 'wrong', observationId: 'unused', sourceId: 'unused', evidenceIdentity: 'unused' } as any,
+    ] }))
+    expect(malformedUnusedProvenance.decision).toBe('ABSTAIN')
+    const malformedExpectedBinding = evaluateStudioClaimFreshness(input({ expectedBinding: { ...binding, bodyHash: false } as any }))
+    expect(malformedExpectedBinding.decision).toBe('BLOCK')
+    expect(malformedExpectedBinding.reasonCodes).toContain('REVIEW_BINDING_MISMATCH')
+    const malformedReviewerAlongsideInvalidClaim = evaluateStudioClaimFreshness(input({
+      claim: { ...input().claim, claimId: 123 } as any,
+      review: { ...review, principalId: 123 } as any,
+    }))
+    expect(malformedReviewerAlongsideInvalidClaim.decision).toBe('BLOCK')
+    expect(malformedReviewerAlongsideInvalidClaim.reasonCodes).toContain('REVIEWER_IDENTITY_MISSING')
+  })
+
+  it('keeps malformed consequential reviewer identities, remit scalars and bindings consequential', () => {
+    for (const patch of [
+      { principalId: 123 }, { reviewerId: false }, { principalId: ' ' }, { reviewerId: 'r'.repeat(257) },
+      { jurisdiction: 42 }, { remit: ['valid', 123] }, { remit: ['r'.repeat(257)] },
+      { binding: { ...binding, revisionId: {} } },
+      { binding: { ...binding, revisionVersion: Number.MAX_SAFE_INTEGER + 1 } },
+    ]) {
+      const result = evaluateStudioClaimFreshness(input({ review: { ...review, ...patch } as any }))
+      expect(result.decision).toBe('BLOCK')
+      expect(result.reasonCodes.some((reason) => reason.startsWith('REVIEWER_') || reason === 'REVIEW_BINDING_MISMATCH')).toBe(true)
+    }
+    const throwingReview = { ...review, principalKind: 'model' as const }
+    Object.defineProperty(throwingReview, 'principalId', { get() { throw new Error('unexpected accessor') } })
+    const caughtAfterHardGate = evaluateStudioClaimFreshness(input({ review: throwingReview as any }))
+    expect(caughtAfterHardGate.decision).toBe('BLOCK')
+    expect(caughtAfterHardGate.reasonCodes).toContain('REVIEWER_NOT_HUMAN')
+  })
+
+  it('prioritizes intrinsic reviewer date failures over an invalid evaluation clock', () => {
+    const invalidClock = 'not-a-time'
+    const cases = [
+      { review: { ...review, validFrom: 'not-a-date' } },
+      { review: { ...review, approvedAt: 'not-a-date' } },
+      { review: { ...review, validTo: '2026-02-30T00:00:00Z' } },
+      { review: { ...review, validFrom: '2026-10-01T00:00:00Z', validTo: '2026-09-01T00:00:00Z' } },
+    ]
+    for (const patch of cases) {
+      const result = evaluateStudioClaimFreshness(input({ now: invalidClock, ...patch }))
+      expect(result.decision).toBe('BLOCK')
+      expect(result.reasonCodes).toContain('INPUT_INVALID_OR_UNBOUNDED')
+      expect(result.reasonCodes.some((code) => code === 'REVIEWER_VALIDITY_INVALID' || code === 'REVIEW_APPROVAL_TIME_INVALID')).toBe(true)
+    }
+    expect(evaluateStudioClaimFreshness(input({ now: invalidClock })).decision).toBe('ABSTAIN')
+  })
+
+  it('preserves independently known reviewer jurisdiction and remit mismatches', () => {
+    const badClaimRemit = evaluateStudioClaimFreshness(input({
+      claim: { ...input().claim, remitKey: '' },
+      review: { ...review, jurisdiction: 'US-NY', remit: ['unrelated-topic'] },
+    }))
+    expect(badClaimRemit.decision).toBe('BLOCK')
+    expect(badClaimRemit.reasonCodes).toContain('REVIEWER_REMIT_MISMATCH')
+
+    const badClaimJurisdiction = evaluateStudioClaimFreshness(input({
+      claim: { ...input().claim, jurisdiction: '' },
+      review: { ...review, jurisdiction: 'US-CA', remit: ['unrelated-topic'] },
+    }))
+    expect(badClaimJurisdiction.decision).toBe('BLOCK')
+    expect(badClaimJurisdiction.reasonCodes).toContain('REVIEWER_REMIT_MISMATCH')
+  })
+
+  it('keeps hard review and critical contradiction gates across malformed bounded collections', () => {
+    const critical = { ...input().claim, supports: [null, { sourceId: 'other', relation: 'contradicts', state: 'known' }] }
+    const malformedSourcesMissingReview = evaluateStudioClaimFreshness(input({ review: null, sources: Array(1) as any }))
+    expect(malformedSourcesMissingReview.decision).toBe('BLOCK')
+    expect(malformedSourcesMissingReview.reasonCodes).toContain('HUMAN_REVIEW_MISSING')
+
+    const sparseSupports = evaluateStudioClaimFreshness(input({ review: null, claim: { ...input().claim, supports: Object.assign(Array(2), { 1: critical.supports[1] }) } as any }))
+    expect(sparseSupports.decision).toBe('BLOCK')
+    expect(sparseSupports.reasonCodes).toEqual(expect.arrayContaining(['INPUT_INVALID_OR_UNBOUNDED', 'HUMAN_REVIEW_MISSING', 'CRITICAL_CONTRADICTION']))
+
+    const sparseSupportJson = JSON.parse(JSON.stringify({ ...input().claim, supports: Array(1) }))
+    const nullSupportJson = evaluateStudioClaimFreshness(input({ review: null, claim: { ...input().claim, supports: sparseSupportJson.supports } as any }))
+    expect(nullSupportJson.decision).toBe('BLOCK')
+    expect(nullSupportJson.reasonCodes).toContain('HUMAN_REVIEW_MISSING')
+
+    for (const sources of [[null], JSON.parse(JSON.stringify(Array(1)))]) {
+      const result = evaluateStudioClaimFreshness(input({ review: null, sources: sources as any }))
+      expect(result.decision).toBe('BLOCK')
+      expect(result.reasonCodes).toContain('HUMAN_REVIEW_MISSING')
+    }
+
+    for (const remit of [Array(1), [null], JSON.parse(JSON.stringify(Array(1)))]) {
+      const result = evaluateStudioClaimFreshness(input({ review: { ...review, remit } as any }))
+      expect(result.decision).toBe('BLOCK')
+      expect(result.reasonCodes).toContain('REVIEWER_REMIT_MISMATCH')
+    }
+  })
+
+  it('rejects oversized raw padded labels before normalization work', () => {
+    const padded = `${' '.repeat(2_097_152)}id`
+    const result = evaluateStudioClaimFreshness(input({ sources: [{ ...source, evidenceIdentity: padded }] }))
+    expect(result.decision).toBe('ABSTAIN')
+    expect(result.reasonCodes).toContain('INPUT_INVALID_OR_UNBOUNDED')
+  })
+
+  it('accepts 256-code-unit opaque labels and rejects 257 across identity and locator fields', () => {
+    const label = 'x'.repeat(256)
+    const longBinding = { revisionId: label, revisionVersion: 1, claimSetHash: label, bodyHash: label, renderHash: label, sourceSnapshotHash: label }
+    const valid = input({
+      claim: { ...input().claim, claimId: label, jurisdiction: label, remitKey: label, supports: [{ sourceId: label, relation: 'supports', state: 'known' }] },
+      sources: [{ ...source, sourceId: label, observationId: label, evidenceIdentity: label, passageLocator: label, jurisdiction: label }],
+      review: { ...review, principalId: label, reviewerId: label, jurisdiction: label, remit: [label], binding: longBinding },
+      expectedBinding: longBinding,
+      provenanceRefs: [{ schemaVersion: 'studio.source-observation/1', observationId: label, sourceId: label, evidenceIdentity: label }],
+    })
+    expect(evaluateStudioClaimFreshness(valid).decision).toBe('NO_ACTION')
+    const tooLong = 'x'.repeat(257)
+    const invalidInputs: Array<Partial<ClaimEvaluationInputV1>> = [
+      { claim: { ...input().claim, claimId: tooLong } as any },
+      { claim: { ...input().claim, jurisdiction: tooLong } as any },
+      { claim: { ...input().claim, remitKey: tooLong } as any },
+      { claim: { ...input().claim, supports: [{ sourceId: tooLong, relation: 'supports', state: 'known' }] } },
+      { sources: [{ ...source, sourceId: tooLong }] }, { sources: [{ ...source, observationId: tooLong }] },
+      { sources: [{ ...source, evidenceIdentity: tooLong }] }, { sources: [{ ...source, passageLocator: tooLong }] },
+      { sources: [{ ...source, jurisdiction: tooLong }] },
+      { provenanceRefs: [{ schemaVersion: 'studio.source-observation/1', observationId: tooLong, sourceId: 's', evidenceIdentity: 'e' }] },
+      { expectedBinding: { ...binding, revisionId: tooLong } }, { expectedBinding: { ...binding, bodyHash: tooLong } },
+      { expectedBinding: { ...binding, claimSetHash: tooLong } }, { expectedBinding: { ...binding, renderHash: tooLong } },
+      { expectedBinding: { ...binding, sourceSnapshotHash: tooLong } },
+      { review: { ...review, principalId: tooLong } }, { review: { ...review, reviewerId: tooLong } },
+      { review: { ...review, jurisdiction: tooLong } }, { review: { ...review, remit: [tooLong] } },
+    ]
+    for (const patch of invalidInputs) expect(evaluateStudioClaimFreshness(input(patch)).decision).not.toBe('NO_ACTION')
+  })
+
+  it('bounds timestamps before parsing and rejects impossible dates and unsafe revisions', () => {
+    const maxTimestamp = `2026-09-29T13:00:00.${'1'.repeat(43)}Z`
+    expect(maxTimestamp.length).toBe(64)
+    expect(evaluateStudioClaimFreshness(input({ now: maxTimestamp })).decision).toBe('NO_ACTION')
+    for (const now of ['x'.repeat(65), '2026-02-30T13:00:00Z', '2026-09-29T13:00:00.123456789012345678901234567890123456789012345678901234567890123456789Z']) {
+      const result = evaluateStudioClaimFreshness(input({ now }))
+      expect(result.decision).toBe('ABSTAIN')
+      expect(result.checkedAt).toBeNull()
+    }
+    for (const revisionVersion of [1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
+      const result = evaluateStudioClaimFreshness(input({ expectedBinding: { ...binding, revisionVersion } as any }))
+      expect(result.decision).toBe('BLOCK')
+      expect(result.reasonCodes).toContain('REVIEW_BINDING_MISMATCH')
+    }
+  })
 })
