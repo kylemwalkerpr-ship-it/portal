@@ -10,6 +10,7 @@ import {
   SellerProfileCard,
   PricingTiers,
   FAQSection,
+  GigGuideLinks,
   SimilarGigs,
   OrderCTA,
 } from './GigDetailComponents'
@@ -688,6 +689,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
             </Card>
 
             {faq.length > 0 && <FAQSection faq={faq} />}
+            <GigGuideLinks slug={gig.slug ?? slug} />
             <ReviewsSection gigId={gig.id} showFilters={false} />
             {gig.similar_gigs && gig.similar_gigs.length > 0 && <SimilarGigs gigs={gig.similar_gigs} />}
           </div>

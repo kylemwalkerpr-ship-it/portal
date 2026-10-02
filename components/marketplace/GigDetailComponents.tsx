@@ -8,6 +8,7 @@ import { SaveGigButton } from './SaveGigButton'
 import { T, F } from './tokens'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { buildAuthUrl } from '@/lib/auth/returnTo'
+import { getGigGuideLinks } from '@/lib/gigGuideLinks'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -488,6 +489,34 @@ export function FAQSection({ faq }: FAQSectionProps) {
           </div>
         ))}
       </div>
+    </Card>
+  )
+}
+
+// ── GigGuideLinks ─────────────────────────────────────────────────────────────
+
+/** Free estate guides for the confirmed-delivery gigs (see lib/gigGuideLinks). */
+export function GigGuideLinks({ slug }: { slug: string | null | undefined }) {
+  const guides = getGigGuideLinks(slug)
+  if (guides.length === 0) return null
+
+  return (
+    <Card style={{ padding: '24px' }} data-gig-guides={slug ?? ''}>
+      <h3 style={{ fontFamily: F.display, fontSize: '24px', fontWeight: 500, letterSpacing: '-0.01em', margin: '0 0 6px', color: T.ink }}>
+        Free guides before you order
+      </h3>
+      <p style={{ fontFamily: F.ui, fontSize: '14px', color: T.inkMid, lineHeight: 1.6, margin: '0 0 12px' }}>
+        Read up on the rules first. These guides are free and written for the same situation this service covers.
+      </p>
+      <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {guides.map((g) => (
+          <li key={g.href} style={{ fontFamily: F.ui, fontSize: '15px', lineHeight: 1.5 }}>
+            <a href={g.href} style={{ color: T.indigo, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              {g.title}
+            </a>
+          </li>
+        ))}
+      </ul>
     </Card>
   )
 }

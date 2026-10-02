@@ -19,7 +19,7 @@ export interface PackReviewGig {
 
 export const OPT_I765_REVIEW: PackReviewGig = {
   slug: 'review-i765-opt-application-before-filing',
-  title: 'I-765 OPT application review by a US attorney',
+  title: 'Post-completion OPT I-765 review by a US attorney',
   priceUsd: 249,
   outcome: 'An annotated I-765 and a correction checklist before you file.',
 }
@@ -40,7 +40,8 @@ export interface PackReviewUpsell {
 
 const PACK_REVIEW_MAP: Record<string, PackReviewUpsell> = {
   'us-opt-i765-application-prep-pack': { primary: OPT_I765_REVIEW, secondary: null },
-  'us-stem-opt-i765-i983-companion-pack': { primary: OPT_I765_REVIEW, secondary: null },
+  // The I-765 review covers post-completion OPT only (its FAQ excludes STEM OPT
+  // extensions), so the STEM pack falls back to the free intake.
   'us-f1-student-visa-ds160-i20-pack': {
     primary: null,
     secondary: { gig: F1_REINSTATEMENT_REVIEW, when: 'Already in the US and out of F-1 status?' },

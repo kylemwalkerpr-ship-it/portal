@@ -20,7 +20,7 @@ describe('pack -> professional review upsell', () => {
 
   it('maps the OPT packs to the I-765 review', () => {
     expect(getPackReviewUpsell('us-opt-i765-application-prep-pack').primary?.slug).toBe(OPT_I765_REVIEW.slug)
-    expect(getPackReviewUpsell('us-stem-opt-i765-i983-companion-pack').primary?.slug).toBe(OPT_I765_REVIEW.slug)
+    expect(getPackReviewUpsell('us-stem-opt-i765-i983-companion-pack').primary).toBeNull()
   })
 
   it('falls back to the free intake for packs with no matching review', () => {
