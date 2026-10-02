@@ -115,7 +115,16 @@ async function checkStudioGate() {
     const status = res.status
     const location = res.headers.get('location') || ''
     const isRedirect = [301, 302, 303, 307, 308].includes(status)
-    const gatesToSignIn = location.includes('sign-in')
+    // Anonymous protected pages open the Market sign-in modal in ONE hop
+    // (portal#335): market/?ys_sign_in=1&return_to=<this page>. The retired
+    // portal /sign-in hop is still accepted for older builds.
+    let gate = null
+    try { gate = new URL(location, `${BASE}/`) } catch { gate = null }
+    const gatesToMarketModal = !!gate &&
+      gate.hostname === 'market.yousafeconsultancy.com' &&
+      gate.searchParams.get('ys_sign_in') === '1' &&
+      (gate.searchParams.get('return_to') || '').includes(STUDIO_PATH)
+    const gatesToSignIn = gatesToMarketModal || (!!gate && gate.pathname.startsWith('/sign-in'))
 
     if (!isRedirect) {
       results.push({ name: 'studio auth-gate', ok: false, detail: `expected redirect, got ${status}` })

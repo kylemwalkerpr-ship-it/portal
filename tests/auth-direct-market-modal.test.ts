@@ -194,3 +194,12 @@ describe('admin index routes exist (no 404)', () => {
     expect(fs.readFileSync(path.join(root, file), 'utf8')).toContain(call)
   })
 })
+
+describe('post-deploy smoke accepts the one-hop Market modal gate', () => {
+  test('scripts/smoke-prod.mjs recognises market/?ys_sign_in=1&return_to=<studio>', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'scripts/smoke-prod.mjs'), 'utf8')
+    expect(src).toContain("gate.hostname === 'market.yousafeconsultancy.com'")
+    expect(src).toContain("gate.searchParams.get('ys_sign_in') === '1'")
+    expect(src).toContain("(gate.searchParams.get('return_to') || '').includes(STUDIO_PATH)")
+  })
+})
