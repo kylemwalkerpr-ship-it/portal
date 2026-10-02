@@ -1,0 +1,34 @@
+{
+  "status": "PASS",
+  "scope": "Bounded dated engineering inventory at 1ffef045e182a68d429bdbc9d86c506117db3799; no live ACL, applied ledger, deployment, or full writer closure assertion",
+  "artifactSha256": "8ab8d7cf1ebd59a60faa50f632ee984211a532516604c5c01a4b2e1f83669d4d",
+  "verification": {
+    "sourcePins": 45,
+    "supportingPins": 1,
+    "historicalMapHashes": 7,
+    "postReviewPins": 6,
+    "allHashesMatch": true,
+    "pinnedSourceSemanticReview": [
+      "Clerk identity/profile webhook and metadata",
+      "roles link/create",
+      "onboarding/provider/admin multi-sink writes",
+      "local direct service-role and generated relink/restore SQL",
+      "password metadata",
+      "retired sync-lane transitive identity/profile writes",
+      "Rhythm Actions boundary",
+      "YQAA Management SQL holder",
+      "Storage uploader holder",
+      "migration source versus unknown applied state"
+    ]
+  },
+  "mustFix": [],
+  "nonblockingNotes": [
+    "Optional vertical field is profiles.vertical, not profiles.optional_vertical.",
+    "Transitive country backfill also writes profiles.country_source."
+  ],
+  "limitations": [
+    "Frozen /tmp aggregate and verifier were not independently accessible through RDC read_file allowlist; artifact SHA and all embedded pins independently checked instead.",
+    "No claim of freshness beyond the pinned source commit or full A0 exit."
+  ],
+  "reviewer": "independent semantic reviewer"
+}

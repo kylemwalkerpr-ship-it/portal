@@ -1,0 +1,160 @@
+{
+  "at": "2026-10-02T14:55:09.683133+00:00",
+  "request_file_sha256": "5bbb62a8341316a7a1b63ab85cbb26a4058c27ef307374a887969d0645cc8b20",
+  "job": {
+    "id": "cs-command-admission-hosted-mock-type-correction-20261002-v6",
+    "state": "BLOCKED",
+    "reason": "quota_exhausted",
+    "request_sha256": "6a47ea7de1039349b312dc6aba54120d99a42d81e738eee929fa4b525e195db0",
+    "current_attempt_id": "1db51457-bac9-4cd2-a69a-1445ff1baf63",
+    "updated_at": "2026-10-02T10:51:43.480767+00:00"
+  },
+  "attempt": {
+    "id": "1db51457-bac9-4cd2-a69a-1445ff1baf63",
+    "job_id": "cs-command-admission-hosted-mock-type-correction-20261002-v6",
+    "seq": 1,
+    "lane": "codex",
+    "native_record_type": "codex-thread",
+    "native_record_id": "01a0fc3c-853b-71d2-b318-ff22b0125508",
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "state": "BLOCKED",
+    "reason": "quota_exhausted",
+    "native_state": "turn.failed",
+    "resumable": 1,
+    "checkpoint_kind": "PROVIDER_CHECKPOINT",
+    "checkpoint_ref": "01a0fc3c-853b-71d2-b318-ff22b0125508",
+    "started_at": null,
+    "ended_at": null,
+    "created_at": "2026-10-02T10:50:16.722637+00:00",
+    "updated_at": "2026-10-02T10:51:43.480767+00:00",
+    "checkpoint_digest": null,
+    "resume_claim_id": null,
+    "state_generation": 1
+  },
+  "source_sha256": "355a08a490610424da960fb25acf53757636602eb1f0d9edc370c40c3bddae8a",
+  "as_any_count": 1,
+  "native_processes": [],
+  "disk_df": "Filesystem   1024-blocks      Used Available Capacity iused    ifree %iused  Mounted on\n/dev/disk3s5   239362496 195661536   4352308    98% 3539467 43523080    8%   /System/Volumes/Data\n",
+  "route": {
+    "ok": true,
+    "read_only": true,
+    "pipeline": {
+      "task": {
+        "session": "cs-command-admission-hosted-mock-type-correction-20261002-v6",
+        "workspace": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-reviewed-20261002",
+        "requested_lane": "codex",
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "effort": "high",
+        "mode": "workspace-write",
+        "verification_count": 1,
+        "artifact_count": 0,
+        "capabilities": []
+      },
+      "policy": {
+        "codex_tier1_precedence": true,
+        "allow_freebuff_fallback": true,
+        "allow_native_fallback": true,
+        "no_silent_substitution": true,
+        "prohibit_fresh_retry_after_mutation": true,
+        "min_jev_confidence": 0.85
+      },
+      "context": {
+        "current_state": "BLOCKED",
+        "verification_state": null,
+        "current_attempt_id": "1db51457-bac9-4cd2-a69a-1445ff1baf63",
+        "state_generation": 1,
+        "attempt_reason": "quota_exhausted",
+        "attempt_native_state": "turn.failed",
+        "attempt_resumable": true,
+        "checkpoint_kind": "PROVIDER_CHECKPOINT",
+        "checkpoint_ref": "01a0fc3c-853b-71d2-b318-ff22b0125508",
+        "checkpoint_digest": null,
+        "mutation_seen": false,
+        "active_lease_lane": null,
+        "active_mission_id": null
+      },
+      "resume": {
+        "lane_id": "codex",
+        "model": "gpt-6-luna",
+        "checkpoint_ref": "01a0fc3c-853b-71d2-b318-ff22b0125508",
+        "exact_checkpoint_proven": true,
+        "mutation_seen": false,
+        "lease_conflict": false
+      },
+      "lanes": [
+        {
+          "lane_id": "codex",
+          "model": "gpt-6-luna",
+          "available": true,
+          "tier": 1,
+          "operations": [
+            "admit",
+            "observe"
+          ],
+          "reason": null,
+          "authenticated": true,
+          "live_e2e": true,
+          "family": "codex"
+        },
+        {
+          "lane_id": "native-deepseek",
+          "model": "deepseek-flash",
+          "available": false,
+          "tier": 2,
+          "operations": [
+            "admit",
+            "observe"
+          ],
+          "reason": "provider_unavailable",
+          "authenticated": true,
+          "live_e2e": null,
+          "family": "native"
+        },
+        {
+          "lane_id": "native-grok",
+          "model": "grok-4.7",
+          "available": false,
+          "tier": 2,
+          "operations": [
+            "admit",
+            "observe"
+          ],
+          "reason": "capability_unavailable",
+          "authenticated": true,
+          "live_e2e": true,
+          "family": "native"
+        },
+        {
+          "lane_id": "freebuff",
+          "model": "z-ai/glm-5.3-flash",
+          "available": true,
+          "tier": 2,
+          "operations": [
+            "observe",
+            "admit",
+            "resume"
+          ],
+          "reason": null,
+          "authenticated": true,
+          "live_e2e": true,
+          "family": "freebuff"
+        }
+      ]
+    },
+    "decision": {
+      "action": "START",
+      "lane_id": "codex",
+      "model": "gpt-6-luna",
+      "confidence": 0.9,
+      "reason": "jev_selected_eligible_action",
+      "jev_decision": "START_CODEX",
+      "probabilities": {
+        "BLOCK": 0.05,
+        "START_CODEX": 0.95
+      }
+    }
+  },
+  "executed": false
+}

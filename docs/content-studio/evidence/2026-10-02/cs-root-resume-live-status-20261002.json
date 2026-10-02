@@ -1,0 +1,60 @@
+[
+  {
+    "args": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit": 0,
+    "output": "",
+    "error": ""
+  },
+  {
+    "args": [
+      "git",
+      "log",
+      "-1",
+      "--format=%H %s"
+    ],
+    "exit": 0,
+    "output": "0812aefd722f2e38e2b392e35a610ffdb3c0bd07 Record A4 release and reviewed runtime isolated proof candidate\n",
+    "error": ""
+  },
+  {
+    "args": [
+      "gh",
+      "pr",
+      "view",
+      "348",
+      "--json",
+      "state,isDraft,headRefOid,statusCheckRollup"
+    ],
+    "exit": 0,
+    "output": "{\"headRefOid\":\"f0b6d9602b659f24326cc566ca66dccbd4ca128f\",\"isDraft\":true,\"state\":\"OPEN\",\"statusCheckRollup\":[{\"__typename\":\"CheckRun\",\"completedAt\":\"2026-10-02T10:38:24Z\",\"conclusion\":\"FAILURE\",\"detailsUrl\":\"https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36996468266/job/110804224911\",\"name\":\"Build and deploy Worker\",\"startedAt\":\"2026-10-02T10:37:15Z\",\"status\":\"COMPLETED\",\"workflowName\":\"Deploy YouSafe Portal\"},{\"__typename\":\"CheckRun\",\"completedAt\":\"2026-10-02T10:39:31Z\",\"conclusion\":\"FAILURE\",\"detailsUrl\":\"https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36996468019/job/110804223144\",\"name\":\"isolated-postgres-17\",\"startedAt\":\"2026-10-02T10:37:14Z\",\"status\":\"COMPLETED\",\"workflowName\":\"Studio Command Admission Isolated Tests\"},{\"__typename\":\"CheckRun\",\"completedAt\":\"2026-10-02T10:38:30Z\",\"conclusion\":\"SUCCESS\",\"detailsUrl\":\"https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36996468498/job/110804224726\",\"name\":\"Focused Content Studio tests\",\"startedAt\":\"2026-10-02T10:37:15Z\",\"status\":\"COMPLETED\",\"workflowName\":\"Content Studio Review\"}]}\n",
+    "error": ""
+  },
+  {
+    "args": [
+      "gh",
+      "run",
+      "view",
+      "36996077644",
+      "--json",
+      "status,conclusion,headSha,jobs"
+    ],
+    "exit": 0,
+    "output": "{\"conclusion\":\"success\",\"headSha\":\"1ffef045e182a68d429bdbc9d86c506117db3799\",\"jobs\":[{\"completedAt\":\"2026-10-02T10:38:35Z\",\"conclusion\":\"success\",\"databaseId\":110802972306,\"name\":\"Build and deploy Worker\",\"startedAt\":\"2026-10-02T10:33:00Z\",\"status\":\"completed\",\"steps\":[{\"completedAt\":\"2026-10-02T10:33:02Z\",\"conclusion\":\"success\",\"name\":\"Set up job\",\"number\":1,\"startedAt\":\"2026-10-02T10:33:01Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:33:04Z\",\"conclusion\":\"success\",\"name\":\"Checkout repository\",\"number\":2,\"startedAt\":\"2026-10-02T10:33:02Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:33:08Z\",\"conclusion\":\"success\",\"name\":\"Set up Node\",\"number\":3,\"startedAt\":\"2026-10-02T10:33:04Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:33:31Z\",\"conclusion\":\"success\",\"name\":\"Install dependencies\",\"number\":4,\"startedAt\":\"2026-10-02T10:33:08Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:34:25Z\",\"conclusion\":\"success\",\"name\":\"Typecheck\",\"number\":5,\"startedAt\":\"2026-10-02T10:33:31Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:35:07Z\",\"conclusion\":\"success\",\"name\":\"Unit tests\",\"number\":6,\"startedAt\":\"2026-10-02T10:34:25Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:35:07Z\",\"conclusion\":\"success\",\"name\":\"Verify Cloudflare credentials\",\"number\":7,\"startedAt\":\"2026-10-02T10:35:07Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:35:07Z\",\"conclusion\":\"success\",\"name\":\"Verify required YQAA Jev credential\",\"number\":8,\"startedAt\":\"2026-10-02T10:35:07Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:00Z\",\"conclusion\":\"success\",\"name\":\"Build (Next + OpenNext)\",\"number\":9,\"startedAt\":\"2026-10-02T10:35:07Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:00Z\",\"conclusion\":\"success\",\"name\":\"Populate static incremental cache (local copy, no network)\",\"number\":10,\"startedAt\":\"2026-10-02T10:38:00Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:01Z\",\"conclusion\":\"success\",\"name\":\"Market-root payload budget gate\",\"number\":11,\"startedAt\":\"2026-10-02T10:38:00Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:01Z\",\"conclusion\":\"success\",\"name\":\"SEO audit guard (report-only)\",\"number\":12,\"startedAt\":\"2026-10-02T10:38:01Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:01Z\",\"conclusion\":\"success\",\"name\":\"Prepare Worker secrets file (ephemeral, atomic deploy)\",\"number\":13,\"startedAt\":\"2026-10-02T10:38:01Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:01Z\",\"conclusion\":\"success\",\"name\":\"Sync AI vault (Supabase) from Worker secrets\",\"number\":14,\"startedAt\":\"2026-10-02T10:38:01Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:28Z\",\"conclusion\":\"success\",\"name\":\"Deploy via OpenNext to Cloudflare (with transient-failure retry)\",\"number\":15,\"startedAt\":\"2026-10-02T10:38:01Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:28Z\",\"conclusion\":\"success\",\"name\":\"Remove ephemeral Worker secrets file\",\"number\":16,\"startedAt\":\"2026-10-02T10:38:28Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:30Z\",\"conclusion\":\"success\",\"name\":\"Verify Worker secrets health (startup check)\",\"number\":17,\"startedAt\":\"2026-10-02T10:38:28Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:32Z\",\"conclusion\":\"success\",\"name\":\"Post-deploy smoke test (studio contract + build freshness)\",\"number\":18,\"startedAt\":\"2026-10-02T10:38:30Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:32Z\",\"conclusion\":\"success\",\"name\":\"Post Set up Node\",\"number\":35,\"startedAt\":\"2026-10-02T10:38:32Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:32Z\",\"conclusion\":\"success\",\"name\":\"Post Checkout repository\",\"number\":36,\"startedAt\":\"2026-10-02T10:38:32Z\",\"status\":\"completed\"},{\"completedAt\":\"2026-10-02T10:38:32Z\",\"conclusion\":\"success\",\"name\":\"Complete job\",\"number\":37,\"startedAt\":\"2026-10-02T10:38:32Z\",\"status\":\"completed\"}],\"url\":\"https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36996077644/job/110802972306\"}],\"status\":\"completed\"}\n",
+    "error": ""
+  },
+  {
+    "args": [
+      "git",
+      "fetch",
+      "origin",
+      "main"
+    ],
+    "exit": 0,
+    "output": "",
+    "error": "From https://github.com/kylemwalkerpr-ship-it/portal\n * branch              main       -> FETCH_HEAD\n   1ffef045..09030ff4  main       -> origin/main\n"
+  }
+]

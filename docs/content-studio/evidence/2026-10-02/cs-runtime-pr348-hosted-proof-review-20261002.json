@@ -1,0 +1,152 @@
+{
+  "verdict": "MUST_FIX_TYPESCRIPT_ONLY_BEFORE_ACCEPTANCE",
+  "observedAt": "2026-10-02T10:47:13.233676+00:00",
+  "candidateSha": "f0b6d9602b659f24326cc566ca66dccbd4ca128f",
+  "checkedOutSha": "f0b6d9602b659f24326cc566ca66dccbd4ca128f",
+  "shaMatch": true,
+  "runId": "36996468019",
+  "runAttempt": "1",
+  "artifact": {
+    "id": 11221319671,
+    "name": "studio-command-admission-receipt-36996468019-1",
+    "downloadSizeBytes": 2697,
+    "receiptPath": "/tmp/cs-runtime-pr348-small-hosted-receipt-20261002/studio-command-admission-ci-receipt.json",
+    "receiptSha256": "9672f4d9c36fa886b259c3b2f8e1c9fb997ccaa1af4cbcffbf0e37e55cafb2b2"
+  },
+  "actualHostedOutcomes": {
+    "npmCi": "success",
+    "staticMigrationChecks": "success",
+    "postgresIdentity": "success",
+    "wholeRepositoryTypeScript": "failure",
+    "focusedStrictTypeScript": "failure",
+    "focusedJest": "success",
+    "isolatedPostgres": "success"
+  },
+  "postgres": {
+    "status": "PASS",
+    "server": "17.11 (Debian 17.11-1.pgdg13+2)",
+    "client": "psql (PostgreSQL) 16.15 (Ubuntu 16.15-1.pgdg24.04+2)",
+    "node": "v22.22.2",
+    "checks": {
+      "fixtureMigrationAndDenyOnlyBinding": "PASS",
+      "validatedPrivateCryptoNamespace": "PASS",
+      "candidateTypeScriptAndSqlHashGolden": "PASS_NODE_STRIP_TYPES_RUNTIME_ONLY",
+      "serviceRoleRpcExecuteSuccess": "PASS_FIXTURE_ONLY",
+      "independentProjectIssuerSubjectIsolation": "PASS",
+      "sameKeyObservedAuthorityThenAdmissionLockChain": "PASS_ONE_ADVISORY_AND_ONE_AUTHORITY_ROW_WAITER",
+      "sameKeyScopedDedupe": "PASS",
+      "commitDurableBeforeResponseSuppression": "PASS_INDEPENDENT_CONNECTION",
+      "lostResponseReconnect": "PASS_COMMIT_WITNESSED_RECEIPT_SUPPRESSED_THEN_TERMINATED_AND_REPLAYED_SAME_RUN",
+      "currentStatusReplay": "PASS",
+      "precommitConnectionTerminationRollback": "PASS_CONNECTION_KILLED_THEN_RECONNECTED_COUNTS_UNCHANGED",
+      "fiveRelationAtomicRollback": "PASS",
+      "revocationObservedWaitingForAdmissionLock": "PASS_DATABASE_LOCK_WAIT",
+      "revokedReplayDeniedAfterCommit": "PASS",
+      "changedHashConflictAfterAuthority": "PASS",
+      "authorityVersionAndRevocationDenials": "PASS_FIXTURE_ONLY",
+      "actualRoleOperationDenials": "PASS_60_TABLE_OPERATIONS_SQLSTATE_42501",
+      "actualFunctionExecuteDenials": "PASS_ANON_AUTHENTICATED_AND_SERVICE_PRIVATE_HELPER_SQLSTATE_42501",
+      "publicInheritanceAndServiceFunctionAcl": "PASS_ACL_AND_ACTUAL_ANON_AUTH_CALLS",
+      "hostileSearchPathServiceRole": "PASS",
+      "postgresFixtureOperations": "PASS",
+      "exactThirteenFieldAuthorityAdmitReplay": "PASS_FIXTURE_ONLY"
+    },
+    "failures": [],
+    "barrierAndBoundaryEvidence": [
+      {
+        "kind": "database-barrier",
+        "name": "same-key-authority-before-admission-lock-chain",
+        "outcome": "WITNESSED",
+        "barrierApplicationName": "studio-race-barrier",
+        "barrierBackendPid": 206,
+        "authorityRowOwnerAndAdvisoryWaiter": {
+          "applicationName": "studio-race-b",
+          "backendPid": 207,
+          "waitEvent": "advisory",
+          "blockingPids": [
+            206
+          ]
+        },
+        "authorityRowWaiter": {
+          "applicationName": "studio-race-a",
+          "backendPid": 208,
+          "waitEvent": "transactionid",
+          "blockingPids": [
+            207
+          ]
+        },
+        "concurrentSessions": 2
+      },
+      {
+        "kind": "database-boundary",
+        "name": "commit-before-response-suppression",
+        "outcome": "WITNESSED",
+        "applicationName": "studio-lost-response-owned",
+        "backendPid": 212,
+        "committedRunId": "030b26ee-76e5-478c-8973-bee409eda669",
+        "commitVisibleOnIndependentConnection": true,
+        "allFiveCounts": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "waitEvent": "PgSleep",
+        "submittedRpcReceiptObserved": false
+      },
+      {
+        "kind": "database-boundary",
+        "name": "precommit-connection-termination",
+        "outcome": "WITNESSED",
+        "applicationName": "studio-precommit-kill-owned",
+        "uncommittedAdmissionReceiptReceived": true
+      },
+      {
+        "kind": "database-barrier",
+        "name": "authority-row-lock-revocation",
+        "outcome": "WITNESSED",
+        "applicationNames": [
+          "studio-authority-admission-held",
+          "studio-authority-revocation-waiter"
+        ],
+        "waiter": "studio-authority-revocation-waiter",
+        "waitEventType": "Lock"
+      }
+    ]
+  },
+  "typescriptErrors": [],
+  "diagnosis": "Zero-argument jest.fn implementation infers mock.calls entries as empty tuples. Index0 assertion at commandAdmission.test.ts82 therefore produces TS2493 in whole/focused checks. Runtime/Jest assertion passes but static tuple is invalid.",
+  "minimalCorrection": {
+    "files": [
+      "tests/content-studio-v3/commandAdmission.test.ts"
+    ],
+    "change": "Import RpcTransport type from repository; declare mock implementation async (..._args: Parameters<RpcTransport[\"rpc\"]>) => existingResponse. Pass { rpc } directly to repository without as any. Preserve exact RPC-name and count assertions and malformed-receipt check.",
+    "noProductionChange": true,
+    "noSqlChange": true,
+    "requiredVerification": "Fresh exact-head whole TypeScript and strict focused TypeScript plus focusedJest and isolatedPostgres workflow; preserve old SHA proof without transplanting acceptance to new head."
+  },
+  "interpretation": "API step conclusion success is insufficient under continue-on-error; structured receipt records true .outcome failures. SQL lane and Jest actually SUCCESS, not NOT_RUN, at this exact head. Overall workflow gate correctly FAILS due both TSC lanes.",
+  "acceptance": "NOT_ACCEPTED_UNTIL_TYPESCRIPT_CORRECTED_AND_EXACT_NEW_HEAD_VERIFIED",
+  "productionAutoapplyRelease": "HELD",
+  "productionDatabase": "NOT_APPLIED",
+  "routeActivation": "NOT_ACTIVE",
+  "noSourceEdit": true,
+  "noLocalInstall": true,
+  "commands": [
+    "gh api repos/kylemwalkerpr-ship-it/portal/actions/runs/36996468019/artifacts --jq small metadata",
+    "gh run download36996468019 --repo kylemwalkerpr-ship-it/portal --name studio-command-admission-receipt-36996468019-1 --dir /tmp/cs-runtime-pr348-small-hosted-receipt-20261002",
+    "Python parse sanitized receipt and select TypeScript error lines from existing summarized log"
+  ],
+  "buildWorkflowTypecheckErrors": {
+    "run": "36996468266",
+    "exit": 0,
+    "lines": [
+      "Build and deploy Worker\tTypecheck\t2026-10-02T10:38:22.2087194Z ##[error]tests/content-studio-v3/commandAdmission.test.ts(82,30): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.",
+      "Build and deploy Worker\tTypecheck\t2026-10-02T10:38:22.3245393Z ##[error]Process completed with exit code 2."
+    ]
+  },
+  "limitations": [
+    "Actual whole/focused lane failures confirmed in hosted receipt. TS2493 diagnostic is confirmed from separate same-PR build workflow summary; failed-only PG log contains gate outcome rather than continue-on-error lane compiler output. Minimal mock correction is source-grounded; no local compile was run."
+  ]
+}

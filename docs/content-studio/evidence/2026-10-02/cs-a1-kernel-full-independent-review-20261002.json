@@ -1,0 +1,225 @@
+{
+  "status": "MUST_FIX",
+  "reviewer": "independent GPT-6.1 Sol, not cross-family",
+  "runtime": "v22.22.2",
+  "typescript": "6.0.3",
+  "qualification": "install-free transpile runtime preflight only; hosted exact lockfile CI mandatory",
+  "command": "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node /tmp/cs-a1-kernel-full-independent-probes-20261002.cjs",
+  "pins": [
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "bytes": 261540,
+      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623",
+      "actual": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+      "bytes": 87157,
+      "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366",
+      "actual": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
+      "bytes": 22100,
+      "sha256": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525",
+      "actual": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
+      "bytes": 18712,
+      "sha256": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b",
+      "actual": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
+      "bytes": 15976,
+      "sha256": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e",
+      "actual": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/content-studio-execution-policy.md",
+      "bytes": 5369,
+      "sha256": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f",
+      "actual": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/content-studio-kickoff.md",
+      "bytes": 5138,
+      "sha256": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5",
+      "actual": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5",
+      "pass": true
+    },
+    {
+      "path": "docs/superpowers/content-studio-revamp.md",
+      "bytes": 1752,
+      "sha256": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df",
+      "actual": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df",
+      "pass": true
+    }
+  ],
+  "files": [
+    {
+      "path": "lib/contentStudioV3/contracts/registry.ts",
+      "bytes": 10755,
+      "sha256": "07cc998ce16e61f9848bc2a9ad6b5c238b86edfdc3c5e532ca7829d50d7ff735",
+      "actual": "07cc998ce16e61f9848bc2a9ad6b5c238b86edfdc3c5e532ca7829d50d7ff735",
+      "pass": true
+    },
+    {
+      "path": "lib/contentStudioV3/contracts/schema.ts",
+      "bytes": 31792,
+      "sha256": "c1a778a452c0b21ba4e3c897707a27f140a1fa5a9d6fc7ca123ec29c5febb401",
+      "actual": "c1a778a452c0b21ba4e3c897707a27f140a1fa5a9d6fc7ca123ec29c5febb401",
+      "pass": true
+    },
+    {
+      "path": "lib/contentStudioV3/contracts/hashes.ts",
+      "bytes": 2934,
+      "sha256": "4241cb9a74697bbc187e574928d8ed852944643cadfbccd35bb2061c61d56617",
+      "actual": "4241cb9a74697bbc187e574928d8ed852944643cadfbccd35bb2061c61d56617",
+      "pass": true
+    },
+    {
+      "path": "tests/content-studio-v3/contracts.test.ts",
+      "bytes": 15842,
+      "sha256": "704c31813c000823607cd6ec5f8bc4bbc95337cb30f3b891a1c1beede3cf9bb1",
+      "actual": "704c31813c000823607cd6ec5f8bc4bbc95337cb30f3b891a1c1beede3cf9bb1",
+      "pass": true
+    }
+  ],
+  "cases": [
+    {
+      "name": "baseline",
+      "expected": true,
+      "actual": true,
+      "issues": [],
+      "pass": true
+    },
+    {
+      "name": "subject extra field",
+      "expected": false,
+      "actual": true,
+      "issues": [],
+      "pass": false
+    },
+    {
+      "name": "subject array with kind/id",
+      "expected": false,
+      "actual": true,
+      "issues": [],
+      "pass": false
+    },
+    {
+      "name": "sparse present evidence/input arrays",
+      "expected": false,
+      "actual": true,
+      "issues": [],
+      "pass": false
+    },
+    {
+      "name": "sparse metric array",
+      "expected": false,
+      "actual": true,
+      "issues": [],
+      "pass": false
+    },
+    {
+      "name": "metric array extra field",
+      "expected": false,
+      "actual": true,
+      "issues": [],
+      "pass": false
+    },
+    {
+      "name": "negative finite readability+density120",
+      "expected": true,
+      "actual": true,
+      "issues": [],
+      "pass": true
+    },
+    {
+      "name": "invalid calendar",
+      "expected": false,
+      "actual": false,
+      "issues": [
+        {
+          "path": "$.observations.wordCount.observedAt",
+          "code": "invalid_instant",
+          "message": "Expected a real RFC3339 instant with a valid calendar date and offset."
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "extra root",
+      "expected": false,
+      "actual": false,
+      "issues": [
+        {
+          "path": "$.extra",
+          "code": "extra_property",
+          "message": "Unexpected property extra."
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "extra scope",
+      "expected": false,
+      "actual": false,
+      "issues": [
+        {
+          "path": "$.observations.wordCount.scope.extra",
+          "code": "extra_property",
+          "message": "Unexpected property extra."
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "hashCases": [
+    {
+      "name": "undefined",
+      "error": "TypeError: Non-JSON value at $.a",
+      "pass": true
+    },
+    {
+      "name": "sparse",
+      "error": "TypeError: Sparse array at $[0]",
+      "pass": true
+    },
+    {
+      "name": "nonfinite",
+      "error": "TypeError: Non-finite JSON number at $.a",
+      "pass": true
+    },
+    {
+      "name": "cycle",
+      "error": "TypeError: Cycle in structured payload at $.self",
+      "pass": true
+    },
+    {
+      "name": "array accessor",
+      "digest": "080a9ed428559ef602668b4c00f114f1a11c3f6b02a435f0bdc154578e4d7f22",
+      "pass": false
+    },
+    {
+      "name": "array numeric nonindex property",
+      "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "pass": false
+    }
+  ],
+  "parity": {
+    "golden": "efbd0040190fb0871831e606c581f8a66db79d8e2bb836745a70051306956070",
+    "delegateEqual": true,
+    "unicodeDifferent": true,
+    "newlineDifferent": true
+  },
+  "authoredTests": "NOT_RUN"
+}
