@@ -892,7 +892,10 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <h2>Instant downloads — from $7</h2>
             <a href="/shop">See all files →</a>
           </div>
-          <FilesRailScroller products={FILE_SHOP_PRODUCTS.filter((p) => p.published).slice(0, 10)} />
+          {/* 6, not 10: the curated "Most requested" rail above carries the
+              high-intent offers, and the market-root document must stay under
+              the 300 KB payload budget (scripts/verify-market-landing-payload.mjs). */}
+          <FilesRailScroller products={FILE_SHOP_PRODUCTS.filter((p) => p.published).slice(0, 6)} />
         </div>
       </section>
 

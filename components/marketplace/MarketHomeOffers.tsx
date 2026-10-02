@@ -19,7 +19,7 @@ export function MostRequestedRail({ cards }: { cards: MostRequestedCard[] }) {
         <ul className="cw-mr-grid">
           {cards.map((card) => (
             <li key={card.key}>
-              <a className={`cw-mr-card is-${card.kind}`} href={card.href} data-mr-card={card.key}>
+              <a className={`cw-mr-card is-${card.kind}`} href={card.href}>
                 <span className="cw-mr-kicker">{card.kicker}</span>
                 <span className="cw-mr-title">{card.title}</span>
                 <span className="cw-mr-outcome">{card.outcome}</span>
@@ -42,7 +42,7 @@ export function MarketHomeCategoryTiles({ tiles }: { tiles: readonly CategoryTil
     <nav className="cw-home-tiles" aria-label="Popular categories">
       <div className="wrap cw-home-tiles-grid">
         {tiles.map((tile) => (
-          <a key={tile.id} className="cw-home-tile" href={tile.href} data-home-tile={tile.id}>
+          <a key={tile.id} className="cw-home-tile" href={tile.href}>
             <span className="cw-home-tile-label">{tile.label}</span>
             <span className="cw-home-tile-blurb">{tile.blurb}</span>
           </a>
