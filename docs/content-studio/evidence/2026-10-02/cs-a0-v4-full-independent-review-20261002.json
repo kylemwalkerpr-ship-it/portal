@@ -1,0 +1,83 @@
+{
+  "observedAt": "2026-10-02T09:41:34.914374+00:00",
+  "reviewer": "independent GPT-6.1 Sol semantic review",
+  "verdict": "PASS",
+  "acceptance": "ENGINEERING_INVENTORY_ONLY",
+  "frozenAggregateSha256": "4349348c9beb7111cc2496c29a246197b94f9dba9ad985e4b06dbe2574154ff1",
+  "head": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "files": [
+    {
+      "path": "docs/content-studio/a0/schema-map.json",
+      "bytes": 106256,
+      "sha256": "dc8e93d3baab3120d8f11a8c294e7550c965125231921eef2266928a82e196f2"
+    },
+    {
+      "path": "docs/content-studio/a0/migration-ledger.json",
+      "bytes": 54266,
+      "sha256": "6a8a47dce33eee337e84dbb977399d48051a0844e81acb832cecdb29290deaab"
+    },
+    {
+      "path": "docs/content-studio/a0/legacy-disposition.json",
+      "bytes": 19648,
+      "sha256": "56f1275a9048b273e34647d294ea533b88edd768c87e46bbec6b53fcf8612cea"
+    },
+    {
+      "path": "docs/content-studio/a0/privilege-matrix.json",
+      "bytes": 11352,
+      "sha256": "3552ef4b38441b2e6e97f26de2063ab6192f1eb1cf1f8779d0971d313aece42b"
+    },
+    {
+      "path": "docs/content-studio/a0/runtime-baseline.json",
+      "bytes": 3745,
+      "sha256": "b13558e130849705e18f1e53dc816c9e601e2d0110e80821bedd7b02c4e5c32c"
+    },
+    {
+      "path": "docs/content-studio/a0/estate-targets.json",
+      "bytes": 9481,
+      "sha256": "772e73ddbfc653ab76e6965371fca5a96e7a1282d68cd6abe6f7ff742bfe6db4"
+    },
+    {
+      "path": "docs/content-studio/a0/release-sinks.json",
+      "bytes": 40965,
+      "sha256": "04555b2605b505d4c7239902f7143993a56d59d20fa29b92afe2b2c65e9d1bb5"
+    }
+  ],
+  "mustFix": [],
+  "resolvedFindings": [
+    "A0-SCHEMA-SEM-01: retry executes existing stored jobs, reconciler never authors and stages retry bookkeeping, daily SEO distinct analytic/planner/ranking/reward/interlink lifecycle and seo_engine_runs ledger.",
+    "A0-SCHEMA-SEM-02: appendEvent and appendLog identify exact content_jobs.event_log mutation.",
+    "ESTATE-SINKS-MF1: requirePortalUser direct service-role identity relink/country/email effects and requireAdminUser transitive effects inventoried CURRENT_NO_SHARED_LOCK; no profile creation or positive project grant; transition closure explicitly NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER across authority mapping, privilege and legacy/sink inventory.",
+    "ESTATE-SINKS-MF2: retry */30 schedule correctly described as every 30 minutes."
+  ],
+  "independentChecks": {
+    "fileHashes": "7 PASS",
+    "sourceEvidenceChecked": 416,
+    "excerptsChecked": 148,
+    "sourceFiles": 129,
+    "errors": []
+  },
+  "rerunChecks": [
+    {
+      "check": "cs-a0-authority-release-map-20261001-v3.verify.py",
+      "exit": 0,
+      "result": "PASS fixed7 source/hash/ref scope; exact frozen interface+locks; domains+bounded functions; executable authority/dispatch plans;7estate targets;workflow/sink inventory;catalog grants;canonical8"
+    },
+    {
+      "check": "cs-a0-writer-identity-map-correction-20261002-v4.verify.py",
+      "exit": 0,
+      "result": "PASS actual pinned cron ownership/event_log/identity direct+transitive mutations/credential holder/closure/30-minute schedule"
+    }
+  ],
+  "preservedScope": [
+    "Frozen resolver available/allowed plus eleven binding fields; decisionId not invented as resolver field.",
+    "Five lock order and all-writer participation remain planned, current authority unavailable denies admission.",
+    "Canonical/source pins preserved, historical base distinguished from helper-only production merge.",
+    "Migration metadata and catalog grants do not establish effective API privileges or apply authority.",
+    "Runtime/estate maps unchanged from prior reviewed bytes; seven host mappings and six workflow holders preserved."
+  ],
+  "limitations": [
+    "No production security, effective RLS/API role, positive authority, CPU cohort, artifact restore or live architecture release acceptance.",
+    "No SQL, provider or authentication probe; secrets values not inspected; no source edit, commit or board mutation.",
+    "Prior low-impact adoption-workflow evidence pointer precision note remains nonblocking."
+  ]
+}
