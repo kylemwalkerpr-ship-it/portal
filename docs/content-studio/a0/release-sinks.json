@@ -1,0 +1,941 @@
+{
+  "documentId": "release-sinks",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": ".github/workflows/adopt-migration-ledger.yml",
+      "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87"
+    },
+    {
+      "path": ".github/workflows/apply-seo-factory-migrations.yml",
+      "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef"
+    },
+    {
+      "path": ".github/workflows/content-studio-retry.yml",
+      "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e"
+    },
+    {
+      "path": ".github/workflows/deploy.yml",
+      "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365"
+    },
+    {
+      "path": ".github/workflows/reconcile-content-jobs.yml",
+      "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d"
+    },
+    {
+      "path": ".github/workflows/seo-engine-daily.yml",
+      "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55"
+    },
+    {
+      "path": "app/api/content-studio/jobs/legacyCore.ts",
+      "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6"
+    },
+    {
+      "path": "app/api/cron/content-studio-retry/route.ts",
+      "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8"
+    },
+    {
+      "path": "app/api/cron/reconcile-content-jobs/route.ts",
+      "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b"
+    },
+    {
+      "path": "app/api/cron/seo-engine-daily/route.ts",
+      "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87"
+    },
+    {
+      "path": "lib/githubContents.ts",
+      "sha256": "e4290b0e31c556ebfc80e9f9a041eb5b06b0b0368727e2ad89d00f8908cb5124"
+    },
+    {
+      "path": "lib/githubContentsCore.ts",
+      "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9"
+    },
+    {
+      "path": "lib/seoFactory/ship.ts",
+      "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc"
+    },
+    {
+      "path": "scripts/adopt-migration-ledger.mjs",
+      "sha256": "34058fcab44b9b4392126aa8d325aee5accfe34e64675d5c99315456259771ee"
+    },
+    {
+      "path": "scripts/apply-content-studio-migrations.mjs",
+      "sha256": "10ed66ee603554e74e076d9970be2bc195f98d8349094338e38f7c71e915d75c"
+    },
+    {
+      "path": "scripts/apply-migrations.mjs",
+      "sha256": "2137a6278c35c4bb55185fdeba0ac61141b9cc3d5a57f4fa81b7cf1386003962"
+    },
+    {
+      "path": "scripts/migration-ledger-policy.mjs",
+      "sha256": "eaa3af4db942e818449203e5c41fa9d2f3a446644b7bb3e65d6d0461fb06d65c"
+    },
+    {
+      "path": "scripts/migration-ledger-runner.mjs",
+      "sha256": "71727134744d8163cd6dbde673edd9b641d33ad272dd281709a16bfa74600ec1"
+    },
+    {
+      "path": "scripts/prepare-worker-secrets.mjs",
+      "sha256": "898364a977e9828b930f7a620fdcd4fc25c4845c890de981571018b0b0a17c3c"
+    },
+    {
+      "path": "wrangler.toml",
+      "sha256": "8768bf6a4655fc1b4dcf64ee04da2994dbb314b7abb0197b3badb967bb8ba4c7"
+    }
+  ],
+  "entries": [
+    {
+      "id": "SINK-WORKFLOWS",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        ".github/workflows/deploy.yml",
+        ".github/workflows/apply-seo-factory-migrations.yml",
+        ".github/workflows/adopt-migration-ledger.yml",
+        ".github/workflows/content-studio-retry.yml",
+        ".github/workflows/reconcile-content-jobs.yml",
+        ".github/workflows/seo-engine-daily.yml"
+      ],
+      "references": [
+        "RUNTIME-RELEASE",
+        "MIGRATION-LEDGER-TOOLS"
+      ],
+      "description": "Six actual release and scheduled sink workflows are enumerated with source triggers, concurrency and credential holder symbols.",
+      "inventory": "workflowInventory"
+    },
+    {
+      "id": "SINK-GITHUB",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/githubContentsCore.ts",
+        "lib/githubContents.ts",
+        "lib/seoFactory/ship.ts",
+        "app/api/content-studio/jobs/legacyCore.ts"
+      ],
+      "references": [
+        "ESTATE-GITHUB-DEFAULT",
+        "LEGACY-SINK-DENY"
+      ],
+      "description": "Git writes, PR operations, direct-main fallback and inline legacy actions are source-observed.",
+      "methods": [
+        "putRepoFile",
+        "deleteRepoFile",
+        "createBranchFrom",
+        "openPullRequest",
+        "mergePullRequest",
+        "updatePullRequestBranch",
+        "shipContent",
+        "putContent",
+        "revertContent"
+      ],
+      "scope": "direct-main branch conditional is an existing explicit sink; deny before v3 cutover"
+    },
+    {
+      "id": "SINK-MIGRATION",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "scripts/apply-migrations.mjs",
+        "scripts/migration-ledger-runner.mjs",
+        "scripts/migration-ledger-policy.mjs",
+        "scripts/apply-content-studio-migrations.mjs",
+        "scripts/adopt-migration-ledger.mjs",
+        ".github/workflows/apply-seo-factory-migrations.yml",
+        ".github/workflows/adopt-migration-ledger.yml"
+      ],
+      "references": [
+        "MIGRATION-LEDGER-TOOLS"
+      ],
+      "description": "Forward-only ledger apply/adoption workflow and legacy direct migration apply script are separate sink paths.",
+      "scope": "current workflow source only; no DDL applied"
+    },
+    {
+      "id": "SINK-DEPLOY",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        ".github/workflows/deploy.yml",
+        "scripts/prepare-worker-secrets.mjs",
+        "wrangler.toml"
+      ],
+      "references": [
+        "RUNTIME-WORKER"
+      ],
+      "description": "Official GitHub deploy workflow includes Cloudflare credential holder, Worker secret sync, AI vault side effect and post-deploy smoke.",
+      "scope": "source wiring only; supplied run receipt applies to helper component only"
+    }
+  ],
+  "unknowns": [
+    "GitHub remote IDs, protected branch/ruleset state, checks required in current remote, deployment workflow dispatch permission and current source SHA serialization are UNKNOWN; no account/network probe was performed.",
+    "Supplied historical deployment evidence is PR #312 merged at main 010407026438a3f68e063f41ae0c0cd778ac6d50; official deploy.yml run 36919605423 SUCCESS including postdeploy smoke. It deployed reviewed helper components only, not v3 authority/dispatch or positive command admission.",
+    "Current active Worker bundle/version, Cloudflare roles/access, CPU/telemetry and live sinks are UNKNOWN; source config is not proof.",
+    "Sync AI vault is an outside-production-DDL side effect; deploy workflow smoke is not new runtime or command-admission proof."
+  ],
+  "checks": {
+    "source": "All six workflow definitions, Git helpers, ship functions, migration scripts and route handlers pinned to historical sourceCommit e42d; current main history is separately supplied root evidence.",
+    "actualRunReceipt": "PR #312 merged; main 010407026438a3f68e063f41ae0c0cd778ac6d50; deploy workflow run 36919605423 SUCCESS including postdeploy smoke; helper-component-only scope.",
+    "newArchitectureProof": "NOT_ESTABLISHED"
+  },
+  "workflowInventory": [
+    {
+      "file": ".github/workflows/deploy.yml",
+      "name": "Deploy YouSafe Portal",
+      "triggers": [
+        "push: main",
+        "pull_request: main",
+        "workflow_dispatch"
+      ],
+      "schedule": null,
+      "concurrency": "concurrency group yousafe-portal-${{ github.workflow }}-${{ github.ref }}; cancel-in-progress=true",
+      "credentialHolders": [
+        "CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN repository Actions secrets (deployment only)",
+        "CONTENT_STUDIO_GITHUB_TOKEN or GITHUB_TOKEN_CONTENT mapped by prepare-worker-secrets to Worker GITHUB_TOKEN",
+        "CRON_SECRET",
+        "SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF for AI vault sync"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 1,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "workflow name",
+          "excerpt": "name: Deploy YouSafe Portal"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 4,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "main push + PR + manual triggers",
+          "excerpt": "push:"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 15,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "workflow concurrency per workflow/ref with cancellation",
+          "excerpt": "group: yousafe-portal-${{ github.workflow }}-${{ github.ref }}"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 207,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "Worker GitHub token aliases are secret names only",
+          "excerpt": "CONTENT_STUDIO_GITHUB_TOKEN: ${{ secrets.CONTENT_STUDIO_GITHUB_TOKEN }}"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 247,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "Supabase AI-vault sync credential holder; outside runtime DDL authority",
+          "excerpt": "SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 364,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "post-deploy smoke source, not new runtime proof",
+          "excerpt": "- name: Post-deploy smoke test (studio contract + build freshness)"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    },
+    {
+      "file": ".github/workflows/apply-seo-factory-migrations.yml",
+      "name": "Apply SEO Factory Migrations",
+      "triggers": [
+        "push: main when migration/tooling paths change",
+        "workflow_dispatch"
+      ],
+      "schedule": null,
+      "concurrency": "group seo-factory-migrations-${{ github.ref }}; cancel-in-progress=false",
+      "credentialHolders": [
+        "SUPABASE_ACCESS_TOKEN",
+        "SUPABASE_PROJECT_REF"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/apply-seo-factory-migrations.yml",
+          "line": 1,
+          "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef",
+          "claim": "workflow name",
+          "excerpt": "name: Apply SEO Factory Migrations"
+        },
+        {
+          "path": ".github/workflows/apply-seo-factory-migrations.yml",
+          "line": 4,
+          "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef",
+          "claim": "main migration path trigger",
+          "excerpt": "push:"
+        },
+        {
+          "path": ".github/workflows/apply-seo-factory-migrations.yml",
+          "line": 19,
+          "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef",
+          "claim": "non-cancelling migration concurrency",
+          "excerpt": ""
+        },
+        {
+          "path": ".github/workflows/apply-seo-factory-migrations.yml",
+          "line": 43,
+          "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef",
+          "claim": "Management API credential names only",
+          "excerpt": "SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    },
+    {
+      "file": ".github/workflows/adopt-migration-ledger.yml",
+      "name": "Adopt Migration Ledger Baseline",
+      "triggers": [
+        "workflow_dispatch with expected_main_sha and typed confirmation"
+      ],
+      "schedule": null,
+      "concurrency": "group seo-factory-migrations-${{ github.ref }}; cancel-in-progress=false",
+      "credentialHolders": [
+        "SUPABASE_ACCESS_TOKEN",
+        "SUPABASE_PROJECT_REF"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 1,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "workflow name",
+          "excerpt": "name: Adopt Migration Ledger Baseline"
+        },
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 4,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "manual-only exact-main adoption guard entry",
+          "excerpt": "workflow_dispatch:"
+        },
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 19,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "non-cancelling migration group",
+          "excerpt": "group: seo-factory-migrations-${{ github.ref }}"
+        },
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 67,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "credential holder names only",
+          "excerpt": "SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    },
+    {
+      "file": ".github/workflows/content-studio-retry.yml",
+      "name": "content-studio-retry",
+      "triggers": [
+        "schedule */30 * * * *",
+        "workflow_dispatch"
+      ],
+      "schedule": "schedule */30 * * * *",
+      "concurrency": "none declared",
+      "credentialHolders": [
+        "CRON_SECRET; PORTAL_URL repository variable"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/content-studio-retry.yml",
+          "line": 10,
+          "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e",
+          "claim": "cron workflow name",
+          "excerpt": "name: content-studio-retry"
+        },
+        {
+          "path": ".github/workflows/content-studio-retry.yml",
+          "line": 14,
+          "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e",
+          "claim": "30-minute schedule; 15-minute job timeout is a separate workflow execution limit",
+          "excerpt": "- cron: '*/30 * * * *'   # Every 30 minutes"
+        },
+        {
+          "path": ".github/workflows/content-studio-retry.yml",
+          "line": 20,
+          "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e",
+          "claim": "route POST and CRON_SECRET header; no value",
+          "excerpt": "# The route self-bounds at CONTENT_STUDIO_RETRY_DEADLINE_MS (default 12"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    },
+    {
+      "file": ".github/workflows/reconcile-content-jobs.yml",
+      "name": "reconcile-content-jobs",
+      "triggers": [
+        "schedule */15 * * * *",
+        "workflow_dispatch"
+      ],
+      "schedule": "schedule */15 * * * *",
+      "concurrency": "none declared",
+      "credentialHolders": [
+        "CRON_SECRET; PORTAL_URL repository variable"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/reconcile-content-jobs.yml",
+          "line": 10,
+          "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d",
+          "claim": "reconcile workflow name",
+          "excerpt": "name: reconcile-content-jobs"
+        },
+        {
+          "path": ".github/workflows/reconcile-content-jobs.yml",
+          "line": 14,
+          "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d",
+          "claim": "15-minute schedule",
+          "excerpt": "- cron: '*/15 * * * *'   # Every 15 minutes"
+        },
+        {
+          "path": ".github/workflows/reconcile-content-jobs.yml",
+          "line": 24,
+          "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d",
+          "claim": "route POST and CRON_SECRET header; no value",
+          "excerpt": "steps:"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    },
+    {
+      "file": ".github/workflows/seo-engine-daily.yml",
+      "name": "SEO Master Engine Daily",
+      "triggers": [
+        "schedule 15 9 * * *",
+        "workflow_dispatch with phase input"
+      ],
+      "schedule": "schedule 15 9 * * *",
+      "concurrency": "group seo-engine-daily-production; cancel-in-progress=false",
+      "credentialHolders": [
+        "CRON_SECRET; PORTAL_URL repository variable"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 1,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "workflow name",
+          "excerpt": "name: SEO Master Engine Daily"
+        },
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 8,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "daily schedule and dispatch",
+          "excerpt": "- cron: '15 9 * * *'"
+        },
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 29,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "single-run concurrency without cancellation",
+          "excerpt": "concurrency:"
+        },
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 37,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "CRON_SECRET holder name only",
+          "excerpt": "PHASE: ${{ github.event.inputs.phase || 'all' }}"
+        }
+      ],
+      "disposition": "official source boundary; reviewed PR/check/main chain is required for production code; workflow source concurrency does not prove remote-base serialization"
+    }
+  ],
+  "sinkInventory": [
+    {
+      "file": "lib/githubContentsCore.ts",
+      "functionOrStep": "putRepoFile",
+      "kind": "GIT_WRITE",
+      "credentialHolders": [
+        "Worker secret GITHUB_TOKEN sourced from CONTENT_STUDIO_GITHUB_TOKEN or GITHUB_TOKEN_CONTENT; source helper also accepts GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 18,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "token symbol and aliases; values excluded",
+          "excerpt": "const t = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN"
+        },
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 317,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "Contents API create/update helper resolves current blob SHA and retries 409/422",
+          "excerpt": "export async function putRepoFile(opts: PutRepoFileOpts): Promise<PutRepoFileResult> {"
+        }
+      ],
+      "disposition": "wrap with canonical release authority and expected remote SHA serialization; no direct shared-lock proof"
+    },
+    {
+      "file": "lib/githubContentsCore.ts",
+      "functionOrStep": "deleteRepoFile",
+      "kind": "GIT_WRITE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 208,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "delete file helper declaration; expected SHA required",
+          "excerpt": "export async function deleteRepoFile(opts: {"
+        }
+      ],
+      "disposition": "wrap/deny until one release operation permit and expected-SHA check are bound"
+    },
+    {
+      "file": "lib/githubContentsCore.ts",
+      "functionOrStep": "createBranchFrom; updatePullRequestBranch; openPullRequest",
+      "kind": "GIT_WRITE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 171,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "create ref from supplied SHA",
+          "excerpt": "export async function createBranchFrom("
+        },
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 415,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "PR branch update",
+          "excerpt": "export async function updatePullRequestBranch("
+        },
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 552,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "open pull request",
+          "excerpt": "export async function openPullRequest(opts: {"
+        }
+      ],
+      "disposition": "adapt to canonical release operation; remote protection and expected-base serialization UNKNOWN"
+    },
+    {
+      "file": "lib/githubContentsCore.ts",
+      "functionOrStep": "mergePullRequest",
+      "kind": "PR_MERGE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 468,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "conflict-aware merge; retries base sync on mergeability conflict",
+          "excerpt": "export async function mergePullRequest(opts: {"
+        },
+        {
+          "path": "lib/githubContentsCore.ts",
+          "line": 514,
+          "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9",
+          "claim": "updates branch from PR head SHA",
+          "excerpt": "await updatePullRequestBranch(owner, repo, prNumber, pr.head.sha || undefined)"
+        }
+      ],
+      "disposition": "merge only through reviewed PR gate; conflict fallback direct-main path is DENY_BEFORE_CUTOVER"
+    },
+    {
+      "file": "lib/seoFactory/ship.ts",
+      "functionOrStep": "shipContent direct-main humanApproved && mode !== pr; putRepoFile(branch=main)",
+      "kind": "GIT_WRITE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/ship.ts",
+          "line": 956,
+          "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc",
+          "claim": "conditional human-approved direct main commit",
+          "excerpt": "const useMainCommit = Boolean(opts.humanApproved && opts.mode !== 'pr')"
+        },
+        {
+          "path": "lib/seoFactory/ship.ts",
+          "line": 963,
+          "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc",
+          "claim": "main branch Contents API write",
+          "excerpt": "const put = await putRepoFile({"
+        }
+      ],
+      "disposition": "DENY_BEFORE_CUTOVER for v3 shared release path; source direct-main fallback remains explicit legacy sink"
+    },
+    {
+      "file": "lib/seoFactory/ship.ts",
+      "functionOrStep": "shipContent PR branch/create/openPullRequest/wait CI/merge",
+      "kind": "PR_MERGE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/ship.ts",
+          "line": 1060,
+          "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc",
+          "claim": "create branch",
+          "excerpt": "await createBranchFrom(owner, repo, branchName, baseSha)"
+        },
+        {
+          "path": "lib/seoFactory/ship.ts",
+          "line": 1107,
+          "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc",
+          "claim": "open PR",
+          "excerpt": "const pr = await openPullRequest({"
+        },
+        {
+          "path": "lib/seoFactory/ship.ts",
+          "line": 1107,
+          "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc",
+          "claim": "open PR after branch/file commit; merge path follows check wait",
+          "excerpt": "const pr = await openPullRequest({"
+        }
+      ],
+      "disposition": "wrap as legacy release workflow; requires v3 permit/operation mapping before cutover"
+    },
+    {
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "functionOrStep": "POST/PATCH inline legacy actions; approve/merge_pr and conflict fallback",
+      "kind": "PR_MERGE",
+      "credentialHolders": [
+        "Worker GITHUB_TOKEN symbol through ship helpers",
+        "verified Clerk identity client and shared Supabase service-role profile client through portalAuth (credential symbols/types only; values not inspected)"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 393,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "legacy POST",
+          "excerpt": "export async function POST(request: NextRequest) {"
+        },
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 944,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "legacy PATCH",
+          "excerpt": "export async function PATCH(request: NextRequest) {"
+        },
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 1983,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "explicit force-ship fallback source",
+          "excerpt": "`[content-studio/jobs] approve: PR #${job.pr_number} merge failed after auto-sync, force-shipping to main: ${msg}`,"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 197,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "legacy admin route transitively crosses requirePortalUser mixed identity reads and profile mutations",
+          "excerpt": "const ctx = await requirePortalUser(request)"
+        }
+      ],
+      "disposition": "keep legacy endpoint separate; Clerk/profile admin remains identity only and never grants project/action authority; direct-main conflict fallback DENY_BEFORE_CUTOVER; identity relink/rebind and trusted mapping/revocation must join shared locks or be excluded/denied before cutover",
+      "identityTransitionClosure": {
+        "status": "NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER",
+        "positiveProjectGrant": false,
+        "existingBoundary": "requirePortalUser mixes verified identity/profile reads with service-role profile relink and country/email backfills; requireAdminUser calls it transitively before checking normalized admin role.",
+        "plannedTransitions": [
+          "Route verified-email relink/rebind through the trusted actor mapping/revocation closure under the common five-lock protocol, or explicitly exclude and deny that relink/rebind path before cutover.",
+          "Provision trusted actor-to-project mapping and revocation through canonical bind_project_actor/revoke_project_actor transitions; those APIs and locks are NEW_PLANNED, not implemented here."
+        ],
+        "cutoverRule": "Until the common transaction-held lock protocol covers profile identity transitions and trusted actor mapping/revocation, exclude or deny these transition paths before cutover; unavailable durable binding denies admission.",
+        "grantSemantics": "Clerk/profile admin identity NEVER establishes a durable project/action grant; immutable actor grant semantics remain unchanged."
+      }
+    },
+    {
+      "file": "scripts/apply-migrations.mjs",
+      "functionOrStep": "apply-migrations -> migration-ledger-runner -> Supabase Management SQL",
+      "kind": "MIGRATION_APPLY",
+      "credentialHolders": [
+        "GitHub Actions SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF repository secret names"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/apply-seo-factory-migrations.yml",
+          "line": 51,
+          "sha256": "ba21df4c68f3cdf72f3184e163513341a3d0fdd8867f43ee94bad53ddf6846ef",
+          "claim": "ledger-guarded apply command",
+          "excerpt": "node scripts/apply-migrations.mjs --preflight"
+        },
+        {
+          "path": "scripts/apply-migrations.mjs",
+          "line": 1,
+          "sha256": "2137a6278c35c4bb55185fdeba0ac61141b9cc3d5a57f4fa81b7cf1386003962",
+          "claim": "forward migration entrypoint",
+          "excerpt": "#!/usr/bin/env node"
+        },
+        {
+          "path": "scripts/migration-ledger-runner.mjs",
+          "line": 1,
+          "sha256": "71727134744d8163cd6dbde673edd9b641d33ad272dd281709a16bfa74600ec1",
+          "claim": "ledger runner module",
+          "excerpt": "#!/usr/bin/env node"
+        }
+      ],
+      "disposition": "only official workflow after required checks/current ledger review; no local apply"
+    },
+    {
+      "file": "scripts/apply-content-studio-migrations.mjs",
+      "functionOrStep": "viaManagementApi / viaPostgres raw concatenated SQL apply",
+      "kind": "MIGRATION_APPLY",
+      "credentialHolders": [
+        "Direct local Management API/Postgres credential holder (value not read)"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "scripts/apply-content-studio-migrations.mjs",
+          "line": 20,
+          "sha256": "10ed66ee603554e74e076d9970be2bc195f98d8349094338e38f7c71e915d75c",
+          "claim": "concatenates legacy SQL files",
+          "excerpt": "const root = join(__dirname, '..')"
+        },
+        {
+          "path": "scripts/apply-content-studio-migrations.mjs",
+          "line": 32,
+          "sha256": "10ed66ee603554e74e076d9970be2bc195f98d8349094338e38f7c71e915d75c",
+          "claim": "direct Management API POST",
+          "excerpt": "async function viaManagementApi(token) {"
+        },
+        {
+          "path": "scripts/apply-content-studio-migrations.mjs",
+          "line": 48,
+          "sha256": "10ed66ee603554e74e076d9970be2bc195f98d8349094338e38f7c71e915d75c",
+          "claim": "direct Postgres client path",
+          "excerpt": "}"
+        }
+      ],
+      "disposition": "DENY_BEFORE_CUTOVER; legacy raw sink bypasses forward ledger workflow"
+    },
+    {
+      "file": "scripts/adopt-migration-ledger.mjs",
+      "functionOrStep": "runAdoption",
+      "kind": "LEDGER_ADOPTION",
+      "credentialHolders": [
+        "GitHub Actions SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF repository secret names"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 4,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "manual dispatch with expected SHA and confirmation",
+          "excerpt": "workflow_dispatch:"
+        },
+        {
+          "path": ".github/workflows/adopt-migration-ledger.yml",
+          "line": 29,
+          "sha256": "efd0eea41121d1039471c3eb9bb5edf3289bb43d0c41d910888bac1c00fb8e87",
+          "claim": "exact main confirmation guard",
+          "excerpt": "# or bad-confirmation dispatch must FAIL this workflow, never skip the job."
+        },
+        {
+          "path": "scripts/adopt-migration-ledger.mjs",
+          "line": 18,
+          "sha256": "34058fcab44b9b4392126aa8d325aee5accfe34e64675d5c99315456259771ee",
+          "claim": "runtime main ref guard; expected SHA and token guards follow",
+          "excerpt": "guard(GITHUB_REF === 'refs/heads/main', `dispatched ref is ${GITHUB_REF}; main is required`)"
+        }
+      ],
+      "disposition": "official protected environment workflow only; adoption is not migration apply and ledger completeness remains unknown"
+    },
+    {
+      "file": ".github/workflows/deploy.yml",
+      "functionOrStep": "Deploy YouSafe Portal main workflow: build/typecheck/tests, sync Worker secrets, deploy-production.mjs, post-deploy smoke",
+      "kind": "OFFICIAL_DEPLOY",
+      "credentialHolders": [
+        "Cloudflare Actions account/token repository secret symbols",
+        "GitHub Actions GITHUB_TOKEN for checkout",
+        "SUPABASE_ACCESS_TOKEN/SUPABASE_PROJECT_REF for non-DDL AI vault sync"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 4,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "main push/PR/manual trigger source",
+          "excerpt": "push:"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 20,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "build/deploy job",
+          "excerpt": "name: Build and deploy Worker"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "line": 364,
+          "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365",
+          "claim": "postdeploy smoke step",
+          "excerpt": "- name: Post-deploy smoke test (studio contract + build freshness)"
+        }
+      ],
+      "disposition": "official workflow only after PR required checks and merge to main; smoke is source-defined deploy verification and is not new v3 authority/dispatch proof"
+    },
+    {
+      "file": ".github/workflows/content-studio-retry.yml",
+      "functionOrStep": "retry-drafting POST /api/cron/content-studio-retry",
+      "kind": "CRON_RETRY",
+      "credentialHolders": [
+        "CRON_SECRET"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/content-studio-retry.yml",
+          "line": 14,
+          "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e",
+          "claim": "every 30 minutes",
+          "excerpt": "- cron: '*/30 * * * *'   # Every 30 minutes"
+        },
+        {
+          "path": ".github/workflows/content-studio-retry.yml",
+          "line": 32,
+          "sha256": "47171c40b4b080e3ac8e278e94cc189c177ca85990210867af57b6bc16c5cf6e",
+          "claim": "CRON_SECRET bearer holder symbol; no value",
+          "excerpt": "-H \"Authorization: Bearer ${{ secrets.CRON_SECRET }}\" \\"
+        }
+      ],
+      "disposition": "legacy retry owner; v3 dispatch cannot overlap until one retry/dispatch owner is assigned"
+    },
+    {
+      "file": "app/api/cron/content-studio-retry/route.ts",
+      "functionOrStep": "POST + appendEvent",
+      "kind": "CRON_RETRY",
+      "credentialHolders": [
+        "CRON_SECRET; Worker database service-role symbol (value not inspected)"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 93,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "audit event append",
+          "excerpt": "async function appendEvent(sb: SupabaseClient, jobId: string, entry: Record<string, unknown>) {"
+        },
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 105,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "cron route POST",
+          "excerpt": "export async function POST(req: Request) {"
+        }
+      ],
+      "disposition": "legacy content_jobs retry and audit sink; retain or adapt only after single retry owner cutover"
+    },
+    {
+      "file": ".github/workflows/reconcile-content-jobs.yml",
+      "functionOrStep": "reconcile-jobs POST /api/cron/reconcile-content-jobs",
+      "kind": "CRON_RECONCILE",
+      "credentialHolders": [
+        "CRON_SECRET"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/reconcile-content-jobs.yml",
+          "line": 14,
+          "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d",
+          "claim": "every 15 minutes",
+          "excerpt": "- cron: '*/15 * * * *'   # Every 15 minutes"
+        },
+        {
+          "path": ".github/workflows/reconcile-content-jobs.yml",
+          "line": 31,
+          "sha256": "bed93e9941eccd9999e2ad2a7984b3ef6e86d9f67d7d0dbccaf463834378cf9d",
+          "claim": "CRON_SECRET bearer holder symbol; no value",
+          "excerpt": "-H \"Authorization: Bearer ${{ secrets.CRON_SECRET }}\" \\"
+        }
+      ],
+      "disposition": "legacy retry staging owner; v3 reconciliation must not duplicate/re-spawn old jobs"
+    },
+    {
+      "file": "app/api/cron/reconcile-content-jobs/route.ts",
+      "functionOrStep": "POST + appendLog + stageRetry",
+      "kind": "CRON_RECONCILE",
+      "credentialHolders": [
+        "CRON_SECRET; Worker database service-role symbol (value not inspected)"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 59,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "audit log append",
+          "excerpt": "async function appendLog(sb: SupabaseClient, jobId: string, ...parts: Array<{ [k: string]: unknown }>) {"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 74,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "route POST",
+          "excerpt": "export async function POST(req: Request) {"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 160,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "legacy retry state writer",
+          "excerpt": "async function stageRetry("
+        }
+      ],
+      "disposition": "legacy content_jobs reconciler; adapt/retire under one durable dispatch/retry owner"
+    },
+    {
+      "file": ".github/workflows/seo-engine-daily.yml",
+      "functionOrStep": "seo-engine-daily POST /api/cron/seo-engine-daily",
+      "kind": "CRON_ANALYTICS",
+      "credentialHolders": [
+        "CRON_SECRET"
+      ],
+      "sourceEvidence": [
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 8,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "daily scheduled/manual phase trigger",
+          "excerpt": "- cron: '15 9 * * *'"
+        },
+        {
+          "path": ".github/workflows/seo-engine-daily.yml",
+          "line": 37,
+          "sha256": "0f97e4c19bd000bd5509f88ea00b549c166f62b0a61c1bebaaadbd80db7fad55",
+          "claim": "CRON_SECRET holder symbol",
+          "excerpt": "PHASE: ${{ github.event.inputs.phase || 'all' }}"
+        }
+      ],
+      "disposition": "analytical/planner schedule remains separately owned; inspect its internal writers before any dispatch overlap or authority promotion"
+    },
+    {
+      "file": "app/api/cron/seo-engine-daily/route.ts",
+      "functionOrStep": "POST",
+      "kind": "CRON_RECONCILE",
+      "credentialHolders": [
+        "CRON_SECRET; Worker database service-role symbol (value not inspected)"
+      ],
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 51,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "route POST source",
+          "excerpt": "export async function POST(req: NextRequest) {"
+        }
+      ],
+      "disposition": "keep analytical results in seo_engine_runs; do not repurpose as run scheduler"
+    }
+  ],
+  "credentialSymbolPolicy": "Credential HOLDER/SYMBOL names only; values were not read or recorded.",
+  "releaseChain": "branch → PR → required repository checks → merge to main → .github/workflows/deploy.yml → live verification.",
+  "directMainDisposition": "DENY_BEFORE_CUTOVER",
+  "createPublication": "CREATE/publication and P12/P13 remain separately gated."
+}

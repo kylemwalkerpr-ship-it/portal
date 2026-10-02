@@ -1,0 +1,283 @@
+{
+  "documentId": "privilege-matrix",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+    },
+    {
+      "path": "lib/portalAuth.ts",
+      "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd"
+    },
+    {
+      "path": "supabase/migrations/20260906_studio_specialist_signals.sql",
+      "sha256": "316e541ef29b639b377f888e27cc85779b1d3061f578b5cd5e777c7c874fcf90"
+    },
+    {
+      "path": "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+      "sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4"
+    },
+    {
+      "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0"
+    }
+  ],
+  "entries": [
+    {
+      "id": "PRIV-CATALOG",
+      "evidenceStatus": "CATALOG_OBSERVED",
+      "sourceRefs": [],
+      "references": [
+        "MAP-CATALOG"
+      ],
+      "description": "Exact root-observed six-relation grants and three policies are stored in catalogGrantFacts.",
+      "receiptSHA": "f6a5f36946d49d975bf1c251c4f138fc2cc108533fe35f21bc06ee21b067814b",
+      "scope": "Read-only six-relation policy and role_table_grants catalog; not effective authenticated API testing"
+    },
+    {
+      "id": "PRIV-LEGACY-SCHEMA",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+        "supabase/migrations/20260906_studio_specialist_signals.sql",
+        "supabase/migrations/20260915_content_studio_execution_lease.sql"
+      ],
+      "references": [
+        "MAP-EVIDENCE",
+        "MAP-LEASE"
+      ],
+      "description": "Source migrations establish legacy RLS/grant patterns; effective API role behavior and FORCE status are not proven by source.",
+      "scope": "migration source declarations only"
+    },
+    {
+      "id": "PRIV-ROLES",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md"
+      ],
+      "references": [
+        "MAP-PLAN"
+      ],
+      "description": "Canonical architecture proposes dedicated least-privilege role classes; names are proposed and current existence is unknown.",
+      "roles": [
+        "studio_reader",
+        "studio_ingest",
+        "studio_worker",
+        "studio_policy",
+        "studio_review",
+        "studio_release"
+      ]
+    },
+    {
+      "id": "PRIV-IDENTITY",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/portalAuth.ts"
+      ],
+      "references": [
+        "PRIV-CATALOG"
+      ],
+      "description": "Clerk session/profile role/status resolution plus requirePortalUser's service-role identity relink and country/email backfills is an existing mixed identity signal, not a current project/action grant.",
+      "scope": "server identity/profile lookup and unlocked identity maintenance only; no project-scoped authorization or durable project/action grant"
+    },
+    {
+      "id": "PRIV-NARROW-RPC",
+      "evidenceStatus": "PROPOSED_CONTROL",
+      "sourceRefs": [],
+      "references": [
+        "MAP-FROZEN-INTERFACE"
+      ],
+      "description": "Frozen plan requires function-only privilege, fixed search_path/owner, explicit revokes/default ACL and per-role negatives.",
+      "scope": "proposed gate, not current proof"
+    }
+  ],
+  "unknowns": [
+    "effectiveApiProof is NOT_RUN; exact effective privileges for anon/authenticated/service role/function EXECUTE/default privileges/owner/search_path remain unknown.",
+    "Catalog receipt is partial metadata, not exhaustive relation absence or API authorization proof.",
+    "Project/actor bindings, policy owners, current policy rows and authority provisioned seed are root-owned; do not fabricate permissive defaults."
+  ],
+  "checks": {
+    "effectiveApiProof": "NOT_RUN",
+    "catalog": "receipt supplied by root, SHA256 f6a5f36946d49d975bf1c251c4f138fc2cc108533fe35f21bc06ee21b067814b",
+    "verifiedByPacket": "no role/session/API/database calls"
+  },
+  "catalogGrantFacts": {
+    "evidenceStatus": "CATALOG_OBSERVED",
+    "projectId": "krggzrxxnqfsbbklatxl",
+    "observedAt": "2026-10-01",
+    "scope": "Read-only six-relation policy and role_table_grants catalog; not effective authenticated API testing",
+    "grants": [
+      {
+        "table_name": "content_jobs",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "content_studio_evidence_items",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "content_studio_stage_events",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "content_studio_writing_contracts",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "seo_engine_runs",
+        "grantee": "anon",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "seo_engine_runs",
+        "grantee": "authenticated",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "seo_engine_runs",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "studio_specialist_signals",
+        "grantee": "anon",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "studio_specialist_signals",
+        "grantee": "authenticated",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      },
+      {
+        "table_name": "studio_specialist_signals",
+        "grantee": "service_role",
+        "privileges": "DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE"
+      }
+    ],
+    "policies": [
+      {
+        "tablename": "content_jobs",
+        "policyname": "Service role full access",
+        "roles": "{service_role}",
+        "cmd": "ALL",
+        "qual": "true",
+        "with_check": "true"
+      },
+      {
+        "tablename": "seo_engine_runs",
+        "policyname": "Engine full access",
+        "roles": "{public}",
+        "cmd": "ALL",
+        "qual": "true",
+        "with_check": "true"
+      },
+      {
+        "tablename": "studio_specialist_signals",
+        "policyname": "Specialist signals full access",
+        "roles": "{public}",
+        "cmd": "ALL",
+        "qual": "true",
+        "with_check": "true"
+      }
+    ],
+    "receiptSHA": "f6a5f36946d49d975bf1c251c4f138fc2cc108533fe35f21bc06ee21b067814b",
+    "rls": {
+      "content_jobs": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      },
+      "content_studio_evidence_items": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      },
+      "content_studio_stage_events": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      },
+      "content_studio_writing_contracts": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      },
+      "seo_engine_runs": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      },
+      "studio_specialist_signals": {
+        "enabled": "ROOT_METADATA_OBSERVED",
+        "force": "false"
+      }
+    },
+    "policyIdentity": "Copied from root metadata receipt; policies are the exact three listed rows."
+  },
+  "effectiveApiProof": "NOT_RUN",
+  "hardeningBeforeReuse": [
+    "public.seo_engine_runs",
+    "public.studio_specialist_signals"
+  ],
+  "rawServiceDmlAndNarrowRpcHardening": [
+    "public.content_jobs",
+    "public.content_studio_evidence_items",
+    "public.content_studio_stage_events",
+    "public.content_studio_writing_contracts"
+  ],
+  "roles": [
+    {
+      "role": "browser",
+      "status": "PROPOSED_ONLY",
+      "permissions": "public UI/session; no direct private table writes"
+    },
+    {
+      "role": "editor",
+      "status": "PROPOSED_ONLY",
+      "permissions": "project-scoped command request; no policy/owner/run raw DML"
+    },
+    {
+      "role": "reviewer",
+      "status": "PROPOSED_ONLY",
+      "permissions": "narrow human review operation for assigned project/object/action"
+    },
+    {
+      "role": "worker",
+      "status": "PROPOSED_ONLY",
+      "permissions": "fenced stage/checkpoint transition RPC only"
+    },
+    {
+      "role": "dispatcher",
+      "status": "PROPOSED_ONLY",
+      "permissions": "claim/receipt/reconcile RPC only"
+    },
+    {
+      "role": "service",
+      "status": "CATALOG_OBSERVED_ROLE_ONLY",
+      "permissions": "current broad observed service_role table grants are legacy state, not proposed v3 blanket grant"
+    },
+    {
+      "role": "release",
+      "status": "PROPOSED_ONLY",
+      "permissions": "narrow approved publication permit/operation transition only"
+    }
+  ],
+  "proposedDefaultPrivileges": {
+    "schema": "studio_core private; revoke PUBLIC/anon/authenticated; grant USAGE only to named service roles",
+    "tables": "RLS enabled and FORCE where supported; revoke raw DML from runtime roles; transition API only",
+    "functions": "fixed safe search_path, non-login migration-managed owner, revoke PUBLIC/anon/authenticated EXECUTE, exact role-specific EXECUTE only",
+    "defaultAcl": "explicitly revoke future table/function PUBLIC grants; validate effective role privileges per object"
+  },
+  "identityBinding": "actual machine, human and project bindings must come from root-approved canonical authority source; Clerk/profile admin identity (including requirePortalUser backfills and requireAdminUser transitively) NEVER proves project membership or action grant",
+  "identityTransitionClosure": {
+    "status": "NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER",
+    "positiveProjectGrant": false,
+    "existingBoundary": "requirePortalUser mixes verified identity/profile reads with service-role profile relink and country/email backfills; requireAdminUser calls it transitively before checking normalized admin role.",
+    "plannedTransitions": [
+      "Route verified-email relink/rebind through the trusted actor mapping/revocation closure under the common five-lock protocol, or explicitly exclude and deny that relink/rebind path before cutover.",
+      "Provision trusted actor-to-project mapping and revocation through canonical bind_project_actor/revoke_project_actor transitions; those APIs and locks are NEW_PLANNED, not implemented here."
+    ],
+    "cutoverRule": "Until the common transaction-held lock protocol covers profile identity transitions and trusted actor mapping/revocation, exclude or deny these transition paths before cutover; unavailable durable binding denies admission.",
+    "grantSemantics": "Clerk/profile admin identity NEVER establishes a durable project/action grant; immutable actor grant semantics remain unchanged."
+  }
+}

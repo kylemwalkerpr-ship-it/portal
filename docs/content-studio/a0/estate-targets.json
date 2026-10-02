@@ -1,0 +1,237 @@
+{
+  "documentId": "estate-targets",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": "lib/githubContentsCore.ts",
+      "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9"
+    },
+    {
+      "path": "lib/seoFactory/ownership.ts",
+      "sha256": "5c110b0cd58ecc8fb2984db1c46ff5219d1a3fd76bba17aed826031434deba4f"
+    },
+    {
+      "path": "lib/seoFactory/ownershipContract.ts",
+      "sha256": "a96b34ee35aedf329a1e7e7b619cfacfcbb7dfb0d70db2e83eedfbc4d39f6518"
+    },
+    {
+      "path": "wrangler.toml",
+      "sha256": "8768bf6a4655fc1b4dcf64ee04da2994dbb314b7abb0197b3badb967bb8ba4c7"
+    }
+  ],
+  "entries": [
+    {
+      "id": "ESTATE-ROUTE-RULES",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownership.ts",
+        "lib/seoFactory/ownershipContract.ts"
+      ],
+      "references": [
+        "MAP-ESTATE"
+      ],
+      "description": "Host/repository/path resolver is source-observed code, and each seven current source-known hosts is enumerated in targets.",
+      "functions": [
+        "HOST_REPO",
+        "HOST_PUBLIC",
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "scope": "source-defined destinations, not complete hydration or remote existence proof"
+    },
+    {
+      "id": "ESTATE-GITHUB-DEFAULT",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/githubContentsCore.ts"
+      ],
+      "references": [
+        "SINK-GITHUB"
+      ],
+      "description": "GitHub helper default owner is source-defined; runtime overrides and current repo IDs/protection remain unknown.",
+      "defaultOwner": "kylemwalkerpr-ship-it"
+    },
+    {
+      "id": "ESTATE-WORKER-CONFIG",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "wrangler.toml"
+      ],
+      "references": [
+        "RUNTIME-WORKER"
+      ],
+      "description": "Worker name and configured routes are source config only, not deployed worker proof.",
+      "workerName": "yousafe-portal",
+      "routes": "configured routes in wrangler.toml; exact live routing/version unverified"
+    }
+  ],
+  "unknowns": [
+    "Current remote repository IDs, branch protection/rulesets, exact default branch state, live versions and route response are UNKNOWN; no GitHub/Cloudflare probe was performed.",
+    "No full estate hydration or owner-row scan was performed; source-known seven targets above are complete for the pinned HOST_PUBLIC/HOST_REPO source maps."
+  ],
+  "checks": {
+    "source": "Pinned ownershipContract/HOST_REPO/path functions and Wrangler source; no provider probes.",
+    "targetCount": "7 source-observed known hosts; no unknown placeholders for source-known hosts."
+  },
+  "targets": [
+    {
+      "id": "ESTATE-LEGAL",
+      "hostKey": "legal",
+      "publicOrigin": "https://legal.yousafeconsultancy.com",
+      "repository": "caseworks",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-APEX",
+      "hostKey": "apex",
+      "publicOrigin": "https://yousafeconsultancy.com",
+      "repository": "yousafe-consultancy",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-USA",
+      "hostKey": "usa",
+      "publicOrigin": "https://usa.yousafeconsultancy.com",
+      "repository": "yousafe-consultancy",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-UK",
+      "hostKey": "uk",
+      "publicOrigin": "https://uk.yousafeconsultancy.com",
+      "repository": "yousafe-consultancy",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-CA",
+      "hostKey": "ca",
+      "publicOrigin": "https://ca.yousafeconsultancy.com",
+      "repository": "yousafe-consultancy",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-AU",
+      "hostKey": "au",
+      "publicOrigin": "https://au.yousafeconsultancy.com",
+      "repository": "yousafe-consultancy",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    },
+    {
+      "id": "ESTATE-MARKET",
+      "hostKey": "market",
+      "publicOrigin": "https://market.yousafeconsultancy.com",
+      "repository": "portal",
+      "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts"
+      ],
+      "routeResolution": [
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath"
+      ],
+      "routeRules": "Map canonical owner URL through host-specific filePathFromOwnerUrl; then reconcile content type and intent with path. No full-estate hydration is implied.",
+      "currentRemoteRepositoryId": "UNKNOWN",
+      "branchProtection": "UNKNOWN",
+      "liveWorkerVersion": "UNKNOWN",
+      "notes": "Wrangler source identifies worker name/routes only; source config is not deployed-state proof."
+    }
+  ],
+  "repositoryOwnerDefault": "kylemwalkerpr-ship-it",
+  "routeResolutionFunctions": [
+    "filePathFromOwnerUrl",
+    "reconcileContentTypeWithPath"
+  ]
+}

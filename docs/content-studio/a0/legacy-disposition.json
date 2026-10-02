@@ -1,0 +1,416 @@
+{
+  "documentId": "legacy-disposition",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": "app/api/content-studio/jobs/legacyCore.ts",
+      "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6"
+    },
+    {
+      "path": "app/api/content-studio/jobs/route.ts",
+      "sha256": "88c239c15b397d02862f0283f684455b3aa0210da7b1d7039fe691174a5fa233"
+    },
+    {
+      "path": "app/api/cron/content-studio-retry/route.ts",
+      "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8"
+    },
+    {
+      "path": "app/api/cron/reconcile-content-jobs/route.ts",
+      "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b"
+    },
+    {
+      "path": "app/api/cron/seo-engine-daily/route.ts",
+      "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+      "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+    },
+    {
+      "path": "lib/githubContentsCore.ts",
+      "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9"
+    },
+    {
+      "path": "lib/portalAuth.ts",
+      "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd"
+    },
+    {
+      "path": "lib/seoFactory/broadCreateFreeze.ts",
+      "sha256": "781de3a20def29baf7d1fd3bfd1fa15bf35517fb2e8e4b034d70dcaba370973e"
+    },
+    {
+      "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d"
+    },
+    {
+      "path": "lib/seoFactory/currentGate.ts",
+      "sha256": "aa6bfded7b7d78c72c25e6a80e56d868e53a5c5ad6da6790ed2a2d3d9187cadf"
+    },
+    {
+      "path": "lib/seoFactory/ownership.ts",
+      "sha256": "5c110b0cd58ecc8fb2984db1c46ff5219d1a3fd76bba17aed826031434deba4f"
+    },
+    {
+      "path": "lib/seoFactory/persistContentJobCore.ts",
+      "sha256": "ac0a4eeae216cbc6c22329b73b048758e4bf800b70bb8180722db8138dcea137"
+    },
+    {
+      "path": "lib/seoFactory/researchEvidenceStore.ts",
+      "sha256": "746efdf89a80bb082b7adfd2017385d8ed8dc9c2c872346e20fd89396abde96e"
+    },
+    {
+      "path": "lib/seoFactory/ship.ts",
+      "sha256": "af69ca7a36f515d535f293820aa6c09ae9a090fc69951850b39275ef353b2ebc"
+    },
+    {
+      "path": "lib/seoFactory/writingContractStoreCore.ts",
+      "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68"
+    },
+    {
+      "path": "supabase/migrations/20260906_studio_specialist_signals.sql",
+      "sha256": "316e541ef29b639b377f888e27cc85779b1d3061f578b5cd5e777c7c874fcf90"
+    },
+    {
+      "path": "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+      "sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4"
+    },
+    {
+      "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0"
+    },
+    {
+      "path": "supabase/migrations/20260916122441_content_studio_provider_parity.sql",
+      "sha256": "554a2a5c044d0037626738af4fe55c8e48f49659c8138a4531085f3f496fbf86"
+    }
+  ],
+  "entries": [
+    {
+      "id": "LEGACY-BOUNDED",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/persistContentJobCore.ts",
+        "lib/seoFactory/writingContractStoreCore.ts",
+        "lib/seoFactory/researchEvidenceStore.ts",
+        "lib/seoFactory/contentStudioPipelineCore.ts",
+        "app/api/content-studio/jobs/legacyCore.ts",
+        "app/api/content-studio/jobs/route.ts",
+        "app/api/cron/content-studio-retry/route.ts",
+        "app/api/cron/reconcile-content-jobs/route.ts",
+        "app/api/cron/seo-engine-daily/route.ts",
+        "lib/portalAuth.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/seoFactory/currentGate.ts",
+        "lib/seoFactory/broadCreateFreeze.ts",
+        "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+        "supabase/migrations/20260915_content_studio_execution_lease.sql",
+        "supabase/migrations/20260906_studio_specialist_signals.sql",
+        "supabase/migrations/20260916122441_content_studio_provider_parity.sql"
+      ],
+      "references": [
+        "MAP-LEASE",
+        "MAP-EVIDENCE"
+      ],
+      "description": "Bounded source writer inventory lists required function/file pairs and lock participation, including requirePortalUser's mixed identity reads and service-role profile relink/backfills; this is bounded source scope, not repository-wide exhaustive discovery.",
+      "writerCount": 39,
+      "scope": "exact functions required by admission/source inventory plus directly called legacy lease SQL"
+    },
+    {
+      "id": "LEGACY-RETIREMENT",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+        "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md"
+      ],
+      "references": [
+        "MAP-PLAN"
+      ],
+      "description": "Disposition follows strangler migration and one-owner constraints; P0-P11 completed code is preserved and P12/P13 outcomes are downstream.",
+      "modules": [
+        {
+          "id": "LEGACY-CONTENT-JOBS",
+          "module": "public.content_jobs + lib/seoFactory/persistContentJobCore.ts + app/api/content-studio/jobs/*",
+          "disposition": "WRAP_TEMPORARILY",
+          "invariant": "legacy content lifecycle and direct actions remain distinct from v3 durable run admission; no positive v3 ack through this sink",
+          "owner": "current legacy Content Studio API/service role; canonical project/action owner is NEW_PLANNED",
+          "dependency": [
+            "writing contracts",
+            "execution lease",
+            "ship/Git helper",
+            "retry/reconcile cron"
+          ],
+          "retirementExit": "all legacy reads/writes explicitly routed or denied under shared authority; run consumer accepted; no duplicate retry owner; source rows preserved"
+        },
+        {
+          "id": "LEGACY-IDENTITY-TRANSITIONS",
+          "module": "lib/portalAuth.ts requirePortalUser and transitive requireAdminUser",
+          "disposition": "WRAP_TEMPORARILY",
+          "invariant": "verified Clerk/profile identity reads coexist with unlocked service-role clerk_user_id relink and country/email backfills; no profile-row creation is claimed; identity is NEVER a durable project/action grant",
+          "owner": "existing portalAuth profile identity boundary; trusted actor mapping/revocation authority is NEW_PLANNED",
+          "dependency": [
+            "verified-email relink/rebind closure",
+            "country/email backfill transition closure",
+            "trusted actor mapping and revocation under the common five-lock protocol"
+          ],
+          "retirementExit": "route these identity transitions through the trusted actor mapping/revocation closure under shared locks, or explicitly exclude and deny them before cutover; unavailable binding denies; no positive project/action grant from Clerk/profile admin"
+        },
+        {
+          "id": "LEGACY-WRITING-EVIDENCE",
+          "module": "public.content_studio_writing_contracts + public.content_studio_evidence_items + writingContractStoreCore/researchEvidenceStore",
+          "disposition": "REUSE",
+          "invariant": "immutable contract/evidence refs remain content provenance; reuse only via exact project-scoped validated binding; no broad content_jobs grant",
+          "owner": "existing immutable contract/evidence artifact stores; authority binding owns authorization mapping",
+          "dependency": [
+            "hash and row verification",
+            "explicit scope mapping",
+            "narrow service RPC hardening"
+          ],
+          "retirementExit": "canonical typed mapping/RPC and RLS/ACL negatives pass; no dual artifact authority"
+        },
+        {
+          "id": "LEGACY-EXECUTION-LEASE",
+          "module": "claim/renew/check/release_content_studio_execution and writingContractStoreCore/contentStudioPipelineCore",
+          "disposition": "WRAP_TEMPORARILY",
+          "invariant": "legacy owner+attempt+expiry fences same content_job only; never satisfies authority domain/shared policy/owner/epoch lock",
+          "owner": "content_jobs execution_lease columns and migration RPC",
+          "dependency": [
+            "content_jobs id",
+            "contract id/hash",
+            "attempt equality"
+          ],
+          "retirementExit": "all active legacy job execution is retired or explicitly bridged; v3 dispatcher has own reviewed attempt/inbox fence"
+        },
+        {
+          "id": "LEGACY-OWNER-GATE",
+          "module": "ownership.ts resolveOwner, currentGate.ts, broadCreateFreeze.ts",
+          "disposition": "WRAP_TEMPORARILY",
+          "invariant": "pure helper/compatibility evaluator can inform typed adapter but cannot issue or refresh durable authorization",
+          "owner": "root-approved future canonical estate/policy authority; no current DB owner in this source snapshot",
+          "dependency": [
+            "estate registry inputs",
+            "current policy/gate audit payload"
+          ],
+          "retirementExit": "one canonical durable owner/policy writer and shared locks; helper adapter proves parity without duplicate policy kernel"
+        },
+        {
+          "id": "LEGACY-SCHEDULERS",
+          "module": "content-studio-retry, reconcile-content-jobs, seo-engine-daily workflows/routes",
+          "disposition": "REPLACE_AND_RETIRE",
+          "invariant": "one durable run scheduler/retry owner; analytical seo_engine_runs remains analytical, never duplicate scheduler",
+          "owner": "legacy retry/reconciler for content_jobs; daily SEO planner for analytical rows",
+          "dependency": [
+            "cron bearer auth",
+            "content_jobs status/retry fields",
+            "seo_engine_runs"
+          ],
+          "retirementExit": "dispatch durable claims/uncertainty reconciliation accepted; schedule disabled/retired only via separately approved release; no blind respawn"
+        },
+        {
+          "id": "LEGACY-RELEASE-SINKS",
+          "module": "githubContentsCore, ship.ts, legacyCore merge/approve routes",
+          "disposition": "WRAP_TEMPORARILY",
+          "invariant": "PR path required for v3; human-approved direct-main and conflict fallback denied before cutover",
+          "owner": "current GitHub helper + legacy route; v3 release authority not implemented",
+          "dependency": [
+            "GITHUB_TOKEN holder",
+            "expected blob SHA",
+            "PR checks/merge",
+            "deployment workflow"
+          ],
+          "retirementExit": "durable permit/operation marker + expected remote state/CAS + independent live proof; direct-main fallback denied"
+        }
+      ]
+    },
+    {
+      "id": "LEGACY-SINK-DENY",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ship.ts",
+        "lib/githubContentsCore.ts",
+        "app/api/content-studio/jobs/legacyCore.ts"
+      ],
+      "references": [
+        "SINK-GITHUB"
+      ],
+      "description": "Direct-main and merge-conflict force-ship fallbacks are actual source sinks and must be denied before v3 cutover.",
+      "directMain": "humanApproved && mode !== pr; direct main write via putRepoFile",
+      "fallback": "PR conflict fallback to direct main is DENY_BEFORE_CUTOVER"
+    }
+  ],
+  "unknowns": [
+    "No claim that every repository writer outside the explicit bounded scope has been inventoried; source writer scope is the exact supplied list plus directly called SQL lease functions.",
+    "Current project/action/policy/owner/epoch authority writers do not exist in the inspected bounded list; future authority RPC writers are NEW_PLANNED and require root review.",
+    "Current live cron overlap/remote schedule history is not probed; workflow definitions show source schedules only.",
+    "requirePortalUser directly mixes identity reads with service-role profile updates and requireAdminUser inherits them; both remain CURRENT_NO_SHARED_LOCK, with relink/rebind routed through the planned trusted actor mapping/revocation closure or denied before cutover."
+  ],
+  "checks": {
+    "boundedWriterScope": "Exact expected file keys and function names from admitted scope; line/hash source evidence on every inventoried function.",
+    "phaseOutcomes": "P0-P11 completed code is preserved; P12/P13 remain downstream; no outcome gate claimed closed."
+  },
+  "boundedWriterScope": [
+    "lib/seoFactory/persistContentJobCore.ts",
+    "lib/seoFactory/writingContractStoreCore.ts",
+    "lib/seoFactory/writingContractStore.ts",
+    "lib/seoFactory/researchEvidenceStore.ts",
+    "lib/seoFactory/contentStudioPipelineCore.ts",
+    "app/api/content-studio/jobs/legacyCore.ts",
+    "app/api/content-studio/jobs/route.ts",
+    "app/api/cron/content-studio-retry/route.ts",
+    "app/api/cron/reconcile-content-jobs/route.ts",
+    "app/api/cron/seo-engine-daily/route.ts",
+    "lib/portalAuth.ts",
+    "lib/seoFactory/ownership.ts",
+    "lib/seoFactory/currentGate.ts",
+    "lib/seoFactory/broadCreateFreeze.ts"
+  ],
+  "boundedFunctions": {
+    "lib/seoFactory/persistContentJobCore.ts": [
+      "persistPipelineJob"
+    ],
+    "lib/seoFactory/writingContractStoreCore.ts": [
+      "persistWritingContract",
+      "attachWritingContractToJob",
+      "reserveOpportunityJob",
+      "releaseOpportunityReservation",
+      "claimContentStudioExecution",
+      "renewContentStudioExecution",
+      "assertContentStudioExecution",
+      "releaseContentStudioExecution"
+    ],
+    "lib/seoFactory/writingContractStore.ts": [
+      "claimContentStudioExecution"
+    ],
+    "lib/seoFactory/researchEvidenceStore.ts": [
+      "persistResearchEvidence",
+      "verifyContractEvidenceRows"
+    ],
+    "lib/seoFactory/contentStudioPipelineCore.ts": [
+      "persistExecutionFailure",
+      "persistExecutionStage",
+      "prepareStrictExecution",
+      "assertContractOwnershipBeforeAuthoring"
+    ],
+    "app/api/content-studio/jobs/legacyCore.ts": [
+      "POST",
+      "PATCH",
+      "DELETE",
+      "mergeAuditJsonFresh",
+      "assertDirectMergeDestinationAllowed"
+    ],
+    "app/api/content-studio/jobs/route.ts": [
+      "PATCH",
+      "POST",
+      "fencedPatch"
+    ],
+    "app/api/cron/content-studio-retry/route.ts": [
+      "POST",
+      "appendEvent"
+    ],
+    "app/api/cron/reconcile-content-jobs/route.ts": [
+      "POST",
+      "appendLog",
+      "stageRetry"
+    ],
+    "app/api/cron/seo-engine-daily/route.ts": [
+      "POST"
+    ],
+    "lib/portalAuth.ts": [
+      "requirePortalUser",
+      "requireAdminUser"
+    ],
+    "lib/seoFactory/ownership.ts": [
+      "resolveOwner"
+    ],
+    "lib/seoFactory/currentGate.ts": [
+      "shipGateFromAuditJson"
+    ],
+    "lib/seoFactory/broadCreateFreeze.ts": [
+      "assertPublicationDestinationAllowed"
+    ]
+  },
+  "writerInventoryRefs": "schema-map.writerInventory",
+  "dispositions": [
+    {
+      "id": "LEGACY-CONTENT-JOBS",
+      "module": "public.content_jobs + lib/seoFactory/persistContentJobCore.ts + app/api/content-studio/jobs/*",
+      "disposition": "WRAP_TEMPORARILY",
+      "invariant": "legacy content lifecycle and direct actions remain distinct from v3 durable run admission; no positive v3 ack through this sink",
+      "owner": "current legacy Content Studio API/service role; canonical project/action owner is NEW_PLANNED",
+      "dependency": [
+        "writing contracts",
+        "execution lease",
+        "ship/Git helper",
+        "retry/reconcile cron"
+      ],
+      "retirementExit": "all legacy reads/writes explicitly routed or denied under shared authority; run consumer accepted; no duplicate retry owner; source rows preserved"
+    },
+    {
+      "id": "LEGACY-WRITING-EVIDENCE",
+      "module": "public.content_studio_writing_contracts + public.content_studio_evidence_items + writingContractStoreCore/researchEvidenceStore",
+      "disposition": "REUSE",
+      "invariant": "immutable contract/evidence refs remain content provenance; reuse only via exact project-scoped validated binding; no broad content_jobs grant",
+      "owner": "existing immutable contract/evidence artifact stores; authority binding owns authorization mapping",
+      "dependency": [
+        "hash and row verification",
+        "explicit scope mapping",
+        "narrow service RPC hardening"
+      ],
+      "retirementExit": "canonical typed mapping/RPC and RLS/ACL negatives pass; no dual artifact authority"
+    },
+    {
+      "id": "LEGACY-EXECUTION-LEASE",
+      "module": "claim/renew/check/release_content_studio_execution and writingContractStoreCore/contentStudioPipelineCore",
+      "disposition": "WRAP_TEMPORARILY",
+      "invariant": "legacy owner+attempt+expiry fences same content_job only; never satisfies authority domain/shared policy/owner/epoch lock",
+      "owner": "content_jobs execution_lease columns and migration RPC",
+      "dependency": [
+        "content_jobs id",
+        "contract id/hash",
+        "attempt equality"
+      ],
+      "retirementExit": "all active legacy job execution is retired or explicitly bridged; v3 dispatcher has own reviewed attempt/inbox fence"
+    },
+    {
+      "id": "LEGACY-OWNER-GATE",
+      "module": "ownership.ts resolveOwner, currentGate.ts, broadCreateFreeze.ts",
+      "disposition": "WRAP_TEMPORARILY",
+      "invariant": "pure helper/compatibility evaluator can inform typed adapter but cannot issue or refresh durable authorization",
+      "owner": "root-approved future canonical estate/policy authority; no current DB owner in this source snapshot",
+      "dependency": [
+        "estate registry inputs",
+        "current policy/gate audit payload"
+      ],
+      "retirementExit": "one canonical durable owner/policy writer and shared locks; helper adapter proves parity without duplicate policy kernel"
+    },
+    {
+      "id": "LEGACY-SCHEDULERS",
+      "module": "content-studio-retry, reconcile-content-jobs, seo-engine-daily workflows/routes",
+      "disposition": "REPLACE_AND_RETIRE",
+      "invariant": "one durable run scheduler/retry owner; analytical seo_engine_runs remains analytical, never duplicate scheduler",
+      "owner": "legacy retry/reconciler for content_jobs; daily SEO planner for analytical rows",
+      "dependency": [
+        "cron bearer auth",
+        "content_jobs status/retry fields",
+        "seo_engine_runs"
+      ],
+      "retirementExit": "dispatch durable claims/uncertainty reconciliation accepted; schedule disabled/retired only via separately approved release; no blind respawn"
+    },
+    {
+      "id": "LEGACY-RELEASE-SINKS",
+      "module": "githubContentsCore, ship.ts, legacyCore merge/approve routes",
+      "disposition": "WRAP_TEMPORARILY",
+      "invariant": "PR path required for v3; human-approved direct-main and conflict fallback denied before cutover",
+      "owner": "current GitHub helper + legacy route; v3 release authority not implemented",
+      "dependency": [
+        "GITHUB_TOKEN holder",
+        "expected blob SHA",
+        "PR checks/merge",
+        "deployment workflow"
+      ],
+      "retirementExit": "durable permit/operation marker + expected remote state/CAS + independent live proof; direct-main fallback denied"
+    }
+  ]
+}

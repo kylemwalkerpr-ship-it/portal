@@ -1,0 +1,2118 @@
+{
+  "documentId": "schema-map",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": "app/api/content-studio/jobs/legacyCore.ts",
+      "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6"
+    },
+    {
+      "path": "app/api/content-studio/jobs/route.ts",
+      "sha256": "88c239c15b397d02862f0283f684455b3aa0210da7b1d7039fe691174a5fa233"
+    },
+    {
+      "path": "app/api/cron/content-studio-retry/route.ts",
+      "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8"
+    },
+    {
+      "path": "app/api/cron/reconcile-content-jobs/route.ts",
+      "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b"
+    },
+    {
+      "path": "app/api/cron/seo-engine-daily/route.ts",
+      "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87"
+    },
+    {
+      "path": "app/api/seo-engine/action-stream/route.ts",
+      "sha256": "2bef380708c0070130a3c9db073e49c512230a2cdd1a8ad53d7125ad36e3fc5b"
+    },
+    {
+      "path": "app/api/seo-engine/knowledge/route.ts",
+      "sha256": "e5e5b7e8209a30909c73f4d7dfcfad46cd311d700a7b7c06b2787790ab4c5646"
+    },
+    {
+      "path": "docs/superpowers/content-studio-execution-policy.md",
+      "sha256": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f"
+    },
+    {
+      "path": "docs/superpowers/content-studio-kickoff.md",
+      "sha256": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5"
+    },
+    {
+      "path": "docs/superpowers/content-studio-revamp.md",
+      "sha256": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+      "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
+      "sha256": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-manifest.json",
+      "sha256": "ff9d63e0e6a80549ddabe37862753d677946a7e5b21a43d2d9355730b7579aa2"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
+      "sha256": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
+      "sha256": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b"
+    },
+    {
+      "path": "lib/portalAuth.ts",
+      "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd"
+    },
+    {
+      "path": "lib/seoFactory/broadCreateFreeze.ts",
+      "sha256": "781de3a20def29baf7d1fd3bfd1fa15bf35517fb2e8e4b034d70dcaba370973e"
+    },
+    {
+      "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d"
+    },
+    {
+      "path": "lib/seoFactory/currentGate.ts",
+      "sha256": "aa6bfded7b7d78c72c25e6a80e56d868e53a5c5ad6da6790ed2a2d3d9187cadf"
+    },
+    {
+      "path": "lib/seoFactory/ownership.ts",
+      "sha256": "5c110b0cd58ecc8fb2984db1c46ff5219d1a3fd76bba17aed826031434deba4f"
+    },
+    {
+      "path": "lib/seoFactory/ownershipContract.ts",
+      "sha256": "a96b34ee35aedf329a1e7e7b619cfacfcbb7dfb0d70db2e83eedfbc4d39f6518"
+    },
+    {
+      "path": "lib/seoFactory/persistContentJobCore.ts",
+      "sha256": "ac0a4eeae216cbc6c22329b73b048758e4bf800b70bb8180722db8138dcea137"
+    },
+    {
+      "path": "lib/seoFactory/researchEvidenceStore.ts",
+      "sha256": "746efdf89a80bb082b7adfd2017385d8ed8dc9c2c872346e20fd89396abde96e"
+    },
+    {
+      "path": "lib/seoFactory/writingContractStore.ts",
+      "sha256": "5f98c1803b24ca0651cecba83f15f3ed6c98f02150645d3bfbbd1125e0bd5f00"
+    },
+    {
+      "path": "lib/seoFactory/writingContractStoreCore.ts",
+      "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68"
+    },
+    {
+      "path": "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+      "sha256": "6d9cfaf327b0f2813e97a4e3abeb0c8812140172ab5985e0b47223098b6d48d4"
+    },
+    {
+      "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0"
+    }
+  ],
+  "entries": [
+    {
+      "id": "MAP-PLAN",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+        "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md"
+      ],
+      "references": [
+        "MIGRATION-BASE",
+        "RUNTIME-RELEASE"
+      ],
+      "description": "Normative architecture and blueprint remain the canonical one-owner map; frozen admission plan is an implementation dependency only.",
+      "architectureVersion": "CS-2026.09.23.8",
+      "authority": "one canonical owner per decision domain; P12/P13 downstream and CREATE/publication independently gated"
+    },
+    {
+      "id": "MAP-LEASE",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "supabase/migrations/20260915_content_studio_execution_lease.sql",
+        "lib/seoFactory/writingContractStoreCore.ts"
+      ],
+      "references": [
+        "LEGACY-BOUNDED"
+      ],
+      "description": "Existing execution owner/attempt/expiry RPC is legacy content-job fencing only.",
+      "functions": [
+        "claim_content_studio_execution",
+        "renew_content_studio_execution",
+        "check_content_studio_execution",
+        "release_content_studio_execution"
+      ],
+      "scope": "owner+attempt+expiry equality; no project, current policy, owner-version or authority-epoch shared lock"
+    },
+    {
+      "id": "MAP-EVIDENCE",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "supabase/migrations/20260914_content_studio_evidence_contract.sql",
+        "lib/seoFactory/researchEvidenceStore.ts",
+        "lib/seoFactory/writingContractStoreCore.ts"
+      ],
+      "references": [
+        "LEGACY-BOUNDED",
+        "PRIV-CATALOG"
+      ],
+      "description": "Existing immutable writing-contract/evidence references are reusable through explicit project-scoped mapping; not blanket content_jobs permission.",
+      "relations": [
+        "public.content_studio_evidence_items",
+        "public.content_studio_writing_contracts",
+        "public.content_studio_stage_events"
+      ],
+      "scope": "content lifecycle/artifact authority, no canonical tenant project/action authorization"
+    },
+    {
+      "id": "MAP-ESTATE",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownershipContract.ts",
+        "lib/seoFactory/ownership.ts",
+        "lib/seoFactory/currentGate.ts",
+        "lib/seoFactory/broadCreateFreeze.ts"
+      ],
+      "references": [
+        "ESTATE-ROUTE-RULES"
+      ],
+      "description": "Current owner/route and gate helpers are source-observed functions, not durable transaction-authoritative owner/policy bindings.",
+      "helpers": [
+        "resolveOwner",
+        "filePathFromOwnerUrl",
+        "reconcileContentTypeWithPath",
+        "shipGateFromAuditJson",
+        "assertPublicationDestinationAllowed"
+      ],
+      "scope": "pure/helper evaluation with registry reads; not current authority locks"
+    },
+    {
+      "id": "MAP-CATALOG",
+      "evidenceStatus": "CATALOG_OBSERVED",
+      "sourceRefs": [],
+      "references": [
+        "PRIV-CATALOG"
+      ],
+      "description": "Root metadata receipt observes six relation policy/grant metadata; it is partial metadata only.",
+      "receiptRef": "PRIV-CATALOG",
+      "catalogReceiptSHA256": "f6a5f36946d49d975bf1c251c4f138fc2cc108533fe35f21bc06ee21b067814b",
+      "scope": "no studio_core schema and named project/owner/policy relations observed by root; not exhaustive absence/API proof"
+    },
+    {
+      "id": "MAP-FROZEN-INTERFACE",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md"
+      ],
+      "references": [
+        "MAP-PLAN"
+      ],
+      "description": "Frozen plan interface is exact and production callback remains unavailable until actual durable owners and shared locks are installed.",
+      "resolver": "studio_core.lock_current_command_authority",
+      "positiveAdmission": "DENY until available durable binding; no context equality/pure helper/fixture table authorization"
+    },
+    {
+      "id": "MAP-DISPATCH",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+        "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md"
+      ],
+      "references": [
+        "SINK-WORKFLOWS"
+      ],
+      "description": "Dispatch packet follows admission and reuses its five relations; it is not a second scheduler.",
+      "activation": "INACTIVE_ONLY; consumer required before positive 202"
+    }
+  ],
+  "unknowns": [
+    "Root-observed catalog scope has no studio_core schema or named project/owner/policy relations, but the receipt is partial; exact fresh exhaustive catalog SQL and results remain root-owned before source acceptance.",
+    "No current durable project membership/action grant, project policy snapshot, sealed-input binding, owner version, policy version or shared authority epoch owner is observed; genuine provisioning gap blocks positive admission.",
+    "No actual transaction-held shared lock writer protocol spans current owner/policy/epoch updates.",
+    "No effective API role/RPC proof, remote Git repository IDs/protection settings, deployed worker version/current live target or current CPU telemetry is established by this schema map."
+  ],
+  "checks": {
+    "sourceSnapshot": "HEAD equals e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+    "frozenPlan": "git show c305086c59d83f50135edd367f0d5e8399879619:docs/superpowers/plans/2026-09-30-studio-command-admission.md; SHA256 4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+    "catalog": "Root metadata receipt copied via shared read-only file; no DB query made by this packet.",
+    "runtimeActivation": "NOT_RUN; INACTIVE_ONLY; no route/migration execution",
+    "lockOrder": "frozen first five boundaries retained; budget then permit then operation extension only after run/stage"
+  },
+  "frozenPlan": {
+    "commit": "c305086c59d83f50135edd367f0d5e8399879619",
+    "path": "docs/superpowers/plans/2026-09-30-studio-command-admission.md",
+    "sha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+    "signature": "studio_core.lock_current_command_authority(p_project_id uuid,p_actor_issuer text,p_actor_subject text,p_action_kind text,p_subject_id text,p_input_ref text,p_snapshot_ref text,p_authorization_evidence_id text) returns jsonb",
+    "returnedFields": [
+      "available",
+      "allowed",
+      "projectId",
+      "actorIssuer",
+      "actorSubject",
+      "actionKind",
+      "subjectId",
+      "inputRef",
+      "snapshotRef",
+      "authorizationEvidenceId",
+      "ownerVersion",
+      "policyVersion",
+      "authorityEpoch"
+    ],
+    "availableFalse": {
+      "available": false,
+      "reason": "AUTHORITY_BINDING_UNAVAILABLE"
+    },
+    "availableTrue": {
+      "available": true,
+      "allowed": "boolean",
+      "projectId": "server-owned current project id",
+      "actorIssuer": "verified identity issuer",
+      "actorSubject": "verified identity subject",
+      "actionKind": "canonical authorized action",
+      "subjectId": "current canonical owner subject",
+      "inputRef": "project-scoped immutable sealed input reference",
+      "snapshotRef": "current immutable policy/gate snapshot",
+      "authorizationEvidenceId": "current project/action authorization evidence",
+      "ownerVersion": "durable current owner version",
+      "policyVersion": "durable current policy version",
+      "authorityEpoch": "durable current nonnegative project authority epoch"
+    },
+    "validation": "Before replay lookup or inserts, check every available-true returned identity/ref against verified context AND command; re-read durable actual owners under held locks; compare ownerVersion, policyVersion, authorityEpoch against BOTH expected command values and verified context. Missing/revoked => deny; changed version => EXPECTED_VERSION_CONFLICT; absent binding => AUTHORITY_BINDING_UNAVAILABLE. Locks held through commit/rejection.",
+    "lockOrder": [
+      "project/authority-epoch",
+      "policy snapshot",
+      "owner/subject",
+      "scoped admission key",
+      "run/stage"
+    ],
+    "globalLockOrderExtension": [
+      "project/authority-epoch",
+      "policy snapshot",
+      "owner/subject/reservation",
+      "scoped admission key",
+      "run",
+      "stage",
+      "budget (when required)",
+      "permit (when required)",
+      "operation (when required)"
+    ],
+    "lockSemantics": "Acquire and reread current rows under transaction-held locks. Every owner/policy/epoch writer and eventual budget/permit/operation transition must join this global order; no pre-lock snapshot or independent advisory lock counts. The first three and admission key order preserve frozen admission contract; downstream budget/permit follow run/stage as canonical extension."
+  },
+  "authorityMappings": [
+    {
+      "domain": "project",
+      "physicalAuthority": "studio_core.authority_domains + project binding API",
+      "status": "NEW_PLANNED",
+      "writerIds": [],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Trusted server project UUID and current authority epoch; caller project/header never controls scope.",
+      "keys": "Composite project keys; one current row per canonical project; locked epoch increment.",
+      "constraint": "One canonical owner for project; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "private schema, revoked defaults, role-bound server API; no service raw DML",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "No current project relation or actor-to-project binding observed.",
+      "plannedTables": [
+        "studio_core.authority_domains",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "promote_project_binding",
+        "revoke_project_binding",
+        "advance_authority_epoch"
+      ]
+    },
+    {
+      "domain": "actor",
+      "physicalAuthority": "lib/portalAuth.ts: verified Clerk issuer/subject plus profiles role/status admin (SOURCE_EXISTING identity only, not a project/action grant)",
+      "status": "SOURCE_EXISTING",
+      "writerIds": [
+        "WRITER-031",
+        "WRITER-032"
+      ],
+      "activationGate": "Root-approved durable trusted actor-to-project binding provisioned; relink/rebind and revocation transitions use the common transaction-held lock protocol; production resolver denies until actual binding exists.",
+      "lineage": "Verified Clerk issuer/subject and profiles role/status are identity signals only; neither Clerk admin nor profile status is a tenant/project/action grant.",
+      "keys": "issuer+subject+project binding; unique active binding and revocation version.",
+      "constraint": "One canonical owner for actor; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "server verified identity; profile lookup must not become project grant",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Current profile row shape and effective Clerk-to-project membership remain unknown; requirePortalUser has current unlocked identity relink/rebind and backfill mutations.",
+      "plannedTables": [
+        "studio_core.project_actor_bindings",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "bind_project_actor",
+        "revoke_project_actor",
+        "reviewed relink/rebind through the same trusted actor mapping and revocation closure"
+      ],
+      "identityTransitionClosure": {
+        "status": "NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER",
+        "positiveProjectGrant": false,
+        "existingBoundary": "requirePortalUser mixes verified identity/profile reads with service-role profile relink and country/email backfills; requireAdminUser calls it transitively before checking normalized admin role.",
+        "plannedTransitions": [
+          "Route verified-email relink/rebind through the trusted actor mapping/revocation closure under the common five-lock protocol, or explicitly exclude and deny that relink/rebind path before cutover.",
+          "Provision trusted actor-to-project mapping and revocation through canonical bind_project_actor/revoke_project_actor transitions; those APIs and locks are NEW_PLANNED, not implemented here."
+        ],
+        "cutoverRule": "Until the common transaction-held lock protocol covers profile identity transitions and trusted actor mapping/revocation, exclude or deny these transition paths before cutover; unavailable durable binding denies admission.",
+        "grantSemantics": "Clerk/profile admin identity NEVER establishes a durable project/action grant; immutable actor grant semantics remain unchanged."
+      }
+    },
+    {
+      "domain": "object",
+      "physicalAuthority": "lib/seoFactory/ownership.ts registry helper; studio_core.estate_repositories/estate_hosts/estate_routes",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-033"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Existing helper resolves owner/path; durable canonical estate mapping is required for v3 authorization.",
+      "keys": "project+host+repository+canonical route key; one authoritative mapping per route/version.",
+      "constraint": "One canonical owner for object; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "private mapping; root-provisioned data only; no helper fallback as grant",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Registry backing-table inventory and current DB owner rows are not catalog-proven.",
+      "plannedTables": [
+        "studio_core.estate_repositories",
+        "studio_core.estate_hosts",
+        "studio_core.estate_routes",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "upsert_estate_route_mapping",
+        "retire_estate_route_mapping"
+      ]
+    },
+    {
+      "domain": "action",
+      "physicalAuthority": "studio_core.action_bindings + project_actor_bindings",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-034",
+        "WRITER-035"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "No durable tenant/project/action grant exists in observed sources; promote only from root-approved authority.",
+      "keys": "project+actor+object+action+current decision; monotonic revocation sequence.",
+      "constraint": "One canonical owner for action; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "deny by default; explicit reviewed action set, no permissive seeds",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "No project/action grant relation observed.",
+      "plannedTables": [
+        "studio_core.action_bindings",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "grant_project_action",
+        "revoke_project_action"
+      ]
+    },
+    {
+      "domain": "sealed-input",
+      "physicalAuthority": "studio_core.sealed_inputs + immutable contract/evidence mapping API",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-002",
+        "WRITER-003",
+        "WRITER-011"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Bind only trusted project-scoped immutable input hash/ref; mutable URL or caller context cannot authorize.",
+      "keys": "project+input hash/ref+subject/action; immutable revision and unique source identity.",
+      "constraint": "One canonical owner for sealed-input; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "no arbitrary URL fetch; validated file/hash and project scope",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Canonical sealed input owner/mapper absent.",
+      "plannedTables": [
+        "studio_core.sealed_inputs",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "bind_sealed_input",
+        "revoke_sealed_input"
+      ]
+    },
+    {
+      "domain": "evidence",
+      "physicalAuthority": "public.content_studio_evidence_items and public.content_studio_writing_contracts; typed project mapping",
+      "status": "CATALOG_EXISTING",
+      "writerIds": [
+        "WRITER-011",
+        "WRITER-012",
+        "WRITER-002"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Evidence/contract relations and hash verification writers exist; they are immutable/content artifacts, not authorization grants or project scope.",
+      "keys": "evidence id+content hash; contract id/version/hash; add validated project-scoped mapping.",
+      "constraint": "One canonical owner for evidence; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "service-role catalog grants observed; raw DML narrow-RPC hardening required before reuse",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Project ownership/effective API access is not established by names, RLS, or catalog grants.",
+      "plannedTables": [
+        "studio_core.evidence_refs",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "bind_evidence_reference",
+        "revoke_evidence_reference"
+      ]
+    },
+    {
+      "domain": "snapshot",
+      "physicalAuthority": "studio_core.policy_snapshots + studio_core.action_bindings",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-034"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "No immutable canonical v3 gate snapshot/evidence ref source observed; currentGate is a pure audit projection.",
+      "keys": "project+snapshot ref+policy version+evidence id; immutable append and lineage FK.",
+      "constraint": "One canonical owner for snapshot; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "one canonical policy owner; adapter only; no second evaluator",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Current effective decision/snapshot relation not observed.",
+      "plannedTables": [
+        "studio_core.policy_snapshots",
+        "studio_core.snapshot_evidence_refs",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "publish_policy_snapshot",
+        "revoke_policy_snapshot"
+      ]
+    },
+    {
+      "domain": "owner",
+      "physicalAuthority": "lib/seoFactory/ownership.ts pure resolveOwner; studio_core.intent_owners/intent_reservations",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-033",
+        "WRITER-004",
+        "WRITER-005"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Pure helper and opportunity reservation are not canonical transactional owner authority; owner advancement must share locks.",
+      "keys": "project+intent/subject unique active owner; monotonic ownerVersion; reservation expiry by DB clock.",
+      "constraint": "One canonical owner for owner; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "single owner per intent; no caller-selected owner or permissive fallback",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "No durable v3 owner/reservation transition API observed.",
+      "plannedTables": [
+        "studio_core.intent_owners",
+        "studio_core.intent_reservations",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "advance_intent_owner",
+        "reserve_intent",
+        "release_intent_reservation"
+      ]
+    },
+    {
+      "domain": "policy",
+      "physicalAuthority": "lib/seoFactory/currentGate.ts and broadCreateFreeze.ts as compatibility inputs; studio_core.policy_snapshots",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-034",
+        "WRITER-035"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Existing helpers evaluate current content gate/CREATE freeze, but no DB policy-version owner or lock protocol is present.",
+      "keys": "project+policy version/hash+action binding; monotonic policyVersion.",
+      "constraint": "One canonical owner for policy; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "do not create a second evaluator; root-approved promotion/mapping only",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Current policy authority relation/version source is absent.",
+      "plannedTables": [
+        "studio_core.policy_snapshots",
+        "studio_core.action_bindings",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "advance_policy_version",
+        "revoke_policy_action"
+      ]
+    },
+    {
+      "domain": "epoch",
+      "physicalAuthority": "studio_core.authority_domains and authority_events",
+      "status": "NEW_PLANNED",
+      "writerIds": [],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "No shared project/authority epoch writer or lock boundary is found in current source.",
+      "keys": "one row per project; monotonic nonnegative epoch; events immutable.",
+      "constraint": "One canonical owner for epoch; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "definer transition API only; locks held through commit",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "No durable epoch/lock owner observed.",
+      "plannedTables": [
+        "studio_core.authority_domains",
+        "studio_core.authority_events"
+      ],
+      "plannedTransitionAPIs": [
+        "advance_authority_epoch"
+      ]
+    },
+    {
+      "domain": "run-stage-attempt",
+      "physicalAuthority": "frozen admission plan relations studio_core.studio_runs/studio_run_stages/studio_run_admissions plus legacy content_jobs lease rows",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-001",
+        "WRITER-002",
+        "WRITER-003",
+        "WRITER-004",
+        "WRITER-005",
+        "WRITER-006",
+        "WRITER-007",
+        "WRITER-008",
+        "WRITER-009",
+        "WRITER-010",
+        "WRITER-013",
+        "WRITER-014",
+        "WRITER-015",
+        "WRITER-016",
+        "WRITER-017",
+        "WRITER-018",
+        "WRITER-019",
+        "WRITER-020",
+        "WRITER-021",
+        "WRITER-022",
+        "WRITER-023",
+        "WRITER-024"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Five admission relations from frozen plan remain distinct from content_jobs lifecycle; existing lease is legacy-only.",
+      "keys": "project+run/stage composite FKs; idempotency tuple project+issuer+subject+key; increasing attempt/fence.",
+      "constraint": "One canonical owner for run-stage-attempt; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "private schema; atomic admission RPC; no route activation",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "Admission migration is proposed in runtime packet and is not accepted/active.",
+      "plannedTables": [
+        "frozen studio_core.studio_runs",
+        "frozen studio_core.studio_run_stages",
+        "frozen studio_core.studio_run_admissions"
+      ],
+      "plannedTransitionAPIs": [
+        "studio_core.admit_run",
+        "studio_core.lock_current_command_authority"
+      ]
+    },
+    {
+      "domain": "outbox-inbox-checkpoint-progress",
+      "physicalAuthority": "frozen studio_core.studio_outbox/studio_run_events plus additive dispatch inbox/attempt/checkpoint/progress/delivery lease mapping",
+      "status": "NEW_PLANNED",
+      "writerIds": [
+        "WRITER-026",
+        "WRITER-028",
+        "WRITER-029",
+        "WRITER-030"
+      ],
+      "activationGate": "Root-approved durable binding provisioned; current value reread under common transaction-held locks; production resolver denies until actual source exists.",
+      "lineage": "Frozen run/outbox is single scheduler source; dispatch adds delivery fencing, not duplicate run/outbox tables.",
+      "keys": "unique(project,run,sequence); monotonic attempt/fence; separate inbox delivery receipt and progress sequence.",
+      "constraint": "One canonical owner for outbox-inbox-checkpoint-progress; project-scoped immutable lineage and monotonic versions where applicable.",
+      "security": "transition RPC only; no ack without consumer",
+      "oneOwnerRationale": "One DB owner per authority domain; pure helper, catalog relation, caller context, or legacy content lifecycle is not a second authority.",
+      "boundedUnknown": "No production dispatcher/worker authority or consumer exists.",
+      "plannedTables": [
+        "frozen studio_core.studio_outbox",
+        "frozen studio_core.studio_run_events",
+        "proposed canonical studio_core.attempts",
+        "proposed canonical studio_core.inbox_receipts",
+        "proposed canonical studio_core.checkpoints"
+      ],
+      "plannedTransitionAPIs": [
+        "claim_outbox_delivery",
+        "record_spawn_receipt",
+        "consume_inbox_event",
+        "commit_stage_transition",
+        "append_progress_event",
+        "reconcile_expired_delivery_claim"
+      ]
+    }
+  ],
+  "writerInventory": [
+    {
+      "id": "WRITER-001",
+      "file": "lib/seoFactory/persistContentJobCore.ts",
+      "function": "persistPipelineJob",
+      "authorityBoundary": "content_jobs lifecycle insert/update; retry/fallback writes are not project authority",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/persistContentJobCore.ts",
+          "line": 507,
+          "sha256": "ac0a4eeae216cbc6c22329b73b048758e4bf800b70bb8180722db8138dcea137",
+          "claim": "content_jobs lifecycle insert/update; retry/fallback writes are not project authority",
+          "excerpt": "export async function persistPipelineJob("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-002",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "persistWritingContract",
+      "authorityBoundary": "immutable content_studio_writing_contracts artifact insert; no project or action grant",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 47,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "immutable content_studio_writing_contracts artifact insert; no project or action grant",
+          "excerpt": "export async function persistWritingContract(db: WritingContractDb, contract: WritingContractV2, jobId: string | null): Promise<WritingContractV2> {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-003",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "attachWritingContractToJob",
+      "authorityBoundary": "content_jobs contract linkage and execution_stage update",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 97,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "content_jobs contract linkage and execution_stage update",
+          "excerpt": "export async function attachWritingContractToJob(db: WritingContractDb, jobId: string, contract: WritingContractV2): Promise<void> {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-004",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "reserveOpportunityJob",
+      "authorityBoundary": "content_jobs opportunity_id unique active-row reservation; legacy identity, no current shared owner lock",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 234,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "content_jobs opportunity_id unique active-row reservation; legacy identity, no current shared owner lock",
+          "excerpt": "export async function reserveOpportunityJob(db: WritingContractDb, input: OpportunityReservationInput): Promise<OpportunityReservation> {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-005",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "releaseOpportunityReservation",
+      "authorityBoundary": "content_jobs active reservation failure transition, filtered by job/opportunity/contract/stage",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 267,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "content_jobs active reservation failure transition, filtered by job/opportunity/contract/stage",
+          "excerpt": "export async function releaseOpportunityReservation("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-006",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "claimContentStudioExecution",
+      "authorityBoundary": "legacy content_jobs execution_owner/attempt/expiry equality via claim_content_studio_execution RPC",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 124,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "legacy content_jobs execution_owner/attempt/expiry equality via claim_content_studio_execution RPC",
+          "excerpt": "export async function claimContentStudioExecution("
+        },
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 19,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL security-definer owner/attempt/expiry lease RPC; no project/policy/owner epoch protocol",
+          "excerpt": "create or replace function public.claim_content_studio_execution("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-007",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "renewContentStudioExecution",
+      "authorityBoundary": "legacy execution lease renewal via owner+attempt+expiry equality",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 154,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "legacy execution lease renewal via owner+attempt+expiry equality",
+          "excerpt": "export async function renewContentStudioExecution("
+        },
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 69,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL security-definer owner/attempt/expiry lease RPC; no project/policy/owner epoch protocol",
+          "excerpt": "create or replace function public.renew_content_studio_execution("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-008",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "assertContentStudioExecution",
+      "authorityBoundary": "legacy read/check RPC verifies owner+attempt+expiry; not authority lock",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 185,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "legacy read/check RPC verifies owner+attempt+expiry; not authority lock",
+          "excerpt": "export async function assertContentStudioExecution("
+        },
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 98,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL security-definer owner/attempt/expiry lease RPC; no project/policy/owner epoch protocol",
+          "excerpt": "create or replace function public.check_content_studio_execution("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-009",
+      "file": "lib/seoFactory/writingContractStoreCore.ts",
+      "function": "releaseContentStudioExecution",
+      "authorityBoundary": "legacy release RPC clears only matching owner+attempt",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStoreCore.ts",
+          "line": 204,
+          "sha256": "547375a815623ee0c70b39064f518fdffccd15ae8c8f7496db5b8d19a48efb68",
+          "claim": "legacy release RPC clears only matching owner+attempt",
+          "excerpt": "export async function releaseContentStudioExecution("
+        },
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 124,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL security-definer owner/attempt/expiry lease RPC; no project/policy/owner epoch protocol",
+          "excerpt": "create or replace function public.release_content_studio_execution("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-010",
+      "file": "lib/seoFactory/writingContractStore.ts",
+      "function": "claimContentStudioExecution",
+      "authorityBoundary": "legacy content_jobs execution_owner/attempt/expiry equality via claim_content_studio_execution RPC",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/writingContractStore.ts",
+          "line": 21,
+          "sha256": "5f98c1803b24ca0651cecba83f15f3ed6c98f02150645d3bfbbd1125e0bd5f00",
+          "claim": "legacy content_jobs execution_owner/attempt/expiry equality via claim_content_studio_execution RPC",
+          "excerpt": "export async function claimContentStudioExecution("
+        },
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 19,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL security-definer owner/attempt/expiry lease RPC; no project/policy/owner epoch protocol",
+          "excerpt": "create or replace function public.claim_content_studio_execution("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-011",
+      "file": "lib/seoFactory/researchEvidenceStore.ts",
+      "function": "persistResearchEvidence",
+      "authorityBoundary": "content_studio_evidence_items append keyed by evidence id/hash; project scope absent",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/researchEvidenceStore.ts",
+          "line": 74,
+          "sha256": "746efdf89a80bb082b7adfd2017385d8ed8dc9c2c872346e20fd89396abde96e",
+          "claim": "content_studio_evidence_items append keyed by evidence id/hash; project scope absent",
+          "excerpt": "export async function persistResearchEvidence("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-012",
+      "file": "lib/seoFactory/researchEvidenceStore.ts",
+      "function": "verifyContractEvidenceRows",
+      "authorityBoundary": "read-only evidence identity/hash/provenance validation; no authorization grant",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/researchEvidenceStore.ts",
+          "line": 124,
+          "sha256": "746efdf89a80bb082b7adfd2017385d8ed8dc9c2c872346e20fd89396abde96e",
+          "claim": "read-only evidence identity/hash/provenance validation; no authorization grant",
+          "excerpt": "export async function verifyContractEvidenceRows("
+        }
+      ],
+      "disposition": "keep read-only; adapt only through canonical project-scoped authority mapping; deny if binding unavailable",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority (caller read path only; no mutation grant)"
+    },
+    {
+      "id": "WRITER-013",
+      "file": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "function": "persistExecutionFailure",
+      "authorityBoundary": "legacy content_jobs failure write fenced by legacy execution lease",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+          "line": 209,
+          "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d",
+          "claim": "legacy content_jobs failure write fenced by legacy execution lease",
+          "excerpt": "async function persistExecutionFailure(input: {"
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-014",
+      "file": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "function": "persistExecutionStage",
+      "authorityBoundary": "legacy content_jobs stage/result write fenced by legacy execution lease",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+          "line": 305,
+          "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d",
+          "claim": "legacy content_jobs stage/result write fenced by legacy execution lease",
+          "excerpt": "async function persistExecutionStage(input: {"
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-015",
+      "file": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "function": "prepareStrictExecution",
+      "authorityBoundary": "acquires legacy execution lease against content job+contract, not project/policy epoch",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+          "line": 408,
+          "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d",
+          "claim": "acquires legacy execution lease against content job+contract, not project/policy epoch",
+          "excerpt": "async function prepareStrictExecution(request: ContentStudioPipelineInput): Promise<PreparedStrictExecution> {"
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-016",
+      "file": "lib/seoFactory/contentStudioPipelineCore.ts",
+      "function": "assertContractOwnershipBeforeAuthoring",
+      "authorityBoundary": "pure current owner resolver check before authoring; no durable transaction lock",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/contentStudioPipelineCore.ts",
+          "line": 126,
+          "sha256": "03a6f060dee62abec857dc3a32788ae66d3d68a0e8871235f6bde8b6eadfd28d",
+          "claim": "pure current owner resolver check before authoring; no durable transaction lock",
+          "excerpt": "async function assertContractOwnershipBeforeAuthoring(contract: WritingContractV2): Promise<void> {"
+        }
+      ],
+      "disposition": "keep read-only; adapt only through canonical project-scoped authority mapping; deny if binding unavailable",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority (caller read path only; no mutation grant)"
+    },
+    {
+      "id": "WRITER-017",
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "function": "POST",
+      "authorityBoundary": "legacy job creation/pipeline kickoff through route core; no command admission transaction",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 393,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "legacy job creation/pipeline kickoff through route core; no command admission transaction",
+          "excerpt": "export async function POST(request: NextRequest) {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-018",
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "function": "PATCH",
+      "authorityBoundary": "legacy status/content/action mutations; some execution path uses lease fencing, interactive path retains legacy writers",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 944,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "legacy status/content/action mutations; some execution path uses lease fencing, interactive path retains legacy writers",
+          "excerpt": "export async function PATCH(request: NextRequest) {"
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-019",
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "function": "DELETE",
+      "authorityBoundary": "legacy content_jobs deletion/cleanup/admin path; no shared authority lock",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 2118,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "legacy content_jobs deletion/cleanup/admin path; no shared authority lock",
+          "excerpt": "export async function DELETE(request: NextRequest) {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-020",
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "function": "mergeAuditJsonFresh",
+      "authorityBoundary": "fresh read/merge of audit JSON then legacy job update; no DB transaction authority lock",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 132,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "fresh read/merge of audit JSON then legacy job update; no DB transaction authority lock",
+          "excerpt": "async function mergeAuditJsonFresh("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-021",
+      "file": "app/api/content-studio/jobs/legacyCore.ts",
+      "function": "assertDirectMergeDestinationAllowed",
+      "authorityBoundary": "current pure ownership/broad-create gate before PR merge; not DB admission authority",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/legacyCore.ts",
+          "line": 111,
+          "sha256": "19d47c066606932ca42867e11f4422c054375c66eb5c80c60253086e74e3d5f6",
+          "claim": "current pure ownership/broad-create gate before PR merge; not DB admission authority",
+          "excerpt": "async function assertDirectMergeDestinationAllowed(job: Record<string, any>): Promise<void> {"
+        }
+      ],
+      "disposition": "keep read-only; adapt only through canonical project-scoped authority mapping; deny if binding unavailable",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority (caller read path only; no mutation grant)"
+    },
+    {
+      "id": "WRITER-022",
+      "file": "app/api/content-studio/jobs/route.ts",
+      "function": "PATCH",
+      "authorityBoundary": "legacy status/content/action mutations; some execution path uses lease fencing, interactive path retains legacy writers",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/route.ts",
+          "line": 114,
+          "sha256": "88c239c15b397d02862f0283f684455b3aa0210da7b1d7039fe691174a5fa233",
+          "claim": "legacy status/content/action mutations; some execution path uses lease fencing, interactive path retains legacy writers",
+          "excerpt": "export async function PATCH(request: NextRequest) {"
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-023",
+      "file": "app/api/content-studio/jobs/route.ts",
+      "function": "POST",
+      "authorityBoundary": "legacy job creation/pipeline kickoff through route core; no command admission transaction",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/route.ts",
+          "line": 318,
+          "sha256": "88c239c15b397d02862f0283f684455b3aa0210da7b1d7039fe691174a5fa233",
+          "claim": "legacy job creation/pipeline kickoff through route core; no command admission transaction",
+          "excerpt": "export async function POST(request: NextRequest) {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-024",
+      "file": "app/api/content-studio/jobs/route.ts",
+      "function": "fencedPatch",
+      "authorityBoundary": "checks current legacy execution owner/attempt then performs content_jobs patch; lease is distinct from shared authority",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "app/api/content-studio/jobs/route.ts",
+          "line": 78,
+          "sha256": "88c239c15b397d02862f0283f684455b3aa0210da7b1d7039fe691174a5fa233",
+          "claim": "checks current legacy execution owner/attempt then performs content_jobs patch; lease is distinct from shared authority",
+          "excerpt": "async function fencedPatch("
+        }
+      ],
+      "disposition": "keep legacy lease for existing jobs; do not equate with shared RPC; adapt authority mutations to shared RPC before cutover",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-025",
+      "file": "app/api/cron/content-studio-retry/route.ts",
+      "function": "POST",
+      "authorityBoundary": "Selects existing retry-due/stale content_jobs rows, updates retry bookkeeping, then executes each stored job via runStoredContentJob; this route does not generally create route-core jobs and has no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 105,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "Selects existing retry-due/stale content_jobs rows, updates retry bookkeeping, then executes each stored job via runStoredContentJob; this route does not generally create route-core jobs and has no shared authority lock.",
+          "excerpt": "export async function POST(req: Request) {"
+        },
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 194,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "executes the selected stored job using runStoredContentJob",
+          "excerpt": "const result = await runStoredContentJob(job, {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-026",
+      "file": "app/api/cron/content-studio-retry/route.ts",
+      "function": "appendEvent",
+      "authorityBoundary": "appendEvent selects and updates content_jobs.event_log for retry events; no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 93,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "appendEvent selects and updates content_jobs.event_log for retry events; no shared authority lock.",
+          "excerpt": "async function appendEvent(sb: SupabaseClient, jobId: string, entry: Record<string, unknown>) {"
+        },
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 94,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "selects existing content_jobs.event_log",
+          "excerpt": "const { data: row } = await sb.from('content_jobs').select('event_log').eq('id', jobId).maybeSingle()"
+        },
+        {
+          "path": "app/api/cron/content-studio-retry/route.ts",
+          "line": 102,
+          "sha256": "7a01e52240cd41b6ff46ef1fdfb1f9aef8a1afb1666fd99aab4cd3831c1038b8",
+          "claim": "updates content_jobs.event_log with the appended retry event",
+          "excerpt": "await sb.from('content_jobs').update({ event_log: next }).eq('id', jobId)"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-027",
+      "file": "app/api/cron/reconcile-content-jobs/route.ts",
+      "function": "POST",
+      "authorityBoundary": "Reconciliation POST NEVER authors content; it scans existing jobs, updates retry/closure bookkeeping, and uses stageRetry to schedule or update retry bookkeeping for the retry worker; no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 1,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "Reconciliation POST NEVER authors content; it scans existing jobs, updates retry/closure bookkeeping, and uses stageRetry to schedule or update retry bookkeeping for the retry worker; no shared authority lock.",
+          "excerpt": "/**"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 74,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "reconciliation POST",
+          "excerpt": "export async function POST(req: Request) {"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 160,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "stageRetry updates retry bookkeeping and schedules for retry; does not author content",
+          "excerpt": "async function stageRetry("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-028",
+      "file": "app/api/cron/reconcile-content-jobs/route.ts",
+      "function": "appendLog",
+      "authorityBoundary": "appendLog selects and updates content_jobs.event_log for reconciliation entries; no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 59,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "appendLog selects and updates content_jobs.event_log for reconciliation entries; no shared authority lock.",
+          "excerpt": "async function appendLog(sb: SupabaseClient, jobId: string, ...parts: Array<{ [k: string]: unknown }>) {"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 60,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "selects existing content_jobs.event_log",
+          "excerpt": "const result = await sb.from('content_jobs').select('event_log').eq('id', jobId).maybeSingle()"
+        },
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 71,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "updates content_jobs.event_log with appended reconciliation entries",
+          "excerpt": "await sb.from('content_jobs').update({ event_log: next }).eq('id', jobId)"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-029",
+      "file": "app/api/cron/reconcile-content-jobs/route.ts",
+      "function": "stageRetry",
+      "authorityBoundary": "legacy retry state/attempt/error writes to content_jobs",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/reconcile-content-jobs/route.ts",
+          "line": 160,
+          "sha256": "1219e3b95e0a0f211cb8e950f2dd6ca8395367bb2228b858b65f93b23113e60b",
+          "claim": "legacy retry state/attempt/error writes to content_jobs",
+          "excerpt": "async function stageRetry("
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-030",
+      "file": "app/api/cron/seo-engine-daily/route.ts",
+      "function": "POST",
+      "authorityBoundary": "Daily SEO POST orchestrates knowledge ingestion, planner, ranking, rewards, analytics/tracking, visibility audits and interlink reconciliation; persists daily run records in seo_engine_runs, not route-core content jobs; no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 51,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "Daily SEO POST orchestrates knowledge ingestion, planner, ranking, rewards, analytics/tracking, visibility audits and interlink reconciliation; persists daily run records in seo_engine_runs, not route-core content jobs; no shared authority lock.",
+          "excerpt": "export async function POST(req: NextRequest) {"
+        },
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 2,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "orchestrates knowledge ingestion and records engine runs",
+          "excerpt": "import { ingestKnowledge, recordEngineRun } from '@/lib/seoEngine/knowledge'"
+        },
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 3,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "orchestrates the SEO planner",
+          "excerpt": "import { runPlanner } from '@/lib/seoEngine/planner'"
+        },
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 4,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "orchestrates visibility audits",
+          "excerpt": "import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'"
+        },
+        {
+          "path": "app/api/cron/seo-engine-daily/route.ts",
+          "line": 138,
+          "sha256": "9985903214b64304911eb12e80ef831c41141e75e4cb39522462a0dc3abb8d87",
+          "claim": "records daily rewards and analytics in the engine-run ledger",
+          "excerpt": "await recordEngineRun('daily', rewardErrors.length ? 'partial' : 'success', {"
+        }
+      ],
+      "disposition": "keep legacy lifecycle outside v3; adapt authorized mutations to shared RPC or deny cutover; do not dual-write authority",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-031",
+      "file": "lib/portalAuth.ts",
+      "function": "requirePortalUser",
+      "authorityBoundary": "requirePortalUser directly mixes verified Clerk identity/profile reads with service-role profile mutations: verified-email recovery relinks an existing row through profiles.clerk_user_id; country and missing-email backfills update profiles.country_code/country_source and profiles.email. It creates no profile rows and participates in no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 62,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "direct identity entry point for mixed profile reads and writes",
+          "excerpt": "export async function requirePortalUser(request?: NextRequest): Promise<"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 73,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "uses the shared per-isolate Supabase service-role client",
+          "excerpt": "const db = getSupabaseAdminClient()"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 100,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "loads Clerk identity for verified-email recovery",
+          "excerpt": "const clerkUser = await clerk.users.getUser(clerkUserId)"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 129,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "verified-email recovery updates profiles.clerk_user_id on the existing profile row",
+          "excerpt": ".update({ clerk_user_id: clerkUserId })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 137,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "legacy-column fallback also updates profiles.clerk_user_id on the existing row",
+          "excerpt": ".update({ clerk_user_id: clerkUserId })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 47,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "country backfill updates profiles.country_code and profiles.country_source",
+          "excerpt": ".update({ country_code: detected, country_source: 'ip' })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 163,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "requirePortalUser directly awaits country backfill",
+          "excerpt": "await backfillCountryFromIp(db, profile)"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 178,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "missing-email backfill updates profiles.email on the existing row",
+          "excerpt": "await db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)"
+        }
+      ],
+      "disposition": "Keep existing mixed identity boundary outside v3 until identity transitions join the shared authority protocol or are denied before cutover; never treat Clerk/profile role as project/action grant.",
+      "authorityMutationRPC": "planned trusted actor mapping/revocation transition APIs only; current profile identity mutation does not use studio_core.lock_current_command_authority",
+      "observedEffects": [
+        {
+          "effect": "verified-email Clerk identity recovery relinks an existing profiles row by updating clerk_user_id",
+          "timing": "when Clerk ID lookup fails and a matching verified Clerk email profile exists",
+          "sourceEvidenceLines": [
+            100,
+            129,
+            137
+          ],
+          "createsProfileRow": false
+        },
+        {
+          "effect": "country backfill updates profiles.country_code and profiles.country_source='ip' when country is absent and detection succeeds",
+          "timing": "awaited directly by requirePortalUser",
+          "sourceEvidenceLines": [
+            47,
+            163
+          ],
+          "createsProfileRow": false
+        },
+        {
+          "effect": "missing-email backfill updates profiles.email from Clerk user data",
+          "timing": "when the profile has no email and Clerk returns an address",
+          "sourceEvidenceLines": [
+            178
+          ],
+          "createsProfileRow": false
+        }
+      ],
+      "credentialHolders": [
+        "Clerk verified session/user identity client (credential type/symbol only; value not inspected)",
+        "shared Supabase service-role client returned by getSupabaseAdminClient (SUPABASE_SERVICE_ROLE_KEY symbol only; value not inspected)"
+      ],
+      "identityTransitionClosure": {
+        "status": "NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER",
+        "positiveProjectGrant": false,
+        "existingBoundary": "requirePortalUser mixes verified identity/profile reads with service-role profile relink and country/email backfills; requireAdminUser calls it transitively before checking normalized admin role.",
+        "plannedTransitions": [
+          "Route verified-email relink/rebind through the trusted actor mapping/revocation closure under the common five-lock protocol, or explicitly exclude and deny that relink/rebind path before cutover.",
+          "Provision trusted actor-to-project mapping and revocation through canonical bind_project_actor/revoke_project_actor transitions; those APIs and locks are NEW_PLANNED, not implemented here."
+        ],
+        "cutoverRule": "Until the common transaction-held lock protocol covers profile identity transitions and trusted actor mapping/revocation, exclude or deny these transition paths before cutover; unavailable durable binding denies admission.",
+        "grantSemantics": "Clerk/profile admin identity NEVER establishes a durable project/action grant; immutable actor grant semantics remain unchanged."
+      }
+    },
+    {
+      "id": "WRITER-032",
+      "file": "lib/portalAuth.ts",
+      "function": "requireAdminUser",
+      "authorityBoundary": "requireAdminUser is a transitive mixed identity boundary: it calls requirePortalUser, inheriting verified identity/profile reads and service-role profiles.clerk_user_id, country_code/country_source, and email mutations before checking admin role. It creates no profile rows and participates in no shared authority lock.",
+      "lockParticipation": "CURRENT_NO_SHARED_LOCK",
+      "sourceEvidence": [
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 196,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "admin guard entry point",
+          "excerpt": "export async function requireAdminUser(request?: NextRequest) {"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 197,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "calls requirePortalUser and inherits its profile reads and writes",
+          "excerpt": "const ctx = await requirePortalUser(request)"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 73,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "uses the shared per-isolate Supabase service-role client",
+          "excerpt": "const db = getSupabaseAdminClient()"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 100,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "loads Clerk identity for verified-email recovery",
+          "excerpt": "const clerkUser = await clerk.users.getUser(clerkUserId)"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 129,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "verified-email recovery updates profiles.clerk_user_id on the existing profile row",
+          "excerpt": ".update({ clerk_user_id: clerkUserId })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 137,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "legacy-column fallback also updates profiles.clerk_user_id on the existing row",
+          "excerpt": ".update({ clerk_user_id: clerkUserId })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 47,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "country backfill updates profiles.country_code and profiles.country_source",
+          "excerpt": ".update({ country_code: detected, country_source: 'ip' })"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 163,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "requirePortalUser directly awaits country backfill",
+          "excerpt": "await backfillCountryFromIp(db, profile)"
+        },
+        {
+          "path": "lib/portalAuth.ts",
+          "line": 178,
+          "sha256": "41b31b7c697858c75e3fce2b3fd79a5c9be898367a2237efb1fd5cbf9adc43cd",
+          "claim": "missing-email backfill updates profiles.email on the existing row",
+          "excerpt": "await db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)"
+        }
+      ],
+      "disposition": "Keep the transitive mixed identity boundary outside v3 until identity transitions join the shared authority protocol or are denied before cutover; admin profile status never grants project/action authority.",
+      "authorityMutationRPC": "planned trusted actor mapping/revocation transition APIs only; current profile identity mutation does not use studio_core.lock_current_command_authority",
+      "observedEffects": [
+        {
+          "effect": "verified-email Clerk identity recovery relinks an existing profiles row by updating clerk_user_id",
+          "timing": "Inherited transitively through requirePortalUser; when Clerk ID lookup fails and a matching verified Clerk email profile exists",
+          "sourceEvidenceLines": [
+            100,
+            129,
+            137
+          ],
+          "createsProfileRow": false
+        },
+        {
+          "effect": "country backfill updates profiles.country_code and profiles.country_source='ip' when country is absent and detection succeeds",
+          "timing": "Inherited transitively through requirePortalUser; awaited directly by requirePortalUser",
+          "sourceEvidenceLines": [
+            47,
+            163
+          ],
+          "createsProfileRow": false
+        },
+        {
+          "effect": "missing-email backfill updates profiles.email from Clerk user data",
+          "timing": "Inherited transitively through requirePortalUser; when the profile has no email and Clerk returns an address",
+          "sourceEvidenceLines": [
+            178
+          ],
+          "createsProfileRow": false
+        }
+      ],
+      "credentialHolders": [
+        "Clerk verified session/user identity client (credential type/symbol only; value not inspected)",
+        "shared Supabase service-role client returned by getSupabaseAdminClient (SUPABASE_SERVICE_ROLE_KEY symbol only; value not inspected)"
+      ],
+      "identityTransitionClosure": {
+        "status": "NEW_PLANNED_OR_DENIED_BEFORE_CUTOVER",
+        "positiveProjectGrant": false,
+        "existingBoundary": "requirePortalUser mixes verified identity/profile reads with service-role profile relink and country/email backfills; requireAdminUser calls it transitively before checking normalized admin role.",
+        "plannedTransitions": [
+          "Route verified-email relink/rebind through the trusted actor mapping/revocation closure under the common five-lock protocol, or explicitly exclude and deny that relink/rebind path before cutover.",
+          "Provision trusted actor-to-project mapping and revocation through canonical bind_project_actor/revoke_project_actor transitions; those APIs and locks are NEW_PLANNED, not implemented here."
+        ],
+        "cutoverRule": "Until the common transaction-held lock protocol covers profile identity transitions and trusted actor mapping/revocation, exclude or deny these transition paths before cutover; unavailable durable binding denies admission.",
+        "grantSemantics": "Clerk/profile admin identity NEVER establishes a durable project/action grant; immutable actor grant semantics remain unchanged."
+      }
+    },
+    {
+      "id": "WRITER-033",
+      "file": "lib/seoFactory/ownership.ts",
+      "function": "resolveOwner",
+      "authorityBoundary": "pure registry owner resolution and route mapping; a helper, not transaction-authoritative durable owner",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/ownership.ts",
+          "line": 899,
+          "sha256": "5c110b0cd58ecc8fb2984db1c46ff5219d1a3fd76bba17aed826031434deba4f",
+          "claim": "pure registry owner resolution and route mapping; a helper, not transaction-authoritative durable owner",
+          "excerpt": "export async function resolveOwner(opts: {"
+        }
+      ],
+      "disposition": "keep read-only; adapt only through canonical project-scoped authority mapping; deny if binding unavailable",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority (caller read path only; no mutation grant)"
+    },
+    {
+      "id": "WRITER-034",
+      "file": "lib/seoFactory/currentGate.ts",
+      "function": "shipGateFromAuditJson",
+      "authorityBoundary": "pure projection from persisted audit_json into ship verdict; no current lock/recheck",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/currentGate.ts",
+          "line": 119,
+          "sha256": "aa6bfded7b7d78c72c25e6a80e56d868e53a5c5ad6da6790ed2a2d3d9187cadf",
+          "claim": "pure projection from persisted audit_json into ship verdict; no current lock/recheck",
+          "excerpt": "export function shipGateFromAuditJson(aj: unknown): ShipGate {"
+        }
+      ],
+      "disposition": "reuse as pure compatibility evaluator only after explicit mapping; no second policy evaluator and no positive admission from helper",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-035",
+      "file": "lib/seoFactory/broadCreateFreeze.ts",
+      "function": "assertPublicationDestinationAllowed",
+      "authorityBoundary": "pure existing-owner/broad-create publication guard; no durable decision epoch",
+      "lockParticipation": "READ_ONLY_POLICY_EVALUATION",
+      "sourceEvidence": [
+        {
+          "path": "lib/seoFactory/broadCreateFreeze.ts",
+          "line": 417,
+          "sha256": "781de3a20def29baf7d1fd3bfd1fa15bf35517fb2e8e4b034d70dcaba370973e",
+          "claim": "pure existing-owner/broad-create publication guard; no durable decision epoch",
+          "excerpt": "export async function assertPublicationDestinationAllowed("
+        }
+      ],
+      "disposition": "reuse as pure compatibility evaluator only after explicit mapping; no second policy evaluator and no positive admission from helper",
+      "authorityMutationRPC": "studio_core.lock_current_command_authority"
+    },
+    {
+      "id": "WRITER-036",
+      "file": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "function": "claim_content_studio_execution",
+      "authorityBoundary": "content_jobs legacy execution lease owner/attempt/expiry compare-and-update or existence check",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 19,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL legacy lease RPC uses row predicate for job/owner/attempt/expiry; not shared project/policy/owner authority locks",
+          "excerpt": "create or replace function public.claim_content_studio_execution("
+        }
+      ],
+      "disposition": "keep only as legacy execution fencing; no authorization for v3 command admission",
+      "counterpartAuthorityMutationRPC": "studio_core.lock_current_command_authority (separate project/policy/owner/epoch writers must join common lock protocol)"
+    },
+    {
+      "id": "WRITER-037",
+      "file": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "function": "renew_content_studio_execution",
+      "authorityBoundary": "content_jobs legacy execution lease owner/attempt/expiry compare-and-update or existence check",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 69,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL legacy lease RPC uses row predicate for job/owner/attempt/expiry; not shared project/policy/owner authority locks",
+          "excerpt": "create or replace function public.renew_content_studio_execution("
+        }
+      ],
+      "disposition": "keep only as legacy execution fencing; no authorization for v3 command admission",
+      "counterpartAuthorityMutationRPC": "studio_core.lock_current_command_authority (separate project/policy/owner/epoch writers must join common lock protocol)"
+    },
+    {
+      "id": "WRITER-038",
+      "file": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "function": "check_content_studio_execution",
+      "authorityBoundary": "content_jobs legacy execution lease owner/attempt/expiry compare-and-update or existence check",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 98,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL legacy lease RPC uses row predicate for job/owner/attempt/expiry; not shared project/policy/owner authority locks",
+          "excerpt": "create or replace function public.check_content_studio_execution("
+        }
+      ],
+      "disposition": "keep only as legacy execution fencing; no authorization for v3 command admission",
+      "counterpartAuthorityMutationRPC": "studio_core.lock_current_command_authority (separate project/policy/owner/epoch writers must join common lock protocol)"
+    },
+    {
+      "id": "WRITER-039",
+      "file": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+      "function": "release_content_studio_execution",
+      "authorityBoundary": "content_jobs legacy execution lease owner/attempt/expiry compare-and-update or existence check",
+      "lockParticipation": "LEGACY_EXECUTION_LEASE_ONLY",
+      "sourceEvidence": [
+        {
+          "path": "supabase/migrations/20260915_content_studio_execution_lease.sql",
+          "line": 124,
+          "sha256": "d7c3d7bd10141bc1ada29a02d71a78afc6d3ff5952dcc3b4c4b2b8b2401793f0",
+          "claim": "SQL legacy lease RPC uses row predicate for job/owner/attempt/expiry; not shared project/policy/owner authority locks",
+          "excerpt": "create or replace function public.release_content_studio_execution("
+        }
+      ],
+      "disposition": "keep only as legacy execution fencing; no authorization for v3 command admission",
+      "counterpartAuthorityMutationRPC": "studio_core.lock_current_command_authority (separate project/policy/owner/epoch writers must join common lock protocol)"
+    }
+  ],
+  "durableAuthorityPacket": {
+    "allowedPaths": [
+      "lib/contentStudioV3/auth/verifySession.ts",
+      "lib/contentStudioV3/auth/authorizeAction.ts",
+      "lib/contentStudioV3/policy/evaluate.ts",
+      "lib/contentStudioV3/policy/actions.ts",
+      "lib/contentStudioV3/policy/legacyAdapter.ts",
+      "lib/contentStudioV3/authority/repository.ts",
+      "lib/contentStudioV3/authority/bindings.ts",
+      "supabase/migrations/20261001000001_studio_authority_binding.sql",
+      "tests/content-studio-v3/authorityBinding.test.ts",
+      "tests/sql/studio-authority-binding.sql"
+    ],
+    "activation": "INACTIVE_ONLY",
+    "ddlApply": "NOT_AUTHORIZED",
+    "consumes": [
+      "frozen plan resolver interface; verified Clerk issuer/subject; actual root-approved project/actor/action bindings; canonical current estate owner/route; sealed input/evidence references; current policy snapshot/evidence; authority epoch; writerInventory and lock protocol"
+    ],
+    "produces": [
+      "deny-only production adapter until every actual authority owner is provisioned; then one transaction-time studio_core.lock_current_command_authority implementation returning the exact frozen result",
+      "private authority_domains/events; project_actor_bindings; estate_repositories/hosts/routes; intent_owners/reservations; sealed_inputs/action_bindings/policy_snapshots with explicit project-scoped mappings to immutable writing contracts/evidence refs",
+      "promote/revoke/advance-owner/advance-policy/advance-epoch transition RPCs sharing project→policy→owner/subject lock order; fixed owner/search_path/RLS/ACL and typed runtime bindings"
+    ],
+    "conflictDomains": [
+      "project/authority-epoch",
+      "policy snapshot",
+      "owner/subject",
+      "sealed input/evidence identity",
+      "run admission tuple",
+      "current action grant"
+    ],
+    "acceptanceTests": [
+      "T01",
+      "T02",
+      "T21",
+      "T29",
+      "STALE_CONTEXT",
+      "REPLAY_REVOCATION",
+      "AUTHORITY_LOCK_SERIALIZATION",
+      "IDENTITY_DRIFT",
+      "INPUT_DRIFT",
+      "EVIDENCE_DRIFT",
+      "CROSS_PROJECT",
+      "OWNER_CONFLICT",
+      "NO_DEFAULT_GRANT",
+      "NO_RAW_DML"
+    ],
+    "migrationCollisionCheck": {
+      "path": "supabase/migrations/20261001000001_studio_authority_binding.sql",
+      "status": "ABSENT_AT_BASE_e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+      "requiredAtExecution": "recheck exact current main and fresh migration ledger before DDL; never rewrite 20261001000000 admission schema or activate route"
+    },
+    "ddlOrder": "First freeze deny interface/schema from c305 plan, then additive authority migration after authority provisioning review; all missing bootstrap values fail closed. Fixed non-login owner, schema USAGE only to named roles, RLS on/force where supported, explicit revoke PUBLIC/anon/authenticated, fixed safe search_path, function-only narrow grants, default ACL revokes and per-role negatives. Typed TS adapter maps existing immutable writing-contract/evidence refs after project-scope validation; no blanket content_jobs grant.",
+    "roleProposal": [
+      "studio_reader",
+      "studio_ingest",
+      "studio_worker",
+      "studio_policy",
+      "studio_review",
+      "studio_release"
+    ],
+    "rolesExistence": "UNKNOWN; proposed names only",
+    "writerDisposition": "Every project/actor/action/input/evidence/snapshot/owner/policy/epoch mutation joins RPC/lock protocol or remains excluded/deny-cutover; no dual authority.",
+    "tableTransitionInventory": [
+      {
+        "domain": "project",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.authority_domains",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "promote_project_binding",
+          "revoke_project_binding",
+          "advance_authority_epoch"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "actor",
+        "status": "SOURCE_EXISTING",
+        "plannedTables": [
+          "studio_core.project_actor_bindings",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "bind_project_actor",
+          "revoke_project_actor"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "object",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.estate_repositories",
+          "studio_core.estate_hosts",
+          "studio_core.estate_routes",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "upsert_estate_route_mapping",
+          "retire_estate_route_mapping"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "action",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.action_bindings",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "grant_project_action",
+          "revoke_project_action"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "sealed-input",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.sealed_inputs",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "bind_sealed_input",
+          "revoke_sealed_input"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "evidence",
+        "status": "CATALOG_EXISTING",
+        "plannedTables": [
+          "studio_core.evidence_refs",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "bind_evidence_reference",
+          "revoke_evidence_reference"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "snapshot",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.policy_snapshots",
+          "studio_core.snapshot_evidence_refs",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "publish_policy_snapshot",
+          "revoke_policy_snapshot"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "owner",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.intent_owners",
+          "studio_core.intent_reservations",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "advance_intent_owner",
+          "reserve_intent",
+          "release_intent_reservation"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "policy",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.policy_snapshots",
+          "studio_core.action_bindings",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "advance_policy_version",
+          "revoke_policy_action"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "epoch",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "studio_core.authority_domains",
+          "studio_core.authority_events"
+        ],
+        "plannedTransitionAPIs": [
+          "advance_authority_epoch"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "run-stage-attempt",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "frozen studio_core.studio_runs",
+          "frozen studio_core.studio_run_stages",
+          "frozen studio_core.studio_run_admissions"
+        ],
+        "plannedTransitionAPIs": [
+          "studio_core.admit_run",
+          "studio_core.lock_current_command_authority"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      },
+      {
+        "domain": "outbox-inbox-checkpoint-progress",
+        "status": "NEW_PLANNED",
+        "plannedTables": [
+          "frozen studio_core.studio_outbox",
+          "frozen studio_core.studio_run_events",
+          "proposed canonical studio_core.attempts",
+          "proposed canonical studio_core.inbox_receipts",
+          "proposed canonical studio_core.checkpoints"
+        ],
+        "plannedTransitionAPIs": [
+          "claim_outbox_delivery",
+          "record_spawn_receipt",
+          "consume_inbox_event",
+          "commit_stage_transition",
+          "append_progress_event",
+          "reconcile_expired_delivery_claim"
+        ],
+        "lockOrder": [
+          "project/authority-epoch",
+          "policy snapshot",
+          "owner/subject",
+          "scoped admission key",
+          "run/stage"
+        ]
+      }
+    ]
+  },
+  "dispatchPacket": {
+    "allowedPaths": [
+      "lib/contentStudioV3/runtime/commands.ts",
+      "lib/contentStudioV3/runtime/transitions.ts",
+      "lib/contentStudioV3/runtime/events.ts",
+      "lib/contentStudioV3/runtime/runEnvelope.ts",
+      "lib/contentStudioV3/runtime/runEvents.ts",
+      "lib/contentStudioV3/runtime/actionRegistry.ts",
+      "workers/content_studio/transport/dispatch.py",
+      "workers/content_studio/transport/reconcile.py",
+      "supabase/migrations/20261001000002_studio_dispatch_authority.sql",
+      "tests/sql/studio-dispatch-authority.sql",
+      "tests/content-studio-v3/dispatchAuthority.test.ts",
+      "workers/content_studio/tests/test_dispatch_authority.py"
+    ],
+    "activation": "INACTIVE_ONLY",
+    "ddlApply": "NOT_AUTHORIZED",
+    "consumes": [
+      "accepted durable-authority binding packet and frozen five admission relations; actual project/run/stage/outbox/inbox/attempt fence; immutable input/artifact references; official consumers and Ingest canary dependent paths"
+    ],
+    "produces": [
+      "atomic claim+attempt fence from DB time with epoch/cancel recheck under authority lock; retained canonical envelopes; append-only canonical attempts/inbox_receipts/checkpoints/progress and separate delivery receipt",
+      "dispatch spawn call receipt with uncertainty state; reconciler resolves durable state and never blind-respawns; delivery completion remains distinct from worker completion/progress",
+      "one dispatcher/retry owner with consumer existence gate before any positive 202; no duplicate run/outbox scheduler"
+    ],
+    "conflictDomains": [
+      "project/authority epoch",
+      "run/stage/attempt fence",
+      "outbox delivery lease",
+      "worker inbox idempotency",
+      "checkpoint/progress sequence",
+      "cancel/epoch transition"
+    ],
+    "acceptanceTests": [
+      "T04",
+      "T27",
+      "SPAWN_UNCERTAINTY",
+      "ABA_FENCE",
+      "CANCEL",
+      "EVENT_GAP",
+      "CRASH_BEFORE_CLAIM_COMMIT",
+      "CRASH_AFTER_CLAIM_BEFORE_SPAWN",
+      "CRASH_AFTER_SPAWN_BEFORE_RECEIPT",
+      "RECONCILE_NO_BLIND_RESPAWN",
+      "DELIVERY_VS_COMPLETION",
+      "CONSUMER_BEFORE_POSITIVE_202"
+    ],
+    "existingAdmissionRelationsReused": [
+      "studio_core.studio_runs",
+      "studio_core.studio_run_stages",
+      "studio_core.studio_outbox",
+      "studio_core.studio_run_events",
+      "studio_core.studio_run_admissions"
+    ],
+    "newCanonicalRelationsAfterReview": [
+      "studio_core.attempts",
+      "studio_core.inbox_receipts",
+      "studio_core.checkpoints"
+    ],
+    "deliveryLeaseColumnAdditionsAfterReview": {
+      "table": "studio_core.studio_outbox",
+      "columns": [
+        "delivery_lease_owner",
+        "delivery_lease_expires_at",
+        "attempt_count",
+        "next_attempt_at",
+        "spawn_uncertainty_ref"
+      ]
+    },
+    "migrationCollisionCheck": {
+      "path": "supabase/migrations/20261001000002_studio_dispatch_authority.sql",
+      "status": "ABSENT_AT_BASE_e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+      "requiredAtExecution": "recheck exact current main and fresh migration ledger before DDL; review after authority mapping; no duplicate runs/outbox tables"
+    },
+    "ddlDesign": "Reuse the existing five frozen admission relations without duplicating runs or outbox. After independent review, add canonical attempts, inbox_receipts and checkpoints relations plus only required delivery-lease/attempt columns on studio_core.studio_outbox. Preserve exact StudioRunEnvelope, OutboxEvent and progress envelopes; no second scheduler, no whole legacy retry/reconciler conversion in this packet.",
+    "dependentFiles": [
+      {
+        "path": "workers/content_studio/artifacts.py",
+        "evidenceStatus": "CANONICAL_BLUEPRINT_DEPENDENCY",
+        "existenceAtBase": "UNKNOWN_NOT_CLAIMED",
+        "dependency": "artifact gateway upload/readback/seal contract; separately gated, not changed in dispatch packet"
+      },
+      {
+        "path": "lib/contentStudioV3/artifacts/grants.ts",
+        "evidenceStatus": "CANONICAL_BLUEPRINT_DEPENDENCY",
+        "existenceAtBase": "UNKNOWN_NOT_CLAIMED",
+        "dependency": "project/principal/artifact-scoped single-use grants; separate artifact packet"
+      },
+      {
+        "path": "lib/contentStudioV3/artifacts/manifest.ts",
+        "evidenceStatus": "CANONICAL_BLUEPRINT_DEPENDENCY",
+        "existenceAtBase": "UNKNOWN_NOT_CLAIMED",
+        "dependency": "immutable artifact manifest/hash validation before dispatch"
+      },
+      {
+        "path": "app/api/seo-engine/action-stream/route.ts",
+        "evidenceStatus": "SOURCE_OBSERVED",
+        "existenceAtBase": "SOURCE_PRESENT",
+        "dependency": "legacy action-stream entry adapts to one admitted run for A2.4 Ingest canary"
+      },
+      {
+        "path": "app/api/seo-engine/knowledge/route.ts",
+        "evidenceStatus": "SOURCE_OBSERVED",
+        "existenceAtBase": "SOURCE_PRESENT",
+        "dependency": "legacy knowledge entry adapts to the same admitted run and per-source checkpoint for A2.4 Ingest canary"
+      }
+    ],
+    "consumerBoundary": "Positive 202 forbidden until registered consumer, durable claim/reconciliation and actual worker handoff are accepted."
+  },
+  "canonicalManifest": {
+    "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-manifest.json",
+    "sha256": "ff9d63e0e6a80549ddabe37862753d677946a7e5b21a43d2d9355730b7579aa2",
+    "files": [
+      {
+        "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+        "bytes": 261540,
+        "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+      },
+      {
+        "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+        "bytes": 87157,
+        "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+      },
+      {
+        "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
+        "bytes": 22100,
+        "sha256": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525"
+      },
+      {
+        "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
+        "bytes": 18712,
+        "sha256": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b"
+      },
+      {
+        "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
+        "bytes": 15976,
+        "sha256": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e"
+      },
+      {
+        "path": "docs/superpowers/content-studio-execution-policy.md",
+        "bytes": 5369,
+        "sha256": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f"
+      },
+      {
+        "path": "docs/superpowers/content-studio-kickoff.md",
+        "bytes": 5138,
+        "sha256": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5"
+      },
+      {
+        "path": "docs/superpowers/content-studio-revamp.md",
+        "bytes": 1752,
+        "sha256": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df"
+      }
+    ]
+  },
+  "catalogReceiptRef": {
+    "entryId": "MAP-CATALOG",
+    "path": "/tmp/cs-a0-catalog-observations-20261001.json",
+    "sha256": "f6a5f36946d49d975bf1c251c4f138fc2cc108533fe35f21bc06ee21b067814b",
+    "scope": "metadata only; receipt contents copied exactly into privilege-matrix.catalogGrantFacts"
+  }
+}

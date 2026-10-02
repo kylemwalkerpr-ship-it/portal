@@ -1,0 +1,94 @@
+{
+  "documentId": "runtime-baseline",
+  "sourceCommit": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "sourcePins": [
+    {
+      "path": ".github/workflows/deploy.yml",
+      "sha256": "58ac2e9bb732fd4394b0bcdadc896c05f3b6dc0d2facd936303c9358c098e365"
+    },
+    {
+      "path": "lib/githubContentsCore.ts",
+      "sha256": "b37344bb1fe3cb48984e73ba957adc8b3a8f7cf4f86a311a4c7e5fe4608386b9"
+    },
+    {
+      "path": "lib/seoFactory/ownership.ts",
+      "sha256": "5c110b0cd58ecc8fb2984db1c46ff5219d1a3fd76bba17aed826031434deba4f"
+    },
+    {
+      "path": "wrangler.toml",
+      "sha256": "8768bf6a4655fc1b4dcf64ee04da2994dbb314b7abb0197b3badb967bb8ba4c7"
+    }
+  ],
+  "entries": [
+    {
+      "id": "RUNTIME-WORKER",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "wrangler.toml",
+        ".github/workflows/deploy.yml"
+      ],
+      "references": [
+        "ESTATE-WORKER-CONFIG",
+        "SINK-DEPLOY"
+      ],
+      "description": "Source worker name/routes and deploy workflow source exist; they do not establish current deployment or account role/CPU.",
+      "worker": "yousafe-portal",
+      "sourceConfig": "wrangler.toml; configured route list as source text"
+    },
+    {
+      "id": "RUNTIME-CODE-HELPERS",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        "lib/seoFactory/ownership.ts",
+        "lib/githubContentsCore.ts",
+        "wrangler.toml"
+      ],
+      "references": [
+        "MAP-ESTATE"
+      ],
+      "description": "Root-supplied helper PR/deployment receipt is helper-component evidence only; this historical source snapshot has no canonical runtime envelope consumer or positive admission.",
+      "helperPins": {
+        "estateOwnership": "176d6e8d",
+        "sourceProvenance": "4445a8eb",
+        "studioRunAuthority": "fb8a7a23",
+        "resourceShell": "2ae27956"
+      },
+      "activation": "INACTIVE_ONLY"
+    },
+    {
+      "id": "RUNTIME-RELEASE",
+      "evidenceStatus": "SOURCE_OBSERVED",
+      "sourceRefs": [
+        ".github/workflows/deploy.yml"
+      ],
+      "references": [
+        "SINK-WORKFLOWS",
+        "MIGRATION-BASE"
+      ],
+      "description": "Official source path is PR/check/main/deploy/smoke; helper-only deployment receipt does not close full runtime architecture.",
+      "deploymentWorkflowRun": "36919605423 SUCCESS for helper component PR #312; not runtime architecture activation"
+    }
+  ],
+  "unknowns": [
+    "Exact live Worker version/commit/current route ownership/current account role/CPU plan/telemetry are UNKNOWN; no Cloudflare probe made.",
+    "Catalog/API effective roles and current production authority bindings remain UNKNOWN or absent in root partial metadata; current project/action/owner/policy/epoch authorization is unavailable.",
+    "Draft PR #30293949e28 and #303f19cc842 remain drafts per supplied root receipt; #303 real JWT/image receipt does not activate the canonical runtime envelope.",
+    "Modal narrow commit/readback/delete/absence proof is supplied but gateway/GC/crash/retention/restore evidence remains missing; no reprobe."
+  ],
+  "checks": {
+    "deploymentSource": "official deploy workflow source pinned; root-supplied run receipt is helper-only",
+    "activeConsumer": "NONE_OBSERVED",
+    "positiveAdmission": "DENY / INACTIVE_ONLY",
+    "currentCpuTelemetry": "UNKNOWN",
+    "providerProbes": "NOT_RUN"
+  },
+  "observedWorkerName": "yousafe-portal",
+  "workerRoutesSource": "wrangler.toml",
+  "officialDeploymentWorkflow": ".github/workflows/deploy.yml",
+  "officialHistoricalRun": {
+    "runId": "36919605423",
+    "status": "SUCCESS",
+    "scope": "reviewed helper component PR #312 only; not v3 runtime authority/dispatch acceptance"
+  },
+  "activation": "INACTIVE_ONLY"
+}
