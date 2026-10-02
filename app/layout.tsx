@@ -15,6 +15,7 @@ import './mobile-visual-viewport.css'
 import './messenger-bubble-axis-alignment.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
+import { ysClerkAppearance } from '@/lib/auth/ysClerkAppearance'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
 import StudentMobileNavigation from '@/components/student/StudentMobileNavigation'
@@ -132,8 +133,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             upgrading @clerk/nextjs; update both pinned values together. */}
         <ClerkProvider
           afterSignOutUrl={MARKET_HOME_URL}
-          signInUrl="/sign-in/student"
-          signUpUrl="/sign-up/student"
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          appearance={ysClerkAppearance}
         >
           <TranslationProvider>
             <MobileVisualViewport />

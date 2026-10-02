@@ -11,6 +11,8 @@ describe('marketplace auth return target', () => {
     expect(modal).toContain("const MARKET_ORIGIN = 'https://market.yousafeconsultancy.com'")
     expect(modal).toContain("returnTo.startsWith('/')")
     expect(modal).toContain('`${MARKET_ORIGIN}${returnTo}`')
-    expect(modal).toContain('encodeURIComponent(absoluteReturnTo)')
+    // Encoding + allowlisting now lives in the shared lib/auth/returnTo helper.
+    expect(modal).toContain("buildAuthUrl('sign-up', { returnTo: destination, intent: 'client' })")
+    expect(modal).toContain("buildAuthUrl('sign-in', { returnTo: destination })")
   })
 })

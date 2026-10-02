@@ -1,6 +1,9 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
+import { useClerk } from '@clerk/nextjs'
+import { buildAuthUrl } from '@/lib/auth/returnTo'
+import { openYsSignIn } from '@/lib/auth/ysAuthModal'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -78,6 +81,7 @@ export default function ChatSidePane({
   serviceTitle,
 }: ChatSidePaneProps) {
   const isPopover = presentation === 'popover'
+  const clerk = useClerk()
   const [chatId, setChatId] = React.useState(null)
   const [conversationId, setConversationId] = React.useState(null)
   const [messages, setMessages] = React.useState<any[]>([])
@@ -385,7 +389,12 @@ export default function ChatSidePane({
     <div className="ys-market-chat-signin" style={{ padding: '12px 14px', background: `${CYAN}10`, color: CYAN, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
       <span>Sign in to message this specialist.</span>
       <a
-        href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '/')}`}
+        href={buildAuthUrl('sign-in', { returnTo: typeof window !== 'undefined' ? window.location.href : null })}
+        onClick={(event) => {
+          if (!clerk || typeof clerk.openSignIn !== 'function') return
+          event.preventDefault()
+          openYsSignIn(clerk, { returnTo: window.location.href })
+        }}
         style={{ background: CYAN, color: '#FFFFFF', padding: '8px 12px', borderRadius: 999, textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
       >
         Sign in →

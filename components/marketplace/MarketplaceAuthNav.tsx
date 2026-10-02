@@ -6,6 +6,7 @@ import { F } from './tokens'
 import styles from './MarketplaceAuthNav.module.css'
 import { AuthNavSkeleton } from './MarketplaceRouteSkeleton'
 import { getSafeMarketplaceSignInReturnTo, MARKETPLACE_RETURN_TO_QUERY, MARKETPLACE_SIGN_IN_QUERY } from '@/lib/marketplaceSignInHandoff'
+import { openYsSignIn, openYsSignUp } from '@/lib/auth/ysAuthModal'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
@@ -92,10 +93,9 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
     url.searchParams.delete(MARKETPLACE_SIGN_IN_QUERY)
     url.searchParams.delete(MARKETPLACE_RETURN_TO_QUERY)
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
-    clerk.openSignIn({
-      forceRedirectUrl: returnTo || `${PORTAL_URL}/dashboard`,
-      signUpUrl: `${PORTAL_URL}/sign-up/student`,
-    })
+    // Legacy `?ys_sign_in=1` deep links (bookmarks, old emails) still open the
+    // one shared branded modal in place.
+    openYsSignIn(clerk, { returnTo })
   }, [clerk, isLoaded])
 
   React.useEffect(() => {
@@ -128,10 +128,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
       <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 8 }} suppressHydrationWarning>
         <button
           type="button"
-          onClick={() => clerk.openSignIn({
-            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
-            signUpUrl: `${PORTAL_URL}/sign-up/student`,
-          })}
+          onClick={() => openYsSignIn(clerk)}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 600,
             color: 'var(--ys-ink, #0F172A)', background: 'transparent',
@@ -142,12 +139,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
         >Sign in</button>
         <button
           type="button"
-          onClick={() => clerk.openSignUp({
-            unsafeMetadata: { requestedRole: 'client', signupSource: 'marketplace_join' },
-            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
-            fallbackRedirectUrl: `${PORTAL_URL}/dashboard`,
-            signInUrl: `${MARKET_HOME_URL}?ys_sign_in=1`,
-          })}
+          onClick={() => openYsSignUp(clerk, { intent: 'client', source: 'marketplace_join' })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 700,
             color: '#fff', background: 'var(--ys-ink, #0F172A)',

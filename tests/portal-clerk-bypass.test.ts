@@ -277,11 +277,12 @@ describe('portal middleware wiring', () => {
     // through the same helper the Clerk handler uses, so the lane mapping and
     // the return_to contract cannot drift.
     expect(portalHandler).toContain('PORTAL_ANONYMOUS_SIGN_IN_ALIAS_PATHS.has(pathname)')
-    expect(portalHandler).toContain('anonymousSignInRedirectUrl(req, pathname, search)')
-    expect(clerkBody).toContain('anonymousSignInRedirectUrl(req, pathname, search)')
-    // One lane mapping for the whole file: the Clerk handler no longer builds
-    // the sign-in URL itself.
-    expect(middleware.split("lane === 'consultant' ? 'consultant'").length - 1).toBe(1)
+    // Aliases resolve through the one canonical lane map (lib/auth/portalAuthRedirect).
+    expect(portalHandler).toContain('getCanonicalPortalAuthRedirect(req.nextUrl)')
+    expect(clerkBody).toContain('anonymousSignInRedirectUrl(req)')
+    // No lane mapping left in middleware: lanes are retired and the canonical
+    // map lives in lib/auth/portalAuthRedirect.ts.
+    expect(middleware.split("lane === 'consultant' ? 'consultant'").length - 1).toBe(0)
     expect(clerkBody).not.toContain('signInUrl.searchParams.set')
   })
 
@@ -289,12 +290,14 @@ describe('portal middleware wiring', () => {
     expect(portalHandler).toContain('isAllowedCorsPreflight(req)')
     expect(portalHandler).toContain('status: 204')
     expect(portalHandler).toContain('corsHeadersFor(req)')
-    expect(portalHandler).toContain('stripTrackingParams(new URL(req.url))')
+    // Portal is noindex + auth-only: UTMs are no longer stripped (they carried
+    // campaign attribution into sign-up). The alias redirect is still a 301.
+    expect(portalHandler).not.toContain('stripTrackingParams(new URL(req.url))')
     expect(portalHandler).toContain('status: 301')
   })
 
   test('signed-in portal visitors still resolve a session and bounce to /dashboard', () => {
-    expect(clerkBody).toContain('const { userId } = await auth()')
+    expect(clerkBody).toContain('const { userId, sessionClaims } = await auth()')
     expect(clerkBody).toContain("if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))")
   })
 

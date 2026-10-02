@@ -18,7 +18,7 @@ export const metadata = {
 // "Account security" surface buyers and sellers both can reach.
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/security')
+  if ('error' in auth) redirect('/sign-in?return_to=/dashboard/security')
 
   return <SecurityHubView role={auth.role} />
 }

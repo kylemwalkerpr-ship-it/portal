@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/admin?return_to=/dashboard/admin/consultant-applications')
+  if ('error' in auth) redirect('/sign-in?return_to=/dashboard/admin/consultant-applications')
   if (auth.role !== 'admin') redirect('/dashboard')
   return <AdminConsultantManagement />
 }

@@ -1,7 +1,10 @@
 'use client'
 
 import React from 'react'
+import { useClerk } from '@clerk/nextjs'
 import { T, F } from './tokens'
+import { buildAuthUrl } from '@/lib/auth/returnTo'
+import { openYsSignIn, openYsSignUp } from '@/lib/auth/ysAuthModal'
 
 interface SignUpGateModalProps {
   open: boolean
@@ -27,22 +30,38 @@ const INTENT_BODY: Record<string, string> = {
   review: 'Create a free account to share your experience. It takes about 30 seconds.',
 }
 
-function encodeMeta(meta?: Record<string, unknown>): string {
-  if (!meta) return ''
+/**
+ * The return target carries the gated action so the origin page can resume it.
+ * Everything is set through URLSearchParams, so the JSON metadata is
+ * URL-encoded (the old raw base64 `meta` could be corrupted by `+`/`/`/`=`).
+ */
+export function gatedReturnTo(returnTo: string, intent: string, metadata?: Record<string, unknown>): string {
+  const absolute = returnTo.startsWith('/') ? `${MARKET_ORIGIN}${returnTo}` : returnTo
   try {
-    return btoa(JSON.stringify(meta))
+    const url = new URL(absolute)
+    url.searchParams.set('resume', intent)
+    if (metadata) url.searchParams.set('meta', JSON.stringify(metadata))
+    return url.toString()
   } catch {
-    return ''
+    return `${MARKET_ORIGIN}/`
   }
 }
 
 export default function SignUpGateModal({ open, onClose, intent, returnTo, metadata }: SignUpGateModalProps) {
+  const clerk = useClerk()
   if (!open) return null
 
-  const meta = encodeMeta(metadata)
-  const absoluteReturnTo = returnTo.startsWith('/') ? `${MARKET_ORIGIN}${returnTo}` : returnTo
-  const returnUrl = encodeURIComponent(absoluteReturnTo)
-  const signUpUrl = `https://portal.yousafeconsultancy.com/sign-up/student?return_to=${returnUrl}&action=${intent}${meta ? `&meta=${meta}` : ''}`
+  const destination = gatedReturnTo(returnTo, intent, metadata)
+  // No-JS / modal-unavailable fallbacks: the single canonical portal documents.
+  const signUpUrl = buildAuthUrl('sign-up', { returnTo: destination, intent: 'client' })
+  const signInUrl = buildAuthUrl('sign-in', { returnTo: destination })
+  const openModal = (mode: 'sign-in' | 'sign-up') => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!clerk || typeof clerk.openSignUp !== 'function') return
+    event.preventDefault()
+    onClose()
+    if (mode === 'sign-up') openYsSignUp(clerk, { returnTo: destination, intent: 'client', source: `market_gate_${intent}` })
+    else openYsSignIn(clerk, { returnTo: destination })
+  }
 
   return (
     <div
@@ -94,6 +113,7 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
 
         <a
           href={signUpUrl}
+          onClick={openModal('sign-up')}
           style={{
             display: 'block',
             width: '100%',
@@ -112,7 +132,7 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
 
         <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '13px', color: T.inkMid }}>
           Already have an account?{' '}
-          <a href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${returnUrl}`} style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
+          <a href={signInUrl} onClick={openModal('sign-in')} style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
             Sign in
           </a>
         </div>

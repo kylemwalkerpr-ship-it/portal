@@ -11,7 +11,9 @@ describe('standalone Marketplace public URL contract', () => {
     expect(footer).toContain("{ label: 'Categories', href: '/categories' }")
     expect(footer).toContain("{ label: 'File shop', href: '/shop' }")
     expect(footer).toContain("{ label: 'Help', href: '/#faq' }")
-    expect(footer).toContain("{ label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' }")
+    // "Become a seller" goes through the canonical sign-up into the single
+    // provider application (not the attorney-only lane).
+    expect(footer).toContain("{ label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up?intent=provider&return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fonboarding%2Fprovider' }")
     expect(footer).not.toContain("href: '/marketplace")
   })
 
