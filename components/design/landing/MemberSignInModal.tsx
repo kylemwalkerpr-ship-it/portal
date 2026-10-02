@@ -27,7 +27,7 @@ const ROLES: Role[] = [
     icon: Cap,
     accent: T.indigo,
     signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1',
-    signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=client',
+    signUpHref: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client',
     external: false,
   },
   {
@@ -38,8 +38,8 @@ const ROLES: Role[] = [
     secondary: 'Apply to join',
     icon: Scale,
     accent: T.brick,
-    signInHref: 'https://portal.yousafeconsultancy.com/sign-in',
-    signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=attorney',
+    signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1&intent=attorney',
+    signUpHref: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=attorney',
     external: false,
   },
   {
@@ -50,8 +50,8 @@ const ROLES: Role[] = [
     secondary: 'Apply as consultant',
     icon: Briefcase,
     accent: T.moss,
-    signInHref: 'https://portal.yousafeconsultancy.com/sign-in',
-    signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=consultant',
+    signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1&intent=consultant',
+    signUpHref: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=consultant',
     external: false,
   },
   {

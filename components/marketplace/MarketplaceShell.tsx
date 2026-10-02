@@ -130,7 +130,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
   const handleCta = () => {
     if (!cta) return
     if (cta.view === 'open-portal') {
-      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up?intent=client&source=market_messages_empty'
+      window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_messages_empty'
       return
     }
     if (cta.view === 'browse') {
@@ -573,7 +573,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           <ThemePicker />
         </div>
         <div className="ys-shell-aux ys-shell-auth" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-          <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up?intent=client&source=market_shell" />
+          <MarketplaceAuthNav signUpHref="https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_shell" />
         </div>
         <button
           type="button"
@@ -701,7 +701,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   // When a nav button is clicked, update state AND URL so browser history works
   const handleNav = React.useCallback((view: Section) => {
     if (view === 'open-portal') {
-      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up?intent=client&source=market_messages_empty'
+      window.location.href = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=client&source=market_messages_empty'
       return
     }
     setSection(view)

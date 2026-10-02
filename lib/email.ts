@@ -42,7 +42,7 @@ export function attorneyApprovalEmail(fullName: string): { subject: string; html
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111;">
   <p>${greeting}</p>
   <p>Your application to join the YouSafe attorney panel has been approved. You can now sign in and access the attorney dashboard:</p>
-  <p><a href="https://portal.yousafeconsultancy.com/sign-in">portal.yousafeconsultancy.com/sign-in</a></p>
+  <p><a href="https://market.yousafeconsultancy.com/?ys_sign_in=1&amp;intent=attorney&amp;return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fdashboard">Sign in to your YouSafe attorney dashboard</a></p>
   <p>Welcome aboard.</p>
   <p>— YouSafe Consultancy</p>
 </body></html>`.trim(),

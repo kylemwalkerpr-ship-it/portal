@@ -11,7 +11,7 @@ import {
   isPortalAuthRootPath,
   marketAuthModalUrl,
   signedInAuthRootDestination,
-  signInUrlForProtectedPath,
+  marketSignInUrlForProtectedPath,
 } from './lib/auth/portalAuthRedirect'
 import { passwordChangeRedirect } from './lib/auth/mustChangePassword'
 import { getMarketplaceTemplatesRedirectUrl } from './lib/marketplaceTemplatesRedirect'
@@ -374,12 +374,12 @@ function handleMarketHostRequest(req: NextRequest): NextResponse {
 }
 
 /**
- * Anonymous answer for a protected portal document: the single canonical
- * `/sign-in` document with an absolute `return_to` (one hop; the old
- * `/sign-in/student` -> market modal -> portal bounce is retired).
+ * Anonymous answer for a protected portal document: the Market modal in ONE
+ * hop (`market/?ys_sign_in=1&return_to=<abs>[&intent=]`). The retired portal
+ * `/sign-in?return_to=…` intermediate hop is gone. Pure URL work (1102 budget).
  */
 function anonymousSignInRedirectUrl(req: NextRequest): URL {
-  return signInUrlForProtectedPath(req.nextUrl)
+  return marketSignInUrlForProtectedPath(req.nextUrl)
 }
 
 /**

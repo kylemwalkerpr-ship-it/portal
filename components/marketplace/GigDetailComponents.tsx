@@ -7,6 +7,7 @@ import { C, Card, Btn, Avatar, Badge } from '../design/shared'
 import { SaveGigButton } from './SaveGigButton'
 import { T, F } from './tokens'
 import { providerDisplayName } from '@/lib/providerDisplayName'
+import { buildAuthUrl } from '@/lib/auth/returnTo'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -122,14 +123,14 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
     try {
       const res = await fetch('/api/profile', { credentials: 'same-origin' })
       if (!res.ok) {
-        window.location.href = 'https://portal.yousafeconsultancy.com/sign-in'
+        window.location.href = buildAuthUrl('sign-in', { returnTo: window.location.href })
         return
       }
       const profile = await res.json()
       const currentUserId = profile?.clerk_user_id || profile?.id
 
       if (!currentUserId) {
-        window.location.href = 'https://portal.yousafeconsultancy.com/sign-in'
+        window.location.href = buildAuthUrl('sign-in', { returnTo: window.location.href })
         return
       }
 
