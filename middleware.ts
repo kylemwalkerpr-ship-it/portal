@@ -7,6 +7,7 @@ import { attributionCaptureCookies } from './lib/attribution/cookies'
 import { clientUatMeansSignedIn, requestNeedsClerkHandoffState } from './lib/clerkHandoffState'
 import {
   getCanonicalPortalAuthRedirect,
+  anonymousPortalRootDestination,
   isPortalAuthRootPath,
   marketAuthModalUrl,
   signedInAuthRootDestination,
@@ -640,8 +641,10 @@ export default function middleware(req: NextRequest, event: NextFetchEvent) {
     const signedInHint = clientUatMeansSignedIn(req.cookies.get('__client_uat')?.value)
 
     if (pathname === '/' && !handoffInProgress && !signedInHint) {
-      const marketHome = new URL(`/${req.nextUrl.search}`, `https://${MARKET_HOST}`)
-      return withCorsHeaders(NextResponse.redirect(marketHome, { status: 302 }), req)
+      // Fresh visitor (no __client_uat) -> Market sign-in modal; a signed-out
+      // browser (__client_uat=0, e.g. Clerk's hosted sign-out) -> plain Market home.
+      const destination = anonymousPortalRootDestination(req.nextUrl, req.cookies.get('__client_uat')?.value)
+      return withCorsHeaders(NextResponse.redirect(destination, { status: 302 }), req)
     }
 
     // No standalone portal sign-in page: an anonymous /sign-in, /sign-up or any
