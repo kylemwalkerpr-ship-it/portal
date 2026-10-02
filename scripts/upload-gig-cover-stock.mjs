@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Upload the committed stock gig covers (data/gig-cover-stock/<date>/) to the
+ * Upload the committed gig covers (data/gig-cover-stock/<dir>/: stock covers and
+ * visually-lossless recompressions of oversized provider covers) to the
  * public `gig-gallery` Storage bucket, at the same object layout the gig
  * builder uses: <provider_id>/<gig_id>/<uuid>-<name>.webp.
  *
@@ -27,11 +28,19 @@ for (const dir of readdirSync(ROOT).sort()) {
   if (bucket !== 'gig-gallery') throw new Error(`${dir}: unexpected bucket ${bucket}`)
   for (const c of manifest.covers) {
     const expectedPath = `${c.provider_id}/${c.gig_id}/${c.file}`
-    if (!UUIDISH.test(c.provider_id) || !UUIDISH.test(c.gig_id) || c.path !== expectedPath || !/^[0-9a-f-]{36}-stock-cover\.webp$/.test(c.file)) {
+    // 'recompressed' manifests carry visually-lossless WebP re-encodes of
+    // oversized provider-uploaded covers (original name kept, .webp); the
+    // originals stay in storage untouched.
+    const recompressed = manifest.kind === 'recompressed'
+    const fileOk = recompressed
+      ? /^[0-9a-f-]{36}-[A-Za-z0-9._-]+\.webp$/.test(c.file)
+      : /^[0-9a-f-]{36}-stock-cover\.webp$/.test(c.file)
+    if (!UUIDISH.test(c.provider_id) || !UUIDISH.test(c.gig_id) || c.path !== expectedPath || !fileOk) {
       throw new Error(`${dir}: bad manifest entry for ${c.slug}`)
     }
     const buf = readFileSync(join(ROOT, dir, c.file))
-    if (buf.length !== c.size || buf.length > 160_000) throw new Error(`${c.slug}: size mismatch or too large (${buf.length})`)
+    const maxBytes = recompressed ? 200_000 : 160_000
+    if (buf.length !== c.size || buf.length > maxBytes) throw new Error(`${c.slug}: size mismatch or too large (${buf.length})`)
     const up = await sb.storage.from(bucket).upload(c.path, buf, {
       contentType: 'image/webp',
       cacheControl: '31536000',
