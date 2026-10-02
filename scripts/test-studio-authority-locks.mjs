@@ -243,7 +243,7 @@ async function concurrentDuplicateBarrier(config, record) {
     if (secondResult.allowed !== false) throw new Error('CONCURRENT_DUPLICATE_WAS_ACCEPTED')
     const effects = await runPsql(config, `SELECT count(*) FROM studio_authority_fixture.authority_event WHERE action_kind = 'GENERATE' AND subject_id = 'page:duplicate';`)
     if (effects !== '1') throw new Error('CONCURRENT_DUPLICATE_EFFECT_COUNT')
-    record.tests.push({ name: 'concurrent_same_key_has_one_effect', result: 'PASS' })
+    record.tests.push({ name: 'concurrent_same_key_has_one_effect', result: 'PASS', firstBackend: firstPid, retryBackend: retryPid, blockedOnProjectRoot: true })
   } finally {
     if (!(await stopSessions([first, second]))) throw new Error('CHILD_DRAIN_FAILED')
   }
@@ -267,7 +267,7 @@ async function revocationRaceBarrier(config, record) {
     if (result.available !== true || result.allowed !== false) throw new Error('REVOCATION_DID_NOT_WIN_ROOT_LOCK')
     const effects = await runPsql(config, `SELECT count(*) FROM studio_authority_fixture.authority_event WHERE action_kind = 'GSC_SYNC' AND subject_id = 'page:revoked';`)
     if (effects !== '0') throw new Error('REVOKED_ADMISSION_CREATED_EVENT')
-    record.tests.push({ name: 'revocation_serializes_before_admission', result: 'PASS' })
+    record.tests.push({ name: 'revocation_serializes_before_admission', result: 'PASS', revokerBackend: revokerPid, admissionBackend: admissionPid, blockedOnProjectRoot: true })
   } finally {
     if (!(await stopSessions([revoker, admission]))) throw new Error('CHILD_DRAIN_FAILED')
   }
