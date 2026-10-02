@@ -515,7 +515,7 @@ async function main() {
     }
     receipt.pendingChildren = undrained.length
     receipt.cleanupFailureCount = cleanupFailures.length
-    receipt.childDrainOutcomes = undrained.length === 0 ? ['all_children_closed'] : ['bounded_kill_failed']
+    receipt.childDrainOutcomes = undrained.length === 0 && cleanupFailures.length === 0 ? ['fulfilled'] : ['rejected']
     receipt.completedAt = new Date().toISOString()
     await writeReceipt(receiptPath, receipt)
   }
