@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs'
 import {
+  anonymousPortalRootDestination,
   inferAuthIntentFromReturnTo,
   isPortalAuthRootPath,
   marketAuthModalUrl,
@@ -91,6 +92,18 @@ describe('portal auth documents -> Market modal (one hop)', () => {
     expect(isPortalAuthRootPath('/sign-in/factor-one')).toBe(false)
   })
 
+  test('anonymous portal root: fresh visitor -> modal; signed-out browser -> plain Market home', () => {
+    expect(anonymousPortalRootDestination(`${P}/`, undefined).toString()).toBe(`${M}/?ys_sign_in=1`)
+    expect(anonymousPortalRootDestination(`${P}/?intent=attorney&utm_source=x`, undefined).toString()).toBe(
+      `${M}/?ys_sign_in=1&intent=attorney&utm_source=x`,
+    )
+    // __client_uat=0: Clerk's hosted sign-out (after-sign-out URL = portal /) must not reopen a modal.
+    expect(anonymousPortalRootDestination(`${P}/`, '0').toString()).toBe(`${M}/`)
+    expect(anonymousPortalRootDestination(`${P}/?lang=es`, '0').toString()).toBe(`${M}/?lang=es`)
+    // Never a self-assignable staff intent from the root either.
+    expect(anonymousPortalRootDestination(`${P}/?intent=admin`, undefined).toString()).toBe(`${M}/?ys_sign_in=1`)
+  })
+
   test('signed-in visitors on an auth root go to return_to or the dashboard', () => {
     expect(signedInAuthRootDestination(`${P}/sign-in`).toString()).toBe(`${P}/dashboard`)
     expect(signedInAuthRootDestination(`${P}/sign-in?return_to=%2Fonboarding`).toString()).toBe(`${P}/onboarding`)
@@ -149,6 +162,7 @@ describe('wiring', () => {
     expect(modalAt).toBeGreaterThan(-1)
     expect(modalAt).toBeLessThan(block.indexOf('getCanonicalPortalAuthRedirect(req.nextUrl)'))
     expect(block).toContain('if (!handoffInProgress && !signedInHint) {')
+    expect(block).toContain("anonymousPortalRootDestination(req.nextUrl, req.cookies.get('__client_uat')?.value)")
   })
 
   test('Clerk handler: signed-in auth root -> destination, stale hint -> modal, signed-out portal / -> Market', () => {

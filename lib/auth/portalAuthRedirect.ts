@@ -231,3 +231,24 @@ export function signedInAuthRootDestination(requestUrl: string | URL): URL {
   const returnTo = pickReturnTo(url.searchParams, PORTAL_ORIGIN)
   return new URL(returnTo ?? `${PORTAL_ORIGIN}/dashboard`)
 }
+
+/**
+ * Where an anonymous visitor on the portal root `/` goes. The portal has no
+ * landing page of its own:
+ *
+ * - No `__client_uat` cookie at all (a fresh visitor typing the portal URL):
+ *   the Market home with the branded sign-in modal open.
+ * - `__client_uat=0` (this browser had a session and signed out — including
+ *   Clerk's hosted sign-out, whose after-sign-out URL is portal `/`): the plain
+ *   Market home, so sign-out never re-opens a sign-in modal.
+ *
+ * Pure URL work (no crypto) — safe for the 1102 budget.
+ */
+export function anonymousPortalRootDestination(requestUrl: string | URL, clientUat: string | undefined): URL {
+  const url = new URL(requestUrl.toString())
+  if (clientUat === undefined) {
+    const modal = marketAuthModalUrl(new URL(`/sign-in${url.search}`, PORTAL_ORIGIN))
+    if (modal) return modal
+  }
+  return new URL(`/${url.search}`, MARKET_AUTH_ORIGIN)
+}
