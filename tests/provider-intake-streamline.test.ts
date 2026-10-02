@@ -177,6 +177,11 @@ describe('confirmation email', () => {
     const c = providerApplicationReceivedEmail({ fullName: 'Cy', lane: 'consultant', licensed: false })
     expect(c.subject).toContain('consultant')
     expect(c.html).toContain('credential')
+    // Consultants may apply without a credential: don't claim we're verifying one.
+    const n = providerApplicationReceivedEmail({ fullName: 'Cy', lane: 'consultant', licensed: false, hasCredential: false })
+    expect(n.html).not.toContain('verifying your credential')
+    expect(n.html).toContain('reviewing your application')
+    expect(src('app/api/provider/apply/route.ts')).toContain('hasCredential: data.provider_type !== \'consultant\' || Boolean(data.credential_body || data.registration_number)')
   })
 
   test('apply route sends it once per new application and reports the outcome', () => {

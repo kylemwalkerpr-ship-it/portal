@@ -133,6 +133,7 @@ export async function POST(req: Request) {
           fullName: data.full_name,
           lane: role === 'consultant' ? 'consultant' : 'attorney',
           licensed: data.provider_type !== 'consultant',
+          hasCredential: data.provider_type !== 'consultant' || Boolean(data.credential_body || data.registration_number),
         })
         confirmationEmail = await sendEmail({ to: recipient, subject: email.subject, html: email.html })
       } catch (err) {
