@@ -107,6 +107,8 @@ export interface MostRequestedGigSource {
   slug: string | null
   provider_type?: string | null
   providerName?: string | null
+  /** The gig's cover (gallery_images[0], via resolveCoverUrl) from the build-time inventory. */
+  cover_image_url?: string | null
   tiers: Array<{ price: number; delivery_days: number | null }>
 }
 
@@ -120,6 +122,11 @@ export interface MostRequestedCard {
   priceLabel: string
   deliveryLabel: string
   rushLabel: string | null
+  /**
+   * Card image: the gig's own cover, or the pack's audited Payhip cover (the
+   * same image the /shop page shows). Null renders the text-only card.
+   */
+  imageUrl: string | null
 }
 
 function usd(amount: number): string {
@@ -132,6 +139,15 @@ function usd(amount: number): string {
 
 function days(n: number): string {
   return n === 1 ? '1-day delivery' : `${n}-day delivery`
+}
+
+function httpsUrl(value: unknown): string | null {
+  return typeof value === 'string' && /^https:\/\/\S+$/.test(value.trim()) ? value.trim() : null
+}
+
+/** Same resolution order as the /shop rail (ImmigrationPackRail): audited Batches 2–4, then Batch 1. */
+export function packCoverUrl(slug: string): string | null {
+  return httpsUrl(getPayhipBatches24Product(slug)?.imageUrl) ?? httpsUrl(getPayhipBatch1Commercial(slug)?.cover.imageUrl)
 }
 
 export function packPriceUsd(slug: string): number | null {
@@ -163,6 +179,7 @@ function gigCard(entry: Extract<MostRequestedEntry, { kind: 'gig' }>, gig: MostR
     priceLabel: `From ${usd(cheapest.price / 100)}`,
     deliveryLabel: cheapest.delivery_days != null ? days(Number(cheapest.delivery_days)) : 'Delivery time on listing',
     rushLabel: rush,
+    imageUrl: httpsUrl(gig.cover_image_url),
   }
 }
 
@@ -179,6 +196,7 @@ function packCard(entry: Extract<MostRequestedEntry, { kind: 'pack' }>): MostReq
     priceLabel: usd(price),
     deliveryLabel: 'Instant download',
     rushLabel: null,
+    imageUrl: packCoverUrl(entry.slug),
   }
 }
 

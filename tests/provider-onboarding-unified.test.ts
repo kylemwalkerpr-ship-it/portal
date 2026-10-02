@@ -60,24 +60,25 @@ describe('single provider application', () => {
     expect(roleForProviderType('consultant')).toBe('consultant')
   })
 
-  test('licensed applications require regulator, licence, register link and attestations', () => {
+  test('licensed applications require a valid licence number and one good-standing attestation', () => {
     const ok = validateProviderApplication(licensed)
     expect(ok.ok).toBe(true)
-    const bad = validateProviderApplication({ provider_type: 'regulated_adviser', full_name: 'X', country: 'CA', practice_areas: 'Visas', capacity: '5', terms_accepted: true }) as any
+    const bad = validateProviderApplication({ provider_type: 'regulated_adviser', full_name: 'X', country: 'CA', terms_accepted: true }) as any
     expect(bad.ok).toBe(false)
-    expect(Object.keys(bad.errors).sort()).toEqual(['good_standing', 'jurisdictions', 'licence_number', 'register_url', 'regulator', 'scope_certified'])
+    expect(Object.keys(bad.errors).sort()).toEqual(['consent', 'licence_number', 'regulator'])
     expect((validateProviderApplication({}) as any).errors.provider_type).toBeTruthy()
-    expect((validateProviderApplication({ ...licensed, terms_accepted: false }) as any).errors.terms_accepted).toBeTruthy()
+    expect((validateProviderApplication({ ...licensed, terms_accepted: false }) as any).errors.consent).toBeTruthy()
     expect((validateProviderApplication({ ...licensed, year_admitted: '99' }) as any).errors.year_admitted).toBeTruthy()
   })
 
-  test('consultants need no licence but still a real, non-empty submission', () => {
-    const ok = validateProviderApplication({ provider_type: 'consultant', full_name: 'C', country: 'US', practice_areas: ['Admissions'], capacity: '3', terms_accepted: 'on' }) as any
+  test('consultants need a specialty and a credential (FAQ: every consultant is credentialed)', () => {
+    const ok = validateProviderApplication({ provider_type: 'consultant', full_name: 'C', country: 'US', practice_areas: ['Admissions'], credential_body: 'ICEF (agency / counsellor)', registration_number: 'ICEF-1234', terms_accepted: 'on' }) as any
     expect(ok.ok).toBe(true)
     expect(ok.role).toBe('consultant')
     const empty = validateProviderApplication({ provider_type: 'consultant' }) as any
     expect(empty.ok).toBe(false)
-    expect(Object.keys(empty.errors)).toEqual(expect.arrayContaining(['full_name', 'country', 'practice_areas', 'capacity', 'terms_accepted']))
+    expect(Object.keys(empty.errors)).toEqual(expect.arrayContaining(['full_name', 'country', 'specialty', 'credential_body', 'registration_number', 'consent']))
+    expect(empty.errors.capacity).toBeUndefined()
   })
 
   test('rows fit the existing attorney/consultant queues with a structured notes block', () => {
@@ -87,10 +88,11 @@ describe('single provider application', () => {
     expect(row).toMatchObject({ profile_id: 'p1', credential_type: licensed.regulator, bar_number: 'SRA 123456', profile_url: licensed.register_url, status: 'pending' })
     expect(String(row.notes)).toContain('Public register URL:')
     expect(String(row.notes)).toContain('Terms accepted: 2026-10')
-    const consultant = validateProviderApplication({ provider_type: 'consultant', full_name: 'C', country: 'US', practice_areas: 'A, B', capacity: '3', terms_accepted: true }) as any
+    const consultant = validateProviderApplication({ provider_type: 'consultant', full_name: 'C', country: 'US', practice_areas: 'A, B', credential_body: 'Other credential', registration_number: 'M-77', terms_accepted: true }) as any
     const c = applicationRow(consultant.data, { id: 'p2', email: null }, 'now')
     expect(c.table).toBe('consultant_applications')
     expect(c.row.specialties).toEqual(['A', 'B'])
+    expect(c.row.registration_number).toBe('M-77')
     expect(c.row.email).toBe('')
   })
 

@@ -39,7 +39,7 @@
  *
  * Usage:
  *   node scripts/verify-market-landing-payload.mjs
- *   node scripts/verify-market-landing-payload.mjs --budget 300000 --cache <file>
+ *   node scripts/verify-market-landing-payload.mjs --budget 305000 --cache <file>
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -64,8 +64,17 @@ const FULL_RECORD_ONLY_FIELDS = ['rank_score', 'order_count']
 
 /** Measured live baseline of market.yousafeconsultancy.com/ before the fix. */
 const BASELINE_BYTES = 524455
-/** Hard byte budget for the document (>= 40% below the baseline). */
-const BUDGET_BYTES = 300000
+/**
+ * Hard byte budget for the document (>= 40% below the baseline).
+ *
+ * 300000 -> 305000 (2026-10-02): the curated "Most requested" rail (#336/#340)
+ * now shows 8 card cover images, and each <img src> ships twice (HTML + flight),
+ * which took the document from ~294.4KB to ~300.1KB (+~0.2KB brotli). The
+ * regression this gate exists for (whole inventory records, +~230KB) is still
+ * caught by the budget, the exact-one-page card count, the full-record field
+ * check and MIN_REDUCTION below; 305000 is still a 41.8% reduction.
+ */
+const BUDGET_BYTES = 305000
 /** Required reduction against the recorded baseline. */
 const MIN_REDUCTION = 0.4
 
