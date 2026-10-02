@@ -69,6 +69,14 @@ describe('Studio claim support/freshness v1', () => {
     expect(result.reasonCodes).toEqual(expect.arrayContaining(['PASSAGE_MISSING', 'SOURCE_JURISDICTION_MISMATCH', 'SOURCE_EFFECTIVE_DATE_MISMATCH', 'SOURCE_AUTHORITY_UNVERIFIED']))
   })
 
+  it('invalidates freshness when a supplied current source identifier differs from the decision source', () => {
+    const currentSource = { ...source, sourceId: 'replacement-authority' }
+    expect(currentSource.sourceId).not.toBe(source.sourceId)
+    const result = evaluateStudioClaimFreshness(input({ sources: [currentSource] }))
+    expect(result.decision).toBe('ABSTAIN')
+    expect(result.reasonCodes).toContain('SOURCE_MISSING')
+  })
+
   it('blocks a known contradiction on a critical claim', () => {
     const result = evaluateStudioClaimFreshness(input({ claim: { ...input().claim, supports: [
       { sourceId: source.sourceId, relation: 'supports', state: 'known' },
@@ -88,16 +96,27 @@ describe('Studio claim support/freshness v1', () => {
     const good = { schemaVersion: 'studio.source-observation/1' as const, observationId: source.observationId, sourceId: source.sourceId, evidenceIdentity: source.evidenceIdentity }
     expect(evaluateStudioClaimFreshness(input({ provenanceRefs: [good] })).decision).toBe('NO_ACTION')
     expect(evaluateStudioClaimFreshness(input({ provenanceRefs: [{ ...good, evidenceIdentity: 'other' }] })).reasonCodes).toContain('SOURCE_PROVENANCE_MISMATCH')
+    const empty = evaluateStudioClaimFreshness(input({ provenanceRefs: [] }))
+    expect(empty.decision).toBe('ABSTAIN')
+    expect(empty.reasonCodes).toContain('SOURCE_PROVENANCE_MISMATCH')
   })
 
   it('requires a supplied identified verified human review for consequential claims; model and unknown reviewers fail closed', () => {
-    expect(evaluateStudioClaimFreshness(input({ review: null })).reasonCodes).toContain('HUMAN_REVIEW_MISSING')
+    const missing = evaluateStudioClaimFreshness(input({ review: null }))
+    expect(missing.decision).toBe('BLOCK')
+    expect(missing.reasonCodes).toContain('HUMAN_REVIEW_MISSING')
     const model = evaluateStudioClaimFreshness(input({ review: { ...review, principalKind: 'model' } }))
-    expect(model.decision).toBe('ABSTAIN')
+    expect(model.decision).toBe('BLOCK')
     expect(model.reasonCodes).toContain('REVIEWER_NOT_HUMAN')
-    expect(evaluateStudioClaimFreshness(input({ review: { ...review, principalKind: 'unknown' } })).reasonCodes).toContain('REVIEWER_NOT_HUMAN')
-    expect(evaluateStudioClaimFreshness(input({ review: { ...review, credentialState: 'unverified' } })).reasonCodes).toContain('REVIEWER_CREDENTIAL_NOT_CURRENT')
-    expect(evaluateStudioClaimFreshness(input({ review: { ...review, remit: ['unrelated-topic'] } })).reasonCodes).toContain('REVIEWER_REMIT_MISMATCH')
+    const unknown = evaluateStudioClaimFreshness(input({ review: { ...review, principalKind: 'unknown' } }))
+    expect(unknown.decision).toBe('BLOCK')
+    expect(unknown.reasonCodes).toContain('REVIEWER_NOT_HUMAN')
+    const unverified = evaluateStudioClaimFreshness(input({ review: { ...review, credentialState: 'unverified' } }))
+    expect(unverified.decision).toBe('BLOCK')
+    expect(unverified.reasonCodes).toContain('REVIEWER_CREDENTIAL_NOT_CURRENT')
+    const outOfRemit = evaluateStudioClaimFreshness(input({ review: { ...review, remit: ['unrelated-topic'] } }))
+    expect(outOfRemit.decision).toBe('BLOCK')
+    expect(outOfRemit.reasonCodes).toContain('REVIEWER_REMIT_MISMATCH')
   })
 
   it('requires exact revision, claim-set, body, render, and source-snapshot binding', () => {
@@ -110,6 +129,9 @@ describe('Studio claim support/freshness v1', () => {
   it('does not require YMYL review for non-consequential claims and abstains on invalid input', () => {
     expect(evaluateStudioClaimFreshness(input({ claim: { ...input().claim, consequential: false }, review: null })).decision).toBe('NO_ACTION')
     expect(evaluateStudioClaimFreshness(input({ now: 'not-a-time' })).decision).toBe('ABSTAIN')
+    const invalidCalendarTime = evaluateStudioClaimFreshness(input({ now: '2026-02-30T13:00:00Z' }))
+    expect(invalidCalendarTime.reasonCodes).toContain('INPUT_INVALID_OR_UNBOUNDED')
+    expect(invalidCalendarTime.checkedAt).toBeNull()
     expect(evaluateStudioClaimFreshness(null as unknown as ClaimEvaluationInputV1).decision).toBe('ABSTAIN')
   })
 })

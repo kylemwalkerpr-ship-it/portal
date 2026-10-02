@@ -106,10 +106,20 @@ const MAX_AGE: Record<ClaimVolatility, number> = {
   procedure: 7 * DAY,
   'stable-background': 30 * DAY,
 }
-const INSTANT = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/
+const INSTANT = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(Z|([+-])(\d\d):(\d\d))$/
 
 function instant(value: unknown): number | null {
-  if (typeof value !== 'string' || !INSTANT.test(value)) return null
+  if (typeof value !== 'string') return null
+  const match = INSTANT.exec(value)
+  if (!match) return null
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, , offsetHourText, offsetMinuteText] = match
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText)
+  const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText)
+  const daysInMonth = [31, ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 29 : 28,
+    31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1] ||
+      hour > 23 || minute > 59 || second > 59 ||
+      (zone !== 'Z' && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59))) return null
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -184,6 +194,7 @@ function evaluateStudioClaimFreshnessFacts(input: ClaimEvaluationInputV1): Claim
     if (support.state !== 'known') {
       add(reasons, `EVIDENCE_${support.state.toUpperCase()}`); continue
     }
+    // The supplied current source must still match the source captured by the decision.
     const source = sources.get(support.sourceId)
     if (!source) { add(reasons, 'SOURCE_MISSING'); continue }
     if (source.authorityStatus !== 'accepted') add(reasons, 'SOURCE_AUTHORITY_UNVERIFIED')
@@ -201,11 +212,14 @@ function evaluateStudioClaimFreshnessFacts(input: ClaimEvaluationInputV1): Claim
         (from !== null && to !== null && from > to) ||
         (from !== null && effectiveAt < from) || (to !== null && effectiveAt > to)) add(reasons, 'SOURCE_EFFECTIVE_DATE_MISMATCH')
     const refs = input.provenanceRefs ?? []
-    if (refs.length && !refs.some((ref) => ref.schemaVersion === 'studio.source-observation/1' && ref.observationId === source.observationId && ref.sourceId === source.sourceId && ref.evidenceIdentity === source.evidenceIdentity)) add(reasons, 'SOURCE_PROVENANCE_MISMATCH')
+    if (input.provenanceRefs !== undefined && !refs.some((ref) => ref.schemaVersion === 'studio.source-observation/1' && ref.observationId === source.observationId && ref.sourceId === source.sourceId && ref.evidenceIdentity === source.evidenceIdentity)) add(reasons, 'SOURCE_PROVENANCE_MISMATCH')
   }
   if (!claim.supports.length) add(reasons, 'SUPPORT_MISSING')
-  if (claim.consequential) for (const reason of reviewReasons(input.review, input.expectedBinding, now, claim.jurisdiction, claim.remitKey)) add(reasons, reason)
-  const blocks = reasons.includes('CRITICAL_CONTRADICTION')
+  const reviewFailures = claim.consequential
+    ? reviewReasons(input.review, input.expectedBinding, now, claim.jurisdiction, claim.remitKey)
+    : []
+  for (const reason of reviewFailures) add(reasons, reason)
+  const blocks = reasons.includes('CRITICAL_CONTRADICTION') || reviewFailures.length > 0
   return {
     schemaVersion: STUDIO_CLAIM_EVALUATION_SCHEMA,
     decision: blocks ? 'BLOCK' : reasons.length ? 'ABSTAIN' : 'NO_ACTION',
