@@ -58,6 +58,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/shop`, changeFrequency: 'weekly', priority: 0.75 },
     { url: `${base}/providers`, changeFrequency: 'weekly', priority: 0.7 },
     { url: `${base}/categories`, changeFrequency: 'weekly', priority: 0.6 },
+    { url: `${base}/get-matched`, changeFrequency: 'monthly', priority: 0.7 },
   ]
 
   // Products 10-36 are governed by the Phase-A audited commercial manifest.

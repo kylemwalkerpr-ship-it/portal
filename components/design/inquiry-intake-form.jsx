@@ -14,7 +14,7 @@ const DRAFT_KEY = 'yousafe-inquiry-draft-v1'
 //
 // Edit mode: when existingInquiry is provided, the form hydrates from the
 // inquiry row and PATCHes instead of POSTing.
-export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmail, defaultName, defaultPhone, targetAttorney, existingInquiry }) {
+export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmail, defaultName, defaultPhone, targetAttorney, existingInquiry, source, backLabel, submittedLabel, submittedMessage }) {
   const isEditMode = !!existingInquiry
 
   const [country, setCountry] = React.useState(null)
@@ -168,7 +168,7 @@ export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmai
             urgency: typeof answers.urgency === 'string' ? answers.urgency : undefined,
             recommended_tier: recommended?.tier,
             answers: { ...answers, _intake_notes: contact.notes.trim() },
-            source: targetAttorney ? 'portal:attorney-profile' : 'portal',
+            source: source || (targetAttorney ? 'portal:attorney-profile' : 'portal'),
             target_attorney_id: targetAttorney?.id,
           }),
         })
@@ -216,11 +216,11 @@ export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmai
           <p style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6, margin: '0 0 24px' }}>
             {targetAttorney
               ? `${targetAttorney.name} has been notified directly. You can start chatting right away from your inquiries page — they'll see your messages as soon as they open the inquiry.`
-              : "We've routed this to the attorney panel. You'll get an email as soon as someone responds."}
+              : (submittedMessage || "We've routed this to the attorney panel. You'll get an email as soon as someone responds.")}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <Btn variant="primary" size="md" onClick={() => { onSubmitted({ id: submittedId }) }}>
-              Go to my inquiries →
+              {submittedLabel || 'Go to my inquiries →'}
             </Btn>
           </div>
         </div>
@@ -231,7 +231,7 @@ export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmai
   return (
     <div style={{ padding: '24px 28px', maxWidth: '760px' }}>
       <button onClick={onCancel} type="button" style={backBtnStyle}>
-        ← Back to my inquiries
+        {backLabel || '← Back to my inquiries'}
       </button>
 
       <div style={{ marginBottom: '24px' }}>

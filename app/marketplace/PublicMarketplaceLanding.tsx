@@ -840,6 +840,9 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
                 <a key={c.q} href={withCountry(`/?q=${encodeURIComponent(c.q)}`, active)}>{c.label}</a>
               ))}
             </div>
+            <p className="get-matched-cta">
+              <a href="/get-matched">Not sure which service you need? Describe your case free and get a fixed-fee offer →</a>
+            </p>
           </div>
 
           <HeroCaseFileSlideshow
