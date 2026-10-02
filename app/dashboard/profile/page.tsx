@@ -17,7 +17,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 export default async function ProfileRedirectPage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in/student?return_to=/dashboard/profile')
+    redirect('/sign-in?return_to=/dashboard/profile')
   }
   if (auth.role === 'attorney') {
     redirect('/dashboard?goto=profile')

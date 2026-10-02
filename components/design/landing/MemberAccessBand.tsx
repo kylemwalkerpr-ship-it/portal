@@ -32,7 +32,7 @@ const ROLES: Role[] = [
     accent: T.indigo,
     accentSoft: T.indigoSoft,
     signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1',
-    signUpHref: `${PORTAL}/sign-up/student`,
+    signUpHref: `${PORTAL}/sign-up?intent=client`,
     signUpLabel: 'Create account',
   },
   {
@@ -42,8 +42,8 @@ const ROLES: Role[] = [
     Icon: Scale,
     accent: T.brick,
     accentSoft: 'rgba(178,34,52,0.08)',
-    signInHref: `${PORTAL}/sign-in/attorney`,
-    signUpHref: `${PORTAL}/sign-up/attorney`,
+    signInHref: `${PORTAL}/sign-in`,
+    signUpHref: `${PORTAL}/sign-up?intent=attorney`,
     signUpLabel: 'Apply to join',
   },
   {
@@ -53,8 +53,8 @@ const ROLES: Role[] = [
     Icon: Briefcase,
     accent: T.moss,
     accentSoft: 'rgba(95,107,58,0.10)',
-    signInHref: `${PORTAL}/sign-in/consultant`,
-    signUpHref: `${PORTAL}/sign-up/consultant`,
+    signInHref: `${PORTAL}/sign-in`,
+    signUpHref: `${PORTAL}/sign-up?intent=consultant`,
     signUpLabel: 'Apply as consultant',
   },
   {

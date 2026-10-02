@@ -35,23 +35,29 @@ describe('route and UI wiring', () => {
   const authNav = fs.readFileSync('components/marketplace/MarketplaceAuthNav.tsx', 'utf8')
   const memberModal = fs.readFileSync('components/design/landing/MemberSignInModal.tsx', 'utf8')
 
-  test('portal anonymous root and student sign-in retire to Market before Clerk page rendering', () => {
+  test('portal anonymous root retires to Market; lane URLs 301 straight to the canonical portal pages (no market bounce)', () => {
     const gate = middleware.indexOf("requestHostname(req) === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD')")
     const clerkFallback = middleware.indexOf('return clerkHandler(req, event)', gate)
     expect(gate).toBeGreaterThan(-1)
     expect(clerkFallback).toBeGreaterThan(gate)
-    expect(middleware.slice(gate, clerkFallback)).toContain("pathname === '/'")
-    expect(middleware.slice(gate, clerkFallback)).toContain('shouldRedirectLegacyStudentSignIn(pathname, searchParams)')
-    expect(middleware.slice(gate, clerkFallback)).toContain('!handoffInProgress && !signedInHint')
+    const portalGate = middleware.slice(gate, clerkFallback)
+    expect(portalGate).toContain("pathname === '/'")
+    expect(portalGate).toContain('!handoffInProgress && !signedInHint')
+    expect(portalGate).toContain('getCanonicalPortalAuthRedirect(req.nextUrl)')
+    expect(portalGate).toContain('NextResponse.redirect(canonical, { status: 301 })')
+    // The 3-hop /sign-in/student -> market modal -> portal bounce is gone.
+    expect(portalGate).not.toContain('shouldRedirectLegacyStudentSignIn(pathname, searchParams)')
   })
 
-  test('client lane link opens the Market auth modal; auth nav honors the handoff and signs out to Market', () => {
+  test('member lanes use the canonical portal pages; auth nav opens the shared branded modal and signs out to Market', () => {
     expect(memberModal).toContain("signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1'")
-    expect(memberModal).toContain("signInHref: 'https://portal.yousafeconsultancy.com/sign-in/attorney'")
-    expect(memberModal).toContain("signInHref: 'https://portal.yousafeconsultancy.com/sign-in/consultant'")
-    expect(authNav).toContain('clerk.openSignIn({')
+    expect(memberModal).toContain("signInHref: 'https://portal.yousafeconsultancy.com/sign-in'")
+    expect(memberModal).toContain("signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=attorney'")
+    expect(memberModal).toContain("signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=consultant'")
+    expect(memberModal).not.toMatch(/portal\.yousafeconsultancy\.com\/sign-(in|up)\/(student|attorney|consultant)/)
+    expect(authNav).toContain("import { openYsSignIn, openYsSignUp } from '@/lib/auth/ysAuthModal'")
+    expect(authNav).toContain('openYsSignIn(clerk, { returnTo })')
     expect(authNav).toContain('MARKETPLACE_SIGN_IN_QUERY')
-    expect(authNav).toContain('signInUrl: `${MARKET_HOME_URL}?ys_sign_in=1`')
     expect(authNav).toContain('redirectUrl: MARKET_HOME_URL')
     expect(authNav).toContain('window.location.replace(MARKET_HOME_URL)')
   })

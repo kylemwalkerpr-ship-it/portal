@@ -15,7 +15,7 @@ export const metadata = {
 // paid for, so the page is automatically empty for anyone who hasn't.
 export default async function Page() {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/templates')
+  if ('error' in auth) redirect('/sign-in?return_to=/dashboard/templates')
 
   const { data: profile } = await auth.db
     .from('profiles')

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default async function SupportPage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in/student?return_to=/dashboard/support')
+    redirect('/sign-in?return_to=/dashboard/support')
   }
   if (!['support', 'admin'].includes(auth.role)) {
     redirect('/dashboard')

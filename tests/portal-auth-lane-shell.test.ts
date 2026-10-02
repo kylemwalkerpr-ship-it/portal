@@ -216,16 +216,14 @@ describe('the lane documents stay build-static', () => {
     }
   })
 
-  test('the client lane sets cannot drift from the prerendered lane roots', () => {
-    expect(new Set(clientLaneSet(signInClient, 'VALID_SIGN_IN_LANES'))).toEqual(
-      new Set(portalAuthLaneRoots('sign-in')),
-    )
-    expect(new Set(clientLaneSet(signUpClient, 'VALID_SIGN_UP_LANES'))).toEqual(
-      new Set(portalAuthLaneRoots('sign-up')),
-    )
-    // The sign-up admin lane must keep redirecting to the sign-in admin lane.
-    expect(signUpClient).toContain("const ADMIN_SIGN_IN_URL = '/sign-in/admin'")
-    expect(SHELL_PATHS).toContain('/sign-in/admin')
+  test('every prerendered lane root is a recognised legacy lane (client redirects it to the canonical page)', () => {
+    // Lane roots stay prerendered as shells (Clerk sub-screens + old links),
+    // but the client immediately replaces them with /sign-in or /sign-up.
+    const { LEGACY_SIGN_IN_LANES, LEGACY_SIGN_UP_LANES } = require('@/lib/auth/portalAuthRedirect')
+    for (const lane of portalAuthLaneRoots('sign-in')) expect(LEGACY_SIGN_IN_LANES.has(lane)).toBe(true)
+    for (const lane of portalAuthLaneRoots('sign-up')) expect(LEGACY_SIGN_UP_LANES.has(lane)).toBe(true)
+    expect(signInClient).toContain('LEGACY_SIGN_IN_LANES')
+    expect(signUpClient).toContain('LEGACY_SIGN_UP_LANES')
   })
 })
 

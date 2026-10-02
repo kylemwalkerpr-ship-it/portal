@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { OPEN_APPLICATION_STATUSES, profileStatusAfterSubmit } from '@/lib/provider/application'
 
 
 type ApplyBody = {
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Application already approved.' }, { status: 409 })
   }
 
-  const { error: insertErr } = await db.from('attorney_applications').insert({
+  const row = {
     profile_id: profile.id,
     email: profile.email,
     full_name: fields.full_name,
@@ -101,14 +102,30 @@ export async function POST(req: Request) {
     capacity: fields.capacity,
     notes: fields.notes || null,
     status: 'pending',
-  })
+  }
+
+  // Re-submits update the open application instead of adding duplicates.
+  const { data: existing } = await db
+    .from('attorney_applications')
+    .select('id, status')
+    .eq('profile_id', profile.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { error: insertErr } = existing && OPEN_APPLICATION_STATUSES.includes(existing.status)
+    ? await db.from('attorney_applications').update(row).eq('id', existing.id)
+    : await db.from('attorney_applications').insert(row)
 
   if (insertErr) {
     console.error('[attorney/apply] insert failed', insertErr.message)
     return NextResponse.json({ error: 'Could not save your application.' }, { status: 500 })
   }
 
-  await db.from('profiles').update({ status: 'pending', full_name: fields.full_name }).eq('id', profile.id)
+  await db
+    .from('profiles')
+    .update({ status: profileStatusAfterSubmit(profile.status), full_name: fields.full_name })
+    .eq('id', profile.id)
 
   // Best-effort: seed the attorneys row with timezone + headshot the
   // applicant supplied so the post-approval wizard doesn't ask again.

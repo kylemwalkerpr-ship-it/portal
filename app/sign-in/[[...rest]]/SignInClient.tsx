@@ -3,28 +3,35 @@ import { SignIn } from '@clerk/nextjs'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { AuthShell, clerkAppearance, safeReturnTo } from '@/components/auth-shell'
-import { dashboardForLane, normalizeAuthLane, signUpForLane } from '@/lib/roleLanes'
+import { buildAuthUrl, pickReturnTo, PORTAL_ORIGIN } from '@/lib/auth/returnTo'
+import { LEGACY_SIGN_IN_LANES } from '@/lib/auth/portalAuthRedirect'
 
-const STUDENT_SIGN_IN_URL = '/sign-in/student'
-const VALID_SIGN_IN_LANES = new Set(['student', 'client', 'consultant', 'admin', 'attorney'])
-
+/**
+ * Portal keeps ONE sign-in document: /sign-in (Clerk path routing underneath:
+ * /sign-in/factor-one, /sign-in/sso-callback, ...). Retired lane URLs are 301'd
+ * by middleware; this client only normalizes the rare lane URL that reached
+ * the shell because it carried Clerk protocol parameters (e.g. a
+ * `__clerk_ticket` sign-in token), preserving the query so Clerk consumes it.
+ */
 export default function SignInClient() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [referrer, setReferrer] = useState<string | null>(null)
-  const laneSegment = pathname.split('/').filter(Boolean)[1]
-  const lane = normalizeAuthLane(laneSegment)
-  const isInvalidLane = Boolean(laneSegment) && !VALID_SIGN_IN_LANES.has(laneSegment)
-  const returnTo = useMemo(() => safeReturnTo(searchParams.get('return_to')), [searchParams])
+  const segments = pathname.split('/').filter(Boolean)
+  const legacyLane = segments[1] && LEGACY_SIGN_IN_LANES.has(segments[1].toLowerCase()) ? segments[1] : null
+  const returnTo = useMemo(
+    () => pickReturnTo(new URLSearchParams(searchParams.toString()), PORTAL_ORIGIN),
+    [searchParams],
+  )
   const previousUrl = returnTo || referrer
-  const redirectUrl = returnTo || (laneSegment === 'admin' ? '/dashboard?lane=admin' : dashboardForLane(lane))
-  const signInPath = `/sign-in/${laneSegment || 'student'}`
-  const signUpUrl = `${signUpForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
-  const laneLabel = laneSegment === 'admin' ? 'admin' : lane === 'client' ? 'client' : lane
+  const signUpUrl = buildAuthUrl('sign-up', { returnTo, intent: searchParams.get('intent') })
 
   useEffect(() => {
-    if (isInvalidLane) window.location.replace(STUDENT_SIGN_IN_URL)
-  }, [isInvalidLane])
+    if (!legacyLane) return
+    const rest = segments.slice(2).join('/')
+    window.location.replace(`/sign-in${rest ? `/${rest}` : ''}${window.location.search}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacyLane])
 
   useEffect(() => {
     setReferrer(safeReturnTo(document.referrer))
@@ -40,29 +47,29 @@ export default function SignInClient() {
     }
   }, [])
 
-  if (isInvalidLane) {
+  if (legacyLane) {
     return (
       <div style={{
-        minHeight: '100vh', background: '#05080f', color: '#fff',
+        minHeight: '100vh', background: '#F7F8FA', color: '#0F172A',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        Redirecting to the correct sign-in page...
+        Opening secure sign-in...
       </div>
     )
   }
 
   return (
     <AuthShell
-      eyebrow="Secure portal access"
+      eyebrow="Secure YouSafe sign-in"
       title="Welcome back to your YouSafe workspace."
-      body="Sign in to continue your orders, messages, document uploads, attorney inquiries, payouts, or support work without leaving the YouSafe family of sites."
-      laneLabel={laneLabel}
+      body="One sign-in for every YouSafe site. Use your email or username and password (or Google) to continue your orders, messages, documents, cases, payouts, or support work."
+      laneLabel="account"
       previousUrl={previousUrl}
     >
       <SignIn
         routing="path"
-        path={signInPath}
-        fallbackRedirectUrl={redirectUrl}
+        path="/sign-in"
+        {...(returnTo ? { forceRedirectUrl: returnTo } : { fallbackRedirectUrl: `${PORTAL_ORIGIN}/dashboard` })}
         signUpUrl={signUpUrl}
         appearance={clerkAppearance}
       />

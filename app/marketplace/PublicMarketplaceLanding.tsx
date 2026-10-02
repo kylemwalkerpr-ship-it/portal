@@ -63,8 +63,8 @@ const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
 function signUpHref(utm: string): string {
   return (
-    `${PORTAL_URL}/sign-up/student` +
-    `?source=marketing&return_to=https://market.yousafeconsultancy.com/&utm_content=${encodeURIComponent(utm)}`
+    `${PORTAL_URL}/sign-up?intent=client` +
+    `&source=marketing&return_to=${encodeURIComponent('https://market.yousafeconsultancy.com/')}&utm_content=${encodeURIComponent(utm)}`
   )
 }
 
@@ -944,8 +944,8 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
               <h2>Take on the <em>cases you want.</em> Skip the intake calls.</h2>
               <p>List fixed-fee briefs in your wheelhouse, choose your jurisdictions, and let clients arrive vetted, scoped, and pre-paid. Funds are escrowed before you begin work; payouts release on client approval.</p>
               <div className="actions">
-                <a className="btn primary" href={`${PORTAL_URL}/sign-up/attorney`}>Apply as an attorney →</a>
-                <a className="btn ghost" href={`${PORTAL_URL}/sign-up/consultant`}>Apply as a consultant →</a>
+                <a className="btn primary" href={`${PORTAL_URL}/sign-up?intent=attorney&return_to=${encodeURIComponent(`${PORTAL_URL}/onboarding/provider?type=attorney`)}`}>Apply as an attorney →</a>
+                <a className="btn ghost" href={`${PORTAL_URL}/sign-up?intent=consultant&return_to=${encodeURIComponent(`${PORTAL_URL}/onboarding/provider?type=consultant`)}`}>Apply as a consultant →</a>
               </div>
             </div>
             <div className="stats">

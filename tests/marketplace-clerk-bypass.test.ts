@@ -87,7 +87,7 @@ describe('middleware wiring', () => {
   test('protected routes retain Clerk auth enforcement', () => {
     const clerkStart = middleware.indexOf('const clerkHandler = clerkMiddleware(')
     const clerkBody = middleware.slice(clerkStart)
-    expect(clerkBody).toContain('const { userId } = await auth()')
+    expect(clerkBody).toContain('const { userId, sessionClaims } = await auth()')
     expect(clerkBody).toContain("if (pathname.startsWith('/api/'))")
     expect(clerkBody).toContain("error: 'Unauthorized'")
     expect(clerkBody).toContain('authorizedParties:')
@@ -97,7 +97,7 @@ describe('middleware wiring', () => {
     const clerkStart = middleware.indexOf('const clerkHandler = clerkMiddleware(')
     const handshakeFallback = middleware.indexOf("pathname !== '/sellers'", clerkStart)
     const fastPathReturn = middleware.indexOf('return handleMarketHostRequest(req)', handshakeFallback)
-    const authCall = middleware.indexOf('const { userId } = await auth()', fastPathReturn)
+    const authCall = middleware.indexOf('const { userId, sessionClaims } = await auth()', fastPathReturn)
 
     expect(handshakeFallback).toBeGreaterThan(clerkStart)
     expect(middleware.slice(handshakeFallback, fastPathReturn)).toContain("!pathname.startsWith('/api/')")

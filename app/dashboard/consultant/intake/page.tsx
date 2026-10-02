@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default async function ConsultantIntakePage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in/student?return_to=/dashboard/consultant/intake')
+    redirect('/sign-in?return_to=/dashboard/consultant/intake')
   }
   if (auth.role === 'attorney') {
     redirect('/dashboard/attorney/intake')

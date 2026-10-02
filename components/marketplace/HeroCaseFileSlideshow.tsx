@@ -121,7 +121,7 @@ export default function HeroCaseFileSlideshow({
   if (count === 0) {
     return (
       <aside className="hero-empty" style={{ background: VELLUM, border: `1px dashed ${RULE}`, borderRadius: 18, padding: '48px 32px', textAlign: 'center', color: INK_SOFT, fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, lineHeight: 1.5 }}>
-        No active briefs yet — be the first to <a href="https://portal.yousafeconsultancy.com/sign-up/attorney" style={{ color: INDIGO, borderBottom: `1px solid ${INDIGO}` }}>list one</a>.
+        No active briefs yet — be the first to <a href="https://portal.yousafeconsultancy.com/sign-up?intent=attorney" style={{ color: INDIGO, borderBottom: `1px solid ${INDIGO}` }}>list one</a>.
       </aside>
     )
   }

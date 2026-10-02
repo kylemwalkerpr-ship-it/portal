@@ -7,7 +7,7 @@ const MARKETPLACE_URL = 'https://market.yousafeconsultancy.com/'
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/dashboard/gigs')
+  if ('error' in auth) redirect('/sign-in?return_to=/dashboard/gigs')
   if (auth.role === 'client') redirect(MARKETPLACE_URL)
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
   const { id } = await params

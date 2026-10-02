@@ -17,6 +17,8 @@ const allowedLegacyReaders = new Set([
   'app/sitemap.ts',
   'components/auth-shell.tsx',
   'lib/marketplaceSeo.ts',
+  // Shared auth return_to normaliser: maps stale /marketplace targets to clean market URLs.
+  'lib/auth/returnTo.ts',
 ])
 
 const retiredRelativeLiteral = /['"`]\/marketplace(?=[/?'"`])/g
