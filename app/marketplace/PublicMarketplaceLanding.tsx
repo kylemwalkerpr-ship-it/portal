@@ -46,6 +46,13 @@ import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 import { FilesRailScroller } from '@/components/marketplace/FilesRailScroller'
 import { ImmigrationPackRail } from '@/components/marketplace/ImmigrationPackRail'
 import { HeroBackgroundMedia } from '@/components/marketplace/HeroBackgroundMedia'
+import { MarketHomeCategoryTiles, MostRequestedRail } from '@/components/marketplace/MarketHomeOffers'
+import {
+  MARKET_HOME_CATEGORY_TILES,
+  gigDeliveryRange,
+  resolveMostRequestedCards,
+  type MostRequestedCard,
+} from '@/lib/marketHomeMostRequested'
 import {
   assertMarketplaceBuildEstateNonEmpty,
   assertMarketplaceBuildServiceRoleAuthority,
@@ -118,6 +125,10 @@ interface LandingData {
   reviews: LandingReview[]
   /** Live DB facet counts (lib/marketplaceFacets). null = COUNT path failed entirely. */
   facets: FacetCounts | null
+  /** Curated "Most requested" rail (lib/marketHomeMostRequested.ts), resolved at build time. */
+  mostRequested: MostRequestedCard[]
+  /** Delivery-day range across the rail's gig tiers; null when no gig card resolved. */
+  mostRequestedTurnaround: { min: number; max: number } | null
 }
 
 function emptySlice(label: string, currency: string): Slice {
@@ -224,6 +235,9 @@ function fallbackLandingData(): LandingData {
     ],
     reviews: [],
     facets: null,
+    // Pack cards resolve from static manifests, so the rail still renders.
+    mostRequested: resolveMostRequestedCards([]),
+    mostRequestedTurnaround: null,
   }
 }
 
@@ -449,7 +463,12 @@ async function computeLandingData(): Promise<LandingData | null> {
       }
     })
 
-  return { slices, jurisdictions, reviews, facets: facetCounts }
+  // Curated rail: resolved from the same inventory rows (no extra query). Gig
+  // prices and delivery times come from live active tiers at build time.
+  const mostRequested = resolveMostRequestedCards(allGigs)
+  const mostRequestedTurnaround = gigDeliveryRange(allGigs)
+
+  return { slices, jurisdictions, reviews, facets: facetCounts, mostRequested, mostRequestedTurnaround }
 }
 
 /* ───────────────────────── KV read-through ─────────────────────── */
@@ -480,7 +499,9 @@ function isLandingData(value: unknown): value is LandingData {
       // cache miss instead of being re-serialized into the document.
       v.slices.all.featured.length <= FEATURED_PAGE_SIZE &&
       Array.isArray(v.reviews) &&
-      Array.isArray(v.jurisdictions),
+      Array.isArray(v.jurisdictions) &&
+      // A snapshot written before the curated rail existed is a cache miss.
+      Array.isArray(v.mostRequested),
   )
 }
 
@@ -753,10 +774,20 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   // document does not carry.
   const ssrPage = clampPage(page, totalRanked)
 
+  // Trust strip: only facts the platform copy already states (escrow FAQ,
+  // dispute path, fixed tiers) plus numbers computed from live inventory.
+  // No ratings, review counts, order counts or response-time claims.
+  const turnaround = data.mostRequestedTurnaround
   const trustItems: Array<{ label: string }> = []
-  if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active briefs` })
-  trustItems.push({ label: 'Escrow on every brief — released on approval' })
-  trustItems.push({ label: 'Licensed attorneys & regulated consultants only' })
+  trustItems.push({ label: 'Payment held in escrow — released when you approve the delivery' })
+  trustItems.push({ label: "Dispute through the platform if work isn't delivered as agreed" })
+  trustItems.push({
+    label: turnaround
+      ? `Fixed price & delivery time on every listing · most requested: ${turnaround.min === turnaround.max ? `${turnaround.min}` : `${turnaround.min}–${turnaround.max}`} days`
+      : 'Fixed price & delivery time on every listing',
+  })
+  trustItems.push({ label: 'Packs: instant download via Payhip' })
+  if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active services` })
 
   return (
     <div className="cw-market" style={{ minHeight: '100vh' }}>
@@ -820,15 +851,19 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
         </div>
       </section>
 
-      {/* Trust bar */}
-      <div className="trust">
+      {/* Trust strip — factual, compact (see trustItems above). */}
+      <div className="trust" data-trust-strip="">
         <div className="wrap trust-inner">
-          <span className="label">Trusted by</span>
+          <span className="label">How you&apos;re protected</span>
           {trustItems.map((it) => (
             <span key={it.label} className="item"><span className="dot" /> {it.label}</span>
           ))}
         </div>
       </div>
+
+      {/* Most requested — curated in lib/marketHomeMostRequested.ts. */}
+      <MostRequestedRail cards={data.mostRequested ?? []} />
+      <MarketHomeCategoryTiles tiles={MARKET_HOME_CATEGORY_TILES} />
 
       <section className="cw-files-band" aria-label="Open the file shop">
         <div className="wrap cw-files-band-inner">
@@ -857,7 +892,10 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <h2>Instant downloads — from $7</h2>
             <a href="/shop">See all files →</a>
           </div>
-          <FilesRailScroller products={FILE_SHOP_PRODUCTS.filter((p) => p.published).slice(0, 10)} />
+          {/* 6, not 10: the curated "Most requested" rail above carries the
+              high-intent offers, and the market-root document must stay under
+              the 300 KB payload budget (scripts/verify-market-landing-payload.mjs). */}
+          <FilesRailScroller products={FILE_SHOP_PRODUCTS.filter((p) => p.published).slice(0, 6)} />
         </div>
       </section>
 

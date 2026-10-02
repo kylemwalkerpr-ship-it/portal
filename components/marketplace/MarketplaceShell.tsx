@@ -790,6 +790,10 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     <div className="cw-market" style={{ minHeight: '100dvh', backgroundColor: T.paper, fontFamily: F.ui, position: 'relative', isolation: 'isolate' }}>
       {/* Base CSS for the pattern picker ::before pseudo-element and
           consistent marketplace styling across ALL pages (landing + siblings). */}
+      {/* Keep literal tag names (angle-bracket + "style"/"script") out of this
+          CSS text, comments included: React's server renderer escapes them
+          inside <style> (as a CSS escape), the client string differs, and
+          hydration fails with React #418 on the Market home. */}
       <style>{`
         /* Pattern contract (single source of truth, mirrored in the landing):
            the fixed ::before texture sits ABOVE the shell's solid paper fill
@@ -798,7 +802,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
            The motif is DATA: the shared theme store writes --ys-pattern-* on
            documentElement AND on every mounted .cw-market root
            (components/marketplace/market-theme.ts) and this rule only consumes
-           it. No component injects a <style> tag, so a second picker (mobile
+           it. No component injects a style tag, so a second picker (mobile
            drawer, remount, nested root) can never rewrite the canvas. The
            fallbacks keep the shipped default when the variables are absent. */
         .cw-market::before {
