@@ -6,6 +6,7 @@ import {
   MOST_REQUESTED_ENTRIES,
   gigDeliveryRange,
   orderWithBoostedFirst,
+  packCoverUrl,
   packPriceUsd,
   resolveMostRequestedCards,
 } from '@/lib/marketHomeMostRequested'
@@ -60,6 +61,31 @@ describe('Market home "Most requested" rail', () => {
       expect(p.href).toMatch(/^\/shop\/[a-z0-9-]+$/)
       expect(p.deliveryLabel).toBe('Instant download')
     }
+  })
+
+  it('shows the gig cover on gig cards and the audited Payhip cover on pack cards', () => {
+    const cover = 'https://krggzrxxnqfsbbklatxl.supabase.co/storage/v1/object/public/gig-gallery/p/g/c-stock-cover.webp'
+    const cards = resolveMostRequestedCards([
+      { ...gig('review-i765-opt-application-before-filing', [[24900, 7]]), cover_image_url: cover },
+      gig('provide-immigration-expert-lawyer-services', [[39500, 7]]),
+    ])
+    expect(cards.find((c) => c.key === 'gig:review-i765-opt-application-before-filing')!.imageUrl).toBe(cover)
+    // A gig without a cover keeps the text-only card instead of a broken <img>.
+    expect(cards.find((c) => c.key === 'gig:provide-immigration-expert-lawyer-services')!.imageUrl).toBeNull()
+    const packs = cards.filter((c) => c.kind === 'pack')
+    expect(packs).toHaveLength(4)
+    for (const p of packs) {
+      expect(p.imageUrl).toMatch(/^https:\/\//)
+      expect(p.imageUrl).toBe(packCoverUrl(p.href.replace('/shop/', '')))
+    }
+  })
+
+  it('ignores a non-https cover value', () => {
+    const [card] = resolveMostRequestedCards(
+      [{ ...gig('review-i765-opt-application-before-filing', [[24900, 7]]), cover_image_url: 'javascript:alert(1)' }],
+      [{ kind: 'gig', slug: 'review-i765-opt-application-before-filing', title: 't', outcome: 'o' }],
+    )
+    expect(card.imageUrl).toBeNull()
   })
 
   it('never claims ratings, reviews or order counts in card copy', () => {
