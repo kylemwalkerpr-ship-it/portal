@@ -75,7 +75,7 @@ export const ADVISER_REGULATOR_COUNTRY: Record<string, string> = {
   'Office of the Migration Agents Registration Authority (RMA, Australia)': 'Australia',
 }
 
-/** Consultant credential bodies (the FAQ promises every consultant is credentialed). */
+/** Consultant credential bodies. Optional: consultants don't need a credential; when one is given we verify it. */
 export const CONSULTANT_CREDENTIAL_BODIES: readonly string[] = [
   'CICC (RCIC, Canada)',
   'OISC / IAA (UK)',
@@ -188,8 +188,8 @@ function bool(value: unknown): boolean {
  *                       bar / regulator implies it), one consent checkbox
  *   attorney:           bar jurisdiction + bar number (FAQ: bar-verified)
  *   regulated adviser:  regulator + licence number
- *   consultant:         primary specialty + credential body + credential number
- *                       (FAQ: every consultant is credentialed)
+ *   consultant:         primary specialty; credential body + number are optional
+ *                       (validated only when filled, verified before approval)
  * Everything else (practice areas, languages, capacity, bio, phone, display
  * name, insurance, links) is optional here and collected in the
  * post-approval profile wizard.
@@ -293,9 +293,13 @@ export function validateProviderApplication(body: Record<string, unknown>): Vali
     }
   } else {
     if (data.practice_areas.length === 0) errors.specialty = 'Choose your main specialty.'
-    if (!data.credential_body) errors.credential_body = 'Choose the body that issued your credential.'
-    if (!data.registration_number) errors.registration_number = 'Credential / membership number is required — we verify it before approval.'
-    else if (data.registration_number.length < 2) errors.registration_number = 'Enter your credential / membership number as issued.'
+    // Credentials are optional for consultants: validate only what was filled.
+    if (data.credential_body && !CONSULTANT_CREDENTIAL_BODIES.includes(data.credential_body)) {
+      errors.credential_body = 'Choose the body that issued your credential from the list.'
+    }
+    if (data.registration_number && data.registration_number.length < 2) {
+      errors.registration_number = 'Enter your credential / membership number as issued.'
+    }
     if (credentialUrlRaw && !data.credential_url) errors.credential_url = 'Enter a valid URL (https://...).'
   }
   if (data.year_admitted && !/^(19|20)\d{2}$/.test(data.year_admitted)) errors.year_admitted = 'Use a four-digit year.'
