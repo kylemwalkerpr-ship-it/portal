@@ -1,116 +1,18 @@
-alter table public.yqaa_knowledge_sources
-  add column if not exists ingestion_run_id text;
-
-alter table public.yqaa_knowledge_chunks
-  add column if not exists ingestion_run_id text;
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'yqaa_knowledge_sources_ingestion_run_fk'
-      and conrelid = 'public.yqaa_knowledge_sources'::regclass
-  ) then
-    alter table public.yqaa_knowledge_sources
-      add constraint yqaa_knowledge_sources_ingestion_run_fk
-      foreign key (ingestion_run_id)
-      references public.yqaa_knowledge_ingestion_runs(run_id)
-      on delete restrict
-      not valid;
-    alter table public.yqaa_knowledge_sources
-      validate constraint yqaa_knowledge_sources_ingestion_run_fk;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'yqaa_knowledge_chunks_ingestion_run_fk'
-      and conrelid = 'public.yqaa_knowledge_chunks'::regclass
-  ) then
-    alter table public.yqaa_knowledge_chunks
-      add constraint yqaa_knowledge_chunks_ingestion_run_fk
-      foreign key (ingestion_run_id)
-      references public.yqaa_knowledge_ingestion_runs(run_id)
-      on delete restrict
-      not valid;
-    alter table public.yqaa_knowledge_chunks
-      validate constraint yqaa_knowledge_chunks_ingestion_run_fk;
-  end if;
-end;
-$$;
-
-create index if not exists yqaa_knowledge_sources_run_idx
-  on public.yqaa_knowledge_sources(ingestion_run_id);
-
-create index if not exists yqaa_knowledge_chunks_run_idx
-  on public.yqaa_knowledge_chunks(ingestion_run_id);
-
-create table if not exists public.yqaa_knowledge_sources_staging (
-  ingestion_run_id text not null
-    references public.yqaa_knowledge_ingestion_runs(run_id)
-    on delete cascade,
-  source_key text not null,
-  site text not null,
-  repository text not null,
-  base_url text not null,
-  source_url text not null,
-  path text not null default '/',
-  title text,
-  jurisdiction text,
-  source_kind text not null default 'live_html',
-  authority_tier smallint not null default 3 check (authority_tier between 1 and 5),
-  http_status integer,
-  content_hash text not null,
-  fetched_at timestamptz not null,
-  last_seen_at timestamptz not null,
-  lastmod timestamptz,
-  active boolean not null default true,
-  metadata jsonb not null default '{}'::jsonb,
-  primary key (ingestion_run_id, source_key),
-  unique (ingestion_run_id, source_url)
-);
-
-create table if not exists public.yqaa_knowledge_chunks_staging (
-  ingestion_run_id text not null,
-  chunk_key text not null,
-  source_key text not null,
-  site text not null,
-  repository text not null,
-  source_url text not null,
-  title text,
-  section_title text,
-  chunk_index integer not null,
-  jurisdiction text,
-  topic_tags text[] not null default '{}'::text[],
-  body text not null,
-  content_hash text not null,
-  authority_tier smallint not null default 3 check (authority_tier between 1 and 5),
-  fetched_at timestamptz not null,
-  lastmod timestamptz,
-  metadata jsonb not null default '{}'::jsonb,
-  primary key (ingestion_run_id, chunk_key),
-  unique (ingestion_run_id, source_key, chunk_index),
-  constraint yqaa_knowledge_chunks_staging_source_fk
-    foreign key (ingestion_run_id, source_key)
-    references public.yqaa_knowledge_sources_staging(ingestion_run_id, source_key)
-    on delete cascade
-);
-
-create index if not exists yqaa_knowledge_sources_staging_run_idx
-  on public.yqaa_knowledge_sources_staging(ingestion_run_id);
-
-create index if not exists yqaa_knowledge_chunks_staging_run_idx
-  on public.yqaa_knowledge_chunks_staging(ingestion_run_id);
-
-alter table public.yqaa_knowledge_sources_staging enable row level security;
-alter table public.yqaa_knowledge_chunks_staging enable row level security;
-
-revoke all on public.yqaa_knowledge_sources_staging from anon, authenticated;
-revoke all on public.yqaa_knowledge_chunks_staging from anon, authenticated;
-
-grant select, insert, update, delete
-  on public.yqaa_knowledge_sources_staging to service_role;
-grant select, insert, update, delete
-  on public.yqaa_knowledge_chunks_staging to service_role;
+-- Re-apply finalize_yqaa_knowledge_ingestion through the migration ledger.
+--
+-- Why this file exists:
+--   1. 20260930074207_yqaa_knowledge_ingestion_finalize.sql was applied by the
+--      CI runner from c92df382 (ledger sha 5c07a432…). It was edited in place
+--      afterwards to tighten the newer-run supersede predicate. That edit never
+--      reached production, and the ledger gate fails closed on the hash
+--      mismatch, which blocks every later migration. The applied file is
+--      restored byte-for-byte, and the tightened predicate ships here instead.
+--   2. PostgREST requests run with pg_safeupdate, which rejects DELETE without
+--      a WHERE clause ("DELETE requires a WHERE clause", SQLSTATE 21000). That
+--      broke the nightly Sync YQAA Knowledge Index job at finalize. The two
+--      full-table live replacements now say `where true`. Semantics are
+--      unchanged: the whole snapshot is still replaced atomically in this
+--      transaction.
 
 create or replace function public.finalize_yqaa_knowledge_ingestion(p_run_id text)
 returns jsonb
@@ -152,13 +54,30 @@ begin
   -- running run may still be staging; it wins once it is eligible to finalize.
   -- Completed runs remain eligible in the comparison so a delayed older
   -- finalizer can never roll the live corpus backward.
-  select run_id
+  select newer.run_id
     into v_newer_run_id
-    from public.yqaa_knowledge_ingestion_runs
-   where run_id <> p_run_id
-     and status in ('running', 'completed')
-     and (started_at, run_id) > (v_started_at, p_run_id)
-   order by started_at desc, run_id desc
+    from public.yqaa_knowledge_ingestion_runs as newer
+   where newer.run_id <> p_run_id
+     and (newer.started_at, newer.run_id) > (v_started_at, p_run_id)
+     and (
+       newer.status = 'completed'
+       or (
+         newer.status = 'running'
+         and coalesce(newer.source_count, 0) > 0
+         and coalesce(newer.chunk_count, 0) > 0
+         and (
+           select count(*)
+             from public.yqaa_knowledge_sources_staging as staged_sources
+            where staged_sources.ingestion_run_id = newer.run_id
+         ) = newer.source_count
+         and (
+           select count(*)
+             from public.yqaa_knowledge_chunks_staging as staged_chunks
+            where staged_chunks.ingestion_run_id = newer.run_id
+         ) = newer.chunk_count
+       )
+     )
+   order by newer.started_at desc, newer.run_id desc
    limit 1;
 
   if found then
@@ -213,8 +132,8 @@ begin
 
   -- Active readers continue seeing the previous complete snapshot until this
   -- transaction commits. Any failure below rolls the entire replacement back.
-  delete from public.yqaa_knowledge_chunks;
-  delete from public.yqaa_knowledge_sources;
+  delete from public.yqaa_knowledge_chunks where true;
+  delete from public.yqaa_knowledge_sources where true;
 
   insert into public.yqaa_knowledge_sources (
     source_key, site, repository, base_url, source_url, path, title,
