@@ -10,8 +10,9 @@ type ScalarDefinition =
   | { kind: 'number'; constraint: 'finite' | 'nonnegative' | 'count' | 'rate' | 'difficulty' }
   | { kind: 'boolean'; nullable?: boolean }
   | { kind: 'enum'; values: readonly string[] }
-  | { kind: 'array'; items: ScalarDefinition | ObjectDefinition; uniqueBy?: 'value' | 'id'; maxItems: 100 }
-type ObjectDefinition = { kind: 'object'; properties: Readonly<Record<string, ScalarDefinition>> }
+  | { kind: 'array'; items: MetricValueDefinition; uniqueBy?: 'value' | 'id'; maxItems: 100 }
+type ObjectDefinition = { kind: 'object'; properties: Readonly<Record<string, MetricValueDefinition>> }
+type MetricValueDefinition = ScalarDefinition | ObjectDefinition
 
 const label = { kind: 'string', maxLength: 256 } as const
 const text = { kind: 'string', maxLength: 4000 } as const
@@ -30,7 +31,7 @@ const robots = { kind: 'object', properties: { raw: idArray, bot: label, index: 
 const urgency = { kind: 'object', properties: { kind: { kind: 'enum', values: ['none', 'factual_deadline', 'verified_scarcity', 'unsupported'] }, claimIds: idArray, evidenceIds: idArray, expiresAt: { kind: 'string', maxLength: 64, format: 'instant', nullable: true } } } as const
 
 type MetricConstraint = 'currency' | 'conversion_numerator_lte_denominator'
-function metric<const K extends string, const D extends ScalarDefinition>(key: K, definition: D, context: readonly ('query' | 'outcome')[] = [], constraints: readonly MetricConstraint[] = []) {
+function metric<const K extends string, const D extends MetricValueDefinition>(key: K, definition: D, context: readonly ('query' | 'outcome')[] = [], constraints: readonly MetricConstraint[] = []) {
   return { key, ...definition, context, constraints } as const
 }
 
@@ -168,5 +169,5 @@ export function metricTypeFromDefinition(definition: MetricDefinition): JsonSche
 export const METRIC_CONTEXT_REQUIREMENTS = freezeDeep({
   queryKeys: METRIC_DEFINITIONS.filter((definition) => (definition.context as readonly string[]).includes('query')).map(({ key }) => key),
   outcomeKeys: METRIC_DEFINITIONS.filter((definition) => (definition.context as readonly string[]).includes('outcome')).map(({ key }) => key),
-  urlKeys: METRIC_DEFINITIONS.filter((definition) => definition.kind === 'string' && (definition.validationContext === 'safe_url' || definition.validationContext === 'estate_slug')).map(({ key }) => key),
+  urlKeys: METRIC_DEFINITIONS.filter((definition) => definition.kind === 'string' && ((definition as { validationContext?: 'safe_url' | 'estate_slug' }).validationContext === 'safe_url' || (definition as { validationContext?: 'safe_url' | 'estate_slug' }).validationContext === 'estate_slug')).map(({ key }) => key),
 })
