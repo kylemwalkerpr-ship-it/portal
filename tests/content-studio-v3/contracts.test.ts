@@ -242,7 +242,7 @@ describe('versioned stateless metrics contract', () => {
     Object.defineProperty(accessorArray, '0', { enumerable: true, configurable: true, get() { getterCalls += 1; return 'Article' } })
     accessorArray.length = 1
     const hostilePrototype: any[] = []
-    Object.defineProperties(hostilePrototype, Object.getOwnPropertyDescriptors(Array.prototype))
+    Object.defineProperties(hostilePrototype, Object.getOwnPropertyDescriptors(Array.prototype) as unknown as PropertyDescriptorMap)
     Object.defineProperty(hostilePrototype, Symbol.iterator, { configurable: true, enumerable: false, writable: true, value: function* () { getterCalls += 1; yield 'Article' } })
     const hostileArray = ['Article']
     Object.setPrototypeOf(hostileArray, hostilePrototype)
