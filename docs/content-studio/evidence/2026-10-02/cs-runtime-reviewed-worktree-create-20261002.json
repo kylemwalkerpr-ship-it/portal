@@ -1,0 +1,9 @@
+{
+  "candidateCommit": "bc214f7ae4c61a6f96f0a3be750185442c0929e5",
+  "freshMain": "1ffef045e182a68d429bdbc9d86c506117db3799",
+  "target": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-reviewed-20261002",
+  "branch": "feat/studio-command-admission-reviewed-20261002",
+  "worktreeExit": 0,
+  "worktreeOutput": "{\"ok\": true, \"worktree\": {\"path\": \"/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-reviewed-20261002\", \"repo_root\": \"/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-command-admission-20261001\", \"branch\": \"feat/studio-command-admission-reviewed-20261002\", \"base_ref\": \"1ffef045e182a68d429bdbc9d86c506117db3799\", \"status\": \"active\", \"managed\": true}}\n",
+  "productionMerge": "HELD_AUTOMATIC_MIGRATION_GATE"
+}

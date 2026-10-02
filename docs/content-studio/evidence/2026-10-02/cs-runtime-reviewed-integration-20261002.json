@@ -1,0 +1,21 @@
+{
+  "head": "f0b6d9602b659f24326cc566ca66dccbd4ca128f",
+  "base": "1ffef045e182a68d429bdbc9d86c506117db3799",
+  "paths": [
+    ".github/workflows/studio-command-admission-test.yml",
+    "app/api/content-studio/v3/runs/route.ts",
+    "app/api/content-studio/v3/runs/routeCore.ts",
+    "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+    "docs/superpowers/plans/2026-09-30-studio-command-admission.md",
+    "lib/studioRuntime/commandAdmission.ts",
+    "lib/studioRuntime/contracts.ts",
+    "lib/studioRuntime/repository.ts",
+    "scripts/test-studio-command-admission.mjs",
+    "supabase/migrations/20261001000000_studio_command_admission.sql",
+    "tests/content-studio-v3/commandAdmission.test.ts",
+    "tests/content-studio-v3/runAdmissionRoute.test.ts",
+    "tests/sql/studio-command-admission.sql"
+  ],
+  "allFrozenHashesMatch": true,
+  "productionMerge": "HELD"
+}

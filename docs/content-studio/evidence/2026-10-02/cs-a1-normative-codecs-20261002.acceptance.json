@@ -1,0 +1,401 @@
+{
+  "status": "READ_ONLY_PLAN_SAVED_HOLD",
+  "architecture_sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623",
+  "blueprint_sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366",
+  "interface_count": 29,
+  "interface_inventory": [
+    {
+      "name": "SemanticIdentity",
+      "line": 98,
+      "section": "### 2.2 `SemanticIdentity`"
+    },
+    {
+      "name": "SemanticFact",
+      "line": 125,
+      "section": "### 2.3 `SemanticFact`"
+    },
+    {
+      "name": "SemanticRelation",
+      "line": 159,
+      "section": "### 2.4 `SemanticRelation`"
+    },
+    {
+      "name": "SemanticOpportunity",
+      "line": 180,
+      "section": "### 2.5 `SemanticOpportunity`"
+    },
+    {
+      "name": "DecisionState",
+      "line": 229,
+      "section": "### 2.6 `DecisionState`"
+    },
+    {
+      "name": "DecisionRecord",
+      "line": 258,
+      "section": "### 2.7 `DecisionRecord`"
+    },
+    {
+      "name": "InformationGainAssessment",
+      "line": 279,
+      "section": "### 2.8 `InformationGainAssessment`"
+    },
+    {
+      "name": "GateEvaluation",
+      "line": 312,
+      "section": "### 2.10 `GateEvaluation`"
+    },
+    {
+      "name": "ReleasePermit",
+      "line": 333,
+      "section": "### 2.11 `ReleasePermit`"
+    },
+    {
+      "name": "PublicationProof",
+      "line": 353,
+      "section": "### 2.12 `PublicationProof`"
+    },
+    {
+      "name": "Observation",
+      "line": 376,
+      "section": "### 2.13 `Observation`"
+    },
+    {
+      "name": "Reward",
+      "line": 406,
+      "section": "### 2.14 `Reward`"
+    },
+    {
+      "name": "Run",
+      "line": 689,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "Stage",
+      "line": 698,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "Attempt",
+      "line": 704,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "OutboxEvent",
+      "line": 710,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "ArtifactRef",
+      "line": 716,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "IntentReservation",
+      "line": 723,
+      "section": "### 7.2 Runtime identity interfaces (defined once)"
+    },
+    {
+      "name": "StudioRunEnvelope",
+      "line": 739,
+      "section": "### 7.2.1 One run authority, including operational actions"
+    },
+    {
+      "name": "StudioRunEvent",
+      "line": 751,
+      "section": "### 7.2.1 One run authority, including operational actions"
+    },
+    {
+      "name": "ExecutorPolicy",
+      "line": 758,
+      "section": "### 7.2.1 One run authority, including operational actions"
+    },
+    {
+      "name": "PhaseEvidenceState",
+      "line": 851,
+      "section": "### 8.1.1 Phase code acceptance and program closure are separate"
+    },
+    {
+      "name": "ComputeBudget",
+      "line": 1171,
+      "section": "### 12.4 Budget governance (compute + storage + egress + retention)"
+    },
+    {
+      "name": "ReviewerCredential",
+      "line": 1297,
+      "section": "### 14.4 YMYL Reviewer Registry (`ReviewerCredential`, defined once)"
+    },
+    {
+      "name": "ReviewApproval",
+      "line": 1308,
+      "section": "### 14.4 YMYL Reviewer Registry (`ReviewerCredential`, defined once)"
+    },
+    {
+      "name": "PublicationTarget",
+      "line": 1448,
+      "section": "### 17.2 Route manifests and publication targets"
+    },
+    {
+      "name": "InterventionRecord",
+      "line": 1549,
+      "section": "### 20.2 Prediction record before execution"
+    },
+    {
+      "name": "MetricValues",
+      "line": 1898,
+      "section": "### 26.4 Typed schema and provenance"
+    },
+    {
+      "name": "Provenance",
+      "line": 1920,
+      "section": "### 26.4 Typed schema and provenance"
+    }
+  ],
+  "families": [
+    {
+      "packet": "A1.1b.IDENTITY",
+      "interfaces": [
+        "SemanticIdentity",
+        "SemanticFact",
+        "SemanticRelation"
+      ],
+      "refs": [
+        "2.2",
+        "2.3",
+        "2.4",
+        "11.2.1",
+        "11.4",
+        "11.4.1"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/semantic.ts",
+      "test": "tests/content-studio-v3/semanticContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.OPPORTUNITY",
+      "interfaces": [
+        "SemanticOpportunity",
+        "InformationGainAssessment",
+        "InterventionRecord"
+      ],
+      "refs": [
+        "2.5",
+        "2.8",
+        "15.1\u201315.8",
+        "20.2"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/opportunity.ts",
+      "test": "tests/content-studio-v3/opportunityContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.DECISION",
+      "interfaces": [
+        "DecisionState",
+        "DecisionRecord"
+      ],
+      "refs": [
+        "2.6",
+        "2.7",
+        "13.2\u201313.5"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/decision.ts",
+      "test": "tests/content-studio-v3/decisionContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.POLICY",
+      "interfaces": [
+        "GateEvaluation",
+        "PhaseEvidenceState",
+        "ExecutorPolicy"
+      ],
+      "refs": [
+        "2.10",
+        "7.2.1",
+        "8.1.1",
+        "8.4"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/policy.ts",
+      "test": "tests/content-studio-v3/policyContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.RUNTIME",
+      "interfaces": [
+        "Run",
+        "Stage",
+        "Attempt",
+        "OutboxEvent",
+        "ArtifactRef",
+        "IntentReservation",
+        "StudioRunEnvelope",
+        "StudioRunEvent",
+        "ComputeBudget"
+      ],
+      "refs": [
+        "7.2",
+        "7.2.1",
+        "12.4"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/runtime.ts",
+      "test": "tests/content-studio-v3/runtimeContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.EDITORIAL",
+      "interfaces": [
+        "ReviewerCredential",
+        "ReviewApproval"
+      ],
+      "refs": [
+        "14.2",
+        "14.4"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/editorial.ts",
+      "test": "tests/content-studio-v3/editorialContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.RELEASE",
+      "interfaces": [
+        "ReleasePermit",
+        "PublicationProof",
+        "PublicationTarget"
+      ],
+      "refs": [
+        "2.11",
+        "2.12",
+        "10",
+        "17.2"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/release.ts",
+      "test": "tests/content-studio-v3/releaseContracts.test.ts"
+    },
+    {
+      "packet": "A1.1b.OUTCOME",
+      "interfaces": [
+        "Observation",
+        "Reward"
+      ],
+      "refs": [
+        "2.13",
+        "2.14",
+        "20",
+        "26.5"
+      ],
+      "proposed_new_path": "lib/contentStudioV3/contracts/outcome.ts",
+      "test": "tests/content-studio-v3/outcomeContracts.test.ts"
+    },
+    {
+      "packet": "A1.1a.KERNEL",
+      "interfaces": [
+        "MetricValues",
+        "Provenance"
+      ],
+      "refs": [
+        "26.4",
+        "26.5"
+      ],
+      "status": "PENDING_NATIVE_WRITER_NOT_ACCEPTED"
+    }
+  ],
+  "named_type_inventory": [
+    {
+      "name": "DecisionFamily",
+      "line": 220,
+      "declaration_head": "type DecisionFamily = \"D0_RELATION\" | \"D1_DIAGNOSIS\" | \"D2_INTERVENTION\" | \"D6_FUNNEL\";"
+    },
+    {
+      "name": "DecisionFeature",
+      "line": 221,
+      "declaration_head": "type DecisionFeature = {"
+    },
+    {
+      "name": "JevAnswer",
+      "line": 253,
+      "declaration_head": "type JevAnswer ="
+    },
+    {
+      "name": "ComputeClass",
+      "line": 300,
+      "declaration_head": "type ComputeClass ="
+    },
+    {
+      "name": "StudioActionKind",
+      "line": 736,
+      "declaration_head": "type StudioActionKind = \"INGEST\" | \"PLAN\" | \"GSC_SYNC\" | \"GSC_SCORE\" | \"LLM_AUDIT\" |"
+    },
+    {
+      "name": "ReasoningEffort",
+      "line": 774,
+      "declaration_head": "type ReasoningEffort = \"low\" | \"medium\" | \"high\" | \"xhigh\" | \"max\";"
+    },
+    {
+      "name": "PhaseCodeStatus",
+      "line": 849,
+      "declaration_head": "type PhaseCodeStatus = \"PENDING\" | \"IN_PROGRESS\" | \"PASS\" | \"FAIL\" | \"UNKNOWN\";"
+    },
+    {
+      "name": "ProgramGateStatus",
+      "line": 850,
+      "declaration_head": "type ProgramGateStatus = \"PENDING\" | \"IN_PROGRESS\" | \"PASS\" | \"ACCEPTED_EXCEPTION\" | \"BLOCKED_EXTERNAL\" | \"FAIL\";"
+    },
+    {
+      "name": "Hash",
+      "line": 1887,
+      "declaration_head": "type Hash = string;                          // lowercase 64-hex SHA-256"
+    },
+    {
+      "name": "Placement",
+      "line": 1888,
+      "declaration_head": "type Placement = Record<\"title\" | \"H1\" | \"intro\" | \"meta\","
+    },
+    {
+      "name": "ImageAlt",
+      "line": 1890,
+      "declaration_head": "type ImageAlt = { id: string; alt: string; decorative: boolean; missing: boolean };"
+    },
+    {
+      "name": "ImageFile",
+      "line": 1891,
+      "declaration_head": "type ImageFile = { id: string; basename: string; digest: Hash };"
+    },
+    {
+      "name": "LinkText",
+      "line": 1892,
+      "declaration_head": "type LinkText = { id: string; text: string; accessibleName: string; target: string; location: string };"
+    },
+    {
+      "name": "RobotsState",
+      "line": 1893,
+      "declaration_head": "type RobotsState = { raw: string[]; bot: string; index: boolean | null; follow: boolean | null;"
+    },
+    {
+      "name": "Urgency",
+      "line": 1895,
+      "declaration_head": "type Urgency = { kind: \"none\" | \"factual_deadline\" | \"verified_scarcity\" | \"unsupported\";"
+    },
+    {
+      "name": "MetricKey",
+      "line": 1918,
+      "declaration_head": "export type MetricKey = keyof MetricValues;"
+    },
+    {
+      "name": "Present",
+      "line": 1941,
+      "declaration_head": "type Present<T> = Provenance & { status: \"available\" | \"stale\"; value: T; reason: string | null };"
+    },
+    {
+      "name": "Absent",
+      "line": 1942,
+      "declaration_head": "type Absent  = Provenance & { status: \"unavailable\" | \"not_applicable\" | \"pending\" | \"failed\";"
+    },
+    {
+      "name": "MetricObservation",
+      "line": 1944,
+      "declaration_head": "export type MetricObservation<T> = Present<T> | Absent;"
+    },
+    {
+      "name": "SeoMetricSnapshot",
+      "line": 1945,
+      "declaration_head": "export type SeoMetricSnapshot = {"
+    }
+  ],
+  "kernel_exports": "PENDING_EXACT_FREEZE",
+  "production_mutation": false,
+  "source_execution": false
+}

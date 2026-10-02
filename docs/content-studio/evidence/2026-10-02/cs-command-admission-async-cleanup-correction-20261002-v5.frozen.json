@@ -1,0 +1,132 @@
+{
+  "observed_at": "2026-10-02T10:30:50.844689+00:00",
+  "job": "cs-command-admission-async-cleanup-correction-20261002-v5",
+  "attempt": {
+    "id": "d7fe2ba3-5daf-4ce4-8476-f65231078c49",
+    "job_id": "cs-command-admission-async-cleanup-correction-20261002-v5",
+    "seq": 1,
+    "lane": "codex",
+    "native_record_type": "codex-thread",
+    "native_record_id": "01a0fc22-ceb4-7db0-a7ae-d7f4d47b3634",
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "state": "COMPLETED",
+    "reason": "completed",
+    "native_state": "verification.passed",
+    "resumable": 0,
+    "checkpoint_kind": null,
+    "checkpoint_ref": null,
+    "started_at": null,
+    "ended_at": null,
+    "created_at": "2026-10-02T10:22:11.512454+00:00",
+    "updated_at": "2026-10-02T10:29:56.595125+00:00",
+    "checkpoint_digest": null,
+    "resume_claim_id": null,
+    "state_generation": 1
+  },
+  "head": "c305086c59d83f50135edd367f0d5e8399879619",
+  "files": [
+    {
+      "path": ".github/workflows/studio-command-admission-test.yml",
+      "bytes": 12970,
+      "sha256": "43b97f51140cfdbaa3404412c042dcb294e708692b01b31358e92d45b6ab9e80"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/route.ts",
+      "bytes": 311,
+      "sha256": "e80b759e9f91c6c73d940012b4e5e680c5f759ff4fb964da12b55a0758848823"
+    },
+    {
+      "path": "app/api/content-studio/v3/runs/routeCore.ts",
+      "bytes": 2179,
+      "sha256": "ba3187980bf16fb7ed8fad5df3bf44a40c29022ef269125c553b6ffb9a8b8efd"
+    },
+    {
+      "path": "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+      "bytes": 18651,
+      "sha256": "3508c0683691b7128b9520db91142b5fb9f75e6b663b1f8fbbb2e646184171cd"
+    },
+    {
+      "path": "lib/studioRuntime/commandAdmission.ts",
+      "bytes": 1926,
+      "sha256": "b4f3565a9106253f77f228ea336c3d8b8ad895d3c064cb735e3e0620404cb7f2"
+    },
+    {
+      "path": "lib/studioRuntime/contracts.ts",
+      "bytes": 7697,
+      "sha256": "fe6ed43c9b9620abfd25eb953a319f052e3da6fa2db137aed0589148860ac04a"
+    },
+    {
+      "path": "lib/studioRuntime/repository.ts",
+      "bytes": 1252,
+      "sha256": "40df8704e7eebe73897e1bd9a5c344063f8748e5bc2f56b052763200f97ae6bb"
+    },
+    {
+      "path": "scripts/test-studio-command-admission.mjs",
+      "bytes": 47026,
+      "sha256": "47eed3ed96ce870b3633589e102d00685462eaaf8dd80c3eaaf715724a70b88f"
+    },
+    {
+      "path": "supabase/migrations/20261001000000_studio_command_admission.sql",
+      "bytes": 20630,
+      "sha256": "52b8452f617b4681252266967430039c51b4cd2a5e3536fa576e8004861040e3"
+    },
+    {
+      "path": "tests/content-studio-v3/commandAdmission.test.ts",
+      "bytes": 5887,
+      "sha256": "1aaa33daabc2351f326cb0b0bf9fd89ebe453e7daaf86f87360750a15089574c"
+    },
+    {
+      "path": "tests/content-studio-v3/runAdmissionRoute.test.ts",
+      "bytes": 3900,
+      "sha256": "22094410f306f301bf1dfd5aee57ee7ab69835568f7bcd9c5e915d9db7a820b4"
+    },
+    {
+      "path": "tests/sql/studio-command-admission.sql",
+      "bytes": 17325,
+      "sha256": "0e16747b01d83d8de94f8a751d892715b211c7306c402cd4bad72c1f305186ce"
+    }
+  ],
+  "manifest_sha256": "c29aa2958181fed59bed1dbe50e35a051af4d3f9c244fa7288e915af124fc1ce",
+  "changed_since_v4": [
+    "docs/content-studio/release/2026-10-01-command-admission-evidence.md",
+    "scripts/test-studio-command-admission.mjs"
+  ],
+  "untouched10_verified": true,
+  "independent_light_checks": [
+    {
+      "argv": [
+        "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node",
+        "--check",
+        "scripts/test-studio-command-admission.mjs"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/Users/phantomdarne/.nvm/versions/node/v22.22.2/bin/node",
+        "scripts/test-studio-command-admission.mjs",
+        "--self-test"
+      ],
+      "exit": 0,
+      "stdout": "{\"originalCountPredicate\":\"RED_EXPECTED\",\"correctedCounts\":{\"one\":\"PASS\",\"zero\":\"PASS\",\"malformed\":\"PASS\"},\"sqlStateParser\":{\"permissionFormats\":\"PASS\",\"syntaxAndMalformedCasesRejected\":\"PASS\"},\"ownedFailurePath\":{\"failedChild\":\"PASS\",\"errorSurvivesLaterAwait\":\"PASS\",\"barrierFailReceipt\":\"PASS\",\"ownedCleanup\":\"PASS\",\"unhandledRejections\":\"NONE\"}}\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "plan_sha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+  "real_pg": "NOT_RUN",
+  "source_acceptance": "PENDING_INDEPENDENT_REVIEW",
+  "production_autoapply_release": "HELD"
+}

@@ -1,0 +1,34 @@
+{
+  "id": "CS-2026.10.02.A4.1",
+  "decision": "ALLOW_NORMAL_PR_MERGE_AND_OFFICIAL_MAIN_WORKFLOW",
+  "head": "a0d6a44ea6dce85bdb576a3330f939be45cc82f8",
+  "checks": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-02T10:24:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36995130001/job/110800004597",
+      "name": "Focused Content Studio tests",
+      "startedAt": "2026-10-02T10:22:44Z",
+      "status": "COMPLETED",
+      "workflowName": "Content Studio Review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-02T10:26:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/kylemwalkerpr-ship-it/portal/actions/runs/36995129928/job/110800004444",
+      "name": "Build and deploy Worker",
+      "startedAt": "2026-10-02T10:22:45Z",
+      "status": "COMPLETED",
+      "workflowName": "Deploy YouSafe Portal"
+    }
+  ],
+  "scope": "inactive two-file supplied-fact evaluator only; no SQL/consumer/positiveauthority/architectureactivation",
+  "independentReview": "wholecomponentPASS plus rootexacttype-erasurecomparisonPASS",
+  "testedBase": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+  "currentMain": "403c6e48dd4c6f2a04d3cc7d09918819f5cfc928",
+  "currentMainDelta": "PR345 four unrelated Marketplace metrics files; no component/config/interface overlap",
+  "combinedReleaseGate": "official main workflow runs type/unit/build before providerdeploy; fullmerged/live evidence pending",
+  "timestamp": "2026-10-02T10:32:46.452039+00:00"
+}

@@ -1,0 +1,440 @@
+{
+  "status": "READ_ONLY_CURRENT_SOURCE_DELTA_NOT_LIVE_PROOF",
+  "observed_origin_main": "403c6e48dd4c6f2a04d3cc7d09918819f5cfc928",
+  "delta_target": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+  "historical_a0_source": "e42d3eb9e41f92d8edfce4dba99f1072077ad0e9",
+  "accepted_maps_commit": "67e29190bad545387e23f418ec95d6aac5ba53fd",
+  "relevant_source_pins": [
+    {
+      "path": ".github/workflows/rhythm-scan-weekly.yml",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "30da21a6d2db55f4f4ed6d5ab604634e67f882a789bb769013618637241fff30",
+      "bytes": 1547
+    },
+    {
+      "path": ".github/workflows/sync-yqaa-knowledge.yml",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "56f5a041be9b751450fc0636ca91e188ecf17e3b5e5b35d005872118fea868b7",
+      "bytes": 2290
+    },
+    {
+      "path": ".github/workflows/upload-gig-cover-stock.yml",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "fb4d3ae9ebdd5efa8df98379e9b518a57e82605ce799b9f332dd4cc03dbd0f15",
+      "bytes": 1128
+    },
+    {
+      "path": "app/api/account/password/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "7aac7699b757b3ac1e1a113ac6ac32fca49b837e5e6afa146588f5fa379deadd",
+      "bytes": 2034
+    },
+    {
+      "path": "app/api/admin/attorney-applications/[id]/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "b877b8e5d7fba76631b542433f2fc8e20f98fe91dfae8c38da818fb568d73eb4",
+      "bytes": 1998
+    },
+    {
+      "path": "app/api/admin/attorney-applications/bulk/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "2ba36b6001955e931e10d7706bfb6ca432509c90f21225dd5ac6372f2c8c5824",
+      "bytes": 5768
+    },
+    {
+      "path": "app/api/admin/consultant-applications/[id]/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "5be8a7c6935999c5089cd3604636f6d330d061c9aa96e7c43b90b7b7ad1f892e",
+      "bytes": 2002
+    },
+    {
+      "path": "app/api/admin/consultant-applications/bulk/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "6adfc03edd8166dac30d3a5df9af928988883fbd10bae46c577a2e6ebeba8da0",
+      "bytes": 5759
+    },
+    {
+      "path": "app/api/attorney/apply/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "3cd47c8a6e76375affdf1ea87368b7407499a8f989aa7f7d1ec4e9d0a856b33f",
+      "bytes": 5119
+    },
+    {
+      "path": "app/api/consultant/intake/submit/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "0a00e0c9b6c091ead07a9ab1fd1bdd23053728f15e8dabc259a15e3fe2e865e3",
+      "bytes": 5522
+    },
+    {
+      "path": "app/api/marketplace/gigs/[slug]/reputation/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "68c72733905416dcc5e9c88a7f28965963fc3acbf9e296e829eeaf13e459a4a4",
+      "bytes": 5785
+    },
+    {
+      "path": "app/api/marketplace/gigs/[slug]/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "642c15b28c75b17bb5be4d9f4be94d5c86e8d3fdbb65e1287a18b3c432983cf6",
+      "bytes": 6899
+    },
+    {
+      "path": "app/api/marketplace/gigs/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "9eae960fdf3eff5afe5bf7d4cff8ede47a29269cd63d4afcde87f731aee048d6",
+      "bytes": 14724
+    },
+    {
+      "path": "app/api/onboarding/role/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "a0b4141817bdae8396880761657cd6fb599497e92dbc120b7b5d5f0f175fd426",
+      "bytes": 1952
+    },
+    {
+      "path": "app/api/profile/sync-lane/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "4a66bdbba8979ca5f4f0df195bbd4e00e6246eb773e7a45743cf6ab37e145a68",
+      "bytes": 653
+    },
+    {
+      "path": "app/api/provider/apply/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "793e91bad16490661c5ec803b9eded4d2062acaec0a04f7466d3b3b653b2d8f8",
+      "bytes": 6013
+    },
+    {
+      "path": "app/api/sellers/[id]/reviews/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "dad8741aecc2bb6d926d4b484ea0fce5aab359720fdb21c1222c7959781ec093",
+      "bytes": 4732
+    },
+    {
+      "path": "app/api/sellers/[id]/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "d36cd246334274be39921d1a1118ae3f3ccf9f323e16814fa92181ed7904dcbe",
+      "bytes": 7697
+    },
+    {
+      "path": "app/api/sellers/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "6080329c9f6a3904251736d0f0f52fd456f8f3de95578574b9c7e05c30ddf460",
+      "bytes": 7830
+    },
+    {
+      "path": "app/api/webhooks/clerk/route.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "87487ff08da88add293fa831ea1074874094ab503ac4b4354132112e2eeed554",
+      "bytes": 1425
+    },
+    {
+      "path": "lib/auth/clerkIdentity.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "2917dcabf99193f6389743a0738af5f73b37903bf381d96f319167bde692582d",
+      "bytes": 2156
+    },
+    {
+      "path": "lib/auth/clerkWebhook.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "997e928152ee6c1f34808d2cf12cbe00c7d61f1680ddaeb419c32c3dbc28a155",
+      "bytes": 4787
+    },
+    {
+      "path": "lib/auth/marketAuthHandoff.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "ac7052653a63b310e6a3b16b4a395b7358c68f01c46389f1f19a9aa683ad1e1a",
+      "bytes": 5960
+    },
+    {
+      "path": "lib/auth/mustChangePassword.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "695843e35b80a08edf7a36a6b4ddd229930e861ee9aa5a5d1ec38b3b1bf8fa5b",
+      "bytes": 4306
+    },
+    {
+      "path": "lib/auth/portalAuthRedirect.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "232b3808e626150ef7bbdb13c56e9017a3e63463bd884fde54e852fb3219f879",
+      "bytes": 13857
+    },
+    {
+      "path": "lib/auth/returnTo.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "b9626ac29991e83633cca2b59bb35c5c78ce278da08e3bcd45e239e40e579fe7",
+      "bytes": 7001
+    },
+    {
+      "path": "lib/auth/roles.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "1a609ad95fa146ba253c8b14336345e7719fc3fb5e155c2230f2fca301ba39c1",
+      "bytes": 7536
+    },
+    {
+      "path": "lib/auth/serverAuthRedirect.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "04266676624373926071477e194503a11bbf5217bf23488f39e57fa9d181211c",
+      "bytes": 1062
+    },
+    {
+      "path": "lib/auth/ysAuthModal.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "38758df8f0523d8f83c9f7f3a664615652d12126fc278f9cf878e6c4373eada1",
+      "bytes": 5368
+    },
+    {
+      "path": "lib/auth/ysClerkAppearance.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "b8c1562ab9bd99906b1f3924ea559f58259ba6d500e91f0b036e544f6c6119df",
+      "bytes": 2720
+    },
+    {
+      "path": "lib/clerk/providerProvisioning.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "46e780c98fe900d2690658923e15e366848a92f7894686c77598f1f619d596ad",
+      "bytes": 13183
+    },
+    {
+      "path": "lib/provider/application.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "d988b10f055a3a42a64f33c4da0ec34c49a0259ec603db8eb0ac8fed21d576d6",
+      "bytes": 21181
+    },
+    {
+      "path": "lib/provider/barNumber.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "f6b552b812de878ed31eff9f176675f5cb9128af08d25b9cd671bcb639434d39",
+      "bytes": 768
+    },
+    {
+      "path": "lib/provider/decision.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "29b2f9e4a8388f63873fd62673d049dcd668a391ce41459587b05322127bddee",
+      "bytes": 8668
+    },
+    {
+      "path": "lib/provider/decisionSummary.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "49214fef8929c60b1437c6ea5bb63c3ec0c46eb5d48ca5ea5ecef946a85c90b0",
+      "bytes": 845
+    },
+    {
+      "path": "scripts/clerk/provision-provider-accounts.ts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "5b9de48718de9c006d14077ec0867f296226a07ef9bdc206998603b6001f090f",
+      "bytes": 12119
+    },
+    {
+      "path": "scripts/run-rhythm-scan.mts",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "13c20bcc7ed494023fd504a435fdef3ad08fc37e368972ecfd37550a9b093e0e",
+      "bytes": 1982
+    },
+    {
+      "path": "scripts/smoke-prod.mjs",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "a8e2c166bedf28e53c8a0c991d5d20a07abdbe62085daefaabe8df0748c36c8c",
+      "bytes": 13334
+    },
+    {
+      "path": "scripts/sync-yqaa-knowledge.mjs",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "ea038029d5eadf361569990bf5c55be702d8ff485585ccc3a9bf37985f1a7189",
+      "bytes": 6601
+    },
+    {
+      "path": "scripts/upload-gig-cover-stock.mjs",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "9e1dabe8740a8acf0e9a93bf507a47c372095f74e4ba25b56d0c720aefe1458d",
+      "bytes": 2733
+    },
+    {
+      "path": "scripts/verify-market-landing-payload.mjs",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "00b633ce8ae3d0b32258305d47d9efb6c71c53a0f42451cfd8463782efb8dc92",
+      "bytes": 15439
+    },
+    {
+      "path": "supabase/migrations/20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "5c07a4321ac8d75102cb8d9620441dfe42a1c32f88509a2545bd1ae7c396daef",
+      "bytes": 9753
+    },
+    {
+      "path": "supabase/migrations/20261002080000_yqaa_finalize_safeupdate_newer_run_guard.sql",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "61f7b686acf9f82348ea151969f1db942787026c8983f6a562f6d0649660be8c",
+      "bytes": 7320
+    },
+    {
+      "path": "supabase/migrations/20261002091500_marketplace_featured_boost.sql",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "bc828fa3dbfad9be4ae2e82162122d3d6d8759e7ecce48bfe46593a9779d7fd3",
+      "bytes": 5092
+    },
+    {
+      "path": "supabase/migrations/20261002093500_fix_recompute_gig_rank_ambiguous_alias.sql",
+      "source_commit": "fdfb518a248c75e4cebb7db93bb9897e62edccab",
+      "sha256": "de9021b8ae535c9115ba5aaf538c73481e68d3a4e2877f08793f7cf06bd9bb29",
+      "bytes": 3459
+    }
+  ],
+  "all_delta_paths": [
+    "M\t.github/workflows/rhythm-scan-weekly.yml",
+    "M\t.github/workflows/sync-yqaa-knowledge.yml",
+    "A\t.github/workflows/upload-gig-cover-stock.yml",
+    "M\tapp/HomeClient.tsx",
+    "A\tapp/account/change-password/ChangePasswordClient.tsx",
+    "A\tapp/account/change-password/page.tsx",
+    "A\tapp/api/account/password/route.ts",
+    "M\tapp/api/admin/attorney-applications/[id]/route.ts",
+    "M\tapp/api/admin/attorney-applications/bulk/route.ts",
+    "M\tapp/api/admin/consultant-applications/[id]/route.ts",
+    "M\tapp/api/admin/consultant-applications/bulk/route.ts",
+    "M\tapp/api/attorney/apply/route.ts",
+    "M\tapp/api/consultant/intake/submit/route.ts",
+    "M\tapp/api/marketplace/gigs/[slug]/reputation/route.ts",
+    "M\tapp/api/marketplace/gigs/[slug]/route.ts",
+    "M\tapp/api/marketplace/gigs/route.ts",
+    "A\tapp/api/onboarding/role/route.ts",
+    "M\tapp/api/profile/sync-lane/route.ts",
+    "A\tapp/api/provider/apply/route.ts",
+    "M\tapp/api/sellers/[id]/reviews/route.ts",
+    "M\tapp/api/sellers/[id]/route.ts",
+    "M\tapp/api/sellers/route.ts",
+    "A\tapp/api/webhooks/clerk/route.ts",
+    "M\tapp/dashboard/admin/[section]/page.tsx",
+    "M\tapp/dashboard/admin/attorney-applications/page.tsx",
+    "M\tapp/dashboard/admin/consultant-applications/page.tsx",
+    "A\tapp/dashboard/admin/page.tsx",
+    "A\tapp/dashboard/admin/templates/page.tsx",
+    "M\tapp/dashboard/admin/templates/pdf-maker/page.tsx",
+    "M\tapp/dashboard/attorney/intake/page.tsx",
+    "M\tapp/dashboard/client.tsx",
+    "M\tapp/dashboard/compliance/page.tsx",
+    "M\tapp/dashboard/consultant/intake/page.tsx",
+    "M\tapp/dashboard/gigs/[id]/edit/page.tsx",
+    "M\tapp/dashboard/gigs/new/page.tsx",
+    "M\tapp/dashboard/gigs/page.tsx",
+    "M\tapp/dashboard/marketplace/page.tsx",
+    "M\tapp/dashboard/orders/page.tsx",
+    "M\tapp/dashboard/page.tsx",
+    "M\tapp/dashboard/profile/page.tsx",
+    "M\tapp/dashboard/security/page.tsx",
+    "M\tapp/dashboard/seo-analytics/page.tsx",
+    "M\tapp/dashboard/support/page.tsx",
+    "M\tapp/dashboard/templates/page.tsx",
+    "M\tapp/layout.tsx",
+    "M\tapp/marketplace/PublicMarketplaceLanding.tsx",
+    "M\tapp/marketplace/gigs/page.tsx",
+    "M\tapp/marketplace/marketplace-landing.css",
+    "A\tapp/onboarding/OnboardingChoice.tsx",
+    "A\tapp/onboarding/page.tsx",
+    "A\tapp/onboarding/provider/ProviderApplicationForm.tsx",
+    "A\tapp/onboarding/provider/page.tsx",
+    "M\tapp/sellers/page.tsx",
+    "M\tapp/sign-in/[[...rest]]/SignInClient.tsx",
+    "M\tapp/sign-up/[[...rest]]/SignUpClient.tsx",
+    "M\tcomponents/CookieConsentBanner.tsx",
+    "M\tcomponents/auth-shell.tsx",
+    "M\tcomponents/design/admin-attorney-applications.jsx",
+    "M\tcomponents/design/admin-consultant-management.jsx",
+    "M\tcomponents/design/landing/FinalCTA.tsx",
+    "M\tcomponents/design/landing/MemberAccessBand.tsx",
+    "M\tcomponents/design/landing/MemberSignInModal.tsx",
+    "M\tcomponents/design/landing/Nav.tsx",
+    "M\tcomponents/marketplace/ChatSidePane.tsx",
+    "M\tcomponents/marketplace/GigDetailComponents.tsx",
+    "M\tcomponents/marketplace/GigDetailPage.tsx",
+    "M\tcomponents/marketplace/HeroCaseFileSlideshow.tsx",
+    "M\tcomponents/marketplace/ImmigrationPackRail.tsx",
+    "A\tcomponents/marketplace/MarketHomeOffers.tsx",
+    "M\tcomponents/marketplace/MarketplaceAuthNav.tsx",
+    "M\tcomponents/marketplace/MarketplaceFooter.tsx",
+    "M\tcomponents/marketplace/MarketplaceShell.tsx",
+    "M\tcomponents/marketplace/SellerDirectoryPage.tsx",
+    "M\tcomponents/marketplace/SellerProfileComponents.tsx",
+    "M\tcomponents/marketplace/SignUpGateModal.tsx",
+    "A\tcomponents/studioEstateShell/StudioEstateShell.tsx",
+    "M\tcontent/messenger-kb/network-coverage.json",
+    "M\tcontent/messenger-kb/network-pages.json",
+    "A\tdata/gig-cover-stock/2026-10-02/0ddda99b-3047-51fe-b33d-1a1eb98acd3c-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/0e102af8-043f-5359-a7a9-17c71c7f11da-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/14823fc4-2f6e-5cc7-ab2f-34fe01daaa5d-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/50c98381-a790-57fc-8c29-f184fbc9f1ff-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/59e13dc2-a78e-5b04-939f-4300f3a5d34d-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/6450cd9b-2178-52f4-8765-de654f274b08-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/7fb6b098-adf0-5ad7-8101-995d2433274e-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/982aaf9f-b9bb-5d04-9460-e82a13e4ea3e-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/b9ef625b-abe9-56d5-a5b8-9c5e34f79ce3-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/ff1ab8a7-0abf-55a7-b04c-e0fa78a697d4-stock-cover.webp",
+    "A\tdata/gig-cover-stock/2026-10-02/manifest.json",
+    "A\tdocs/content-studio/reviews/a1-estate-ownership-review-revision-20260930.md",
+    "A\tdocs/content-studio/reviews/a2-source-provenance-20260930.md",
+    "A\tdocs/content-studio/reviews/a3-run-authority-20261001.md",
+    "A\tdocs/content-studio/reviews/a5-resource-ledger-20261001.md",
+    "A\tlib/auth/clerkIdentity.ts",
+    "A\tlib/auth/clerkWebhook.ts",
+    "A\tlib/auth/marketAuthHandoff.ts",
+    "A\tlib/auth/mustChangePassword.ts",
+    "A\tlib/auth/portalAuthRedirect.ts",
+    "A\tlib/auth/returnTo.ts",
+    "A\tlib/auth/roles.ts",
+    "A\tlib/auth/serverAuthRedirect.ts",
+    "A\tlib/auth/ysAuthModal.ts",
+    "A\tlib/auth/ysClerkAppearance.ts",
+    "M\tlib/categories.ts",
+    "M\tlib/categoryEditorial.ts",
+    "A\tlib/clerk/providerProvisioning.ts",
+    "M\tlib/email.ts",
+    "A\tlib/estateOwnership/index.ts",
+    "A\tlib/marketHomeMostRequested.ts",
+    "M\tlib/marketplaceSignInHandoff.ts",
+    "A\tlib/provider/application.ts",
+    "A\tlib/provider/barNumber.ts",
+    "A\tlib/provider/decision.ts",
+    "A\tlib/provider/decisionSummary.ts",
+    "A\tlib/sourceProvenance/index.ts",
+    "A\tlib/studioResourceLedger/index.ts",
+    "A\tlib/studioRunAuthority/index.ts",
+    "M\tmiddleware.ts",
+    "M\tnext.config.ts",
+    "A\tpublic/_headers",
+    "A\tpublic/ys-auth.js",
+    "A\tscripts/clerk/provision-provider-accounts.ts",
+    "A\tscripts/run-rhythm-scan.mts",
+    "M\tscripts/smoke-prod.mjs",
+    "M\tscripts/sync-yqaa-knowledge.mjs",
+    "A\tscripts/upload-gig-cover-stock.mjs",
+    "M\tscripts/verify-market-landing-payload.mjs",
+    "M\tsupabase/migrations/20260930074207_yqaa_knowledge_ingestion_finalize.sql",
+    "A\tsupabase/migrations/20261002080000_yqaa_finalize_safeupdate_newer_run_guard.sql",
+    "A\tsupabase/migrations/20261002091500_marketplace_featured_boost.sql",
+    "A\tsupabase/migrations/20261002093500_fix_recompute_gig_rank_ambiguous_alias.sql",
+    "A\ttests/auth-direct-market-modal.test.ts",
+    "A\ttests/auth-market-modal-portal-redirect.test.ts",
+    "A\ttests/auth-unified-lane.test.ts",
+    "A\ttests/estate-ownership-contract.test.ts",
+    "M\ttests/gsc-soft404-route-contract.test.ts",
+    "M\ttests/legacy-marketplace-redirect-contract.test.ts",
+    "A\ttests/market-home-most-requested.test.ts",
+    "A\ttests/market-no-fabricated-presence.test.ts",
+    "M\ttests/marketplace-auth-modal-handoff.test.ts",
+    "M\ttests/marketplace-auth-return.test.ts",
+    "M\ttests/marketplace-clean-url-estate.test.ts",
+    "M\ttests/marketplace-clerk-bypass.test.ts",
+    "A\ttests/marketplace-public-email-leak.test.ts",
+    "M\ttests/marketplace-public-route-contract.test.ts",
+    "M\ttests/portal-auth-lane-shell.test.ts",
+    "M\ttests/portal-clerk-bypass.test.ts",
+    "M\ttests/portal-logout-market-redirect.test.ts",
+    "M\ttests/portal-market-auth-handoff.test.ts",
+    "A\ttests/provider-intake-streamline.test.ts",
+    "A\ttests/provider-onboarding-unified.test.ts",
+    "A\ttests/role-routing-student-support-regression.test.ts",
+    "A\ttests/source-provenance-contract.test.ts",
+    "A\ttests/studio-estate-shell.test.ts",
+    "A\ttests/studio-run-authority.test.ts",
+    "M\ttests/yqaa-knowledge-ingestion-contract.test.ts"
+  ],
+  "live_grants_probed": false,
+  "credentials_or_business_rows_read": false,
+  "source_or_production_mutated": false
+}

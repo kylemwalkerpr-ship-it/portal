@@ -1,0 +1,71 @@
+{
+  "verdict": "PASS",
+  "scope": "FULL_FROZEN_SOURCE_ONLY_CANDIDATE_FOR_DRAFT_CI",
+  "observedAt": "2026-10-02T10:34:27.846621+00:00",
+  "candidateHead": "c305086c59d83f50135edd367f0d5e8399879619",
+  "frozenAggregate": "c29aa2958181fed59bed1dbe50e35a051af4d3f9c244fa7288e915af124fc1ce",
+  "planSha256": "4070eee984ce5bcb365e3e5dae3b5c214a8574d1630283364da819b8a5eaf89e",
+  "all12FileHashesMatch": true,
+  "tenUnchangedFromV4": true,
+  "sourceAcceptance": "PASS_FOR_DRAFT_CI_ONLY",
+  "mergeActivationAcceptance": "NOT_APPROVED",
+  "productionAutoapplyRelease": "HELD",
+  "realPostgres": "NOT_RUN",
+  "mustFix": [],
+  "priorFindings": {
+    "R1": "SOURCE_FIXED: actual owned advisory/authority transaction blocking chain",
+    "R2": "SOURCE_FIXED: numericOne exact bounded count parser; independent selftest PASS",
+    "R3": "SOURCE_FIXED: verbose psql SQLSTATE parser; independent selftest PASS",
+    "R4": "SOURCE_FIXED: candidate hash computed before service_role switch; private helper denial tests",
+    "R5": "SOURCE_FIXED: exact13 resolver contract and invalid shape tests; decisionId trusted context audit only",
+    "R6": "HELD_UNRESOLVED_RELEASE_BLOCKER: automatic main migration application still exists; no merge authorized",
+    "R7": "SOURCE_FIXED: explicit exact candidate checkout and mismatch failure in harness/workflow receipts",
+    "V4-1": "SOURCE_FIXED: synchronous observer preserves original rejected promise for caller; owned fulfilled/rejected operation outcomes and child closures are bounded-drained before sanitized receipt"
+  },
+  "actualChecks": [
+    {
+      "command": "Node22 --check scripts/test-studio-command-admission.mjs",
+      "exit": 0
+    },
+    {
+      "command": "Node22 scripts/test-studio-command-admission.mjs --self-test",
+      "exit": 0,
+      "result": "actual child exit17; later await rejects original error; owned child termination and closures PASS; operations drained; sanitized barrier FAIL receipt; no unhandled rejection"
+    },
+    {
+      "command": "Node22 --unhandled-rejections=strict scripts/test-studio-command-admission.mjs --self-test",
+      "exit": 0,
+      "result": "same failure-path assertions PASS under strict mode, stderr empty"
+    },
+    {
+      "command": "Node22 --unhandled-rejections=strict scripts/test-studio-command-admission.mjs with invalid review-only database target and isolated RUNNER_TEMP",
+      "exit": 1,
+      "result": "sanitized receipt exists before exit; error STUDIO_TEST_DATABASE_URL is required; all checks NOT_RUN; sessions empty; no SQL call"
+    },
+    {
+      "command": "git diff --check",
+      "exit": 0
+    },
+    {
+      "command": "Python SHA256 comparison across12 files and v4 inventory plus git rev-parse HEAD",
+      "result": "12/12 match, exactly script+evidence changed; ten source files unchanged; exact head+plan match"
+    }
+  ],
+  "staticReview": [
+    "Reviewed route inactive503 and detached routeCore identity/decode/authorize/atomic-RPC ordering; repository one typed RPC and result validation.",
+    "Reviewed decoder/hash byte limits and safe integer/Unicode rejection; no client actor/project/request-hash authority.",
+    "Reviewed SQL private owner/grants/RLS/fixed searchpath, deny-only production resolver, exact13 available/allowed+11 bindings; decisionId remains trusted context admission audit.",
+    "Reviewed actual owned authority/advisory chain and multiconnection source tests; commit witness then lost-response suppression/replay; precommit termination and fifth-insert atomic rollback; private-helper/table denial source.",
+    "Reviewed hosted exact candidate checkout, read-only permissions, loopback fixture, pinned PostgreSQL17 image, independent type/Jest/PG outcomes and sanitized always-uploaded receipt.",
+    "Reviewed v5 observer and finally cleanup helper; rejection handler attaches synchronously while original promise is returned unchanged; cleanup races record FAIL on incomplete drain before receipt."
+  ],
+  "limitations": [
+    "PASS is source-only permission to prepare draft CI; no hosted TSC/Jest/PostgreSQL acceptance, production schema approval, route activation or full architecture deployment proof.",
+    "Existing main migration autoapply path remains unresolved release blocker; no merge approval.",
+    "Dependency-free child/barrier selftest exercises actual shared observer/tracker/cleanup/receipt helpers, not PostgreSQL asyncPsql execution; real hosted SQL failure evidence remains pending."
+  ],
+  "noSourceEdits": true,
+  "noInstall": true,
+  "noSqlApply": true,
+  "noCommit": true
+}

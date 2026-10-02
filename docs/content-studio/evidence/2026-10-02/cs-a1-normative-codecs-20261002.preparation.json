@@ -1,0 +1,10 @@
+{
+  "design": "/tmp/cs-a1-normative-codecs-20261002.design.md",
+  "design_sha256": "5c9c97f2ef36ac7b26f47dd67d1eeca8e23e15c761576ed3d76588a30f252783",
+  "acceptance": "/tmp/cs-a1-normative-codecs-20261002.acceptance.json",
+  "acceptance_sha256": "af635fbe683e2692ea024d00e0f68186009967846afbe20c68390848d0093912",
+  "source_extract_sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623",
+  "status": "SAVED_ONLY_HOLD",
+  "interface_count": 29,
+  "source_mutation": false
+}
