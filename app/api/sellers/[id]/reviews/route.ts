@@ -10,7 +10,7 @@
  *     data: {
  *       reviews: Array<{
  *         id, rating, body, created_at, status,
- *         client: { id, full_name, email, avatar_url },
+ *         client: { id, full_name, avatar_url },   // never email: public route
  *         gig: { id, title, slug }
  *       }>,
  *       total_reviews: number,
@@ -103,7 +103,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (reviewerIds.length > 0) {
     const { data: profiles } = await db
       .from('profiles')
-      .select('id, full_name, email, avatar_url')
+      .select('id, full_name, avatar_url')
       .in('id', reviewerIds)
     for (const p of (profiles ?? [])) {
       profileMap.set(p.id, p)
@@ -138,7 +138,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ? {
             id: clientProfile.id,
             full_name: clientProfile.full_name,
-            email: clientProfile.email,
             avatar_url: clientProfile.avatar_url,
           }
         : null,

@@ -708,7 +708,6 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
               seller={{
                 id: gig.provider_id,
                 full_name: gig.provider?.full_name,
-                email: gig.provider?.email,
                 role: gig.provider_type,
                 avg_rating: gig.provider_avg_rating,
                 review_count: gig.provider_review_count,

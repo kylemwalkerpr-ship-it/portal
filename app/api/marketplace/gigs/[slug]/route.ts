@@ -1,9 +1,10 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
+import { providerDisplayName } from '@/lib/providerDisplayName'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-const RECOMMENDATION_SELECT = 'id, provider_id, slug, title, pitch, avg_rating, review_count, order_count, gallery_images, category, subcategory, jurisdiction, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, email)'
+const RECOMMENDATION_SELECT = 'id, provider_id, slug, title, pitch, avg_rating, review_count, order_count, gallery_images, category, subcategory, jurisdiction, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username)'
 
 export async function GET(_req: Request, context: { params: Promise<{ slug: string }> }) {
   const auth = await getOptionalPortalUser()
@@ -12,7 +13,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   const { data: gig, error } = await db
     .from('gigs')
-    .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username, created_at)')
+    .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, username, created_at)')
     .eq('slug', slug)
     .single()
 
@@ -147,7 +148,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
         '@type': 'Service',
         name: gig.title,
         description: gig.seo_description || gig.pitch || gig.description,
-        provider: { '@type': 'Person', name: gig.provider?.full_name || gig.provider?.email || 'YouSafe provider' },
+        provider: { '@type': 'Person', name: providerDisplayName(gig.provider) },
         offers: (gig.tiers || []).filter((t: any) => t.is_active).map((t: any) => ({ '@type': 'Offer', price: Number(t.price) / 100, priceCurrency: 'USD' })),
         aggregateRating: gig.review_count > 0 ? { '@type': 'AggregateRating', ratingValue: gig.avg_rating, reviewCount: gig.review_count } : undefined,
       },
