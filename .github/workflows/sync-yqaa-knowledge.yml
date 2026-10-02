@@ -54,6 +54,12 @@ jobs:
 
       - name: Sync service-role-only YQAA knowledge index
         run: node scripts/sync-yqaa-knowledge.mjs --dir .yqaa-kb-crawl
+        env:
+          # Finalize over the Management SQL endpoint: the atomic corpus swap
+          # exceeds PostgREST's 8s authenticator statement_timeout. Scoped to
+          # this step only (same secrets the migration workflow uses).
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
       - name: Upload crawl manifest
         if: always()
