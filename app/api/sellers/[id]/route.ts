@@ -125,8 +125,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       member_since: profile.created_at,
       rating_count: ratingCount,
       rating_avg: ratingAvg,
-      response_time: '1 hour',
-      is_online: provider.available !== false,
+      // Not measured: never claim a response time or live presence. The real
+      // "accepting work" toggle is exposed as `available` above.
+      response_time: null,
+      is_online: null,
       total_orders: totalOrders,
       total_gigs: totalGigs,
       verified: profile.status === 'active',
@@ -186,7 +188,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       rating_count: 0,
       rating_avg: null,
       response_time: null,
-      is_online: false,
+      is_online: null,
       total_orders: 0,
       total_gigs: 0,
       verified: anyProfile.status === 'active',

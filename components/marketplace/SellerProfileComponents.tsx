@@ -79,7 +79,7 @@ export interface SellerProfile {
   rating_count?: number
   rating_avg?: number | null
   response_time?: string
-  is_online?: boolean
+  is_online?: boolean | null
   total_orders?: number
   total_gigs?: number
   verified?: boolean
@@ -113,7 +113,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
       <div style={headerContent}>
         <div style={avatarContainer}>
           {seller.headshot_url ? <img src={seller.headshot_url} alt={displayName} style={avatarImage} /> : <div style={avatarPlaceholder}>{initial}</div>}
-          {seller.is_online !== false && <div style={onlineIndicator} />}
+          {seller.is_online === true && <div style={onlineIndicator} />}
         </div>
 
         <div style={headerInfo}>

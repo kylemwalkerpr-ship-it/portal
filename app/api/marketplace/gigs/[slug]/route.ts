@@ -74,8 +74,11 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     avg_rating: 0,
     review_count: 0,
     order_count: 0,
-    response_time: '1 hour',
-    is_online: true,
+    // No measured response-time or live-presence data exists yet (the only
+    // provider "replies" on record are seconds-apart test/auto traffic), so
+    // these stay null and the UI shows nothing instead of a fabricated claim.
+    response_time: null as string | null,
+    is_online: null as boolean | null,
   }
 
   if (providerGigs.length > 0) {
