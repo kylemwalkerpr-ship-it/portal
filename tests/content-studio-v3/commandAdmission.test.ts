@@ -1,6 +1,6 @@
 import { STUDIO_ACTIONS, decodeRunCommand, hashRunCommand, type RunCommandInput, type VerifiedCommandContext } from '@/lib/studioRuntime/contracts'
 import { admitRun } from '@/lib/studioRuntime/commandAdmission'
-import { createStudioRunRepository } from '@/lib/studioRuntime/repository'
+import { createStudioRunRepository, type RpcTransport } from '@/lib/studioRuntime/repository'
 
 const command: RunCommandInput = {
   actionKind: 'INGEST', subjectId: 'subject-1', inputRef: 'sha256:sealed-input', idempotencyKey: 'key-1',
@@ -74,8 +74,8 @@ describe('admission orchestration and RPC adapter', () => {
     })).toEqual({ kind: 'rejected', reason: 'AUTHORITY_BINDING_UNAVAILABLE' })
   })
   test('calls only the exact atomic SQL RPC and rejects malformed RPC receipts', async () => {
-    const rpc = jest.fn(async () => ({ data: { kind: 'accepted', runId: 'r', status: 'QUEUED', lastEventSequence: 1 }, error: null }))
-    const repo = createStudioRunRepository({ rpc } as any)
+    const rpc: jest.MockedFunction<RpcTransport['rpc']> = jest.fn(async (..._args: Parameters<RpcTransport['rpc']>) => ({ data: { kind: 'accepted', runId: 'r', status: 'QUEUED', lastEventSequence: 1 }, error: null }))
+    const repo = createStudioRunRepository({ rpc })
     await expect(repo.admit(command, context, hashRunCommand(command), { runId: 'r', stageId: 's', eventId: 'e' }))
       .resolves.toMatchObject({ kind: 'accepted' })
     expect(rpc).toHaveBeenCalledTimes(1)
