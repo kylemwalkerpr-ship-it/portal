@@ -179,7 +179,7 @@ function SellerCard({ seller }: { seller: SellerProfile }) {
                 {initial}
               </div>
             )}
-            {seller.is_online !== false && (
+            {seller.is_online === true && (
               <div style={cardOnlineIndicator} />
             )}
           </div>

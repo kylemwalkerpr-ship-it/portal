@@ -85,7 +85,9 @@ export default function ChatSidePane({
   const [chatId, setChatId] = React.useState(null)
   const [conversationId, setConversationId] = React.useState(null)
   const [messages, setMessages] = React.useState<any[]>([])
-  const [presence, setPresence] = React.useState('online')
+  // `presence` comes from the provider's "accepting work" toggle
+  // (attorney-chats API), not live presence. Unknown until loaded.
+  const [presence, setPresence] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [draft, setDraft] = React.useState('')
@@ -112,7 +114,7 @@ export default function ChatSidePane({
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Could not load thread.')
       if (!conversationIdRef.current) setMessages(d.messages || [])
-      setPresence(d.chat?.presence || 'online')
+      setPresence(d.chat?.presence || null)
     } catch (e: any) {
       if (!conversationIdRef.current) setError(e?.message || 'Could not load thread.')
     }
@@ -359,8 +361,8 @@ export default function ChatSidePane({
           {isPopover ? `Message ${attorneyName || 'specialist'}` : (attorneyName || 'Specialist')}
         </div>
         <div style={{ fontSize: isPopover ? 11 : 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: isPopover ? SANS : MONO, letterSpacing: isPopover ? 0 : '0.1em', textTransform: isPopover ? 'none' : 'uppercase', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {presence === 'online' ? 'Online' : 'Away'}
-          {responseTime ? ` · Avg. response: ${responseTime}` : (presence === 'online' ? ' · quick replies likely' : ' · will respond when available')}
+          {presence === 'online' ? 'Accepting messages' : presence === 'offline' ? 'Away' : 'Send a message'}
+          {responseTime ? ` · Avg. response: ${responseTime}` : ''}
         </div>
       </div>
       <button onClick={onClose} aria-label="Close" style={{ border: isPopover ? 'none' : `1px solid ${BORDER}`, background: isPopover ? 'transparent' : PANEL2, color: MUTED, borderRadius: 999, width: 40, height: 40, cursor: 'pointer', fontSize: isPopover ? 28 : 18, lineHeight: 1, fontFamily: F.ui, flex: '0 0 40px' }}>×</button>
@@ -371,7 +373,7 @@ export default function ChatSidePane({
     <div className={`ys-gig-chat-availability ${presence === 'online' ? 'is-online' : 'is-away'}`} role="status">
       <span aria-hidden="true">{presence === 'online' ? '●' : '◐'}</span>
       <span>
-        {presence === 'online' ? `${attorneyName || 'This specialist'} is online now.` : `${attorneyName || 'This specialist'} is away right now.`}
+        {presence === 'offline' ? `${attorneyName || 'This specialist'} is away right now.` : `${attorneyName || 'This specialist'} replies here when available.`}
         {responseTime ? ` Typical response time: ${responseTime}.` : ''}
       </span>
     </div>

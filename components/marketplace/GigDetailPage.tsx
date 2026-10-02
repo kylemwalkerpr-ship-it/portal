@@ -755,7 +755,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
           <span className="ys-floating-message-copy">
             <strong>Message {publicProviderName}</strong>
             <small>
-              {gig.provider_is_online ? 'Online' : 'Available'}
+              {gig.provider_is_online === true ? 'Online' : 'Send a message'}
               {gig.provider_response_time ? ` · Avg. response: ${gig.provider_response_time}` : ''}
             </small>
           </span>
