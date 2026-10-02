@@ -46,9 +46,9 @@ describe('Marketplace visual modernization completion', () => {
 
   test('derives real seller level, queue and repeat-client signals without writing synthetic counters', () => {
     expect(reputationRoute).toContain("from('seller_level_snapshots')")
-    expect(reputationRoute).toContain("select('id', { count: 'exact', head: true })")
+    expect(reputationRoute).toContain(".in('status', ACTIVE_QUEUE_STATUSES)")
     expect(reputationRoute).toContain("select('client_id, status')")
-    expect(reputationRoute).toContain('active_queue_count: Number(activeQueueRes.count || 0)')
+    expect(reputationRoute).toContain('active_queue_count: activeQueueCount,')
     expect(reputationRoute).toContain('repeat_client_count: historyComplete ? repeatClientCount : null')
     expect(reputationRoute).toContain('repeat_order_count: historyComplete ? repeatOrderCount : null')
     expect(reputationRoute).toContain('MAX_REPUTATION_HISTORY_ROWS = 5000')
