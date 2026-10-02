@@ -246,7 +246,7 @@ function evaluateStudioClaimFreshnessFacts(input: ClaimEvaluationInputV1, progre
     for (let index = 0; index < claim.supports.length; index += 1) {
       const support = claim.supports[index]
       if (support && typeof support === 'object' &&
-          (support as Record<string, unknown>).relation === 'contradicts' && (support as Record<string, unknown>).state === 'known') {
+          support.relation === 'contradicts' && support.state === 'known') {
         knownCriticalContradiction = true
         add(progress.hardReasons, 'CRITICAL_CONTRADICTION')
       }
