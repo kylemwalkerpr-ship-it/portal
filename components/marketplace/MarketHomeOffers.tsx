@@ -24,9 +24,13 @@ export function MostRequestedRail({ cards }: { cards: MostRequestedCard[] }) {
                     byte budget (market-root payload gate) and every attribute ships
                     twice (HTML + RSC payload). CSS aspect-ratio reserves the box, so
                     no width/height is needed for CLS. First row is eager (default). */}
+                {/* No image: a branded placeholder in the same fixed-aspect slot so
+                    every rail card keeps the same size. */}
                 {card.imageUrl ? (
                   <img src={card.imageUrl} alt="" loading={i < 4 ? undefined : 'lazy'} />
-                ) : null}
+                ) : (
+                  <i className="cw-mr-ph" />
+                )}
                 <span className="cw-mr-kicker">{card.kicker}</span>
                 <span className="cw-mr-title">{card.title}</span>
                 <span className="cw-mr-outcome">{card.outcome}</span>
