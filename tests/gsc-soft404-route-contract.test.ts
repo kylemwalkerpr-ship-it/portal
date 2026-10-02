@@ -29,8 +29,8 @@ describe('GSC soft-404 route contract', () => {
 
   test('seller onboarding link remains protected', () => {
     const contract = read('tests/marketplace-public-route-contract.test.ts')
-    expect(contract).toContain("{ label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up?intent=provider&return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fonboarding%2Fprovider' }")
-    // And the live footer still points at the protected portal sign-up.
-    expect(read('components/marketplace/MarketplaceFooter.tsx')).toContain("href: 'https://portal.yousafeconsultancy.com/sign-up?intent=provider")
+    expect(contract).toContain("{ label: 'Become a seller', href: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=provider&return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fonboarding%2Fprovider' }")
+    // And the live footer opens the Market sign-up modal into the protected application.
+    expect(read('components/marketplace/MarketplaceFooter.tsx')).toContain("href: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=provider")
   })
 })

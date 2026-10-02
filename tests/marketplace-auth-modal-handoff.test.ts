@@ -49,12 +49,12 @@ describe('route and UI wiring', () => {
     expect(portalGate).not.toContain('shouldRedirectLegacyStudentSignIn(pathname, searchParams)')
   })
 
-  test('member lanes use the canonical portal pages; auth nav opens the shared branded modal and signs out to Market', () => {
+  test('member lanes open the Market modal directly (no portal hop); auth nav opens the shared branded modal and signs out to Market', () => {
     expect(memberModal).toContain("signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1'")
-    expect(memberModal).toContain("signInHref: 'https://portal.yousafeconsultancy.com/sign-in'")
-    expect(memberModal).toContain("signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=attorney'")
-    expect(memberModal).toContain("signUpHref: 'https://portal.yousafeconsultancy.com/sign-up?intent=consultant'")
-    expect(memberModal).not.toMatch(/portal\.yousafeconsultancy\.com\/sign-(in|up)\/(student|attorney|consultant)/)
+    expect(memberModal).toContain("signInHref: 'https://market.yousafeconsultancy.com/?ys_sign_in=1&intent=attorney'")
+    expect(memberModal).toContain("signUpHref: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=attorney'")
+    expect(memberModal).toContain("signUpHref: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=consultant'")
+    expect(memberModal).not.toMatch(/portal\.yousafeconsultancy\.com\/sign-(in|up)/)
     expect(authNav).toContain("import { openYsSignIn, openYsSignUp } from '@/lib/auth/ysAuthModal'")
     expect(authNav).toContain('openYsSignIn(clerk, { returnTo: request.returnTo, intent: request.intent })')
     expect(authNav).toContain('readMarketAuthRequest(href)')

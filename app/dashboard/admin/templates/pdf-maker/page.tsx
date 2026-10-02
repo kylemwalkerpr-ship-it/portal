@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { listManifestSlugs } from '@/lib/templatePdfManifests'
@@ -9,8 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function PdfMakerPage() {
   const auth = await requireAdminUser()
   if ('error' in auth) {
-    if (auth.status === 401) redirect('/sign-in?next=/dashboard/admin/templates/pdf-maker')
-    redirect('/dashboard')
+    redirectForPortalAuthFailure(auth, '/dashboard/admin/templates/pdf-maker')
   }
   const explicit = new Set(listManifestSlugs())
   const slugs = TEMPLATE_PACKS.map((p) => ({

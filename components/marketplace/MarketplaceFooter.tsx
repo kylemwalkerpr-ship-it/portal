@@ -16,7 +16,7 @@ const NAV_LINKS: FooterLink[] = [
   { label: 'Services', href: '/gigs' },
   { label: 'File shop', href: '/shop' },
   { label: 'Categories', href: '/categories' },
-  { label: 'Become a seller', href: 'https://portal.yousafeconsultancy.com/sign-up?intent=provider&return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fonboarding%2Fprovider' },
+  { label: 'Become a seller', href: 'https://market.yousafeconsultancy.com/?ys_sign_up=1&intent=provider&return_to=https%3A%2F%2Fportal.yousafeconsultancy.com%2Fonboarding%2Fprovider' },
   { label: 'Contact', href: 'https://usa.yousafeconsultancy.com/contact/' },
   { label: 'Help', href: '/#faq' },
   { label: 'Sitemap', href: '/sitemap.xml' },

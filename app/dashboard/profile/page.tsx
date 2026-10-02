@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { redirectForPortalAuthFailure } from '@/lib/auth/serverAuthRedirect'
 import { requirePortalUser } from '@/lib/portalAuth'
 
 /**
@@ -17,7 +18,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 export default async function ProfileRedirectPage() {
   const auth = await requirePortalUser()
   if ('error' in auth) {
-    redirect('/sign-in?return_to=/dashboard/profile')
+    redirectForPortalAuthFailure(auth, '/dashboard/profile')
   }
   if (auth.role === 'attorney') {
     redirect('/dashboard?goto=profile')

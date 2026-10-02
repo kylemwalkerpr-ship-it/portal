@@ -21,7 +21,15 @@
  *
  * Pure function of the URL: no cookies, no crypto (1102 budget).
  */
-import { normalizeReturnToParams, pickReturnTo, PORTAL_ORIGIN } from './returnTo'
+import {
+  buildAuthUrl,
+  normalizeAuthIntent,
+  normalizeReturnTo,
+  normalizeReturnToParams,
+  pickReturnTo,
+  PORTAL_ORIGIN,
+  type AuthMode,
+} from './returnTo'
 
 export const LEGACY_SIGN_IN_LANES: ReadonlySet<string> = new Set([
   'student',
@@ -251,4 +259,65 @@ export function anonymousPortalRootDestination(requestUrl: string | URL, clientU
     if (modal) return modal
   }
   return new URL(`/${url.search}`, MARKET_AUTH_ORIGIN)
+}
+
+// ── Protected portal documents -> Market modal in ONE hop ─────────────────
+//
+// Middleware and every server page guard answer an anonymous visitor with the
+// Market modal URL directly. They used to emit portal
+// `/sign-in?return_to=<abs>` (e.g. `/sign-in?return_to=…/dashboard/admin/users`),
+// which itself 302'd to the Market modal: an extra visible hop, and — for a
+// SIGNED-IN user whose profile check failed — a redirect loop, because portal
+// /sign-in forwards a signed-in visitor straight back to `return_to`.
+
+/**
+ * Market modal URL for a portal path (relative path or absolute estate URL).
+ * `return_to` is the allow-listed absolute destination; `intent` is only a
+ * self-service lane (explicit, or inferred from the path). Admin / support
+ * destinations keep their `return_to` (real admins land there after sign-in)
+ * but never produce an intent.
+ */
+export function marketAuthUrlForPortalPath(
+  pathOrUrl: string | URL,
+  options: { mode?: AuthMode; intent?: string | null } = {},
+): string {
+  const returnTo = normalizeReturnTo(pathOrUrl.toString(), PORTAL_ORIGIN)
+  const intent = normalizeAuthIntent(options.intent) ?? inferAuthIntentFromReturnTo(returnTo)
+  return buildAuthUrl(options.mode ?? 'sign-in', { returnTo, intent })
+}
+
+/**
+ * Anonymous middleware answer for a protected portal document: the Market
+ * modal (one hop). `/onboarding/provider` opens sign-up (as its page guard
+ * always did); `/onboarding*` keeps an explicit `intent` / `type` hint.
+ * Pure URL work (no cookies, crypto or I/O) — safe for the 1102 budget.
+ */
+export function marketSignInUrlForProtectedPath(requestUrl: string | URL): URL {
+  const url = new URL(requestUrl.toString())
+  const path = url.pathname.length > 1 && url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname
+  const isOnboarding = path === '/onboarding' || path.startsWith('/onboarding/')
+  const explicitIntent = isOnboarding
+    ? url.searchParams.get('intent') ?? url.searchParams.get('type')
+    : null
+  const mode: AuthMode = path === '/onboarding/provider' ? 'sign-up' : 'sign-in'
+  return new URL(marketAuthUrlForPortalPath(`${url.pathname}${url.search}`, { mode, intent: explicitIntent }))
+}
+
+/**
+ * Where a server page sends a request whose portal auth check failed:
+ *
+ * - 401 (no session): the Market sign-in modal with `return_to` = this page.
+ * - anything else (signed in, but no profile / inactive / forbidden / DB
+ *   error): the user's own `/dashboard`, which resolves the DB role (and sends
+ *   a profile-less account to /onboarding). NEVER portal `/sign-in` — a
+ *   signed-in visitor there is forwarded straight back to `return_to`, which
+ *   is the loop this replaces.
+ */
+export function portalAuthFailureDestination(
+  status: number,
+  returnPath: string,
+  options: { mode?: AuthMode; intent?: string | null } = {},
+): string {
+  if (status === 401) return marketAuthUrlForPortalPath(returnPath, options)
+  return '/dashboard'
 }
