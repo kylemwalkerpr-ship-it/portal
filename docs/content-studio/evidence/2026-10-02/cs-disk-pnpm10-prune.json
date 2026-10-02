@@ -1,0 +1,1 @@
+{"started_at": 1790935570.1215842, "free_before": 1189695488, "command": ["corepack", "pnpm@10", "store", "prune"], "policy": "supported matching pnpm10 store prune only, installed graphs preserved", "exit_code": 0, "stdout": "Removed all cached metadata files\nRemoved 44570 files\nRemoved 568 packages\n", "stderr": "", "free_after": 2636288000}

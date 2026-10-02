@@ -1,0 +1,27 @@
+[
+  {
+    "id": "cs-a4-hosted-typecheck-correction-20261002-v6",
+    "prepared_request": "/tmp/cs-a4-hosted-typecheck-correction-20261002-v6.released.request.json",
+    "sha256": "6d5e1ed7286c8cef06a64147263e75f36e077e59d326a8648b7fbb8a3fed6dfd",
+    "head": "a256a2aa8cef7d8f54fb200e3b96f5f90031a9f9",
+    "status": [],
+    "existing_job_count": 0
+  },
+  {
+    "id": "cs-command-admission-async-cleanup-correction-20261002-v5",
+    "prepared_request": "/tmp/cs-command-admission-async-cleanup-correction-20261002-v5.released.request.json",
+    "sha256": "918c9f6603c2bfe2f0e0c0c37570ea1f842975e17a8ad21b752542115efe83aa",
+    "head": "c305086c59d83f50135edd367f0d5e8399879619",
+    "status": [
+      "?? .github/workflows/studio-command-admission-test.yml",
+      "?? app/api/content-studio/v3/",
+      "?? docs/content-studio/release/",
+      "?? lib/studioRuntime/",
+      "?? scripts/test-studio-command-admission.mjs",
+      "?? supabase/migrations/20261001000000_studio_command_admission.sql",
+      "?? tests/content-studio-v3/",
+      "?? tests/sql/studio-command-admission.sql"
+    ],
+    "existing_job_count": 0
+  }
+]

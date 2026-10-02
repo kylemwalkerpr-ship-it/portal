@@ -1,0 +1,43 @@
+{
+  "date_utc": "2026-10-02T10:06:21.053251+00:00",
+  "read_only": true,
+  "observed_origin_main": "5ec169fd2dd67bf09fd4d85e739f20ea4809797b",
+  "inspected_worktree": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-a4-reviewed-integration-20261002",
+  "plan_path": "/tmp/cs-full-architecture-next-packets-20261002.md",
+  "plan_sha256": "dffe87184a3d9f9ee6949b820113bb6da70db598b0d5557b91e990f9cc1dba17",
+  "canonical_pins": [
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+      "sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+      "sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-22-content-studio-revamp-final-audit.md",
+      "sha256": "2f53c8303f66b58e394e46d6ed1a929b9d93169285bec7e9180655bae8188525"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json",
+      "sha256": "2b5b5808d6745a820ff6d25ffd54e2925d05555ca206d561405b5085258aac9b"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-content-studio-delivery-state.json",
+      "sha256": "e363bde3174be383ef4b88a1e5935e09ed9c2c8f3499042b7a6b3f8dd83c606e"
+    },
+    {
+      "path": "docs/superpowers/content-studio-execution-policy.md",
+      "sha256": "6b39d84c85e38850368a2e1e6cd59196bdfb7267b557270881c16b53ebebeb9f"
+    },
+    {
+      "path": "docs/superpowers/content-studio-kickoff.md",
+      "sha256": "7a2ed41a02899d0117d650f4f9781b62c37917179f346d571a380c48066f60c5"
+    },
+    {
+      "path": "docs/superpowers/content-studio-revamp.md",
+      "sha256": "ee54ab7b6eef260c5f3b4cc8ff7e74791c7379230a737a75d5aae1b0653a21df"
+    }
+  ],
+  "no_source_or_production_mutation": true
+}
