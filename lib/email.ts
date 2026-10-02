@@ -59,11 +59,15 @@ export function providerApplicationReceivedEmail(args: {
   fullName: string
   lane: 'attorney' | 'consultant'
   licensed: boolean
+  /** Consultants may apply without a credential; default true for older callers. */
+  hasCredential?: boolean
 }): { subject: string; html: string } {
   const name = escapeHtml(args.fullName || 'there')
   const verify = args.licensed
     ? 'We are now verifying your licence with your bar / regulator.'
-    : 'We are now verifying your credential with the issuing body.'
+    : args.hasCredential === false
+      ? 'We are now reviewing your application.'
+      : 'We are now verifying your credential with the issuing body.'
   const subject = args.lane === 'attorney'
     ? 'We received your YouSafe attorney application'
     : 'We received your YouSafe consultant application'
