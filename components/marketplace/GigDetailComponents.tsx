@@ -21,7 +21,7 @@ interface SellerProfileCardProps {
     review_count?: number
     order_count?: number
     response_time?: string | null
-    is_online?: boolean
+    is_online?: boolean | null
     // Resolved seller headshot from attorneys.headshot_url or
     // consultants.headshot_url. Null falls back to the initials Avatar.
     headshot_url?: string | null
@@ -230,8 +230,10 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
         <div style={{ minWidth: 0 }}>
           <p style={nameStyle}>{displayName}</p>
           <p style={roleStyle}>
-            <span style={onlineDot} />
-            {seller.is_online ? 'Online' : 'Offline'} · {seller.role?.replace('_', ' ') || 'Expert'}
+            {/* Presence is shown only when it is actually known (never defaulted). */}
+            {typeof seller.is_online === 'boolean' && <span style={onlineDot} />}
+            {typeof seller.is_online === 'boolean' ? `${seller.is_online ? 'Online' : 'Offline'} · ` : ''}
+            {seller.role?.replace('_', ' ') || 'Expert'}
           </p>
         </div>
       </div>
