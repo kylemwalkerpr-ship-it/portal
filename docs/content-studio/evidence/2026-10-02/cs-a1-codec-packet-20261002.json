@@ -1,0 +1,84 @@
+{
+  "status": "IMPLEMENTED_LOCAL_REVIEW_PENDING",
+  "packet": "A1.1b.IDENTITY+OPPORTUNITY+DECISION",
+  "worktree": "/Users/phantomdarne/Documents/GitHub/portal-worktrees/studio-normative-codecs-20261002",
+  "branch": "feat/studio-normative-codecs-20261002",
+  "base_commit": "61d5e37876c7e43ea4dae573276c43e3daae84b3",
+  "normative_sources": {
+    "architecture": "docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md",
+    "architecture_sha256": "86fb7d46843c7cbb8afb063bd53ec2e2127bf400d8b9baa32469870bf9b49623",
+    "blueprint": "docs/superpowers/plans/2026-09-22-content-studio-revamp-blueprint.md",
+    "blueprint_sha256": "7423acaa8fdb4f31937bbeec2e637c885293202fdc8da620a1961265633e2366"
+  },
+  "implementation": {
+    "interfaces": [
+      "SemanticIdentity",
+      "SemanticFact",
+      "SemanticRelation",
+      "SemanticOpportunity",
+      "InformationGainAssessment",
+      "InterventionRecord",
+      "DecisionState",
+      "DecisionRecord"
+    ],
+    "supporting_aliases": [
+      "DecisionFeature",
+      "JevAnswer",
+      "PredictedMetric"
+    ],
+    "registry": "normativeRegistry.ts composes family descriptors once",
+    "hashing": "delegates to frozen kernel hashStructuredPayload",
+    "actions": "reuses kernel STUDIO_INTERVENTION_KINDS; does not duplicate execution actions",
+    "inactive": true,
+    "authority_or_permission": false,
+    "runtime_consumers": false,
+    "migrations_or_deployment": false
+  },
+  "validation": {
+    "focused_jest": "PASS 1 suite, 9 tests",
+    "environment": "Node 22.22.2; existing shared dependency graph through NODE_PATH",
+    "qualification": "not exact-lock or hosted CI; worktree has no installed dependencies",
+    "git_diff_cached_check": "PASS",
+    "full_repository_tsc": "NOT_RUN",
+    "hosted_ci": "NOT_RUN",
+    "focused_jest_log": "docs/content-studio/evidence/2026-10-02/cs-a1-codec-jest.log"
+  },
+  "frozen_kernel_reconciliation": {
+    "accidental_path_collision": "Initial aggregator write used existing tracked contracts/registry.ts; restored byte-for-byte from worktree HEAD before continuing.",
+    "kernel_source_edited": false,
+    "all_four_frozen_paths_match_HEAD": true,
+    "files": {
+      "lib/contentStudioV3/contracts/registry.ts": "07cc998ce16e61f9848bc2a9ad6b5c238b86edfdc3c5e532ca7829d50d7ff735",
+      "lib/contentStudioV3/contracts/schema.ts": "58c10aa8ae57519797f67273549ebe45bd6abe713ce1ca966224ce829660a16c",
+      "lib/contentStudioV3/contracts/hashes.ts": "d31258f4d0a64de0c444296088ccdf3206ba15752f4eac08446ce27f7eeeaf28",
+      "tests/content-studio-v3/contracts.test.ts": "fa1ee60086ca8e7ff48c6c7113c6fcfc775ac9f9b367e701c62fe668895587fb"
+    }
+  },
+  "source_sha256": {
+    "lib/contentStudioV3/contracts/canonicalSchema.ts": "e66502d67e3683375fd36c05c2931d015804e983d47c052da9e8d1be0555554a",
+    "lib/contentStudioV3/contracts/semantic.ts": "9e9d38223d0a5653039b9b73f5f7fc8ea3acc2166907bccbba762f4d8b6a8d15",
+    "lib/contentStudioV3/contracts/opportunity.ts": "de040fe01e81b49286e3fd1986d92abae84503605c82a004814f77375ae13baa",
+    "lib/contentStudioV3/contracts/decision.ts": "866cc76686396bb2fd5d1d4fb580b7d0ee49af007b788f1b33a3b19d86e1e716",
+    "lib/contentStudioV3/contracts/normativeRegistry.ts": "10b90735834086ce801d72d289db6fa614170170f974a95dd55fbd3061194e7b",
+    "tests/content-studio-v3/normativeCodecs.test.ts": "807f5b23564e154978c698963cea0b7e55b462786302b1f7b6d40457ab1388f9"
+  },
+  "not_implemented_by_packet": [
+    "GateEvaluation",
+    "release and publication contracts",
+    "outcome contracts",
+    "runtime identities and envelopes",
+    "ExecutorPolicy",
+    "PhaseEvidenceState",
+    "ComputeBudget",
+    "ReviewerCredential",
+    "ReviewApproval",
+    "PublicationTarget",
+    "remaining prose-only layouts including ContractV3 and IntegrationBinding"
+  ],
+  "limitations": [
+    "Registry-context fixtures prove only structural membership against supplied versioned values; they are synthetic and confer no authority.",
+    "Hashes are format-validated; no canonical fact-hash preimage/domain rule was invented.",
+    "D6 schema enforces one-to-six subjects; the canonical subject shape has no article/offer role tag, so role/cardinality grounding remains external.",
+    "Exact-lock hosted CI and independent review are pending; no push, merge, migration, route activation or deployment."
+  ]
+}
