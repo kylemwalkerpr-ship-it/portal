@@ -104,4 +104,4 @@ begin
 
   return round(score, 4);
 end;
-$function$;;
+$function$;
