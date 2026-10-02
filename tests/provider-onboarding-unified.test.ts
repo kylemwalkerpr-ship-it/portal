@@ -71,13 +71,15 @@ describe('single provider application', () => {
     expect((validateProviderApplication({ ...licensed, year_admitted: '99' }) as any).errors.year_admitted).toBeTruthy()
   })
 
-  test('consultants need a specialty and a credential (FAQ: every consultant is credentialed)', () => {
+  test('consultants need a specialty; a credential is optional', () => {
     const ok = validateProviderApplication({ provider_type: 'consultant', full_name: 'C', country: 'US', practice_areas: ['Admissions'], credential_body: 'ICEF (agency / counsellor)', registration_number: 'ICEF-1234', terms_accepted: 'on' }) as any
     expect(ok.ok).toBe(true)
     expect(ok.role).toBe('consultant')
     const empty = validateProviderApplication({ provider_type: 'consultant' }) as any
     expect(empty.ok).toBe(false)
-    expect(Object.keys(empty.errors)).toEqual(expect.arrayContaining(['full_name', 'country', 'specialty', 'credential_body', 'registration_number', 'consent']))
+    expect(Object.keys(empty.errors)).toEqual(expect.arrayContaining(['full_name', 'country', 'specialty', 'consent']))
+    expect(empty.errors.credential_body).toBeUndefined()
+    expect(empty.errors.registration_number).toBeUndefined()
     expect(empty.errors.capacity).toBeUndefined()
   })
 

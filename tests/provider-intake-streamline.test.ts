@@ -87,10 +87,18 @@ describe('short provider application', () => {
     expect(other.errors.country).toBeTruthy()
   })
 
-  test('consultant credential fields are required; optional credential URL validated', () => {
+  test('consultant credential fields are optional, validated only when filled; credential URL validated', () => {
     expect(validateProviderApplication(consultant).ok).toBe(true)
-    const r = validateProviderApplication({ ...consultant, credential_body: '', registration_number: '' }) as any
-    expect(Object.keys(r.errors).sort()).toEqual(['credential_body', 'registration_number'])
+    const blank = validateProviderApplication({ ...consultant, credential_body: '', registration_number: '' }) as any
+    expect(blank.ok).toBe(true)
+    expect(blank.data.credential_body).toBeNull()
+    expect(blank.data.registration_number).toBeNull()
+    const onlyBody = validateProviderApplication({ ...consultant, registration_number: '' }) as any
+    expect(onlyBody.ok).toBe(true)
+    const badNumber = validateProviderApplication({ ...consultant, registration_number: 'X' }) as any
+    expect(Object.keys(badNumber.errors)).toEqual(['registration_number'])
+    const badBody = validateProviderApplication({ ...consultant, credential_body: 'Made-up body' }) as any
+    expect(Object.keys(badBody.errors)).toEqual(['credential_body'])
     const url = validateProviderApplication({ ...consultant, credential_url: 'not a url' }) as any
     expect(url.errors.credential_url).toBeTruthy()
   })

@@ -193,7 +193,7 @@ export default function ProviderApplicationForm({
     <div>
       <label style={label} htmlFor={name}>{title}{opts.required ? ' *' : ''}</label>
       <select id={name} name={name} required={opts.required} value={values[name] ?? ''} onChange={set(name)} aria-invalid={errors[name] ? true : undefined} style={input}>
-        <option value="" disabled>Choose…</option>
+        <option value="" disabled={opts.required}>{opts.required ? 'Choose…' : 'None / not applicable'}</option>
         {children}
       </select>
       {opts.help && <div style={hint}>{opts.help}</div>}
@@ -273,8 +273,8 @@ export default function ProviderApplicationForm({
             {type === 'consultant' && (
               <>
                 {select('specialty', 'Main specialty', specialties.map((s) => <option key={s} value={s}>{s}</option>), { required: true, help: 'Add more specialties on your profile after approval.' })}
-                {select('credential_body', 'Credential issued by', credentialBodies.map((b) => <option key={b} value={b}>{b}</option>), { required: true })}
-                {text('registration_number', 'Credential / membership number', { required: true, placeholder: 'e.g. ICEF 12345', help: 'We verify every consultant credential before approval.' })}
+                {select('credential_body', 'Credential issued by (optional)', credentialBodies.map((b) => <option key={b} value={b}>{b}</option>))}
+                {text('registration_number', 'Credential / membership number (optional)', { placeholder: 'e.g. ICEF 12345', help: 'Not required for consultants. If you hold one, we verify it before approval.' })}
               </>
             )}
 
