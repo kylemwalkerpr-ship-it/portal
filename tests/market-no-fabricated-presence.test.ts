@@ -26,7 +26,8 @@ describe('market: no fabricated response time / online status', () => {
     expect(chat).not.toMatch(/quick replies likely/)
     expect(chat).not.toMatch(/is online now/)
     const card = read('components/marketplace/GigDetailComponents.tsx')
-    expect(card).not.toMatch(/seller\.is_online \? 'Online' : 'Offline'\} ·/)
+    expect(card).not.toMatch(/[^$]\{seller\.is_online \? 'Online' : 'Offline'\} · \{seller\.role/)
+    expect(card).toMatch(/typeof seller\.is_online === 'boolean'/)
   })
 
   it('seller avatars only show the online dot when presence is known true', () => {
