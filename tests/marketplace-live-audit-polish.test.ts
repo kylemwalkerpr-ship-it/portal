@@ -14,7 +14,9 @@ describe('Marketplace live-audit polish regressions', () => {
   const trustBar = read('components/marketplace/MarketplaceGigTrustBar.tsx')
 
   test('renders one authoritative category directory instead of the legacy SEO directory plus the interactive directory', () => {
-    expect(categoriesPage).toContain('return <MarketplaceCategoriesIndex />')
+    // Exactly one directory render (a JSON-LD breadcrumb script alongside it is fine).
+    expect(categoriesPage.match(/<MarketplaceCategoriesIndex \/>/g)).toHaveLength(1)
+    expect(categoriesPage).not.toMatch(/<main[\s>]/)
     expect(categoriesPage).not.toContain('CategoriesIndexSeo')
   })
 
