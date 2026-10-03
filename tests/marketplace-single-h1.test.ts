@@ -19,3 +19,14 @@ describe('marketplace pages render exactly one H1', () => {
     expect(read('components/design/inquiry-intake-form.jsx')).toContain("headingLevel === 1 ? 'h1' : 'h2'")
   })
 })
+
+describe('provider profiles are never sitemap-only orphans', () => {
+  test('/providers server-renders an A-Z link list of active profiles', () => {
+    const page = read('app/marketplace/providers/page.tsx')
+    expect(page).toContain('<ProvidersDirectoryLinks />')
+    const list = read('components/marketplace/ProvidersDirectoryLinks.tsx')
+    expect(list).toContain("p.status !== 'active'")
+    expect(list).toContain('href={`/providers/${p.username}`}')
+    expect(list).not.toContain("'use client'")
+  })
+})
