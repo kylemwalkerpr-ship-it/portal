@@ -84,7 +84,8 @@ describe('P11 GEO visibility reporting', () => {
   it('requires status and admin surfaces to name the P11 successful-attempt denominator and legacy separation', () => {
     const status = fs.readFileSync(path.join(process.cwd(), 'app/api/seo-engine/status/route.ts'), 'utf8')
     const admin = fs.readFileSync(path.join(process.cwd(), 'components/design/admin-seo-engine.tsx'), 'utf8')
-    expect(status).toContain('loadVisibilityFeed')
+    expect(status).toContain('loadVisibilityStatusSummary')
+    expect(status).not.toContain('loadVisibilityFeed(')
     expect(status).toContain('reporting')
     expect(admin).toContain('successful provider attempts')
     expect(admin).toContain('authoritative owners audited')
