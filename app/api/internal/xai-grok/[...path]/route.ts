@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { getAiSettings } from '@/lib/aiKeyVault'
 import { forceRefreshSuperGrokAccessToken } from '@/lib/xaiSuperGrokOAuth'
 import {
   decodeJwtSubject,
@@ -30,6 +31,29 @@ const PASSTHROUGH_RESPONSE_HEADERS = [
 type RouteContext = { params: Promise<{ path: string[] }> }
 type JsonBody = Record<string, unknown>
 type StreamBridge = 'responses' | 'chat/completions' | null
+
+function sameSecret(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+/**
+ * The server-side refresh replays the request with the portal's own stored
+ * SuperGrok token. Only a caller already holding that exact stored access
+ * token may trigger it; any other bearer (for example a marketplace user's
+ * Clerk session JWT that passed middleware) gets the upstream 401 as-is and
+ * can never borrow the stored subscription.
+ */
+async function callerHoldsStoredSuperGrokToken(token: string): Promise<boolean> {
+  try {
+    const settings = await getAiSettings(true)
+    return sameSecret(String(settings?.xai_oauth_access_token || '').trim(), token)
+  } catch {
+    return false
+  }
+}
 
 function bearerToken(request: NextRequest): string {
   const authorization = request.headers.get('authorization') || ''
@@ -311,7 +335,7 @@ async function forward(request: NextRequest, context: RouteContext): Promise<Res
   // expiry. A 401 from the subscription proxy gets exactly one forced token
   // refresh and one replay. Developer API keys and 403 policy/quota failures
   // must never enter this recovery path.
-  if (!developerKey && upstream.status === 401) {
+  if (!developerKey && upstream.status === 401 && await callerHoldsStoredSuperGrokToken(token)) {
     const refreshed = await forceRefreshSuperGrokAccessToken()
     if (refreshed?.accessToken) {
       try { await upstream.body?.cancel() } catch { /* best effort */ }

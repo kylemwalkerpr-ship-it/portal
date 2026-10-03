@@ -1,4 +1,6 @@
 import { getClerkUserId } from './auth'
+import { identityFromClerkUser } from './auth/clerkIdentity'
+import { escapeIlikeExact } from './auth/ilike'
 import { createSupabaseAdminClient, getSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
 import { headers as nextHeaders } from 'next/headers'
@@ -98,24 +100,21 @@ export async function requirePortalUser(request?: NextRequest): Promise<
     try {
       const clerk = await clerkClient()
       const clerkUser = await clerk.users.getUser(clerkUserId)
-      const clerkEmail = (
-        clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress
-        ?? clerkUser.emailAddresses[0]?.emailAddress
-        ?? ''
-      ).trim().toLowerCase()
+      // Relink only on Clerk's VERIFIED primary email, matched exactly.
+      const clerkEmail = identityFromClerkUser(clerkUser)?.email ?? ''
 
       if (clerkEmail) {
         let byEmail = await db
           .from('profiles')
           .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
-          .ilike('email', clerkEmail)
+          .ilike('email', escapeIlikeExact(clerkEmail))
           .maybeSingle()
 
         if (byEmail.error && /column .*(country_code|country_source)/i.test(byEmail.error.message || '')) {
           byEmail = await db
             .from('profiles')
             .select('id, clerk_user_id, role, status, email, full_name')
-            .ilike('email', clerkEmail)
+            .ilike('email', escapeIlikeExact(clerkEmail))
             .maybeSingle()
         }
 

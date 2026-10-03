@@ -15,7 +15,11 @@ export async function GET(req: Request) {
   const gigId = url.searchParams.get('gig_id')
   const providerId = url.searchParams.get('provider_id')
   const db = createSupabaseAdminClient()
-  let q = db.from('gig_reviews').select('*').order('created_at', { ascending: false })
+  let q = db
+    .from('gig_reviews')
+    .select('id, gig_id, rating, body, comm_rating, expertise_rating, value_rating, status, created_at')
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
   if (gigId) q = q.eq('gig_id', gigId)
   if (providerId) q = q.eq('provider_id', providerId)
   const { data: reviews, error } = await q.limit(100)
