@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { MarketplaceCategoriesIndex } from '@/components/marketplace/MarketplaceCategoriesIndex'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/categories')
@@ -22,5 +23,10 @@ export default async function MarketplaceCategoriesIndexPage() {
   // client-side for search/filter interactions. Rendering a second SEO-only
   // <main> here duplicated the entire directory for real users and produced
   // two primary landmarks. Keep one authoritative, indexable experience.
-  return <MarketplaceCategoriesIndex />
+  return (
+    <>
+      <MarketBreadcrumbJsonLd items={[{ name: 'Categories', path: '/categories' }]} />
+      <MarketplaceCategoriesIndex />
+    </>
+  )
 }

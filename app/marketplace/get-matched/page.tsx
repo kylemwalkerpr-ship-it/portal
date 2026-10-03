@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import GetMatchedClient from '@/components/marketplace/GetMatchedClient'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/get-matched')
@@ -18,5 +19,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function GetMatchedPage() {
-  return <GetMatchedClient />
+  return (
+    <>
+      <MarketBreadcrumbJsonLd items={[{ name: 'Get matched', path: '/get-matched' }]} />
+      <GetMatchedClient />
+    </>
+  )
 }

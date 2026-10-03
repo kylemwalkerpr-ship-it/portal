@@ -15,6 +15,7 @@ import {
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 import { GET_MATCHED_PATH, getPackReviewUpsell } from '@/lib/packReviewUpsell'
 import TrackedCtaLink from '@/components/attribution/TrackedCtaLink'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 const SHOP_CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 
@@ -103,6 +104,7 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
     <main className="ys-pack-page">
       <style>{PACK_CSS}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <MarketBreadcrumbJsonLd items={[{ name: 'File Shop', path: '/shop' }, { name: product.name, path: `/shop/${slug}` }]} />
 
       <nav className="ys-pack-crumbs" aria-label="Breadcrumb">
         <Link href="/">Marketplace</Link>
