@@ -16,9 +16,10 @@
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
+import type { NextRequest } from 'next/server'
 
-export async function GET(req: Request) {
-  const auth = await requireAdminUser()
+export async function GET(req: NextRequest) {
+  const auth = await requireAdminUser(req)
   if ('error' in auth) return fail(auth.error, auth.status)
 
   const { searchParams } = new URL(req.url)

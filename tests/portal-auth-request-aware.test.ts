@@ -22,11 +22,12 @@ jest.mock('@/lib/auth', () => ({ getClerkUserId }))
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient, getSupabaseAdminClient: createSupabaseAdminClient }))
 jest.mock('@clerk/nextjs/server', () => ({ clerkClient }))
 
-import { requirePortalUser } from '@/lib/portalAuth'
+import { requireAdminUser, requirePortalUser } from '@/lib/portalAuth'
 
 describe('request-aware portal auth', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    profile.role = 'client'
     getClerkUserId.mockResolvedValue('clerk-1')
   })
 
@@ -36,6 +37,36 @@ describe('request-aware portal auth', () => {
     const result = await (requirePortalUser as any)(request)
 
     expect('error' in result).toBe(false)
+    expect(getClerkUserId).toHaveBeenCalledWith(request)
+  })
+
+  test('requireAdminUser keeps denying non-admin profiles with 403', async () => {
+    const request = { headers: new Headers() }
+
+    const result = await (requireAdminUser as any)(request)
+
+    expect(result).toEqual({ error: 'Forbidden', status: 403 })
+    expect(getClerkUserId).toHaveBeenCalledWith(request)
+  })
+
+  test('requireAdminUser accepts an admin profile', async () => {
+    profile.role = 'admin'
+    const request = { headers: new Headers() }
+
+    const result = await (requireAdminUser as any)(request)
+
+    expect('error' in result).toBe(false)
+    expect(result.role).toBe('admin')
+    expect(getClerkUserId).toHaveBeenCalledWith(request)
+  })
+
+  test('requireAdminUser keeps returning 401 when Clerk has no user', async () => {
+    getClerkUserId.mockResolvedValue(null)
+    const request = { headers: new Headers() }
+
+    const result = await (requireAdminUser as any)(request)
+
+    expect(result).toEqual({ error: 'Unauthorized', status: 401 })
     expect(getClerkUserId).toHaveBeenCalledWith(request)
   })
 })

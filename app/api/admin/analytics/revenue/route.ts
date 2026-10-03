@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
+import type { NextRequest } from 'next/server'
 
 const DEFAULT_FEE = 30
 
@@ -23,8 +24,8 @@ function bucketKey(date: string, granularity: Granularity): string {
   return monday.toISOString().slice(0, 10)
 }
 
-export async function GET(req: Request) {
-  const auth = await requireAdminUser()
+export async function GET(req: NextRequest) {
+  const auth = await requireAdminUser(req)
   if ('error' in auth) return fail(auth.error, auth.status)
   const { db } = auth
 

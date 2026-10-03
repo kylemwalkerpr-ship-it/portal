@@ -1,5 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import type { NextRequest } from 'next/server'
 
 const SALUTATIONS = new Set(['', 'Mr.', 'Mrs.', 'Ms.', 'Mx.', 'Dr.', 'Prof.'])
 
@@ -7,8 +8,8 @@ function clean(value: unknown, max = 200) {
   return typeof value === 'string' ? value.trim().slice(0, max) : ''
 }
 
-export async function GET() {
-  const userId = await getClerkUserId()
+export async function GET(request: NextRequest) {
+  const userId = await getClerkUserId(request)
   if (!userId) return Response.json({ profile: null })
 
   const db = createSupabaseAdminClient()
@@ -34,8 +35,8 @@ export async function GET() {
   return Response.json({ profile })
 }
 
-export async function PATCH(req: Request) {
-  const userId = await getClerkUserId()
+export async function PATCH(req: NextRequest) {
+  const userId = await getClerkUserId(req)
   if (!userId) return Response.json({ error: 'Unauthenticated.' }, { status: 401 })
 
   let body: Record<string, unknown>

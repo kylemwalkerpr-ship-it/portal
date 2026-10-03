@@ -12,9 +12,10 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { listReleasableByProvider, recordPayout } from '@/lib/earnings'
+import type { NextRequest } from 'next/server'
 
-export async function GET() {
-  const auth = await requireAdminUser()
+export async function GET(request: NextRequest) {
+  const auth = await requireAdminUser(request)
   if ('error' in auth) return fail(auth.error, auth.status)
 
   try {
@@ -87,8 +88,8 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
-  const auth = await requireAdminUser()
+export async function POST(req: NextRequest) {
+  const auth = await requireAdminUser(req)
   if ('error' in auth) return fail(auth.error, auth.status)
 
   const body = await req.json().catch(() => ({}))

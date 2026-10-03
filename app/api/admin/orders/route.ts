@@ -19,6 +19,7 @@
  */
 import { requireAdminUser } from '@/lib/portalAuth'
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
+import type { NextRequest } from 'next/server'
 
 const TERMINAL = ['completed', 'released', 'cancelled', 'refunded']
 
@@ -34,7 +35,7 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   escrow_status:     'escrow_status',
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   // ── abort guard: client disconnect → fast 499 ──
   if (req.signal.aborted) {
     return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
   req.signal.addEventListener('abort', abortHandler)
 
   try {
-  const auth = await requireAdminUser()
+  const auth = await requireAdminUser(req)
   if ('error' in auth) return fail(auth.error, auth.status)
 
   const { db } = auth
