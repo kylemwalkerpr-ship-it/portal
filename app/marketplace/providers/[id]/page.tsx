@@ -9,6 +9,7 @@ import {
   assertMarketplaceEstateNonEmpty,
   assertMarketplaceServiceRoleAuthority,
 } from '@/lib/marketplaceBuildAuthority'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 // TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: per-request
 // rendering of the provider estate exceeded the Workers Free 10ms CPU budget,
@@ -290,6 +291,7 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
 
   return (
     <>
+      <MarketBreadcrumbJsonLd items={[{ name: 'Providers', path: '/providers' }, { name, path: `/providers/${profile.username || token}` }]} />
       <SsrHydrateGate readyEvent="yousafe:provider-ssr-ready">
         <article
           aria-label="Provider overview"

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import FilesShop from './FilesShop'
 import { FILE_SHOP_PRODUCTS } from '@/lib/files-shop-catalog'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 const CANONICAL = 'https://market.yousafeconsultancy.com/shop'
 const TITLE = 'File shop — instant-download tools | YouSafe Consultancy'
@@ -47,6 +48,7 @@ export default function ShopPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <MarketBreadcrumbJsonLd items={[{ name: 'File Shop', path: '/shop' }]} />
       <FilesShop />
     </>
   )

@@ -14,6 +14,7 @@ import {
   isMarketplaceProductionBuild,
   marketplaceErrorDetail,
 } from '@/lib/marketplaceBuildAuthority'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 // TRUE SSG — no `dynamic`, no `revalidate`. Production evidence: rendering
 // this hub per request exceeded the Workers Free 10ms CPU budget, and the Free
@@ -322,8 +323,11 @@ export default async function MarketplaceServicesHub() {
   // stay out of the index via the market-host edge rule (middleware.ts); this
   // page keeps its clean, indexable `/gigs` canonical metadata.
   return (
-    <Suspense fallback={directory}>
-      <GigsDiscoveryQueryGate>{directory}</GigsDiscoveryQueryGate>
-    </Suspense>
+    <>
+      <MarketBreadcrumbJsonLd items={[{ name: 'Services', path: '/gigs' }]} />
+      <Suspense fallback={directory}>
+        <GigsDiscoveryQueryGate>{directory}</GigsDiscoveryQueryGate>
+      </Suspense>
+    </>
   )
 }

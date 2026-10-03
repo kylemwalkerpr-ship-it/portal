@@ -4,6 +4,7 @@ import { ProvidersIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import ProvidersDirectoryLinks from '@/components/marketplace/ProvidersDirectoryLinks'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
+import MarketBreadcrumbJsonLd from '@/components/seo/MarketBreadcrumbJsonLd'
 
 export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/providers')
@@ -22,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function MarketplaceProvidersIndexPage() {
   return (
     <>
+      <MarketBreadcrumbJsonLd items={[{ name: 'Providers', path: '/providers' }]} />
       <ProvidersIndexSeo />
       <MarketplaceProvidersIndex />
       <ProvidersDirectoryLinks />
