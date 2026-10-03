@@ -85,3 +85,6 @@ supabase/.temp/
 
 # Generated YQAA knowledge crawl artifacts (large, reproducible, never commit)
 .yqaa-kb-crawl/
+# Local secrets and build output (Sanitization Brief, Phase 1)
+.dev.vars
+**/.dev.vars
