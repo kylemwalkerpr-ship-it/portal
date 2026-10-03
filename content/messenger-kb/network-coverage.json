@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02T09:49:22.580Z",
+  "generatedAt": "2026-10-03T09:12:05.399Z",
   "status": "healthy",
   "requiredMarkets": [
     "United States",
@@ -60,7 +60,7 @@
       "id": "market",
       "repository": "kylemwalkerpr-ship-it/portal",
       "base": "https://market.yousafeconsultancy.com",
-      "records": 360,
+      "records": 361,
       "required": true,
       "problems": []
     },
@@ -76,7 +76,7 @@
   "repositories": [
     {
       "repository": "kylemwalkerpr-ship-it/portal",
-      "records": 360,
+      "records": 361,
       "localCore": true
     },
     {
