@@ -161,9 +161,9 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ys-onPaperSoft, #526072)', marginBottom: 8 }}>
             YouSafe Marketplace
           </div>
-          <h1 id="ys-category-title" style={{ fontSize: 'clamp(28px, 5vw, 42px)', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.025em', margin: '0 0 12px', fontFamily: 'var(--font-display, Georgia, serif)' }}>
+          <h2 id="ys-category-title" style={{ fontSize: 'clamp(28px, 5vw, 42px)', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.025em', margin: '0 0 12px', fontFamily: 'var(--font-display, Georgia, serif)' }}>
             {displayName}
-          </h1>
+          </h2>
           <p style={{ fontSize: 'clamp(15px, 2.5vw, 18px)', lineHeight: 1.6, maxWidth: '50rem', margin: 0, color: 'var(--ys-inkMid, #334155)' }}>
             {displayDescription}
           </p>
