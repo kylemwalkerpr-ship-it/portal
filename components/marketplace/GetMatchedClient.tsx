@@ -16,6 +16,7 @@ export default function GetMatchedClient() {
     <main className="get-matched" style={{ display: 'flex', justifyContent: 'center', padding: '24px 12px 64px' }}>
       <IntakeForm
         source="market:get-matched"
+        headingLevel={1}
         backLabel="← Back to the marketplace"
         submittedLabel="Create a free account to track replies →"
         submittedMessage="Thanks, we have your case. A reviewed provider will reply with a fixed-fee offer, usually within a few hours, and we'll email you when they do. Nothing is charged until you accept an offer."
