@@ -4,10 +4,13 @@ import { join } from 'node:path'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 
 describe('marketplace pages render exactly one H1', () => {
-  test('category shelves keep the server H1; the discovery island demotes to h2', () => {
+  test('category pages keep only the layout hero H1; page card and discovery island use h2', () => {
     const discovery = read('components/marketplace/GigDiscoveryPage.tsx')
     expect(discovery).toContain('categoryName ? <h2 style={titleStyle}>{titleText}</h2> : <h1 style={titleStyle}>{titleText}</h1>')
-    expect(read('app/marketplace/categories/[categoryId]/page.tsx')).toContain('<h1 id="ys-category-title"')
+    const page = read('app/marketplace/categories/[categoryId]/page.tsx')
+    expect(page).toContain('<h2 id="ys-category-title"')
+    expect(page).not.toMatch(/<h1[\s>]/)
+    expect(read('app/marketplace/categories/[categoryId]/layout.tsx')).toContain('<h1 id="ys-category-experience-title">')
   })
 
   test('providers index has one H1 from the SEO block', () => {
