@@ -249,16 +249,19 @@ describe('Content Studio job-refresh fallback', () => {
     expect(component).not.toContain('subscribeToTables([\'content_jobs\']')
   })
 
-  it('keeps subscribeToTables for the SEO telemetry tables only', () => {
+  it('keeps Realtime for the six SEO telemetry tables that remain browser-readable', () => {
     expect(component).toContain(
       "import { subscribeToTables } from '@/lib/supabaseRealtime'",
     )
     const flat = component.replace(/\s+/g, ' ')
     expect(flat).toContain(
       "const off = subscribeToTables([ 'seo_knowledge', 'seo_cluster_plans', " +
-        "'seo_interlinks', 'seo_llm_visibility', 'seo_gate_runs', " +
+        "'seo_interlinks', 'seo_llm_visibility', " +
         "'seo_engine_runs', 'seo_ranking_scores', ], 'public', kick, onStatus)",
     )
+    expect(flat).not.toContain("'seo_gate_runs'")
+    expect(flat).toContain("fetch('/api/seo-engine/gate'")
+    expect(flat).toContain('setInterval(() => { fetchEngineStatus() }, 10_000)')
   })
 
   it('keeps the authenticated 6s active-job polling and 10s background polling', () => {
