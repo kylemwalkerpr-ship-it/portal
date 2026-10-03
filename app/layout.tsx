@@ -33,6 +33,12 @@ import AttributionClient from '@/components/AttributionClient'
 // block requests to fonts.gstatic.com, so next/font/google hard-crashes.
 // The CSS variables (--font-inter etc.) are defined in :root in globals.css.
 
+// Loaded non-blocking (was a render-blocking @import inside globals.css, which
+// chained HTML -> CSS -> Google CSS -> fonts before first paint). display=swap
+// means text paints in the system fallback first.
+const GOOGLE_FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Outfit:wght@400;500;600;700;800&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap'
+
 const MARKET_HOME_URL = 'https://market.yousafeconsultancy.com/'
 
 export const metadata = {
@@ -92,6 +98,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             itself is async, but preconnect shaves ~100ms off the eventual
             fetch on cold visits. */}
         <link rel="preconnect" href="https://clerk.portal.yousafeconsultancy.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preload" as="style" href={GOOGLE_FONTS_HREF} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var l=document.createElement('link');l.rel='stylesheet';l.href=${JSON.stringify(GOOGLE_FONTS_HREF)};document.head.appendChild(l)})();`,
+          }}
+        />
+        <noscript>
+          <link rel="stylesheet" href={GOOGLE_FONTS_HREF} />
+        </noscript>
         {/* GA4 is mounted globally but Google scripts are loaded only after
             explicit analytics consent. */}
         <GoogleAnalytics />
