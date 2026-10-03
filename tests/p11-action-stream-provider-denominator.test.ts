@@ -34,7 +34,7 @@ describe('P11 action-stream provider-attempt denominator contract', () => {
     )
     // The single summary string feeds both the progress step and the done event.
     const emitCalls = routeSource.match(/emitStep\('done', summary,/g) || []
-    const sendCalls = routeSource.match(/send\(\{ type: 'done', kind, summary,/g) || []
+    const sendCalls = routeSource.match(/send\(\{ type: 'done', kind, commandId: outcome\.command\.id, replayed: outcome\.replayed === true, summary, result \}/g) || []
     expect(emitCalls.length).toBe(1)
     expect(sendCalls.length).toBe(1)
   })
