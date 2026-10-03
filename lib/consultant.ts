@@ -17,6 +17,10 @@ export async function getCurrentConsultant(): Promise<ConsultantAuth> {
     .single()
 
   if (!profile || profile.role !== 'consultant') return { error: 'Forbidden', status: 403 }
+  // Pending applicants keep access to finish intake; revoked or declined
+  // consultants (admin revoke sets 'suspended') are locked out of every
+  // consultant API, matching the student and portal-user helpers.
+  if (profile.status === 'suspended' || profile.status === 'declined') return { error: 'Account is not active.', status: 403 }
 
   let consultant = await findConsultantForProfile(db, profile)
   if (!consultant) {

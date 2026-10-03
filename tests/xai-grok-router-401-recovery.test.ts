@@ -115,4 +115,31 @@ describe('xAI Grok router 401 recovery', () => {
     await expect(response.json()).resolves.toMatchObject({ code: 'permission_denied' })
     expect(global.fetch).toHaveBeenCalledTimes(1)
   })
+  it('never refreshes with the stored token for a bearer that is not the stored SuperGrok token', async () => {
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+      expect(url).toBe('https://cli-chat-proxy.grok.com/v1/responses')
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+
+    const request = new NextRequest('https://portal.yousafeconsultancy.com/api/internal/xai-grok/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer some-marketplace-users-clerk-session-jwt',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: 'grok-4.6', input: [{ role: 'user', content: 'ok' }] }),
+    })
+    const response = await POST(request, { params: Promise.resolve({ path: ['responses'] }) })
+
+    expect(response.status).toBe(401)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
 })

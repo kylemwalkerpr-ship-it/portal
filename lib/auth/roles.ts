@@ -10,6 +10,8 @@
  *   YS_CLERK_ROLE_MIRROR=off, so nothing breaks before Clerk is configured.
  */
 
+import { escapeIlikeExact } from './ilike'
+
 export type ProviderType = 'attorney' | 'regulated_adviser' | 'consultant'
 export type ProviderRole = 'attorney' | 'consultant'
 export type SelfServiceRole = 'client' | ProviderRole
@@ -139,7 +141,7 @@ export async function findOrLinkProfile(
   if (byId) return byId as ProfileRow
   const email = (verifiedEmail ?? '').trim().toLowerCase()
   if (!email || isUndeliverableEmail(email)) return null
-  const { data: byEmail } = await db.from('profiles').select(PROFILE_COLUMNS).ilike('email', email).maybeSingle()
+  const { data: byEmail } = await db.from('profiles').select(PROFILE_COLUMNS).ilike('email', escapeIlikeExact(email)).maybeSingle()
   if (!byEmail) return null
   const { data: linked } = await db
     .from('profiles')
