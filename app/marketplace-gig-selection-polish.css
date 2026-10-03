@@ -93,6 +93,14 @@
   box-sizing: border-box !important;
 }
 
+/* Skip style/layout/paint for off-screen cards until they near the viewport.
+   The featured grid is ~20,000px tall on phones; this was most of the
+   market's mobile main-thread time. Size hint keeps the scrollbar stable. */
+.cw-market .gig-grid > .gig-link {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 380px;
+}
+
 @media (max-width: 1180px) {
   .cw-market .gig-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
