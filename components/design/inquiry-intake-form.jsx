@@ -14,7 +14,7 @@ const DRAFT_KEY = 'yousafe-inquiry-draft-v1'
 //
 // Edit mode: when existingInquiry is provided, the form hydrates from the
 // inquiry row and PATCHes instead of POSTing.
-export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmail, defaultName, defaultPhone, targetAttorney, existingInquiry, source, backLabel, submittedLabel, submittedMessage }) {
+export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmail, defaultName, defaultPhone, targetAttorney, existingInquiry, source, backLabel, submittedLabel, submittedMessage, headingLevel }) {
   const isEditMode = !!existingInquiry
 
   const [country, setCountry] = React.useState(null)
@@ -236,7 +236,7 @@ export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmai
 
       <div style={{ marginBottom: '24px' }}>
         <div style={eyebrow}>{isEditMode ? 'Edit inquiry' : targetAttorney ? `Direct inquiry to ${targetAttorney.name}` : 'Free legal intake'}</div>
-        <h2 style={pageTitle}>{isEditMode ? 'Edit your inquiry' : targetAttorney ? 'Tell ' + targetAttorney.name.split(' ')[0] + ' about your case.' : 'Tell us about your case.'}</h2>
+        {React.createElement(headingLevel === 1 ? 'h1' : 'h2', { style: pageTitle }, isEditMode ? 'Edit your inquiry' : targetAttorney ? 'Tell ' + targetAttorney.name.split(' ')[0] + ' about your case.' : 'Tell us about your case.')}
         <p style={pageSub}>
           {isEditMode
             ? 'Review and update your case details before saving.'

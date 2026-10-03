@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { MarketplaceProvidersIndex } from '@/components/marketplace/MarketplaceProvidersIndex'
 import { ProvidersIndexSeo } from '@/components/marketplace/MarketIndexSeo'
+import ProvidersDirectoryLinks from '@/components/marketplace/ProvidersDirectoryLinks'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { MARKETPLACE_OG_IMAGE } from '@/lib/publicOgImages'
 
@@ -23,6 +24,7 @@ export default async function MarketplaceProvidersIndexPage() {
     <>
       <ProvidersIndexSeo />
       <MarketplaceProvidersIndex />
+      <ProvidersDirectoryLinks />
     </>
   )
 }

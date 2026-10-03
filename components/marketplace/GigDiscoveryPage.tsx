@@ -637,7 +637,8 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
         <ContinueBrowsingRail hidden={!!searchQuery.trim() || hasActiveFilters} />
         <div style={toolbar}>
           <div>
-            <h1 style={titleStyle}>{titleText}</h1>
+            {/* Category shelves render their own server H1; keep one H1 per page. */}
+            {categoryName ? <h2 style={titleStyle}>{titleText}</h2> : <h1 style={titleStyle}>{titleText}</h1>}
             <ResultsCount total={total} showing={gigs.length} />
             <form onSubmit={handleSearchSubmit} style={searchBar}>
               <SmartSearchBox

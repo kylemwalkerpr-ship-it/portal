@@ -7,7 +7,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = getMarketplaceCanonicalUrl('/get-matched')
   const title = 'Describe your case free, get a fixed-fee offer | YouSafe Marketplace'
   const description =
-    'Not sure which service you need? Tell us about your US, UK, Canada or Australia immigration or tenancy matter and get a fixed-fee offer from a bar-verified attorney or reviewed consultant. Free, no account needed.'
+    'Tell us about your US, UK, Canada or Australia immigration or tenancy matter and get a fixed-fee offer from a verified attorney or consultant. Free.'
   return {
     title,
     description,

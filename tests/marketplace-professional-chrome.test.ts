@@ -67,7 +67,8 @@ describe('marketplace professional chrome (source scan)', () => {
     const providers = read('components/marketplace/MarketplaceProvidersIndex.tsx')
     const categories = read('components/marketplace/MarketplaceCategoriesIndex.tsx')
     expect(discovery).toMatch(/titleStyle[\s\S]{0,200}T\.ink/)
-    expect(providers).toMatch(/h1[\s\S]{0,240}T\.ink/)
+    // The server SEO block owns the providers H1; the index title is an h2.
+    expect(providers).toMatch(/h2[\s\S]{0,240}T\.ink/)
     expect(categories).toMatch(/h1[\s\S]{0,240}T\.ink/)
     expect(discovery).not.toMatch(/titleStyle[\s\S]{0,160}color:\s*['\"]#fff/i)
   })

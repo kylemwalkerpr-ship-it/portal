@@ -152,7 +152,7 @@ export function MarketplaceProvidersIndex() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: T.onPaperEm, textTransform: 'uppercase', fontFamily: F.mono, marginBottom: 4 }}>Verified panel</div>
-            <h1 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All providers.</h1>
+            <h2 style={{ fontFamily: F.display, fontSize: 36, fontWeight: 500, color: T.ink, margin: 0, letterSpacing: '-.012em' }}>All providers.</h2>
             <div style={{ fontSize: 14, color: T.onPaperSoft, marginTop: 6 }}>
               {loading ? 'Searching the panel…' : <>{fmtN(total)} {total === 1 ? 'provider matches' : 'providers match'} your filters.</>}
             </div>

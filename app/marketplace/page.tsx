@@ -23,14 +23,14 @@ const canonicalUrl = getMarketplaceCanonicalUrl('/')
 export const metadata: Metadata = {
   title: 'YouSafe Marketplace — Verified Immigration & Tenancy Help',
   description:
-    'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.',
+    'Browse vetted US, UK, Canada and Australia immigration consultants and attorneys, plus tenancy help. Compare pricing, languages and reviews for free.',
   alternates: { canonical: canonicalUrl },
   robots: { index: true, follow: true },
   openGraph: {
     url: canonicalUrl,
     title: 'YouSafe Marketplace — Verified Immigration & Tenancy Help',
     description:
-      'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.',
+      'Browse vetted US, UK, Canada and Australia immigration consultants and attorneys, plus tenancy help. Compare pricing, languages and reviews for free.',
     type: 'website',
     images: [MARKETPLACE_OG_IMAGE],
   },
