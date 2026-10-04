@@ -12,6 +12,7 @@
  */
 import { requireAdminUser } from '@/lib/portalAuth'
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 const SORTABLE_COLUMNS: Record<string, string> = {
   escrow_amount:            'escrow_amount',
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
   }
 
   if (q && q.length >= 2 && /^[A-Za-z0-9_-]+$/.test(q)) {
-    query = query.or(`order_number.ilike.%${q}%,id::text.ilike.%${q}%`)
+    query = query.or(`order_number.ilike.%${postgrestOrTerm(q)}%,id::text.ilike.%${postgrestOrTerm(q)}%`)
   } else if (q && q.length >= 2) {
     query = query.ilike('order_number', `%${q}%`)
   }

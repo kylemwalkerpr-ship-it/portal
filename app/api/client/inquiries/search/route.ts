@@ -16,6 +16,7 @@
  */
 import { requireClient } from '@/lib/clientAuth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -59,7 +60,7 @@ export async function GET(req: Request) {
   if (urgency)           qb = qb.eq('urgency', urgency)
   if (fromISO)           qb = qb.gte('created_at', fromISO)
   if (toISO)             qb = qb.lte('created_at', new Date(new Date(toISO).getTime() + 86_400_000).toISOString())
-  if (q)                 qb = qb.or(`case_type_label.ilike.%${q}%,country.ilike.%${q}%`)
+  if (q)                 qb = qb.or(`case_type_label.ilike.%${postgrestOrTerm(q)}%,country.ilike.%${postgrestOrTerm(q)}%`)
 
   let { data: rows, error: rowsErr, count } = await qb
 

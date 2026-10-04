@@ -16,6 +16,7 @@
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 const SORT_COLS = ['created_at', 'deadline', 'total_amount', 'attorney_fee', 'progress'] as const
 const STATUS_MAP: Record<string, string[]> = {
@@ -77,9 +78,9 @@ export async function GET(req: Request) {
     // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
     const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ && safeQ.length >= 2) {
-      qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${q}%`)
+      qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${postgrestOrTerm(q)}%`)
     } else {
-      qb = qb.or(`order_number.ilike.%${q}%`)
+      qb = qb.or(`order_number.ilike.%${postgrestOrTerm(q)}%`)
     }
   }
 

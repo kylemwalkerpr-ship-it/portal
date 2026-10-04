@@ -1,5 +1,6 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   }
 
   if (q && q.length >= 2) {
-    query = query.or(`case_type_label.ilike.%${q}%,email.ilike.%${q}%`)
+    query = query.or(`case_type_label.ilike.%${postgrestOrTerm(q)}%,email.ilike.%${postgrestOrTerm(q)}%`)
   }
 
   const { data, error: qErr, count } = await query
