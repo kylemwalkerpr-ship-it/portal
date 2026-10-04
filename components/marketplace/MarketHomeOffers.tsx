@@ -1,4 +1,5 @@
 import type { CategoryTile, MostRequestedCard } from '@/lib/marketHomeMostRequested'
+import { sizedImageUrl } from '@/lib/imageVariants'
 
 /**
  * Market home "Most requested" rail + category tiles.
@@ -27,7 +28,7 @@ export function MostRequestedRail({ cards }: { cards: MostRequestedCard[] }) {
                 {/* No image: a branded placeholder in the same fixed-aspect slot so
                     every rail card keeps the same size. */}
                 {card.imageUrl ? (
-                  <img src={card.imageUrl} alt="" loading={i < 4 ? undefined : 'lazy'} />
+                  <img src={sizedImageUrl(card.imageUrl, 640) ?? card.imageUrl} alt="" loading={i < 4 ? undefined : 'lazy'} />
                 ) : (
                   <i className="cw-mr-ph" />
                 )}

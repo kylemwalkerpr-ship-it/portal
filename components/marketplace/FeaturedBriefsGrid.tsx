@@ -1,5 +1,6 @@
 'use client'
 
+import { sizedImageUrl } from '@/lib/imageVariants'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import {
@@ -722,7 +723,7 @@ export function FeaturedBriefsGrid({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       className="plate-img"
-                      src={g.cover_image_url}
+                      src={sizedImageUrl(g.cover_image_url, 720) ?? g.cover_image_url}
                       alt={`${g.title || 'Service'} — preview`}
                       loading="lazy"
                       onError={(e) => { e.currentTarget.style.display = 'none' }}

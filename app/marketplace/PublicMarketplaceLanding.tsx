@@ -957,19 +957,19 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
 
           <div className="how-grid">
             <div className="how-step">
-              <span className="icon">i</span>
+              <span className="icon" aria-hidden="true">i</span>
               <span className="step-num">Step 01</span>
               <h3>Tell us the <em>case</em></h3>
               <p>Pick a brief by jurisdiction and topic. Each gig lists exactly what the attorney delivers, the timeline, and the price — no opaque hourly meters.</p>
             </div>
             <div className="how-step">
-              <span className="icon">ii</span>
+              <span className="icon" aria-hidden="true">ii</span>
               <span className="step-num">Step 02</span>
               <h3>Funds sit in <em>escrow</em></h3>
               <p>Your payment is held by YouSafe. Attorneys see funds are committed before they begin work; you stay in control until the deliverable lands.</p>
             </div>
             <div className="how-step">
-              <span className="icon">iii</span>
+              <span className="icon" aria-hidden="true">iii</span>
               <span className="step-num">Step 03</span>
               <h3>Approve &amp; <em>release</em></h3>
               <p>Review the file, request revisions inside the bundled limit, and release funds. If the work doesn't clear our standards, we refund — no questions.</p>

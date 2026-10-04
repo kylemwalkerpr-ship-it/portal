@@ -43,9 +43,9 @@ export const ESTATE_FOOTER_COLUMNS: FooterColumn[] = [
 ]
 
 export const ESTATE_FOOTER_LEGAL: FooterLink[] = [
-  { label: 'Privacy', href: 'https://usa.yousafeconsultancy.com/privacy-policy/' },
-  { label: 'Terms', href: 'https://usa.yousafeconsultancy.com/terms-of-service/' },
-  { label: 'Refund policy', href: 'https://usa.yousafeconsultancy.com/refund-policy/' },
+  { label: 'Privacy', href: 'https://legal.yousafeconsultancy.com/privacy/' },
+  { label: 'Terms', href: 'https://legal.yousafeconsultancy.com/terms/' },
+  { label: 'Refund policy', href: 'https://legal.yousafeconsultancy.com/refund-policy/' },
   { label: 'Disclaimer', href: 'https://legal.yousafeconsultancy.com/disclaimer/' },
 ]
 

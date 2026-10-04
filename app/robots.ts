@@ -15,10 +15,11 @@ function firstHost(value: string | null): string {
  * is welcome to crawl — the noindex meta directives keep pages out of
  * the index without blocking discovery.
  *
- * Important: do NOT add `/sign-in`, `/sign-up`, `/dashboard`, or any
- * other portal route here. Blocking those in robots.txt prevents
- * Googlebot from seeing their noindex meta tag, AND it kills the link
- * signal flowing in from the marketing tier.
+ * Signed-in app areas (dashboards, account, onboarding, user security)
+ * are disallowed. Signed-out crawlers are redirected from them to the
+ * Market sign-in modal, so they never reach a noindex tag there anyway;
+ * blocking them keeps crawl budget on public pages (Sanitization P8).
+ * `/sign-in` and `/sign-up` stay crawlable so their noindex is visible.
  *
  * Host-aware: the same app serves market.yousafeconsultancy.com. Never
  * emit a non-standard `host:` field. Only the public marketplace owns
@@ -26,6 +27,8 @@ function firstHost(value: string | null): string {
  *
  * /api/ stays disallowed — JSON endpoints with no SEO value.
  */
+const PRIVATE_APP_PATHS = ['/api/', '/dashboard', '/account', '/onboarding', '/user/']
+
 export default async function robots(): Promise<MetadataRoute.Robots> {
   let host = PORTAL_HOST
   try {
@@ -52,7 +55,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/'],
+      disallow: PRIVATE_APP_PATHS,
     },
   }
 
@@ -61,7 +64,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/'],
+        disallow: PRIVATE_APP_PATHS,
       },
       {
         userAgent: [
@@ -75,7 +78,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           'ClaudeBot',
         ],
         allow: '/',
-        disallow: ['/api/'],
+        disallow: PRIVATE_APP_PATHS,
       },
     ]
     result.sitemap = `https://${MARKET_HOST}/sitemap.xml`
