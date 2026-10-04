@@ -377,7 +377,7 @@
   border-radius: var(--ys-market-radius-md) !important;
 }
 
-.cw-market .featured .gig h4 {
+.cw-market .featured .gig h3 {
   color: var(--ys-ink, #0F172A) !important;
   font-family: var(--ys-market-ui) !important;
   font-size: 15.5px !important;
@@ -582,7 +582,7 @@
   }
 
   .cw-market .ys-discovery-gig-card h3,
-  .cw-market .featured .gig h4 {
+  .cw-market .featured .gig h3 {
     font-size: 15.5px !important;
   }
 

@@ -17,7 +17,7 @@ describe('Marketplace card finishing pass', () => {
 
   test('enforces a complete two-line clamp contract across canonical and featured service cards', () => {
     expect(finishing).toContain('.cw-market .ys-discovery-gig-card h3')
-    expect(finishing).toContain('.cw-market .featured .gig h4')
+    expect(finishing).toContain('.cw-market .featured .gig h3')
     expect(finishing).toContain('display: -webkit-box !important')
     expect(finishing).toContain('-webkit-box-orient: vertical !important')
     expect(finishing).toContain('-webkit-line-clamp: 2 !important')

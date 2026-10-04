@@ -12,7 +12,7 @@
    these declarations make that behavior explicit at the stylesheet layer and
    complete the WebKit clamp contract for the landing/featured cards. */
 .cw-market .ys-discovery-gig-card h3,
-.cw-market .featured .gig h4 {
+.cw-market .featured .gig h3 {
   display: -webkit-box !important;
   -webkit-box-orient: vertical !important;
   -webkit-line-clamp: 2 !important;
