@@ -671,7 +671,7 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
     eyebrow: 'Canada · Study Permit · PGWP · Express Entry · Provincial tenancy',
     h1: <>Canadian immigration help — <em>by the brief, not the meter.</em></>,
     lede:
-      'ICCRC-registered consultants and Canadian attorneys covering Study Permit packs, PGWP, Express Entry CRS, ' +
+      'Consultants reviewed before approval and Canadian attorneys covering Study Permit packs, PGWP, Express Entry CRS, ' +
       'PNP strategy, spousal sponsorship, and provincial tenancy law. Fixed-fee, escrowed, refundable.',
   },
   au: {

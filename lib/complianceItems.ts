@@ -18,6 +18,6 @@ export interface ComplianceItem {
 export interface ComplianceSnapshot {
   items: ComplianceItem[]
   // role drives the prompt the AI uses for explanations — attorneys
-  // need bar/jurisdiction guidance, consultants need ICCRC/OISC/etc.
+  // need bar/jurisdiction guidance, consultant credentials (CICC/OISC/etc.) are optional.
   role: 'attorney' | 'consultant'
 }

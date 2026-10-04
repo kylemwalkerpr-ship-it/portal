@@ -8,7 +8,7 @@ const PORTAL_SIGNUP = 'https://market.yousafeconsultancy.com/?ys_sign_up=1&inten
 
 const PROMISE = [
   'Funds parked in escrow until you approve the work',
-  'Bar-verified attorneys and reviewed consultants only',
+  'Bar-verified attorneys; consultants reviewed before approval',
   'Encrypted document storage with TLS 1.3',
   'Refund or remediation if anything goes wrong',
 ]

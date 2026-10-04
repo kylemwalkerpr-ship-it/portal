@@ -13,7 +13,7 @@ const ITEMS = [
   },
   {
     q: 'Who are the attorneys and consultants?',
-    a: 'Every attorney on the panel is bar-verified in their stated jurisdiction; consultants are reviewed before approval, and any credential they list (CICC, OISC, or equivalent) is verified first. We check their licences on intake and again on every renewal cycle.',
+    a: 'Every attorney on the panel is bar-verified in their stated jurisdiction; consultants are reviewed before approval, and credentials are shown where held. We check their licences on intake and again on every renewal cycle.',
   },
   {
     q: 'What countries do you cover?',
