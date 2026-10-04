@@ -362,7 +362,7 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
               )}
               <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ color: T.indigo }}>✓</span>
-                <span>Payment held in escrow until you approve</span>
+                <span>Payment held until you approve</span>
               </div>
               <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ color: T.indigo }}>✓</span>
@@ -643,8 +643,8 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
 
       {/* The two lines that close the sale — security, then recourse */}
       <div style={{ fontFamily: F.ui, fontSize: 11.5, color: T.inkSoft, lineHeight: 1.6, textAlign: 'center', margin: '0 0 12px' }}>
-        🔒 Payment held in escrow — released only when you approve.<br />
-        ↩ Full refund if your specialist never delivers.
+        🔒 Payment held until you approve the delivery.<br />
+        ↩ Cancel before work starts for a full wallet refund; disputes are reviewed.
       </div>
 
       <div style={{ fontFamily: F.ui, fontSize: 12, textAlign: 'center', margin: '0 0 12px' }}>

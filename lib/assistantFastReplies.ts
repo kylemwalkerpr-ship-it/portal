@@ -99,7 +99,7 @@ export function getDeterministicYqaaReply(turns: SystemAssistantTurn[]): string 
     return [
       '**YouSafe Consultancy** is a cross-border education, immigration-support, and professional-services platform serving clients across the **United States, United Kingdom, Canada, and Australia**.',
       '',
-      'Through YouSafe, clients can explore services, message professionals, exchange documents, receive custom offers, place orders, and use platform-managed payment/escrow workflows. Legal advice or representation is handled by appropriately licensed professionals rather than YQAA or the consultancy itself.',
+      'Through YouSafe, clients can explore services, message professionals, exchange documents, receive custom offers, place orders, and use platform-held payments released on approval. Legal advice or representation is handled by appropriately licensed professionals rather than YQAA or the consultancy itself.',
       '',
       'You can start at [YouSafe Consultancy](https://yousafeconsultancy.com) or browse relevant services in the [YouSafe Marketplace](https://market.yousafeconsultancy.com).',
     ].join('\n')

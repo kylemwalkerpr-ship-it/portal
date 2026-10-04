@@ -72,7 +72,7 @@ export function AuthShell({
 }) {
   const detailItems = [
     'Role-based dashboards for clients, consultants, attorneys, and support',
-    'Escrow-protected orders, private files, and message threads in one place',
+    'Orders with payment held until you approve, private files, and message threads in one place',
     'Secure Clerk sign-in with NMI-powered payments and payouts',
   ]
 

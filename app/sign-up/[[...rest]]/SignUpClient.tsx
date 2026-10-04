@@ -77,7 +77,7 @@ export default function SignUpClient() {
       body={
         isProvider
           ? 'Create your account first, then complete one short provider application (attorney, regulated adviser, or consultant). Our team verifies your licence or registration before your profile goes live.'
-          : 'Create your account, then tell us whether you need help or provide services. Your dashboard, messages, files, escrow, and payouts are routed from that one choice.'
+          : 'Create your account, then tell us whether you need help or provide services. Your dashboard, messages, files, payments, and payouts are routed from that one choice.'
       }
       laneLabel={isProvider ? 'provider' : 'account'}
       previousUrl={previousUrl}

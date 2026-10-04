@@ -143,7 +143,7 @@ export function MarketplaceFooter() {
             <a href={`mailto:${BUSINESS_EMAIL}`}>{BUSINESS_EMAIL}</a>
           </address>
           <span className="dot" aria-hidden="true" />
-          <span>Not a law firm · escrowed briefs only</span>
+          <span>Not a law firm · payments held until approval</span>
         </div>
       </div>
     </footer>
