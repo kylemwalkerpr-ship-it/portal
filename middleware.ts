@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { isUnknownPortalPath } from '@/lib/portalKnownRoutes'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { isDiscoveryVariantRequest } from './lib/marketplaceDiscoveryQuery'
 import { shouldBypassClerkForMarketRequest } from './lib/marketplaceMiddlewareBypass'
@@ -551,6 +552,13 @@ const clerkHandler = clerkMiddleware(
 
     if (pathname !== '/' && isPublicRoute(req)) {
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+    }
+
+    // Phase 6 custom 404: a portal path with no route at all renders the
+    // branded not-found page (real 404) instead of an anonymous sign-in bounce.
+    // No auth() call, so junk/scanner traffic also costs no Clerk CPU.
+    if (hostname === PORTAL_HOST && (req.method === 'GET' || req.method === 'HEAD') && isUnknownPortalPath(pathname)) {
+      return withPathHeaders(NextResponse.next(), pathname, search, lang)
     }
 
     // Homepage fast-path. The ONLY reason to resolve the session on `/` is to
