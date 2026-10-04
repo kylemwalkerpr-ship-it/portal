@@ -610,7 +610,7 @@ export function credentialLineFor(provider: Pick<CitableProvider, 'role' | 'cred
   // Never append barNumber or any exact professional identifier, even when
   // showBarNumber is true or an admin override would make it visible on the profile.
   const type = String(provider.credentialType || '').trim()
-  const fallback = provider.role === 'attorney' ? 'Licensed attorney' : 'Verified consultant'
+  const fallback = provider.role === 'attorney' ? 'Licensed attorney' : 'Reviewed consultant'
   const base = type || fallback
   const state = String(provider.barState || '').trim()
   const bits = [base]
@@ -1033,7 +1033,7 @@ export async function loadCitableProviders(db: SupaLike): Promise<CitableProvide
       role: 'consultant',
       name: String(profile.full_name).trim(),
       username: profile.username ? String(profile.username).trim().toLowerCase() : null,
-      credentialType: 'Verified consultant',
+      credentialType: 'Reviewed consultant',
       barNumber: null,
       showBarNumber: false,
       barState: null,

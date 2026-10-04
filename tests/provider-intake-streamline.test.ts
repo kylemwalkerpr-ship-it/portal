@@ -369,11 +369,26 @@ describe('form + banner UX pins', () => {
 
   test('consultant copy no longer claims every consultant is credentialed', () => {
     const faq = src('components/design/landing/FAQ.tsx')
-    expect(faq).toContain(
-      'consultants are reviewed before approval, and any credential they list (CICC, OISC, or equivalent) is verified first.',
-    )
+    expect(faq).toContain('consultants are reviewed before approval, and credentials are shown where held.')
     expect(faq).not.toContain('every consultant is credentialed')
-    expect(src('components/design/landing/FinalCTA.tsx')).toContain('Bar-verified attorneys and reviewed consultants only')
+    expect(faq).not.toContain('is verified first')
+    expect(src('components/design/landing/FinalCTA.tsx')).toContain("'Bar-verified attorneys; consultants reviewed before approval'")
+    expect(src('components/design/landing/FinalCTA.tsx')).not.toContain('reviewed consultants only')
+    expect(src('content/messenger-kb/faq.md')).toContain('consultants are reviewed before approval, and credentials are shown where held.')
+    // No other Market / portal / assistant surface claims consultants are credentialed or verified.
+    for (const file of [
+      'content/messenger-kb/faq.md',
+      'content/messenger-kb/brand-identity.md',
+      'content/messenger-kb/platform.md',
+      'components/design/landing/FAQ.tsx',
+      'components/design/landing/data/featured-services.ts',
+      'app/marketplace/PublicMarketplaceLanding.tsx',
+      'lib/seoFactory/providerAuthors.ts',
+      'lib/seoSuggest.ts',
+      'app/api/compliance/route.ts',
+    ]) {
+      expect(src(file)).not.toMatch(/every consultant is credentialed|credentialed consultants?|verified consultants?|ICCRC-registered|Consultant body — ICCRC/i)
+    }
     for (const file of [
       'components/design/landing/FinalCTA.tsx',
       'components/marketplace/GigDetailPage.tsx',

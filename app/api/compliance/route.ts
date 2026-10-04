@@ -68,10 +68,10 @@ export async function GET() {
 
   const credentialLabel = role === 'attorney'
     ? { label: 'Credential type', detail: 'Attorney (J.D./LL.M.) or licensed legal representative.', fixLabel: 'Submit on application' }
-    : { label: 'Credential type', detail: 'Consultant body — ICCRC, OISC, IMM, etc.', fixLabel: 'Submit on application' }
+    : { label: 'Credential (optional)', detail: 'Not required for consultants. If you hold one (e.g. CICC, OISC, ICEF), it is shown once verified.', fixLabel: 'Add to application' }
   const idLabel = role === 'attorney'
     ? { label: 'Bar / roll number', detail: 'Issued by the bar association you\'re admitted to.', fixLabel: 'Add to application' }
-    : { label: 'Membership / registration number', detail: 'Issued by your regulatory body (e.g. CICC R-number).', fixLabel: 'Add to application' }
+    : { label: 'Membership / registration number (optional)', detail: 'Only if you hold a credential (e.g. CICC R-number).', fixLabel: 'Add to application' }
 
   const items: ComplianceItem[] = [
     {
@@ -117,16 +117,17 @@ export async function GET() {
     {
       id: 'credential_type',
       label: credentialLabel.label,
-      status: credentialFilled ? 'ok' : 'missing',
-      detail: credentialFilled ? String(appRow!.credential_type) : 'Not specified on application',
+      // Consultants don't need a credential: an empty one is fine, not "missing".
+      status: credentialFilled || role !== 'attorney' ? 'ok' : 'missing',
+      detail: credentialFilled ? String(appRow!.credential_type) : role === 'attorney' ? 'Not specified on application' : credentialLabel.detail,
       actionHref: credentialFilled ? null : `/dashboard/${role}/intake`,
       actionLabel: credentialFilled ? null : credentialLabel.fixLabel,
     },
     {
       id: 'bar_number',
       label: idLabel.label,
-      status: barFilled ? 'ok' : 'missing',
-      detail: barFilled ? `On file (${String(appRow!.bar_number).slice(0, 3)}…)` : 'Add on next application revision',
+      status: barFilled || role !== 'attorney' ? 'ok' : 'missing',
+      detail: barFilled ? `On file (${String(appRow!.bar_number).slice(0, 3)}…)` : role === 'attorney' ? 'Add on next application revision' : idLabel.detail,
       actionHref: barFilled ? null : `/dashboard/${role}/intake`,
       actionLabel: barFilled ? null : idLabel.fixLabel,
     },

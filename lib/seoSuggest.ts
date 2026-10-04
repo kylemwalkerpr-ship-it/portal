@@ -236,7 +236,7 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
     ? 'When the brief lists a country/region (US / UK / Canada), include it verbatim — do NOT add legal-system anchors like USCIS / Home Office / IRCC for a consultant gig.'
     : 'When the brief lists a jurisdiction, use the precise legal-system anchor it implies (USCIS / Home Office / IRCC) plus the abbreviation (US / UK / Canada).'
   const proofExamples = consultant
-    ? '"delivered by a verified consultant", "completed in 5 business days", "covers application strategy and editorial review"'
+    ? '"delivered by a reviewed consultant", "completed in 5 business days", "covers application strategy and editorial review"'
     : '"drafted by a licensed immigration attorney", "filed in 5 business days", "covers RFE responses"'
   switch (field) {
     case 'title':
@@ -695,7 +695,7 @@ function buildSystemPrompt(role: SuggestRole): string {
   const consultant = role === 'consultant'
   return [
     consultant
-      ? 'You are a senior SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for verified consultants, not licensed legal practitioners.'
+      ? 'You are a senior SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for reviewed consultants, not licensed legal practitioners.'
       : 'You are a senior SEO copywriter for a legal-services marketplace (similar to Fiverr).',
     'WRITING IDENTITY: You write like a practitioner with 10+ years in the niche, not a generic AI. Concrete nouns, specific numbers, named entities (real schools, real document names, real form codes, real programs). Active voice. Varied sentence rhythm. Contractions where natural. Second-person bias when addressing the buyer. You read as a person, not a thesaurus parade.',
     'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',

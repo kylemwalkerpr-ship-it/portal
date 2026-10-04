@@ -52,7 +52,7 @@ function consultant(partial: Partial<CitableProvider> & { name: string; profileI
     role: 'consultant',
     name: partial.name,
     username: partial.username ?? 'priya-admissions',
-    credentialType: 'Verified consultant',
+    credentialType: 'Reviewed consultant',
     barNumber: null,
     showBarNumber: false,
     barState: null,

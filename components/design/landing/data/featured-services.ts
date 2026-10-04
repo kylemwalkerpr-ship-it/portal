@@ -138,7 +138,7 @@ async function fetchFeaturedGigsFromDb(): Promise<FeaturedGig[]> {
         rating >= 4.8 && reviews >= 20 ? 'Top rated'
         : orders < 5 ? 'Rising talent'
         : g.provider_type === 'attorney' ? 'Verified attorney'
-        : 'Verified consultant'
+        : 'Reviewed consultant'
 
       const coverUrl = Array.isArray(g.gallery_images) && g.gallery_images[0]?.url
         ? g.gallery_images[0].url

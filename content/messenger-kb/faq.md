@@ -4,7 +4,7 @@
 You pay into escrow when you accept an offer. Funds stay there until you approve the delivered work, then they release to the provider. If something goes wrong, you can dispute the order and support mediates.
 
 ## Who are the attorneys and consultants?
-Every attorney on the panel is bar-verified in their stated jurisdiction; every consultant is credentialed (CICC, OISC, or equivalent). Licences are checked on intake and on renewal cycles.
+Every attorney on the panel is bar-verified in their stated jurisdiction; consultants are reviewed before approval, and credentials are shown where held. Licences are checked on intake and on renewal cycles.
 
 ## What countries do you cover?
 United States, United Kingdom, Canada, and Australia. Country-specific professional rules are enforced at the platform level.
