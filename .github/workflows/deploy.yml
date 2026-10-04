@@ -150,6 +150,15 @@ jobs:
       - name: Market-root payload budget gate
         run: node scripts/verify-market-landing-payload.mjs
 
+      # Bundle the real production entry (edge-worker.mjs wrapping the freshly
+      # built .open-next/worker.js) on every PR as well as main, so an entry or
+      # [[ratelimits]] binding mistake fails CI instead of the main deploy.
+      # --dry-run never contacts Cloudflare and needs no credentials.
+      - name: Worker bundle check (wrangler deploy --dry-run)
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: npx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker-dry-run"
+
       - name: SEO audit guard (report-only)
         continue-on-error: true
         run: |
