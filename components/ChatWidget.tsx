@@ -31,7 +31,7 @@ export default function ChatWidget() {
       window.clearTimeout(timer)
       if (document.querySelector('script[data-yousafe-assistant="1"]')) return
       const script = document.createElement('script')
-      script.src = '/assistant.js?v=ysa-handoff-routing-1'
+      script.src = '/assistant.js?v=ysa-premium-1'
       script.async = true
       script.defer = true
       script.dataset.yousafeAssistant = '1'
