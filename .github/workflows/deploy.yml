@@ -370,7 +370,7 @@ jobs:
       # break.
       - name: Post-deploy smoke test (studio contract + build freshness)
         if: github.event_name != 'pull_request'
-        timeout-minutes: 10
+        timeout-minutes: 15
         env:
           PROD_BASE_URL: ${{ vars.PORTAL_URL }}
         run: |
@@ -389,6 +389,12 @@ jobs:
               node scripts/smoke-prod.mjs
             fi
           }
+          # Wait for the edge to serve THIS build (HTML + _buildManifest.js)
+          # before the first smoke attempt, so propagation lag doesn't make
+          # attempt 1 fail on a stale cached page. Never fails on its own.
+          if [ -n "$EXPECTED" ]; then
+            EXPECTED_BUILD_ID="$EXPECTED" node scripts/wait-for-deployed-build.mjs
+          fi
           for attempt in 1 2 3 4 5 6; do
             echo "::group::Smoke test attempt $attempt/6"
             run_smoke
