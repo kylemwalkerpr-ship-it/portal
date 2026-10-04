@@ -2,6 +2,7 @@ import { verifyMobileBearer } from './mobileAuth'
 import { createSupabaseAdminClient } from './supabase'
 import { mintSignedDocumentUrl } from './documentStorage'
 import { getClientCancellationEligibility, serializeCancelEligibility, UNSTARTED_STATUSES } from './orderCancellation'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 /**
  * Shared logic for /api/mobile/orders* — Bearer-verified student orders.
@@ -104,9 +105,9 @@ export async function listMobileOrders(
   if (q && q.length >= 2) {
     const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ && safeQ.length >= 2) {
-      qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${q}%`)
+      qb = qb.or(`requirements.plfts.${safeQ},order_number.ilike.%${postgrestOrTerm(q)}%`)
     } else {
-      qb = qb.or(`order_number.ilike.%${q}%`)
+      qb = qb.or(`order_number.ilike.%${postgrestOrTerm(q)}%`)
     }
   }
 

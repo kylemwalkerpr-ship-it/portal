@@ -21,6 +21,7 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 const URGENCY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
@@ -90,9 +91,9 @@ export async function GET(req: Request) {
     // "syntax error in tsquery" (to_tsquery parses `-` as NOT).
     const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
     if (safeQ && safeQ.length >= 2) {
-      qb = qb.or(`full_name.plfts.${safeQ},case_type_label.ilike.%${q}%,country.ilike.%${q}%`)
+      qb = qb.or(`full_name.plfts.${safeQ},case_type_label.ilike.%${postgrestOrTerm(q)}%,country.ilike.%${postgrestOrTerm(q)}%`)
     } else {
-      qb = qb.or(`case_type_label.ilike.%${q}%,country.ilike.%${q}%`)
+      qb = qb.or(`case_type_label.ilike.%${postgrestOrTerm(q)}%,country.ilike.%${postgrestOrTerm(q)}%`)
     }
   }
 

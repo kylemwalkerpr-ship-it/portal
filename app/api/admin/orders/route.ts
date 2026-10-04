@@ -19,6 +19,7 @@
  */
 import { requireAdminUser } from '@/lib/portalAuth'
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
+import { postgrestOrTerm } from '@/lib/auth/ilike'
 
 const TERMINAL = ['completed', 'released', 'cancelled', 'refunded']
 
@@ -120,14 +121,14 @@ export async function GET(req: Request) {
   if (q && q.length >= 2) {
     if (/^[A-Za-z0-9_-]+$/.test(q)) {
       // Looks like an ID/order number — use ilike (trigram-indexed)
-      query = query.or(`order_number.ilike.%${q}%,id::text.ilike.%${q}%`)
+      query = query.or(`order_number.ilike.%${postgrestOrTerm(q)}%,id::text.ilike.%${postgrestOrTerm(q)}%`)
     } else {
       // Free text — FTS on revision_reason (indexed) + ilike on order_number
       const safeQ = q.replace(/[,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
       if (safeQ && safeQ.length >= 2) {
         // plainto_tsquery (`plfts`): `-`/quotes in user queries can never
         // raise "syntax error in tsquery" (to_tsquery parses `-` as NOT).
-        query = query.or(`revision_reason.plfts.${safeQ},order_number.ilike.%${q}%`)
+        query = query.or(`revision_reason.plfts.${safeQ},order_number.ilike.%${postgrestOrTerm(q)}%`)
       } else {
         query = query.ilike('order_number', `%${q}%`)
       }
