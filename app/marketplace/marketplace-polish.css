@@ -134,7 +134,7 @@
 .cw-market .how-step h3 em,
 .cw-market .seller-card h2 em,
 .cw-market .cw-files-rail-head h2 em,
-.cw-market .hero-card h3 em {
+.cw-market .hero-card h2 em {
   color: var(--ys-indigo, #111827) !important;
 }
 

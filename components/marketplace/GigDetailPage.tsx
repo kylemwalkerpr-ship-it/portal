@@ -643,7 +643,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
             </Card>
 
             <Card className="ys-gig-about-card" style={{ padding: '24px' }}>
-              <h3 style={sectionTitle}>About This Service</h3>
+              <h2 style={sectionTitle}>About This Service</h2>
               {summaryText && (
                 <div className="ys-gig-ai-summary" role="note" aria-label="AI summary">
                   <div className="ys-gig-ai-summary-label">

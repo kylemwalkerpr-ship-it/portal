@@ -197,7 +197,7 @@ export default function HeroCaseFileSlideshow({
               ✓ Verified {slide.provider_type === 'attorney' ? '· J.D.' : '· Regulated'}
             </span>
           </div>
-          <h3>{slide.title}</h3>
+          <h2>{slide.title}</h2>
           <div className="attorney">
             {slide.providerHeadshot ? (
               // Real headshot. The existing .avatar CSS rule handles size
