@@ -94,7 +94,13 @@ const securityHeaders = [
   { key: 'X-Frame-Options',           value: 'SAMEORIGIN' },
   { key: 'Referrer-Policy',           value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy',        value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
-  { key: 'Content-Security-Policy',   value: "frame-ancestors 'self'" },
+  // Phase 5 enforced baseline CSP: https/data/blob only, no plugins
+  // (object-src 'none'), no <base> hijack, http form posts blocked, no foreign
+  // framing, stray http subresources upgraded. Host allowlisting is NOT
+  // enforced: Clerk, Turnstile, Payhip, GA/GTM, Google Maps/Fonts, Supabase
+  // storage and Pexels load from many hosts. Verified with zero violations in
+  // headless Chrome (market home, sign-in/sign-up modal, gig, shop pages).
+  { key: 'Content-Security-Policy',   value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; frame-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'self'; upgrade-insecure-requests" },
 ]
 
 // The bare `/marketplace` root must be its own rule and must come first.
@@ -148,6 +154,8 @@ const auditedPayhipShopSlugs = [
 ] as const
 
 const nextConfig: NextConfig = {
+  // Phase 6: do not advertise the framework (X-Powered-By: Next.js).
+  poweredByHeader: false,
   output: 'standalone',
   experimental: {
     webpackMemoryOptimizations: true,

@@ -1,9 +1,10 @@
 // Allow specific external sites (caseworks legal subdomain) to POST inquiries.
 // Same-origin portal requests do not need to set Origin and are unaffected.
 
+// Phase 5: the localhost dev origin is only allowed outside production.
 const ALLOWED_ORIGINS = new Set([
   'https://legal.yousafeconsultancy.com',
-  'http://localhost:3000',
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:3000']),
 ])
 
 export function corsHeaders(origin: string | null): Record<string, string> {
