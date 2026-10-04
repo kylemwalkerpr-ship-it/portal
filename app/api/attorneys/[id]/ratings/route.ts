@@ -1,9 +1,12 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { isUuid } from '@/lib/inquiryGuards'
 
 // Public list of ratings for an attorney.
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id: attorneyId } = await context.params
+  // Malformed ids are a client error, not a server fault (Sanitization P10).
+  if (!isUuid(attorneyId)) return Response.json({ error: 'Invalid attorney id.' }, { status: 400 })
   const db = createSupabaseAdminClient()
   const { data: ratings, error } = await db
     .from('attorney_ratings')
@@ -11,7 +14,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     .eq('attorney_id', attorneyId)
     .order('created_at', { ascending: false })
     .limit(50)
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (error) return Response.json({ error: 'Could not load ratings.' }, { status: 500 })
   return Response.json({ ratings: ratings ?? [] })
 }
 

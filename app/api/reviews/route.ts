@@ -1,6 +1,7 @@
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
+import { isUuid } from '@/lib/inquiryGuards'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -20,6 +21,11 @@ export async function GET(req: Request) {
   const sort = searchParams.get('sort') || 'newest' // newest, oldest, highest, lowest
   const minRating = searchParams.get('min_rating')
   const hasReply = searchParams.get('has_reply')
+
+  // Malformed ids are a client error, not a server fault (Sanitization P10).
+  if ((gigId && !isUuid(gigId)) || (sellerId && !isUuid(sellerId))) {
+    return fail('Invalid id.', 400)
+  }
 
   const db = createSupabaseAdminClient()
 
