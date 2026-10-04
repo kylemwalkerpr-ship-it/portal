@@ -1,5 +1,5 @@
-import concurrent.futures, hashlib, html, json, os, re, ssl, time
-import urllib.parse, urllib.request
+import concurrent.futures, hashlib, html, http.client, json, os, random, re, socket, ssl, time
+import urllib.error, urllib.parse, urllib.request
 import certifi
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
@@ -54,7 +54,44 @@ def now_iso():
 def sha(value):
     return hashlib.sha256(value.encode('utf-8', 'ignore')).hexdigest()
 
+# Transient network failures (TCP resets from the CDN edge, read timeouts,
+# 429/5xx) used to drop pages from a single crawl and push per-site coverage
+# under the sync guard's minimums (e.g. run 37168209895: usa 435 -> 408 from
+# "Connection reset by peer"). Retry those with backoff; permanent 4xx still
+# fail immediately so a real removal is still reflected in coverage.
+FETCH_ATTEMPTS = 4
+RETRY_HTTP_STATUS = {408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
+
+def _is_transient(exc):
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in RETRY_HTTP_STATUS
+    if isinstance(exc, (ConnectionError, TimeoutError, socket.timeout, http.client.IncompleteRead, http.client.RemoteDisconnected)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        return isinstance(reason, (ConnectionError, TimeoutError, socket.timeout, OSError))
+    return False
+
+def _retry_delay(exc, attempt):
+    retry_after = None
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            retry_after = float(exc.headers.get('Retry-After') or '')
+        except (TypeError, ValueError):
+            retry_after = None
+    base = retry_after if retry_after is not None else 1.5 * (2 ** (attempt - 1))
+    return min(base, 15.0) + random.uniform(0, 0.75)
+
 def fetch(url, accept='text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.5'):
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        try:
+            return _fetch_once(url, accept)
+        except Exception as exc:
+            if attempt >= FETCH_ATTEMPTS or not _is_transient(exc):
+                raise
+            time.sleep(_retry_delay(exc, attempt))
+
+def _fetch_once(url, accept):
     request = urllib.request.Request(url, headers={'User-Agent': UA, 'Accept': accept})
     with urllib.request.urlopen(request, timeout=TIMEOUT, context=SSL_CONTEXT) as response:
         raw = response.read()
