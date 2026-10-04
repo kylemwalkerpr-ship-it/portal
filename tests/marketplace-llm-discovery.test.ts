@@ -25,7 +25,8 @@ describe('marketplace LLM discovery', () => {
     expect(robots).toContain("const PORTAL_HOST = 'portal.yousafeconsultancy.com'")
     expect(robots).toContain("userAgent: '*'")
     expect(robots).toContain("allow: '/'")
-    expect(robots).toContain("disallow: ['/api/']")
+    expect(robots).toContain("const PRIVATE_APP_PATHS = ['/api/', '/dashboard', '/account', '/onboarding', '/user/']")
+    expect(robots).toContain('disallow: PRIVATE_APP_PATHS')
     expect(robots).not.toContain("/_next/static/")
     expect(robots).toContain('if (host === MARKET_HOST)')
     for (const agent of MARKET_AGENTS) {
