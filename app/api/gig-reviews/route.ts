@@ -1,6 +1,7 @@
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { isUuid } from '@/lib/inquiryGuards'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -14,6 +15,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const gigId = url.searchParams.get('gig_id')
   const providerId = url.searchParams.get('provider_id')
+  // Malformed ids are a client error, not a server fault (Sanitization P10).
+  if ((gigId && !isUuid(gigId)) || (providerId && !isUuid(providerId))) {
+    return fail('Invalid id.', 400)
+  }
   const db = createSupabaseAdminClient()
   let q = db
     .from('gig_reviews')
@@ -23,7 +28,7 @@ export async function GET(req: Request) {
   if (gigId) q = q.eq('gig_id', gigId)
   if (providerId) q = q.eq('provider_id', providerId)
   const { data: reviews, error } = await q.limit(100)
-  if (error) return fail(error.message, 500)
+  if (error) return fail('Could not load reviews.', 500)
   return ok({ reviews: reviews ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
