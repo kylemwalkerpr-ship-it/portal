@@ -36,6 +36,13 @@ export type SupportHandoffResult = {
   status: string | null
   queue: { position: number; estimatedWaitMinutes: number } | null
   apiUrl: string
+  /**
+   * Per-conversation secret issued by support-saas when it creates the
+   * conversation. The visitor's browser must send it as `X-Chat-Token` to read
+   * (poll) or continue that conversation; support-saas rejects requests
+   * without it. Null when the call continued an existing conversation.
+   */
+  visitorToken: string | null
 }
 
 export async function escalateToSupport(opts: {
@@ -62,11 +69,13 @@ export async function escalateToSupport(opts: {
   const data = await res.json() as {
     conversation?: { id?: string; status?: string }
     queue?: { position: number; estimatedWaitMinutes: number }
+    visitorToken?: string
   }
   return {
     conversationId: data.conversation?.id ?? null,
     status: data.conversation?.status ?? null,
     queue: data.queue ?? null,
     apiUrl: SUPPORT_WIDGET_API,
+    visitorToken: typeof data.visitorToken === 'string' ? data.visitorToken : null,
   }
 }

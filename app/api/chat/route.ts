@@ -204,6 +204,7 @@ export async function POST(req: Request) {
           status: handoff.status,
           queue: handoff.queue,
           apiUrl: handoff.apiUrl,
+          visitorToken: handoff.visitorToken,
           kind: 'explicit',
         },
         reply:
@@ -285,7 +286,7 @@ export async function POST(req: Request) {
             ? 'This request needs individualized professional advice. I am connecting you to support for a qualified person to review it.'
             : 'I could not verify enough public evidence to answer this safely. I am connecting you to support.',
           provider: 'handoff',
-          handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl, kind: 'required' },
+          handoff: { conversationId: handoff.conversationId, status: handoff.status, queue: handoff.queue, apiUrl: handoff.apiUrl, visitorToken: handoff.visitorToken, kind: 'required' },
           retryable: false,
         })
       } catch {
