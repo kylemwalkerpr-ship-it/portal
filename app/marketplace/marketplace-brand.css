@@ -132,3 +132,94 @@
     font-size: 8px;
   }
 }
+
+/* Unified marketplace header (signed-in and anonymous)
+   ----------------------------------------------------
+   These rules used to be inline style attributes repeated on every pill in
+   MarketplaceShell's TopNav (and therefore serialized into every static
+   market document). As classes they ship once in this linked stylesheet,
+   which keeps the Market home under its CI page-size budget. */
+.cw-market .ys-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 0 0;
+  margin-right: 2px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.cw-market .ys-shell-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cw-market .ys-shell-brand-lockup img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+.cw-market .ys-shell-brand-text { text-align: left; }
+.cw-market .ys-shell-brand-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ys-onPaper, #0F172A);
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.cw-market .ys-shell-brand-sub {
+  font-size: 9px;
+  color: var(--ys-onPaperSoft, rgba(15,23,42,0.72));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+.cw-market .ys-market-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.cw-market .ys-shell-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--ys-rule, rgba(15,23,42,0.10));
+  background: transparent;
+  color: var(--ys-onPaper, #0F172A);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.cw-market .ys-shell-desktop-pill { margin-right: 6px; font-weight: 600; }
+.cw-market .ys-shell-pill:hover {
+  background: rgba(15,23,42,0.045);
+  border-color: rgba(15,23,42,0.14);
+  color: #0F172A;
+}
+.cw-market .ys-shell-pill[aria-current='page'],
+.cw-market .ys-shell-pill[aria-current='page']:hover {
+  border-color: transparent;
+  background: var(--ys-indigo, #111827);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+.cw-market .ys-shell-jx {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  flex-shrink: 0;
+}

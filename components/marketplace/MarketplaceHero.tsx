@@ -168,7 +168,11 @@ export function GigCard({ gig, onSearchClick }: GigCardProps) {
     : null
   const rating = gig.avg_rating?.toFixed(1) || '0'
   const reviewCount = gig.review_count || 0
-  const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')
+  // Accepts both the full listing row (`provider` embed) and the slim
+  // `view=card` shape (`provider_name` / `provider_id`) the catalogue fetches.
+  const providerName = gig.provider
+    ? providerDisplayName(gig.provider, 'YouSafe Provider')
+    : ((gig as any).provider_name || 'YouSafe Provider')
   const providerId = gig.provider?.id || gig.provider_id
   const deliveryDays = (gig as any).min_delivery_days ?? (gig as any).delivery_days ?? null
   const isAttorney = gig.provider_type === 'attorney'

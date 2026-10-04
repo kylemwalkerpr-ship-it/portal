@@ -194,6 +194,31 @@ async function requestJson(url: string, options: RequestInit = {}) {
   return payload?.data ?? payload
 }
 
+const PAGE_SIZE = 20
+/** Fresh-enough window for a prefetched / previously viewed page (matches the API's KV TTL). */
+const PAGE_CACHE_MS = 60_000
+
+function parsePageParam(value: string | null | undefined): number {
+  const n = parseInt(String(value || '1'), 10)
+  return Number.isFinite(n) && n > 1 ? n : 1
+}
+
+/**
+ * Bottom edge of the sticky chrome (shell header + category rail) so a page
+ * switch can land the first new card just below it instead of under it.
+ * Measured live because the stack differs by breakpoint (72/60px header,
+ * optional sticky category rail).
+ */
+function stickyChromeBottom(): number {
+  let bottom = 0
+  document.querySelectorAll('.ys-shell-header, .ys-cat-bar').forEach((el) => {
+    const cs = window.getComputedStyle(el)
+    if (cs.position !== 'sticky' && cs.position !== 'fixed') return
+    bottom = Math.max(bottom, (parseFloat(cs.top) || 0) + el.getBoundingClientRect().height)
+  })
+  return bottom
+}
+
 interface GigDiscoveryPageProps {
   categoryId?: string
   categoryName?: string
@@ -247,7 +272,25 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [view, setView] = React.useState<'grid' | 'list'>('grid')
-  const [page, setPage] = React.useState(parseInt(searchParams?.get('page') || '1', 10))
+  const [page, setPage] = React.useState(() => parsePageParam(searchParams?.get('page')))
+  // Page-switch plumbing (catalogue page-switch fix):
+  //  · pageRef mirrors `page` for effects that must not re-run on it;
+  //  · pushNextUrlRef makes an explicit page click a real history entry
+  //    (?page=N) so Back/forward and shared links keep the reader's place —
+  //    filter edits keep using replace;
+  //  · scrollOnLoadRef asks the next render of results to bring the first
+  //    card of the new page to the top of the viewport;
+  //  · pageCacheRef holds prefetched/visited windows so the next page and
+  //    Back are instant; requestSeqRef drops out-of-order responses.
+  const pageRef = React.useRef(page)
+  pageRef.current = page
+  const pushNextUrlRef = React.useRef(false)
+  const scrollOnLoadRef = React.useRef(false)
+  const pageCacheRef = React.useRef(new Map<string, { t: number; data: any }>())
+  const inflightRef = React.useRef(new Map<string, Promise<any>>())
+  const requestSeqRef = React.useRef(0)
+  const resultsRef = React.useRef<HTMLDivElement | null>(null)
+  const paginationRef = React.useRef<HTMLDivElement | null>(null)
   const [total, setTotal] = React.useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = React.useState(false)
   const [activeSearchEventId, setActiveSearchEventId] = React.useState<string | null>(null)
@@ -388,20 +431,29 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   // remain shareable query parameters.
   const buildBrowserQuery = React.useCallback(() => {
     const params = buildQuery()
-    if (!categoryId) return params
-
-    const remainingCategories = params.getAll('category').filter((cat) => cat !== categoryId)
-    params.delete('category')
-    remainingCategories.forEach((cat) => params.append('category', cat))
+    if (categoryId) {
+      const remainingCategories = params.getAll('category').filter((cat) => cat !== categoryId)
+      params.delete('category')
+      remainingCategories.forEach((cat) => params.append('category', cat))
+    }
+    // The page lives in the URL (page 1 stays canonical / param-free) so a
+    // refresh, a shared link or Back restores exactly this window.
+    if (page > 1) params.set('page', String(page))
     return params
-  }, [buildQuery, categoryId])
+  }, [buildQuery, categoryId, page])
 
   // Reflect the current filter state in the URL whenever it changes, so
   // refresh / share / browser back-forward preserve filters.
   React.useEffect(() => {
     const qs = buildBrowserQuery().toString()
     const target = qs ? `${pathname}?${qs}` : pathname
-    router.replace(target, { scroll: false })
+    const push = pushNextUrlRef.current
+    pushNextUrlRef.current = false
+    if (typeof window !== 'undefined' && `${window.location.pathname}${window.location.search}` === target) return
+    // A page click is a native history entry (Next syncs useSearchParams with
+    // pushState) — no RSC round-trip to the Worker just to change ?page=N.
+    if (push) window.history.pushState(null, '', target)
+    else router.replace(target, { scroll: false })
   }, [buildBrowserQuery, pathname, router])
 
   // External URL → state hydration.
@@ -449,22 +501,71 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setSort(prev => prev === nextSort ? prev : nextSort)
     const nextQ = searchParams.get('q') || ''
     setSearchQuery(prev => prev === nextQ ? prev : nextQ)
+    // Back/forward between ?page=N entries: follow the URL and land on the
+    // first card of that page, exactly like an explicit page click.
+    const nextPage = parsePageParam(searchParams.get('page'))
+    if (nextPage !== pageRef.current) {
+      scrollOnLoadRef.current = true
+      setPage(nextPage)
+    }
   }, [searchParams, categoryId])
 
+  // One API URL per window. `view=card` returns only the fields GigCard
+  // renders (~16 KB per 20 cards instead of ~260 KB of full listing rows with
+  // search vectors, descriptions, FAQs and moderation columns).
+  const apiUrlForPage = React.useCallback((pageNum: number) => {
+    const params = buildQuery()
+    params.set('view', 'card')
+    params.set('page', String(pageNum))
+    params.set('limit', String(PAGE_SIZE))
+    // 'relevance' default isn't sent in the URL; pass it to the API
+    // explicitly so the backend's default-sort path doesn't shift.
+    if (!params.has('sort')) params.set('sort', sort)
+    return `/api/marketplace/gigs?${params.toString()}`
+  }, [buildQuery, sort])
+
+  const fetchWindow = React.useCallback((url: string) => {
+    const cached = pageCacheRef.current.get(url)
+    if (cached && Date.now() - cached.t < PAGE_CACHE_MS) return Promise.resolve(cached.data)
+    const inflight = inflightRef.current.get(url)
+    if (inflight) return inflight
+    const request = requestJson(url)
+      .then((data) => {
+        pageCacheRef.current.set(url, { t: Date.now(), data })
+        return data
+      })
+      .finally(() => { inflightRef.current.delete(url) })
+    inflightRef.current.set(url, request)
+    return request
+  }, [])
+
+  // Warm the next window when the reader is about to need it (pager near the
+  // viewport, or hover/focus/touch on a page button). Intent-gated rather than
+  // eager so the Worker (Free plan) only sees requests that are likely used.
+  const prefetchPage = React.useCallback((pageNum: number) => {
+    if (pageNum < 1) return
+    fetchWindow(apiUrlForPage(pageNum)).catch(() => { /* best effort */ })
+  }, [apiUrlForPage, fetchWindow])
+
   const loadGigs = React.useCallback(async () => {
-    setLoading(true)
+    const seq = ++requestSeqRef.current
+    const url = apiUrlForPage(page)
+    const cached = pageCacheRef.current.get(url)
+    // Keep the current cards on screen (dimmed) while the next window loads;
+    // a cached window swaps in without any loading state at all.
+    if (!cached || Date.now() - cached.t >= PAGE_CACHE_MS) setLoading(true)
     setError('')
     try {
-      const params = buildQuery()
-      params.set('page', String(page))
-      params.set('limit', '20')
-      // 'relevance' default isn't sent in the URL; pass it to the API
-      // explicitly so the backend's default-sort path doesn't shift.
-      if (!params.has('sort')) params.set('sort', sort)
-
-      const data = await requestJson(`/api/marketplace/gigs?${params.toString()}`)
-      setGigs(data.gigs || [])
+      const data = await fetchWindow(url)
+      if (seq !== requestSeqRef.current) return
       const resultTotal = data.total || data.gigs?.length || 0
+      const lastPage = Math.max(1, Math.ceil(resultTotal / PAGE_SIZE))
+      if ((data.gigs || []).length === 0 && page > lastPage && resultTotal > 0) {
+        // Stale/out-of-range ?page=N: clamp to the last real page.
+        setPage(lastPage)
+        return
+      }
+      setGigs(data.gigs || [])
       setTotal(resultTotal)
 
       // Only an explicit action leaves a pending execution. Plain URL visits,
@@ -501,12 +602,13 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
         postGigMetric({ gig_ids: impressionIds, event_type: 'impression' })
       }
     } catch (e: any) {
-      setError(e.message)
+      if (seq === requestSeqRef.current) setError(e.message)
     } finally {
-      setLoading(false)
+      if (seq === requestSeqRef.current) setLoading(false)
     }
   }, [
-    buildQuery,
+    apiUrlForPage,
+    fetchWindow,
     sort,
     page,
     searchQuery,
@@ -523,6 +625,43 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   React.useEffect(() => {
     loadGigs()
   }, [loadGigs])
+
+  // After a page switch renders, bring the first card of the new page to the
+  // top of the viewport, just below the sticky header/category rail. Without
+  // this the reader stayed at the pager: ~1,500-2,600px below the first new
+  // card on desktop and ~7,500px on a 375px phone.
+  React.useLayoutEffect(() => {
+    if (loading || !scrollOnLoadRef.current) return
+    scrollOnLoadRef.current = false
+    const target = resultsRef.current
+    if (!target) return
+    const top = target.getBoundingClientRect().top + window.scrollY - stickyChromeBottom() - 12
+    // Instant (not smooth): the old window is already gone, and a smooth
+    // 7,000px glide on a phone reads as lag.
+    window.scrollTo({ top: Math.max(0, top), behavior: 'instant' as ScrollBehavior })
+    target.focus({ preventScroll: true })
+  }, [gigs, loading])
+
+  const totalPagesForPrefetch = Math.ceil(total / PAGE_SIZE)
+  React.useEffect(() => {
+    const el = paginationRef.current
+    if (!el || typeof IntersectionObserver === 'undefined' || page >= totalPagesForPrefetch) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        prefetchPage(page + 1)
+        observer.disconnect()
+      }
+    }, { rootMargin: '600px 0px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [page, totalPagesForPrefetch, prefetchPage, gigs])
+
+  const goToPage = React.useCallback((next: number) => {
+    if (next === pageRef.current || next < 1) return
+    pushNextUrlRef.current = true
+    scrollOnLoadRef.current = true
+    setPage(next)
+  }, [])
 
   const handleApplyFilters = () => {
     setPage(1)
@@ -586,7 +725,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     })),
   ]
 
-  const totalPages = Math.ceil(total / 20)
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -711,16 +850,16 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
           </div>
 
           <div>
-            {loading ? (
+            {loading && gigs.length === 0 ? (
               <>
                 <style>{`@keyframes ysShimmer { 0% { opacity: .55 } 50% { opacity: 1 } 100% { opacity: .55 } } .ys-shimmer { animation: ysShimmer 1.4s ease-in-out infinite }`}</style>
                 <div style={gigGrid} className="ys-gig-grid">
                   {Array.from({ length: 8 }, (_, i) => <GigCardSkeleton key={i} />)}
                 </div>
               </>
-            ) : error ? (
+            ) : error && !loading ? (
               <ErrorState message={error} onRetry={loadGigs} />
-            ) : gigs.length === 0 ? (
+            ) : gigs.length === 0 && !loading ? (
               <EmptyState
                 title="Nothing here yet — let's widen the net"
                 body="No services match this exact combination. Clear a filter or two, or tell us what you need and a specialist will respond with an offer."
@@ -734,6 +873,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
             ) : (
               <>
                 <TrustStrip />
+                <div
+                  ref={resultsRef}
+                  tabIndex={-1}
+                  aria-busy={loading}
+                  aria-label={`Results page ${page}`}
+                  className="ys-discovery-results"
+                  data-loading={loading ? 'true' : undefined}
+                  style={{ outline: 'none', scrollMarginTop: 96 }}
+                >
                 {view === 'grid' ? (
                   <div style={gigGrid} className="ys-gig-grid">
                     {gigs.map(gig => (
@@ -750,10 +898,11 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                         className="ys-gig-list-item"
                         onClick={() => trackResultClick(gig.id)}
                       >
-                        {gig.gallery_images?.[0]?.url ? (
+                        {(gig.gallery_images?.[0]?.url || gig.cover_image_url) ? (
                           <img
                             style={gigListImage}
-                            {...responsiveImageProps(gig.gallery_images[0].url, gig.title)}
+                            loading="lazy"
+                            {...responsiveImageProps(gig.gallery_images?.[0]?.url || gig.cover_image_url, gig.title)}
                           />
                         ) : (
                           <div
@@ -780,7 +929,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                           >
                             {gig.title}
                           </h3>
-                          {gig.pitch && (
+                          {(gig.pitch || gig.provider_name) && (
                             <p
                               style={{
                                 fontSize: '14px',
@@ -789,7 +938,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                                 lineHeight: 1.5,
                               }}
                             >
-                              {gig.pitch}
+                              {gig.pitch || gig.provider_name}
                             </p>
                           )}
                           <div
@@ -813,13 +962,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                     ))}
                   </div>
                 )}
+                </div>
 
                 {totalPages > 1 && (
-                  <div style={pagination}>
+                  <nav ref={paginationRef} style={pagination} aria-label="Results pages">
                     <Btn
                       variant="secondary"
                       size="sm"
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      onClick={() => goToPage(Math.max(1, page - 1))}
+                      onPointerEnter={() => page > 1 && prefetchPage(page - 1)}
                       disabled={page === 1}
                     >
                       Previous
@@ -839,7 +990,11 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                       return (
                         <button
                           key={pageNum}
-                          onClick={() => setPage(pageNum)}
+                          type="button"
+                          onClick={() => goToPage(pageNum)}
+                          onPointerEnter={() => pageNum !== page && prefetchPage(pageNum)}
+                          onFocus={() => pageNum !== page && prefetchPage(pageNum)}
+                          aria-current={page === pageNum ? 'page' : undefined}
                           style={page === pageNum ? activePageButton : pageButton}
                         >
                           {pageNum}
@@ -849,12 +1004,13 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                     <Btn
                       variant="secondary"
                       size="sm"
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      onClick={() => goToPage(Math.min(totalPages, page + 1))}
+                      onPointerEnter={() => page < totalPages && prefetchPage(page + 1)}
                       disabled={page === totalPages}
                     >
                       Next
                     </Btn>
-                  </div>
+                  </nav>
                 )}
               </>
             )}

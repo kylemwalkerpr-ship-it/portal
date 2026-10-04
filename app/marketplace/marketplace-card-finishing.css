@@ -79,3 +79,60 @@
     will-change: auto !important;
   }
 }
+
+/* Frosted-glass service cards ---------------------------------------------
+   Every gig sits on its own translucent sheet so neighbouring services read
+   as separate items: catalogue/search cards (GigCard), the Market home grid
+   (.featured .gig) and the /gigs directory cards. Desktop gets a light
+   backdrop blur; phones / coarse pointers get an opaque-ish sheet with NO
+   backdrop-filter, which is the expensive part while scrolling long grids. */
+.cw-market .ys-discovery-gig-card,
+.cw-market .featured .gig,
+.cw-market .ys-gig-card {
+  background: rgba(255, 255, 255, .64) !important;
+  background: color-mix(in srgb, var(--ys-vellum, #FFFFFF) 64%, transparent) !important;
+  border: 1px solid rgba(255, 255, 255, .6) !important;
+  border-radius: 18px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .55),
+    0 0 0 1px rgba(15, 23, 42, .07),
+    0 14px 34px -22px rgba(15, 23, 42, .34) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+  backdrop-filter: blur(12px) saturate(1.35);
+}
+.cw-market .ys-discovery-gig-card {
+  padding: 10px 10px 14px !important;
+  overflow: hidden !important;
+}
+.cw-market .featured .gig { overflow: hidden !important; }
+
+@media (hover: hover) and (pointer: fine) {
+  .cw-market .ys-discovery-gig-card:hover,
+  .cw-market .featured .gig:hover,
+  .cw-market .ys-gig-card:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .6),
+      0 0 0 1px rgba(15, 23, 42, .12),
+      0 20px 40px -24px rgba(15, 23, 42, .42) !important;
+  }
+}
+
+@media (max-width: 768px), (hover: none), (pointer: coarse) {
+  .cw-market .ys-discovery-gig-card,
+  .cw-market .featured .gig,
+  .cw-market .ys-gig-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, .9) !important;
+    background: color-mix(in srgb, var(--ys-vellum, #FFFFFF) 90%, transparent) !important;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, .08), 0 8px 22px -18px rgba(15, 23, 42, .3) !important;
+  }
+}
+
+/* Catalogue page switch: the current cards stay visible (dimmed, inert)
+   while the next window loads instead of collapsing into a spinner. */
+.cw-market .ys-discovery-results[data-loading='true'] {
+  opacity: .55;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}

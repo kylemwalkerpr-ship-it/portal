@@ -105,10 +105,23 @@ describe('marketplace first paint', () => {
     expect(auth).toContain('if (!isLoaded)')
   })
 
-  it('marks only Browse active for signed-in users on marketplace browse', () => {
+  it('uses one header for every visitor: Home is current only on the Market home, no duplicate Browse tab', () => {
     const shell = read('components/marketplace/MarketplaceShell.tsx')
-    expect(shell).toContain("const homeCurrent = role === null && !shopActive && activeView === 'browse'")
-    expect(shell).toContain("? role === null && !shopActive && activeView === 'browse'")
+    // Home highlight is role-independent and path-scoped (it used to stay lit
+    // for anonymous visitors on category pages and never light for signed-in).
+    expect(shell).toContain("return onHome && !shopActive && activeView === 'browse'")
+    expect(shell).toContain('const homeCurrent = isHomeCurrent(onHome, shopActive, activeView)')
+    expect(shell).toContain('const homeActive = isHomeCurrent(onHome, shopActive, activeView)')
+    // Segment-based (not pathname) so the prerendered HTML and the hydrated
+    // client agree on the internally rewritten Market home.
+    expect(shell).toContain('onHome={layoutSegment === null}')
+    // Signed-in role lists only append account tabs; none duplicates Home.
+    expect(shell).not.toMatch(/label: 'Browse'/)
+    expect(shell).not.toMatch(/label: 'Marketplace',\s*view: 'browse'/)
+    expect(shell).toContain('return [...PUBLIC_NAV, ...accountLinksForRole(role)]')
+    // Brand label + jurisdiction picker are no longer gated on a signed-in role.
+    expect(shell).not.toContain('role === null ? (')
+    expect(shell).not.toMatch(/role !== null && \(\s*<div className="ys-shell-jx"/)
   })
 
   it('fails the hero video closed to a poster fallback instead of eager retrying', () => {

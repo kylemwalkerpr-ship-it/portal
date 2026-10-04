@@ -140,12 +140,14 @@ describe('GET /api/marketplace/gigs — view=card', () => {
         'order_count',
         'provider_country',
         'provider_headshot_url',
+        'provider_id',
         'provider_name',
         'provider_type',
         'rank_score',
         'review_count',
         'slug',
         'starting_price',
+        'subcategory',
         'title',
       ].sort(),
     )
@@ -157,6 +159,10 @@ describe('GET /api/marketplace/gigs — view=card', () => {
     expect(gig.pitch).toBeUndefined()
     expect(gig.description).toBeUndefined()
     expect(gig.provider).toBeUndefined()
+    // Catalogue cards link the seller (provider_id) and the category carousel
+    // re-checks taxonomy (subcategory); anonymous responses carry no is_saved.
+    expect(gig.provider_id).toBe('p1')
+    expect(gig.is_saved).toBeUndefined()
     // Pagination/total semantics are shared with the default response.
     expect(res.body.data).toMatchObject({ total: 217, page: 2, limit: 48, hasMore: true })
     expect(ranges).toEqual([[48, 95]])
