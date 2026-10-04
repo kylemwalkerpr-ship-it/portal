@@ -132,8 +132,8 @@
 .cw-market .hero-card .file-meta .badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
 .cw-market .hero-card .file-meta .badge.popular { background: var(--ys-indigoSoft, rgba(17,24,39,0.10)); color: var(--ys-indigo, #111827); }
 .cw-market .hero-card .file-meta .badge.verified { background: #ECFDF5; color: #047857; }
-.cw-market .hero-card h3 { font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 600; font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; margin: 12px 0 12px; color: var(--ys-ink, #0F172A); }
-.cw-market .hero-card h3 em { color: var(--ys-indigo, #111827); font-style: normal; }
+.cw-market .hero-card h2 { font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 600; font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; margin: 12px 0 12px; color: var(--ys-ink, #0F172A); }
+.cw-market .hero-card h2 em { color: var(--ys-indigo, #111827); font-style: normal; }
 .cw-market .hero-card .attorney { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--ys-ruleSoft, rgba(15,23,42,0.06)); }
 .cw-market .hero-card .avatar { width: 36px; height: 36px; border-radius: 50%; color: #FFFFFF; display: grid; place-items: center; font-family: var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif; font-weight: 600; font-size: 14px; flex: 0 0 36px; }
 .cw-market .hero-card .attorney-name { line-height: 1.2; flex: 1; }
