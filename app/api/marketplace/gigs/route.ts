@@ -14,7 +14,11 @@ const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
 
 /**
  * `view=card` — narrow projection used by the marketplace landing grid's
- * page-by-page windows (MARKET-ROOT-TRANSFER-LATENCY).
+ * page-by-page windows (MARKET-ROOT-TRANSFER-LATENCY) and by the catalogue
+ * (GigDiscoveryPage on /categories/* and /gigs?q=…, plus the category
+ * "recommended" carousel). A catalogue page of 20 full rows was ~260 KB
+ * (search vector, descriptions, FAQs, moderation columns); the card shape is
+ * ~16 KB, and the Worker serializes/caches ~16x less JSON per request.
  *
  * The default response is unchanged: every consumer that needs full listing
  * rows (drawer, discovery page, dashboards) keeps getting `select('*')` +
@@ -33,7 +37,7 @@ const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
  * exactly as the landing snapshot does.
  */
 const CARD_VIEW_SELECT =
-  'id, slug, title, category, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, country)'
+  'id, slug, title, category, subcategory, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username, country)'
 
 const CARD_VIEW_JURISDICTIONS = ['us', 'uk', 'ca', 'au']
 
@@ -211,12 +215,14 @@ export async function GET(req: Request) {
         // paths above; the grid ignores it).
         const rawJx = String(gig.jurisdiction || '').toLowerCase()
         const providerCountry = typeof gig.provider?.country === 'string' ? gig.provider.country : null
-        return {
+        const card: Record<string, unknown> = {
           id: gig.id,
           slug: gig.slug ?? null,
           title: gig.title ?? '',
           category: gig.category ?? null,
+          subcategory: gig.subcategory ?? null,
           provider_type: gig.provider_type ?? null,
+          provider_id: gig.provider_id ?? null,
           avg_rating: Number(gig.avg_rating ?? 0),
           review_count: Number(gig.review_count ?? 0),
           rank_score: Number(gig.rank_score ?? 0),
@@ -231,6 +237,10 @@ export async function GET(req: Request) {
             : resolveJurisdiction(providerCountry),
           cover_image_url: resolveCoverUrl(gig),
         }
+        // Signed-in requests are never KV-cached, so the per-user saved flag
+        // can ride along without leaking into the shared anonymous entry.
+        if (auth) card.is_saved = savedGigIds.has(gig.id)
+        return card
       }
       return {
         ...gig,

@@ -25,6 +25,7 @@ type RecommendedGig = {
     username?: string
   }
   provider_id?: string
+  provider_name?: string | null
   provider_type?: string
   provider_headshot_url?: string | null
   gallery_images?: Array<{ url: string }>
@@ -60,7 +61,10 @@ async function requestGigs(
   sort: 'trending' | 'best_rated' | 'most_orders',
   signal: AbortSignal,
 ): Promise<RecommendedGig[]> {
+  // `view=card`: the carousel renders card fields only, so it takes the slim
+  // projection (~0.8 KB per gig) instead of full listing rows (~13 KB each).
   const params = new URLSearchParams({
+    view: 'card',
     category: categoryId,
     sort,
     limit: '12',
@@ -91,7 +95,9 @@ function mergeUnique(existing: RecommendedGig[], incoming: RecommendedGig[]): Re
 
 function CompactGigCard({ gig }: { gig: RecommendedGig }) {
   const imageUrl = gig.gallery_images?.[0]?.url || gig.cover_image_url
-  const providerName = providerDisplayName(gig.provider, 'YouSafe Provider')
+  const providerName = gig.provider
+    ? providerDisplayName(gig.provider, 'YouSafe Provider')
+    : (gig.provider_name || 'YouSafe Provider')
   const price = gig.starting_price ? Math.round(gig.starting_price / 100) : null
   const rating = gig.avg_rating && gig.review_count ? `${gig.avg_rating.toFixed(1)} (${gig.review_count})` : null
   const isAttorney = gig.provider_type === 'attorney'

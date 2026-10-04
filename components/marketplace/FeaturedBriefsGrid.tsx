@@ -612,7 +612,7 @@ export function FeaturedBriefsGrid({
           font-weight: 700;
           letter-spacing: .035em;
         }
-        .cw-market .featured .gig h4 {
+        .cw-market .featured .gig h3 {
           min-height: 2.84em;
           margin: 0;
           font-family: ${DISCOVERY_FONT};
@@ -747,7 +747,7 @@ export function FeaturedBriefsGrid({
                     </span>
                     <span className="pro">{proLabel}</span>
                   </div>
-                  <h4>{g.title}</h4>
+                  <h3>{g.title}</h3>
                   {g.review_count > 0 ? (
                     <div className="stars">
                       <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>

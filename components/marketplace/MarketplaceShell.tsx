@@ -3,7 +3,7 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSelectedLayoutSegment } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { ThemePicker } from './ThemePicker'
@@ -38,16 +38,21 @@ interface NavLink { icon: string; label: string; view: string }
 
 // ─── nav configs per role ─────────────────────────────────────────────────────
 
-const CLIENT_NAV: NavLink[] = [
-  { icon: '🏬', label: 'Browse',        view: 'browse'    },
-  { icon: '📦', label: 'My Orders',     view: 'orders'    },
+// One header for everyone: Home / Dashboard / File shop pills + the public
+// "Find A Specialist" tab render for every visitor; signing in only APPENDS
+// that role's account tabs. The old per-role lists started with a Browse /
+// Marketplace tab that duplicated Home (and stole its highlight).
+const PUBLIC_NAV: NavLink[] = [
   { icon: '⚖️', label: 'Find A Specialist', view: 'attorneys' },
+]
+
+const CLIENT_NAV: NavLink[] = [
+  { icon: '📦', label: 'My Orders',     view: 'orders'    },
   { icon: '📥', label: 'Inquiries',     view: 'inquiries' },
   { icon: '💬', label: 'Messages',      view: 'messages'  },
 ]
 
 const ATTORNEY_NAV: NavLink[] = [
-  { icon: '🏬', label: 'Marketplace',    view: 'browse'   },
   { icon: '📈', label: 'Trending Opportunities', view: 'opportunities' },
   { icon: '📥', label: 'Inquiry Queue',  view: 'queue'    },
   { icon: '📂', label: 'My Inquiries',   view: 'mine'     },
@@ -56,20 +61,36 @@ const ATTORNEY_NAV: NavLink[] = [
 ]
 
 const CONSULTANT_NAV: NavLink[] = [
-  { icon: '🏬', label: 'Marketplace', view: 'browse'   },
   { icon: '📈', label: 'Trending Opportunities', view: 'opportunities' },
   { icon: '📦', label: 'Orders',      view: 'orders'   },
   { icon: '💬', label: 'Messages',    view: 'messages' },
 ]
 
-function navLinksForRole(role: Role | null): NavLink[] {
+function accountLinksForRole(role: Role | null): NavLink[] {
   if (role === 'attorney')   return ATTORNEY_NAV
   if (role === 'consultant') return CONSULTANT_NAV
   if (role === 'client')     return CLIENT_NAV
-  // public / unauthenticated
-  return [
-    { icon: '⚖️', label: 'Find A Specialist', view: 'attorneys' },
-  ]
+  return []
+}
+
+function navLinksForRole(role: Role | null): NavLink[] {
+  return [...PUBLIC_NAV, ...accountLinksForRole(role)]
+}
+
+function brandSubLabel(role: Role | null): string {
+  if (role === 'attorney') return 'Attorney Portal'
+  if (role === 'consultant') return 'Consultant Portal'
+  return 'Marketplace'
+}
+
+/**
+ * Home is "current" only on the Market home itself (any role), never on a
+ * category/gig/provider page and never while an account section is open.
+ * Previously it lit up for anonymous visitors on every catalogue page and
+ * never for signed-in visitors.
+ */
+function isHomeCurrent(onHome: boolean, shopActive: boolean | undefined, activeView: Section): boolean {
+  return onHome && !shopActive && activeView === 'browse'
 }
 
 // ─── Embedded section panels ──────────────────────────────────────────────────
@@ -228,6 +249,7 @@ function MarketMobileDrawer({
   links,
   activeView,
   shopActive,
+  onHome,
   country,
   onNav,
 }: {
@@ -237,6 +259,7 @@ function MarketMobileDrawer({
   links: NavLink[]
   activeView: Section
   shopActive?: boolean
+  onHome: boolean
   country: 'all' | 'us' | 'uk' | 'ca' | 'au'
   onNav: (v: Section) => void
 }) {
@@ -261,7 +284,7 @@ function MarketMobileDrawer({
 
   if (!open || !mounted) return null
 
-  const homeCurrent = role === null && !shopActive && activeView === 'browse'
+  const homeCurrent = isHomeCurrent(onHome, shopActive, activeView)
   const shopCurrent = Boolean(shopActive)
 
   return createPortal(
@@ -336,11 +359,9 @@ function MarketMobileDrawer({
         </nav>
         <div className="ys-shell-drawer-extras">
           <p className="ys-shell-drawer-kicker">Preferences</p>
-          {role !== null && (
-            <React.Suspense fallback={null}>
-              <JurisdictionDropdown active={country} />
-            </React.Suspense>
-          )}
+          <React.Suspense fallback={null}>
+            <JurisdictionDropdown active={country} />
+          </React.Suspense>
           <GlobalLanguageBar />
           <ThemePicker />
         </div>
@@ -352,7 +373,7 @@ function MarketMobileDrawer({
 
 // ─── top nav bar ─────────────────────────────────────────────────────────────
 
-function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au'; shopActive?: boolean }) {
+function TopNav({ role, activeView, onNav, country, shopActive, onHome }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au'; shopActive?: boolean; onHome: boolean }) {
   const [scrolled, setScrolled] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
   // Refs for the scrollable nav strip + the currently-active button so we
@@ -390,6 +411,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
   }, [activeView])
 
   const links = navLinksForRole(role)
+  const homeActive = isHomeCurrent(onHome, shopActive, activeView)
 
   return (
     <header
@@ -407,150 +429,54 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
     >
       <div className="ys-shell-header-inner" style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', height: 72 }}>
 
-        {/* Brand */}
-        <a
-          href="https://yousafeconsultancy.com/"
-          className="ys-shell-brand"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', textDecoration: 'none', flexShrink: 0 }}
-        >
-          {role === null ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <img
-                src="/logo.png"
-                alt="YouSafe Consultancy"
-                width="30"
-                height="30"
-                style={{ width: 30, height: 30, objectFit: 'contain' }}
-              />
-              <span style={{
-                fontFamily: F.ui, fontSize: 19, fontWeight: 800,
-                color: T.onPaper, letterSpacing: '-0.02em',
-              }}>YouSafe</span>
+        {/* Brand — one lockup for every visitor (logo, wordmark, section
+            label). Styling lives in marketplace-brand.css so the static
+            document does not repeat inline style strings. */}
+        <a href="https://yousafeconsultancy.com/" className="ys-shell-brand">
+          <div className="ys-shell-brand-lockup">
+            <img src="/logo.png" alt="YouSafe Consultancy" width="30" height="30" />
+            <div className="ys-shell-brand-text">
+              <div className="ys-shell-brand-name">YouSafe</div>
+              <div className="ys-shell-brand-sub">{brandSubLabel(role)}</div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <img
-                src="/logo.png"
-                alt="YouSafe Consultancy"
-                width="30"
-                height="30"
-                style={{ width: 30, height: 30, objectFit: 'contain' }}
-              />
-              <div style={{ textAlign: 'left' as const }}>
-                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.onPaper, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.onPaperSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                  {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
         </a>
 
-        {/* Uniform pill buttons — Home, Dashboard, File shop */}
-        {[
-          { label: 'Home', href: '/', external: false, icon: 'M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z' },
-          { label: 'Dashboard', href: 'https://portal.yousafeconsultancy.com/dashboard', external: false, icon: '' },
-          { label: 'File shop', href: 'https://market.yousafeconsultancy.com/shop', external: false, icon: '' },
-        ].map((btn) => {
-          const isActive = btn.label === 'File shop'
-            ? shopActive
-            : btn.label === 'Home'
-              ? role === null && !shopActive && activeView === 'browse'
-              : false
-          const sharedStyle: React.CSSProperties = {
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '0 16px', marginRight: 6,
-            height: 36, borderRadius: 999,
-            fontSize: 13, fontWeight: 600, fontFamily: F.ui,
-            textDecoration: 'none', whiteSpace: 'nowrap' as const, flexShrink: 0,
-            border: isActive ? 'none' : `1px solid ${T.rule}`,
-            background: isActive ? T.indigo : 'transparent',
-            color: isActive ? '#fff' : T.onPaper,
-            transition: 'all 150ms ease',
-          }
-          const hoverIn = (e: React.MouseEvent) => {
-            const el = e.currentTarget as HTMLElement
-            if (!isActive) { el.style.background = 'rgba(15,23,42,0.045)'; el.style.borderColor = 'rgba(15,23,42,0.14)'; el.style.color = '#0F172A' }
-          }
-          const hoverOut = (e: React.MouseEvent) => {
-            const el = e.currentTarget as HTMLElement
-            if (!isActive) { el.style.background = 'transparent'; el.style.borderColor = T.rule; el.style.color = T.onPaper }
-          }
-          if (btn.external) {
-            return (
-              <a key={btn.label} href={btn.href} target="_blank" rel="noopener" className="ys-shell-desktop-pill" style={sharedStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
-                {btn.label}
-              </a>
-            )
-          }
-          return (
-            <Link
-              key={btn.label}
-              href={btn.href}
-              className="ys-shell-desktop-pill"
-              style={sharedStyle}
-              onMouseEnter={hoverIn}
-              onMouseLeave={hoverOut}
-              onClick={(e) => {
-                if (btn.label !== 'Home') return
-                e.preventDefault()
-                onNav('browse')
-              }}
-            >
-              {btn.icon && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d={btn.icon} />
-                </svg>
-              )}
-              {btn.label}
-            </Link>
-          )
-        })}
-
-        {/* Nav tabs — scrollable on mobile; the active item scrolls itself
-            into view so the user always sees which section they're on
-            even after they've scrolled the tab strip sideways. */}
-        <nav
-          ref={navScrollRef}
-          className="ys-market-nav"
-          style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const, scrollSnapType: 'x mandatory' as const, WebkitOverflowScrolling: 'touch' as const }}
+        {/* Uniform pill buttons — Home, Dashboard, File shop (all visitors) */}
+        <Link
+          href="/"
+          className="ys-shell-desktop-pill ys-shell-pill"
+          aria-current={homeActive ? 'page' : undefined}
+          onClick={(e) => { e.preventDefault(); onNav('browse') }}
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
+          </svg>
+          Home
+        </Link>
+        <Link href="https://portal.yousafeconsultancy.com/dashboard" className="ys-shell-desktop-pill ys-shell-pill">Dashboard</Link>
+        <Link
+          href="https://market.yousafeconsultancy.com/shop"
+          className="ys-shell-desktop-pill ys-shell-pill"
+          aria-current={shopActive ? 'page' : undefined}
+        >
+          File shop
+        </Link>
+
+        {/* Nav tabs — public tab(s) for everyone + the signed-in role's
+            account tabs. Scrollable on narrow desktops; the active item
+            scrolls itself into view. */}
+        <nav ref={navScrollRef} className="ys-market-nav" aria-label="Marketplace sections">
           {links.map(link => {
             const active = link.view === activeView && !shopActive
             return (
               <button
                 key={link.view}
+                type="button"
                 ref={(el) => { if (active) activeNavRef.current = el }}
                 onClick={() => onNav(link.view as Section)}
-                onMouseEnter={(e) => {
-                  if (active) return
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = 'rgba(15,23,42,0.045)'
-                  el.style.borderColor = 'rgba(15,23,42,0.14)'
-                  el.style.color = '#0F172A'
-                }}
-                onMouseLeave={(e) => {
-                  if (active) return
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = 'transparent'
-                  el.style.borderColor = T.rule
-                  el.style.color = T.onPaper
-                }}
-                style={{
-                  display: 'inline-flex', alignItems: 'center',
-                  padding: '0 16px',
-                  height: 36,
-                  borderRadius: 999,
-                  fontSize: 13, fontWeight: active ? 600 : 500,
-                  color: active ? '#fff' : T.onPaper,
-                  background: active ? T.indigo : 'transparent',
-                  border: active ? 'none' : `1px solid ${T.rule}`,
-                  cursor: 'pointer', whiteSpace: 'nowrap' as const,
-                  flexShrink: 0,
-                  scrollSnapAlign: 'start' as const,
-                  transition: 'all 150ms ease',
-                  fontFamily: F.ui,
-                }}
+                className="ys-shell-pill"
+                aria-current={active ? 'page' : undefined}
               >
                 {link.label}
               </button>
@@ -558,13 +484,11 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
           })}
         </nav>
 
-        {role !== null && (
-          <div className="ys-shell-jx" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-            <React.Suspense fallback={null}>
-              <JurisdictionDropdown active={country} />
-            </React.Suspense>
-          </div>
-        )}
+        <div className="ys-shell-jx">
+          <React.Suspense fallback={null}>
+            <JurisdictionDropdown active={country} />
+          </React.Suspense>
+        </div>
 
         <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '8px', flexShrink: 0 }}>
           <GlobalLanguageBar />
@@ -593,6 +517,7 @@ function TopNav({ role, activeView, onNav, country, shopActive }: { role: Role; 
         links={links}
         activeView={activeView}
         shopActive={shopActive}
+        onHome={onHome}
         country={country}
         onNav={onNav}
       />
@@ -623,6 +548,11 @@ function readCachedRole(): { role: Role; fresh: boolean } {
 export default function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const pathname     = usePathname()
   const router       = useRouter()
+  // The Market home is the page at this layout's root (no child segment).
+  // Unlike the browser pathname, the layout segment is identical in the
+  // static prerender and after hydration (the market host serves "/" from an
+  // internal route), so Home's highlight is correct in the shipped HTML.
+  const layoutSegment = useSelectedLayoutSegment()
 
   const [role, setRole] = React.useState<Role>(() => readCachedRole().role)
   const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
@@ -995,7 +925,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       {/* Top nav — renders immediately on every navigation; auth-only links
           appear once the (cached or fetched) role resolves. Never gated on a
           network round-trip. */}
-      <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} />
+      <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} onHome={layoutSegment === null} />
 
       {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
       {section === 'browse' && !onShop && (
