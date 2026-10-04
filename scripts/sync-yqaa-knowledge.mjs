@@ -80,7 +80,11 @@ function batches(items, size) {
 
 function validateCoverage(manifest) {
   const thresholds = {
-    main: 90,
+    // Main site was consolidated on Oct 3, 2026: /faqs, /services and /about now 301
+    // to usa.yousafeconsultancy.com and /guide/study-permit-guide moves to the legal
+    // library, so the crawl legitimately yields ~83 main-site pages (was 90+).
+    // Those pages are still covered under their new sites' thresholds.
+    main: 75,
     usa: 420,
     canada: 300,
     uk: 125,
