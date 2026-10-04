@@ -271,3 +271,23 @@ export async function redactErrorResponse(request: Request, response: Response):
   }
   return new Response(out, { status: response.status, statusText: response.statusText, headers })
 }
+
+// ── Phase 5: baseline transport headers on Worker-generated responses ─────
+// next.config headers() only decorate responses rendered by Next routes.
+// Middleware redirects (portal -> Market sign-in, legacy lanes) and early
+// 401/429 JSON left the Worker without HSTS/nosniff. Add the transport
+// baseline to any response that lacks HSTS. Header-only; the body streams
+// through untouched.
+export const BASELINE_HEADERS: Record<string, string> = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'SAMEORIGIN',
+}
+
+export function ensureBaselineHeaders(response: Response): Response {
+  if (response.status === 101 || response.headers.has('strict-transport-security')) return response
+  const headers = new Headers(response.headers)
+  for (const [k, v] of Object.entries(BASELINE_HEADERS)) if (!headers.has(k)) headers.set(k, v)
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}

@@ -157,3 +157,22 @@ describe('edge guard wiring', () => {
     expect(entry).toContain('redactErrorResponse(request, response)')
   })
 })
+
+describe('edge guard: baseline headers on Worker-generated responses (Phase 5)', () => {
+  const { ensureBaselineHeaders } = require('@/lib/edgeGuard')
+  test('redirects without HSTS gain the transport baseline; Location kept', () => {
+    const r = ensureBaselineHeaders(new Response(null, { status: 302, headers: { Location: 'https://market.yousafeconsultancy.com/?ys_sign_in=1' } }))
+    expect(r.status).toBe(302)
+    expect(r.headers.get('location')).toBe('https://market.yousafeconsultancy.com/?ys_sign_in=1')
+    expect(r.headers.get('strict-transport-security')).toContain('max-age=31536000')
+    expect(r.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+  test('responses that already carry HSTS are returned as-is', () => {
+    const orig = new Response('x', { headers: { 'Strict-Transport-Security': 'max-age=1' } })
+    expect(ensureBaselineHeaders(orig)).toBe(orig)
+  })
+  test('entry applies it', () => {
+    const entry = fs.readFileSync(path.join(__dirname, '..', 'edge-worker.mjs'), 'utf8')
+    expect(entry).toContain('ensureBaselineHeaders(await redactErrorResponse(request, response))')
+  })
+})
