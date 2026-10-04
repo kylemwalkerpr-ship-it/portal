@@ -653,10 +653,28 @@
     persist()
     return added
   }
+  // support-saas only serves a conversation to the visitor holding its token
+  // (X-Chat-Token, issued at handoff). Without one, polling cannot work.
+  function supportHeaders(extra) {
+    var headers = Object.assign({}, extra || {})
+    if (support && support.token) headers['X-Chat-Token'] = support.token
+    return headers
+  }
+  function endLiveSession() {
+    support = null
+    save(cfg.supportKey, null)
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    history.push({ role: 'system', content: 'Your earlier live-support session has ended. Ask for a person again any time and I will reconnect you.', ts: Date.now() })
+    persist()
+    render()
+  }
   async function pollSupport() {
     if (!inLive()) return
+    // Sessions saved before visitor tokens existed can no longer be read.
+    if (!support.token) { endLiveSession(); return }
     try {
-      var res = await fetch(cfg.supportApiUrl + '/' + encodeURIComponent(support.conversationId))
+      var res = await fetch(cfg.supportApiUrl + '/' + encodeURIComponent(support.conversationId), { headers: supportHeaders() })
+      if (res.status === 401 || res.status === 404) { endLiveSession(); return }
       if (!res.ok || !support) return
       var data = await res.json()
       var before = support.status
@@ -716,8 +734,15 @@
     render()
     try {
       if (supportOwnsConversation()) {
-        var live = await fetchJsonWithNetworkRecovery(cfg.supportApiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, conversationId: support.conversationId, topic: support.topic || location.hostname, visitor: contact }) })
+        var live = await fetchJsonWithNetworkRecovery(cfg.supportApiUrl, { method: 'POST', headers: supportHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ message: text, conversationId: support.conversationId, topic: support.topic || location.hostname, visitor: contact }) })
         if (!live.res.ok) throw Object.assign(new Error(live.data.error || 'Support is temporarily unreachable'), { retryable: true })
+        // support-saas starts a fresh conversation (with a new token) when the
+        // old one was closed or could not be verified; follow it.
+        if (live.data.visitorToken && live.data.conversation && live.data.conversation.id) {
+          support.conversationId = live.data.conversation.id
+          support.token = live.data.visitorToken
+        }
+        if (live.data.conversation && live.data.conversation.status) support.status = live.data.conversation.status
         mergeRemote(live.data.messages || [])
       } else {
         var turns = history.filter(function (m) { return m.role === 'user' || m.role === 'assistant' }).map(function (m) { return { role: m.role, content: m.content } })
@@ -725,7 +750,7 @@
         var data = result.data
         if (!result.res.ok) throw Object.assign(new Error(data.error || 'YQAA is temporarily unavailable.'), { retryable: data.retryable !== false, marketplaceRecommendation: data.marketplaceRecommendation || null })
         if (data.handoff && data.handoff.conversationId) {
-          support = { conversationId: data.handoff.conversationId, status: data.handoff.status || 'waiting_for_agent', queue: data.handoff.queue || null, topic: location.hostname, mode: data.handoff.kind || (requestAgent ? 'explicit' : 'legacy') }
+          support = { conversationId: data.handoff.conversationId, token: data.handoff.visitorToken || null, status: data.handoff.status || 'waiting_for_agent', queue: data.handoff.queue || null, topic: location.hostname, mode: data.handoff.kind || (requestAgent ? 'explicit' : 'legacy') }
           save(cfg.supportKey, support)
           history.push({ role: 'system', content: data.reply || "I'm connecting you to live support.", ts: Date.now() })
           startPolling()
