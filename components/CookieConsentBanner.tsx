@@ -1,6 +1,8 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
+import { footerLinkStyle, useFooterSlot } from './useFooterSlot'
 import { readClientConsent, writeConsentCookie } from '@/lib/attribution/client'
 
 export const COOKIE_CONSENT_EVENT = 'yousafe:cookie-consent-change'
@@ -15,6 +17,7 @@ function saveConsent(value: Consent) {
 export default function CookieConsentBanner() {
   const [visible, setVisible] = React.useState(false)
   const bannerRef = React.useRef<HTMLDivElement | null>(null)
+  const footerSlot = useFooterSlot()
 
   React.useEffect(() => {
     setVisible(readClientConsent() === 'unknown')
@@ -48,11 +51,19 @@ export default function CookieConsentBanner() {
     setVisible(false)
   }
 
-  const settingsButton = (
+  // Below 640px the re-open control is a footer link so it never floats over
+  // page content; it is not rendered until the viewport is measured.
+  const settingsButton = footerSlot ? createPortal(
+    <button type="button" onClick={() => setVisible(true)} aria-label="Cookie settings" data-cookie-settings="" style={footerLinkStyle}>
+      Cookie settings
+    </button>,
+    footerSlot,
+  ) : footerSlot === undefined ? null : (
     <button
       type="button"
       onClick={() => setVisible(true)}
       aria-label="Cookie settings"
+      data-cookie-settings=""
       style={{
         position: 'fixed',
         zIndex: 999,

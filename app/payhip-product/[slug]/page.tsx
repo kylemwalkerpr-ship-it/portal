@@ -165,7 +165,7 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
                 <h2>Have a US attorney review your application before you file</h2>
                 <p>
                   Finish the workbook, then book a fixed-fee review: {reviewUpsell.primary.outcome} Payment is held
-                  in escrow until you approve the delivery.
+                  until you approve the delivery.
                 </p>
                 <TrackedCtaLink
                   href={`/gigs/${reviewUpsell.primary.slug}`}

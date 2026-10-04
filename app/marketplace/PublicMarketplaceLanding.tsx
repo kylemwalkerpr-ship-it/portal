@@ -612,7 +612,7 @@ const FAQS = [
     q: 'Is YouSafe a law firm?',
     a:
       'No. YouSafe Consultancy operates a technology platform that connects students and immigrants with independent consultants and licensed attorneys. ' +
-      "Legal advice comes from the attorney's own practice, not from YouSafe. The platform handles matching, messaging, file sharing, and escrow.",
+      "Legal advice comes from the attorney's own practice, not from YouSafe. The platform handles matching, messaging, files, and held payments.",
   },
   {
     q: 'How do attorneys get vetted?',
@@ -621,10 +621,10 @@ const FAQS = [
       "This is a screening step, not an endorsement — verify the attorney's current standing with your local bar association.",
   },
   {
-    q: 'How does escrow work?',
+    q: 'How is payment held?',
     a:
-      'When you accept an offer, your payment is held in escrow by the platform. The provider is paid only after you confirm the deliverable meets the agreed brief. ' +
-      "If the work isn't delivered as agreed, you can open a dispute through the platform.",
+      'When you accept an offer, YouSafe holds your payment. It is released when you approve the delivery, or 7 days after the order is marked complete if you take no action. ' +
+      "Not as agreed? Dispute before approving; the payment stays held while we review.",
   },
   {
     q: 'What jurisdictions do you cover?',
@@ -658,7 +658,7 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
     h1: <>U.S. immigration help — <em>by the brief, not the billable hour.</em></>,
     lede:
       'Licensed U.S. attorneys handling F-1 reinstatement, OPT and STEM OPT, marriage green cards, and family petitions. ' +
-      'Fixed-fee briefs, evidence packs reviewed before filing, payment held in escrow until you approve.',
+      'Fixed-fee briefs, evidence packs reviewed before filing, payment held until you approve.',
   },
   uk: {
     eyebrow: 'United Kingdom · ILR · Spouse · Skilled Worker · § Tenancy',
@@ -672,14 +672,14 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
     h1: <>Canadian immigration help — <em>by the brief, not the meter.</em></>,
     lede:
       'Consultants reviewed before approval and Canadian attorneys covering Study Permit packs, PGWP, Express Entry CRS, ' +
-      'PNP strategy, spousal sponsorship, and provincial tenancy law. Fixed-fee, escrowed, refundable.',
+      'PNP strategy, spousal sponsorship, and provincial tenancy law. Fixed-fee, payment held until approval.',
   },
   au: {
     eyebrow: 'Australia · Subclass 500 · Subclass 485 · Student work rights',
     h1: <>Australian study and housing help — <em>by the brief, not the meter.</em></>,
     lede:
       'Providers covering student visa packs, Genuine Student checks, financial capacity evidence, graduate visa prep, ' +
-      'and tenancy support for Australia. Fixed-fee briefs, escrowed payment, clear scope.',
+      'and tenancy support for Australia. Fixed-fee briefs, held payment, clear scope.',
   },
 }
 
@@ -774,12 +774,12 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
   // document does not carry.
   const ssrPage = clampPage(page, totalRanked)
 
-  // Trust strip: only facts the platform copy already states (escrow FAQ,
+  // Trust strip: only facts the platform copy already states (payment-hold FAQ,
   // dispute path, fixed tiers) plus numbers computed from live inventory.
   // No ratings, review counts, order counts or response-time claims.
   const turnaround = data.mostRequestedTurnaround
   const trustItems: Array<{ label: string }> = []
-  trustItems.push({ label: 'Payment held in escrow — released when you approve the delivery' })
+  trustItems.push({ label: 'Payment held until you approve the delivery' })
   trustItems.push({ label: "Dispute through the platform if work isn't delivered as agreed" })
   trustItems.push({
     label: turnaround
@@ -951,7 +951,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
           <div className="section-head">
             <h2>A <em>brief, not a billable.</em></h2>
             <div className="meta">
-              <span>Fixed fees · Escrowed · Refundable</span>
+              <span>Fixed fees · Payment held · Revisions</span>
             </div>
           </div>
 
@@ -965,14 +965,14 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <div className="how-step">
               <span className="icon" aria-hidden="true">ii</span>
               <span className="step-num">Step 02</span>
-              <h3>Funds sit in <em>escrow</em></h3>
+              <h3>Payment is <em>held</em></h3>
               <p>Your payment is held by YouSafe. Attorneys see funds are committed before they begin work; you stay in control until the deliverable lands.</p>
             </div>
             <div className="how-step">
               <span className="icon" aria-hidden="true">iii</span>
               <span className="step-num">Step 03</span>
               <h3>Approve &amp; <em>release</em></h3>
-              <p>Review the file, request revisions inside the bundled limit, and release funds. If the work doesn't clear our standards, we refund — no questions.</p>
+              <p>Review the file, request revisions inside the bundled limit, and release funds. Not as agreed? Dispute before approving; we review and can refund.</p>
             </div>
           </div>
         </div>
@@ -985,7 +985,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <div>
               <span className="mono-eyebrow">For attorneys &amp; consultants</span>
               <h2>Take on the <em>cases you want.</em> Skip the intake calls.</h2>
-              <p>List fixed-fee briefs in your wheelhouse, choose your jurisdictions, and let clients arrive vetted, scoped, and pre-paid. Funds are escrowed before you begin work; payouts release on client approval.</p>
+              <p>List fixed-fee briefs in your wheelhouse, choose your jurisdictions, and let clients arrive vetted, scoped, and pre-paid. Payment is held before you begin; payouts release on client approval.</p>
               <div className="actions">
                 <a className="btn primary" href={`${PORTAL_URL}/sign-up?intent=attorney&return_to=${encodeURIComponent(`${PORTAL_URL}/onboarding/provider?type=attorney`)}`}>Apply as an attorney →</a>
                 <a className="btn ghost" href={`${PORTAL_URL}/sign-up?intent=consultant&return_to=${encodeURIComponent(`${PORTAL_URL}/onboarding/provider?type=consultant`)}`}>Apply as a consultant →</a>
@@ -994,7 +994,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             <div className="stats">
               <div className="stat"><b>0%</b><span>Hourly intake calls</span></div>
               <div className="stat"><b>Fixed fees</b><span>Set per brief by the seller</span></div>
-              <div className="stat"><b>Escrowed</b><span>Paid out on client approval</span></div>
+              <div className="stat"><b>Held payment</b><span>Paid out on client approval</span></div>
             </div>
           </div>
         </div>
@@ -1032,7 +1032,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
             </div>
           ) : (
             <p className="quotes-empty">
-              No published reviews yet — every brief on YouSafe is escrowed and refundable, and reviewer names appear here once a buyer publishes one. Be the first to <a href={withCountry('/', active)} style={{ borderBottom: `1px solid ${T.indigo}`, color: T.indigo }}>commission a brief</a>.
+              No published reviews yet — payment on every brief is held until approval, and reviewer names appear here once a buyer publishes one. Be the first to <a href={withCountry('/', active)} style={{ borderBottom: `1px solid ${T.indigo}`, color: T.indigo }}>commission a brief</a>.
             </p>
           )}
         </div>
@@ -1048,9 +1048,9 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
           <span className="dot" aria-hidden="true" />
           <span>PayPal</span>
           <span className="dot" aria-hidden="true" />
-          <span>Escrow until you approve</span>
+          <span>Held until you approve</span>
           <span className="dot" aria-hidden="true" />
-          <span>Refundable on review</span>
+          <span>Disputes reviewed</span>
         </div>
       </section>
 

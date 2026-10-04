@@ -132,7 +132,7 @@ export function MarketplaceHomeSeo() {
       aria-label="Marketplace topics"
       style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
     >
-      <p>Fixed-price briefs. Pay when the work lands. Compare scoped immigration, education, legal, settlement, and career help across the US, UK, Canada, and Australia. Checkout is escrowed. Instant downloads live in the file shop.</p>
+      <p>Fixed-price briefs. Pay when the work lands. Compare scoped immigration, education, legal, settlement, and career help across the US, UK, Canada, and Australia. Payment is held until you approve. Instant downloads live in the file shop.</p>
       <ul>
         {chips.map((c) => (
           <li key={c.href}><Link href={c.href}>{c.label}</Link></li>
