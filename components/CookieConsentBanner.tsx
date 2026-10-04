@@ -14,7 +14,7 @@ function saveConsent(value: Consent) {
 
 export default function CookieConsentBanner() {
   const [visible, setVisible] = React.useState(false)
-  const bannerRef = React.useRef<HTMLElement | null>(null)
+  const bannerRef = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
     setVisible(readClientConsent() === 'unknown')
@@ -77,7 +77,7 @@ export default function CookieConsentBanner() {
 
   return (
     <>
-      <aside
+      <div
         ref={bannerRef}
         data-cookie-banner
         role="dialog"
@@ -104,7 +104,7 @@ export default function CookieConsentBanner() {
         <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.55 }}>
           We use essential cookies for sign-in and security. Analytics is optional and stays off until you allow it.{' '}
           <a
-            href="https://usa.yousafeconsultancy.com/privacy-policy/"
+            href="https://legal.yousafeconsultancy.com/privacy/#cookies"
             style={{ color: '#3730A3', fontWeight: 700 }}
           >
             Read our privacy policy
@@ -144,7 +144,7 @@ export default function CookieConsentBanner() {
             Reject non-essential
           </button>
         </div>
-      </aside>
+      </div>
     </>
   )
 }

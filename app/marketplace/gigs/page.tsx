@@ -195,7 +195,7 @@ export default async function MarketplaceServicesHub() {
       <style>{`
         .ys-gigs-hub{width:min(1280px,calc(100vw - 32px));margin:0 auto;padding:42px 0 72px;color:var(--ys-ink,#0f172a)}
         .ys-gigs-hero{max-width:850px;margin-bottom:32px}
-        .ys-gigs-kicker{font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#64748b;margin:0 0 9px}
+        .ys-gigs-kicker{font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#475569;margin:0 0 9px}
         .ys-gigs-h1{font-size:clamp(34px,5vw,56px);line-height:1.03;letter-spacing:-.035em;margin:0 0 14px;font-weight:650}
         .ys-gigs-lead{font-size:17px;line-height:1.65;color:#475569;margin:0;max-width:760px}
         .ys-gigs-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}

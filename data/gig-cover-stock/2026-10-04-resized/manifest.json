@@ -1,0 +1,49 @@
+{
+  "bucket": "gig-gallery",
+  "kind": "recompressed",
+  "note": "Sanitization P9: the 2026-10-02 covers resized to display size (max 1200px wide graphic 800px) and re-encoded as WebP. Card slots render at <=420 CSS px, so 2x DPR stays sharp. New object names (1-year immutable cache). Older objects stay in storage untouched.",
+  "covers": [
+    {
+      "gig_id": "8098a9ac-c6d4-4860-a3ab-adc0db42e10a",
+      "provider_id": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07",
+      "slug": "provide-immigration-expert-lawyer-services",
+      "file": "3dc4a93f-859b-5330-84ae-65a48ee2abef-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36-800w.webp",
+      "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/8098a9ac-c6d4-4860-a3ab-adc0db42e10a/3dc4a93f-859b-5330-84ae-65a48ee2abef-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36-800w.webp",
+      "id": "3dc4a93f-859b-5330-84ae-65a48ee2abef",
+      "size": 64402,
+      "sha256": "ede90e66865a973b1f7ba17b07ab050166145c58570d9b9257f10f40602bbd8d",
+      "replaces_original": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/8098a9ac-c6d4-4860-a3ab-adc0db42e10a/76b967fd-e7f6-553b-ad60-e0dd77d0e7e9-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "encoding": "WebP q86 method6, 1080x1080 -> 800x800",
+      "width": 800,
+      "height": 800
+    },
+    {
+      "gig_id": "d032b787-fad9-47d5-bce4-c85681534d5e",
+      "provider_id": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07",
+      "slug": "draft-education-petitions-us-schools-expert-advice",
+      "file": "b571a864-4981-5d66-a2fb-35fe19cfd2b7-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36-800w.webp",
+      "path": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/d032b787-fad9-47d5-bce4-c85681534d5e/b571a864-4981-5d66-a2fb-35fe19cfd2b7-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36-800w.webp",
+      "id": "b571a864-4981-5d66-a2fb-35fe19cfd2b7",
+      "size": 64402,
+      "sha256": "ede90e66865a973b1f7ba17b07ab050166145c58570d9b9257f10f40602bbd8d",
+      "replaces_original": "e9a914ed-b8a5-45fc-9eaa-e2ad25541a07/d032b787-fad9-47d5-bce4-c85681534d5e/fcc99bd1-2f34-589e-8568-8696feff96e7-2023_05_12_15_34_54_Colorful_Payful_Motivational_Quotes_Social_Graphic_36.webp",
+      "encoding": "WebP q86 method6, 1080x1080 -> 800x800",
+      "width": 800,
+      "height": 800
+    },
+    {
+      "gig_id": "f77e35d4-a3e5-44a2-be90-85ae35236824",
+      "provider_id": "78ffc497-84dc-47d9-bf09-706932a2435d",
+      "slug": "edit-thesis-admissions-essay-us-university-applications",
+      "file": "b20949c6-1ffd-537b-821f-ca0b4c6198d6-portrait-handsome-young-man-closeup-1200w.webp",
+      "path": "78ffc497-84dc-47d9-bf09-706932a2435d/f77e35d4-a3e5-44a2-be90-85ae35236824/b20949c6-1ffd-537b-821f-ca0b4c6198d6-portrait-handsome-young-man-closeup-1200w.webp",
+      "id": "b20949c6-1ffd-537b-821f-ca0b4c6198d6",
+      "size": 59612,
+      "sha256": "496d7eb8f81cbb388c53907d832e84e77fa3f0c39d398aa95aa24181ff5d7a75",
+      "replaces_original": "78ffc497-84dc-47d9-bf09-706932a2435d/f77e35d4-a3e5-44a2-be90-85ae35236824/aea88868-9351-53b2-8b79-928e11e9b9fc-portrait-handsome-young-man-closeup.webp",
+      "encoding": "WebP q84 method6, 2000x1333 -> 1200x800 lossless alpha",
+      "width": 1200,
+      "height": 800
+    }
+  ]
+}

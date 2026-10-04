@@ -21,7 +21,7 @@ describe('site hardening', () => {
     expect(read('lib/attribution/contract.ts')).toContain("'yousafe-analytics-consent'")
     expect(banner).toContain('Accept analytics')
     expect(banner).toContain('Reject non-essential')
-    expect(banner).toContain('privacy-policy')
+    expect(banner).toContain('legal.yousafeconsultancy.com/privacy/')
     expect(analytics).toContain('yousafe:cookie-consent-change')
     expect(analytics).toContain('readClientConsent')
     expect(analytics).toContain("consent === 'granted'")

@@ -273,7 +273,7 @@
 .cw-market .how-step h3 { font-family: var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 20px; line-height: 1.25; letter-spacing: -0.015em; margin: 8px 0 6px; color: var(--ys-ink, #0F172A); }
 .cw-market .how-step h3 em { font-style: italic; color: var(--ys-indigo, #111827); }
 .cw-market .how-step p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ys-inkMid, #334155); }
-.cw-market .how-step .icon { position: absolute; top: 18px; right: 20px; font-family: var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif; font-style: italic; font-size: 36px; color: var(--ys-paper3, #E8EBEE); line-height: 1; }
+.cw-market .how-step .icon { position: absolute; top: 18px; right: 20px; font-family: var(--font-fraunces), 'Fraunces', Georgia, 'Times New Roman', serif; font-style: italic; font-size: 36px; color: #8792A2; line-height: 1; }
 
 .cw-market .quotes { padding: 36px 0; border-top: 1px solid var(--ys-rule, rgba(15,23,42,0.10)); background: transparent; }
 .cw-market .quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }

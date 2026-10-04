@@ -155,6 +155,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <MobileVisualViewport />
             {/* Language switcher now docks inside each app's nav bar
                 instead of floating — see dashboard topbars + MarketplaceShell. */}
+            {/* Skip-link target: zero-size anchor so no page layout changes. */}
+            <span id="main" tabIndex={-1} style={{ outline: 'none' }} />
             {children}
             <MessengerHeaderEnhancer />
             <StudentOrderMessengerBridge />

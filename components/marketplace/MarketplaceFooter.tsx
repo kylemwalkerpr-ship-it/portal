@@ -23,9 +23,9 @@ const NAV_LINKS: FooterLink[] = [
 ]
 
 const LEGAL_LINKS: FooterLink[] = [
-  { label: 'Privacy', href: 'https://usa.yousafeconsultancy.com/privacy-policy/' },
-  { label: 'Terms', href: 'https://usa.yousafeconsultancy.com/terms-of-service/' },
-  { label: 'Refunds', href: 'https://usa.yousafeconsultancy.com/refund-policy/' },
+  { label: 'Privacy', href: 'https://legal.yousafeconsultancy.com/privacy/' },
+  { label: 'Terms', href: 'https://legal.yousafeconsultancy.com/terms/' },
+  { label: 'Refunds', href: 'https://legal.yousafeconsultancy.com/refund-policy/' },
 ]
 
 const BUSINESS_ADDRESS = '906 Donne Court, Virginia Beach, VA 23462'

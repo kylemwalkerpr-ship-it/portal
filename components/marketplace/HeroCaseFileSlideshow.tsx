@@ -277,24 +277,38 @@ export default function HeroCaseFileSlideshow({
             ‹
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
             {slides.map((_, i) => (
               <button
                 key={i}
+                type="button"
                 aria-label={`Go to slide ${i + 1}`}
                 aria-current={i === index ? 'true' : undefined}
                 onClick={(e) => { e.preventDefault(); go(i) }}
                 style={{
-                  width: i === index ? 20 : 8,
-                  height: 8,
-                  borderRadius: 999,
+                  // 24x24 hit area (WCAG 2.5.8 target size); the visible pill stays small.
+                  minWidth: 24,
+                  height: 24,
+                  display: 'inline-grid',
+                  placeItems: 'center',
                   border: 'none',
-                  background: i === index ? INK : RULE,
+                  background: 'transparent',
                   cursor: 'pointer',
-                  transition: 'width 0.2s, background 0.2s',
                   padding: 0,
                 }}
-              />
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'block',
+                    width: i === index ? 20 : 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: i === index ? INK : RULE,
+                    transition: 'width 0.2s, background 0.2s',
+                  }}
+                />
+              </button>
             ))}
           </div>
 

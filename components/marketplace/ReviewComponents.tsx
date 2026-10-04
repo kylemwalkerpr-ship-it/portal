@@ -829,6 +829,7 @@ export function ReviewsSection({
               <div style={reviewsCount}>{reviews.length} reviews</div>
             </div>
             <select
+              aria-label="Sort reviews"
               value={sort}
               onChange={e => setSort(e.target.value)}
               style={sortSelect}

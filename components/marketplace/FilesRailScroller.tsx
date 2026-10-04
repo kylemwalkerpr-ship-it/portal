@@ -1,5 +1,6 @@
 'use client'
 
+import { sizedImageUrl } from '@/lib/imageVariants'
 import { useEffect, useRef, useState } from 'react'
 import type { FileShopProduct } from '@/lib/files-shop-catalog'
 
@@ -56,7 +57,7 @@ export function FilesRailScroller({ products }: { products: FileShopProduct[] })
       <div ref={scrollerRef} className="cw-files-scroller">
         {products.map((p) => (
           <a key={p.id} className="cw-files-card" href={p.href} rel="noopener noreferrer">
-            <img src={p.cover} alt={`${p.title} file cover`} width="196" height="124" />
+            <img src={sizedImageUrl(p.cover, 400) ?? p.cover} alt={`${p.title} file cover`} width="196" height="124" loading="lazy" decoding="async" />
             <div className="body">
               <h3>{p.title}</h3>
               <div className="price">${p.price}</div>

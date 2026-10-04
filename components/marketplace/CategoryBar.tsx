@@ -214,7 +214,7 @@ export function CategoryBar({ country }: Props) {
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
-                    <div ref={scrollRef} className="ys-cat-strip" role="tablist" aria-label="Browse marketplace categories">
+                    <div ref={scrollRef} className="ys-cat-strip" role="group" aria-label="Browse marketplace categories">
             {CATEGORIES.map(cat => {
               const isActive = activeCategory === cat.id
               const isOpen = openId === cat.id
