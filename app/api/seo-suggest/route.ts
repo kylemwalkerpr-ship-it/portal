@@ -71,6 +71,7 @@ export async function POST(req: Request) {
     tags: Array.isArray(ctxRaw.tags) ? sanitizeMarketplaceTags(ctxRaw.tags) : null,
     seo_title: typeof ctxRaw.seo_title === 'string' ? ctxRaw.seo_title : null,
     seo_description: typeof ctxRaw.seo_description === 'string' ? ctxRaw.seo_description : null,
+    ai_overview: typeof ctxRaw.ai_overview === 'string' ? ctxRaw.ai_overview : null,
     faq: Array.isArray(ctxRaw.faq)
       ? (ctxRaw.faq.filter((f): f is FaqEntry =>
           !!f && typeof f === 'object' &&

@@ -191,6 +191,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
     video_url: existingGig?.video_url || persistedDraft?.video_url || '',
     seo_title: existingGig?.seo_title || persistedDraft?.seo_title || '',
     seo_description: existingGig?.seo_description || persistedDraft?.seo_description || '',
+    ai_overview: existingGig?.ai_overview || persistedDraft?.ai_overview || '',
   })
   const [currentGigId, setCurrentGigId] = React.useState<string | undefined>(gigId)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
@@ -1058,6 +1059,7 @@ function BasicsStep({ gigData, errors, onChange, role }: any) {
     tags: gigData.tags,
     seo_title: gigData.seo_title,
     seo_description: gigData.seo_description,
+    ai_overview: gigData.ai_overview,
   })
   const minimalContext = !gigData.title?.trim() && !gigData.category
 
@@ -1134,6 +1136,30 @@ function BasicsStep({ gigData, errors, onChange, role }: any) {
           {gigData.tagline.length}/160 characters (min 40)
         </div>
         {errors.tagline && <div style={formError}>{errors.tagline}</div>}
+      </div>
+
+      <div style={formSection}>
+        <div style={labelRow}>
+          <label style={inlineLabel}>Service overview <span style={{ fontWeight: 400, color: T.inkMuted }}>(optional, 220–520 chars)</span></label>
+          <AIDraftButton
+            role={role}
+            field="ai_overview"
+            getContext={getContext}
+            minimalContext={minimalContext}
+            label="Draft overview"
+            onApply={(v) => onChange('ai_overview', String(v))}
+          />
+        </div>
+        <textarea
+          value={gigData.ai_overview}
+          onChange={e => onChange('ai_overview', e.target.value)}
+          placeholder="Curated buyer-facing overview: who it is for, what is included, and the outcome. Shown above the long description — not a pitch bolted on as an AI summary."
+          style={{ ...textareaStyle, minHeight: '100px' }}
+          maxLength={900}
+        />
+        <div style={formHint}>
+          {(gigData.ai_overview || '').length}/900 characters — standalone overview for the public gig page
+        </div>
       </div>
 
       <div style={formSection}>

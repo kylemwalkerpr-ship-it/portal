@@ -14,17 +14,18 @@ import {
   getFieldToneScaffold,
   type FieldName,
 } from './seoVoice'
+import { sanitizeGigAiOverview } from './gigAiOverview'
 
 export type { SeoResearch, KeywordSignal } from './seoResearch'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
   | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
-  | 'tier_features' | 'tier_description'
+  | 'tier_features' | 'tier_description' | 'ai_overview'
 
 export const ALLOWED_FIELDS: SuggestField[] = [
   'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq',
-  'tier_features', 'tier_description',
+  'tier_features', 'tier_description', 'ai_overview',
 ]
 
 // Per-role allow-list. All fields apply to both roles today, but the wrapper
@@ -66,6 +67,7 @@ export interface SuggestContext {
   tags?: string[] | null
   seo_title?: string | null
   seo_description?: string | null
+  ai_overview?: string | null
   faq?: FaqEntry[] | null
   // Tier-scoped fields — required only when field === 'tier_features'.
   // tier is the one being drafted, otherTiers are the rest so the model
@@ -308,6 +310,23 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Context:',
           baseContext,
         ].join('\n'),
+      }
+    case 'ai_overview':
+      return {
+        format: 'string', hardLimit: 520,
+        prompt: [
+          'Write a curated marketplace OVERVIEW for this gig — standalone buyer-facing prose, 220–520 characters.',
+          'Requirements:',
+          '- Cover who it is for, what is included, and the buyer outcome in 2–4 short sentences.',
+          '- Second-person bias ("you\'ll get", "your filing"). Never open with "I am/I\'m a … attorney/consultant".',
+          '- Plain prose only. No "Summary:", "Overview:", "TL;DR:", markdown headings, bullets, or emoji.',
+          '- Do NOT copy the pitch/tagline/seo_description verbatim. Do NOT append a patch onto the long description.',
+          consultant ? '- Do not imply legal advice or representation; this is a non-legal consulting service.' : '- Do not promise approvals or case outcomes.',
+          'Return ONLY the overview text.',
+          '',
+          'Context:',
+          baseContext,
+        ].filter(Boolean).join('\n'),
       }
     case 'description':
       return {
@@ -628,7 +647,7 @@ function trimDanglingEnd(s: string, minLength = 30): string {
 
 function cleanString(raw: string): string {
   let s = raw.trim()
-  s = s.replace(/^\s*(?:title|seo title|description|seo description|meta description|pitch|tagline|tags?)\s*:\s*/i, '')
+  s = s.replace(/^\s*(?:title|seo title|description|seo description|meta description|pitch|tagline|tags?|ai overview|overview|summary|tl;?dr)\s*:\s*/i, '')
   s = s.replace(/^["'`]+|["'`]+$/g, '').trim()
   return s
 }
@@ -837,6 +856,7 @@ export async function draftField(
     seo_title: 600,
     seo_description: 600,
     pitch: 600,
+    ai_overview: 700,
     tagline: 600,
     description: 2000,
     tags: 600,
@@ -877,7 +897,8 @@ export async function draftField(
     return { ok: true, value: entries, research }
   }
 
-  const cleaned = cleanString(raw)
+  let cleaned = cleanString(raw)
+  if (field === 'ai_overview') cleaned = sanitizeGigAiOverview(cleaned)
   if (!cleaned) return { ok: false, status: 502, message: 'Model returned empty output. Try again.' }
   // Surface-field truncation pipeline:
   //   1. If over hardLimit, slice at the limit and drop the partial word

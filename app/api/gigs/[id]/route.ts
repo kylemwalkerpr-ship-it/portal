@@ -1,4 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { isValidGigAiOverview, sanitizeGigAiOverview } from '@/lib/gigAiOverview'
 import { buildSlug } from '@/lib/fiverr'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
@@ -79,9 +80,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  for (const key of ['title', 'category', 'subcategory', 'pitch', 'tagline', 'description', 'requirements', 'seo_title', 'seo_description', 'video_url']) {
+  for (const key of ['title', 'category', 'subcategory', 'pitch', 'tagline', 'description', 'requirements', 'seo_title', 'seo_description', 'ai_overview', 'video_url']) {
     if (key in body) payload[key] = typeof body[key] === 'string' ? body[key].trim() : body[key]
   }
+  if ('ai_overview' in payload) {
+    const cleaned = sanitizeGigAiOverview(String(payload.ai_overview || ''))
+    if (!cleaned) payload.ai_overview = null
+    else if (!isValidGigAiOverview(cleaned)) return fail('Overview must be 120–900 characters of plain curated prose (no Summary: label).', 400)
+    else payload.ai_overview = cleaned
+  }
+
   if ('jurisdiction' in body) {
     const j = typeof body.jurisdiction === 'string' ? body.jurisdiction.trim().toLowerCase() : ''
     payload.jurisdiction = ['us', 'uk', 'ca', 'au'].includes(j) ? j : null

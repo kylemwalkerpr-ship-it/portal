@@ -23,4 +23,13 @@ describe('Marketplace gig pitch voice contract', () => {
     expect(suggest).toContain("case 'tagline':")
     expect(suggest).toContain('client-facing, plain language, names the audience and the outcome')
   })
+
+  test('wires curated ai_overview voice into SEO suggest', () => {
+    expect(voice).toContain("case 'ai_overview':")
+    expect(voice).toContain('CURATED OVERVIEW')
+    expect(voice).toContain('Never label the text')
+    expect(suggest).toContain("case 'ai_overview':")
+    expect(suggest).toContain("'ai_overview'")
+    expect(suggest).toContain('sanitizeGigAiOverview')
+  })
 })

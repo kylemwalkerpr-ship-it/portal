@@ -23,15 +23,20 @@ describe('Marketplace gig professional-service layout', () => {
     expect(gigDetail).toContain('onMessage={() => gatedChat')
   })
 
-  test('moves concise AI-assisted service summary into About while keeping the hero clean', () => {
+  test('renders a curated Overview from ai_overview — never pitch bolted on as AI summary', () => {
     expect(css).toContain('.ys-gig-overview > p')
     expect(css).toContain('display: none !important')
-    expect(gigDetail).toContain('className="ys-gig-ai-summary"')
-    expect(gigDetail).toContain("gig.pitch || gig.seo_description")
-    expect(gigDetail).toContain('Condensed from the provider’s service listing')
+    expect(gigDetail).toContain('className="ys-gig-curated-overview"')
+    expect(gigDetail).toContain('resolveGigOverviewText(gig)')
+    expect(gigDetail).toContain('Curated service overview')
+    expect(gigDetail).not.toContain("gig.pitch || gig.seo_description")
+    expect(gigDetail).not.toContain('className="ys-gig-ai-summary"')
+    expect(gigDetail).not.toContain('AI summary')
     expect(gigDetail).toContain('renderBioMarkdown(gig.description)')
     expect(gigDetail).toContain('aria-controls="ys-gig-description"')
     expect(gigDetail).toContain("descriptionExpanded ? 'Show less' : 'Read more'")
+    expect(css).toContain('.ys-gig-curated-overview')
+    expect(css).not.toContain('.ys-gig-ai-summary')
   })
 
   test('moves provider trust above packages while keeping purchase actions directly below it', () => {
