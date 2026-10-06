@@ -23,11 +23,13 @@ import {
 } from '@/lib/fiverr'
 import { buildMessengerSiteKnowledge } from '@/lib/messengerSiteKnowledge'
 import {
+  BUDGET_STATUS_LEAK_PHRASES,
   budgetGapReplyAlreadySent,
   buildMessengerPricingAuthority,
   clientFrustrationOrExit,
   guardMessengerOffer,
   isNearDuplicateReply,
+  leaksInternalFloorLanguage,
   lowBudgetEscalationReply,
   lowBudgetReply,
   pricingAuditSnapshot,
@@ -37,6 +39,7 @@ import {
 import {
   buildGroundedConversationMemory,
   renderConversationMemory,
+  withAdaptivePricingInMemory,
   withOfferInMemory,
   type YqaaConversationMemory,
 } from '@/lib/messengerConversationMemory'
@@ -44,6 +47,25 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import { buildYqaaLiveResearchContext } from '@/lib/yqaaWebEvidence'
+import {
+  buildAdaptivePricingDecision,
+  renderNegotiationAuthority,
+  synthesizeOfferFromQuote,
+  type AdaptivePricingDecision,
+} from '@/lib/yqaaAdaptivePricing'
+import {
+  buildCompanionDecision,
+  inferJourneyStage,
+  renderDecisionAuthority,
+  type CompanionDecision,
+} from '@/lib/yqaaCompanionDecision'
+import { polishWithRegeneration } from '@/lib/yqaaCompanionPolish'
+import {
+  requestCompanionJev,
+  sanitizeYqaaPublicQuestion,
+  yqaaJevTriggers,
+  type JevTrigger,
+} from '@/lib/jevAdvisory'
 
 export type AiMode = 'auto' | 'paused' | 'off'
 
@@ -221,8 +243,9 @@ LEGAL BUDDY — SUBSTANCE BEFORE SALES (HIGHEST PRIORITY):
 - Be near-human: context-aware, specific, warm — engage the client’s actual story (their situation, documents, destination) rather than reciting generic lists.
 - Never repeat a prior YQAA reply. Vary structure. If your next message would look like the previous one, take the conversation forward instead.
 - Frustration or exit intent (“another AI”, “no help”, “never mind”, “stops at the buck”) → empathize briefly, set escalate=true, hand to the provider. STOP any budget lecture immediately.
-- If the budget cannot support the requested scope: empathize ONCE, offer a narrower scope or provider handoff, and never repeat the same budget explanation on later turns.
-- NEVER quote internal pricing floors, reference means, medians, “revenue-safe” figures, or guard math to the client.
+- PRICING IS ADAPTIVE: when the client narrows the scope or makes a reasonable counter, follow the # NEGOTIATION STATE block — acknowledge the constraint warmly in their own terms, say what the reduced price includes, and use ONLY the server-approved number. Never restate a bigger number for smaller work.
+- If the budget cannot support the requested scope: empathize ONCE, then use the server-authorized action (a scoped or downscoped quote at the approved number, or a provider-approval step). Never repeat the same budget explanation on later turns.
+- NEVER quote internal pricing floors, means, medians, bands, percentages, averages, hourly rates, weights, multipliers, “revenue-safe” figures, or guard math to the client.
 
 CONVERSATION QUALITY — VERY IMPORTANT:
 - Sound like a capable, friendly human marketplace concierge: warm, relaxed, context-aware and direct.
@@ -246,16 +269,21 @@ DISCOVERY / ORDER TAKING:
 - Understand scope: destination/jurisdiction, work requested, documents, complexity, deadline, desired delivery and anything that materially changes effort.
 - BEFORE making ANY structured price suggestion, quote, or offer, you MUST have a client-stated budget estimate/range in the offer currency. If no budget exists and the client is asking to buy, ask for it naturally once. Never disclose a proposed structured price first.
 - While the client is asking for orientation (options, pathways, rates), answer helpfully WITHOUT pivoting to budget. Only ask about budget when the client wants paid help or you are about to make an offer.
-- Compare the budget against the server-calculated PRICING AUTHORITY appended below.
-- If the client budget is below the guarded floor, empathize ONCE and offer either narrower scope or a provider handoff. Do not repeat the budget explanation on later turns and do not quote internal floors or means.
+- Compare the budget against the server-calculated PRICING AUTHORITY and the # NEGOTIATION STATE block appended below; the server has already decided whether this turn is a quote, a meet-in-the-middle, a downscope, or a provider-approval step.
+- If the client budget is below what the full scope needs, empathize ONCE and offer the server-authorized smaller scope (with what it includes) or the provider-approval step. Do not repeat the budget explanation on later turns and do not quote internal floors, means, bands or rates.
 - A high client budget is NOT permission to charge the whole budget. Price from evidence and scope, not opportunistically.
 
 OFFERS — TRANSACTION AUTHORITY:
-- The server, not you, is the final pricing authority. Your proposed offer is checked after your response and may be blocked or routed for provider review.
-- Only create an offer when scope is sufficiently clear, budget is known, PRICING AUTHORITY status=ready, and you have a realistic title/description/delivery time.
+- The server, not you, is the final pricing authority. Every figure is computed server-side and your proposed offer is checked after your response; it may be blocked, re-priced to the server-approved number, or routed for provider review.
+- Only create an offer when scope is sufficiently clear, budget is known, the # NEGOTIATION STATE block shows a server-approved price, and you have a realistic title/description/delivery time.
+- If # NEGOTIATION STATE says the action is ESCALATE_PROVIDER, do not create an offer; tell the client a human will review pricing flexibility (never promise a discount).
 - Never invent a gig_id. Only use provider-owned relevant gig IDs explicitly listed in the PRICING AUTHORITY / site context.
 - If the current evidence cannot support an automated quote, keep offer=null and continue discovery or escalate.
 - Do not expose internal fee percentages, seller payout calculations, guard formulas or internal revenue logic unless the client explicitly asks about platform pricing mechanics.
+
+DECISION AUTHORITY:
+- Follow the posture in the # DECISION AUTHORITY — SERVER block (EDUCATE, DISCOVER, EMPATHIZE, COMMERCE, NEGOTIATE, ESCALATE_PROVIDER, HANDOFF_SUPPORT, ABSTAIN).
+- The server re-checks escalate/commerce after your draft. Never clear a required escalation yourself, and never restate a superseded price.
 
 RESPONSE FORMAT — return ONLY valid JSON, no markdown fences:
 {
@@ -605,20 +633,98 @@ function containsPriceSuggestion(text: string) {
   return /(?:\$\s*\d|\b(?:usd|cad)\s*\d|\b\d[\d,]*(?:\.\d{1,2})?\s*(?:usd|cad|dollars?)\b)/i.test(String(text || ''))
 }
 
-const BUDGET_STATUS_LEAK_PHRASES = ['revenue-safe', 'reference mean', 'guarded floor', 'guard formulas', 'minimum auto-offer']
-const FLOOR_LEAK_RE = /\b(for\s+this\s+scope[^.]{0,80}(?:center|centers|averag|mean|floor)|lowest\s+(?:guarded\s+)?(?:revenue[-\s]*)?(?:safe\s+)?offer|revenue-safe)\b/i
-/** True when a client-facing reply leaks internal floors/means/guard math. */
-export function leaksInternalFloorLanguage(text: string): boolean {
-  const t = String(text || '')
-  if (!t) return false
-  const lower = t.toLowerCase()
-  if (BUDGET_STATUS_LEAK_PHRASES.some((phrase) => lower.includes(phrase))) return true
-  return FLOOR_LEAK_RE.test(t)
-}
+// Re-exported from the pricing authority so the polish module can reuse the same
+// lexicon without a circular dependency (messengerAi -> polish -> messengerAi).
+export { leaksInternalFloorLanguage, BUDGET_STATUS_LEAK_PHRASES } from '@/lib/messengerPricingAuthority'
 const budgetStatusLeakForbidden = BUDGET_STATUS_LEAK_PHRASES
 
 function commerceIntent(text: string) {
   return /\b(price|pricing|cost|quote|offer|budget|how much|hire|book|order|purchase|buy|pay|package|deal|send me an offer|ready to proceed|move forward)\b/i.test(String(text || ''))
+}
+
+/** Explicit buy/accept intent — required before the server synthesises an offer of its own. */
+export function commerceBuyIntent(text: string) {
+  return /\b(send me an offer|make (?:me )?an offer|can you do|could you do|would you do|let'?s do (?:it|that)|go ahead|i'?ll take it|sign me up|book it|ready to (?:start|proceed|book)|please proceed|i accept|that works for me)\b/i.test(String(text || ''))
+}
+
+/** Negotiation context handed to the offer guard (scoped/workload floor, server-approved number). */
+function adaptiveGuardContext(adaptive: AdaptivePricingDecision | null) {
+  if (!adaptive || !adaptive.approved_price_cents) return null
+  return {
+    scopedFloorCents: adaptive.quote.scoped_floor_cents,
+    approvedPriceCents: adaptive.approved_price_cents,
+    approvalToken: adaptive.approval_token,
+    scoped: true,
+  }
+}
+
+/**
+ * Numbers the model is allowed to place in a client reply: the server-approved
+ * figure, the client's own figures, public package list prices and the scoped
+ * alternatives the server itself priced. Anything else is stale (polish scrubs it).
+ */
+export function companionAllowedAmounts(
+  adaptive: AdaptivePricingDecision | null,
+  approvedOffer?: { priceCents: number } | null,
+) {
+  const amounts = new Set<number>()
+  const push = (value: unknown) => {
+    const cents = Number(value)
+    if (Number.isFinite(cents) && cents > 0) amounts.add(Math.round(cents))
+  }
+  if (!adaptive) {
+    if (approvedOffer?.priceCents) push(approvedOffer.priceCents)
+    return [...amounts]
+  }
+  push(adaptive.approved_price_cents)
+  if (approvedOffer?.priceCents) push(approvedOffer.priceCents)
+  push(adaptive.client_safe.budget?.minCents)
+  push(adaptive.client_safe.budget?.maxCents)
+  push(adaptive.client_safe.client_counter_cents)
+  for (const price of adaptive.client_safe.public_tier_prices_cents || []) push(price)
+  for (const option of adaptive.downscope_options || []) push(option.price_cents)
+  push(adaptive.client_safe.list_price_cents)
+  return [...amounts]
+}
+
+/**
+ * DM decision-plane entry: assembles the redacted companion state and consults
+ * Jev for posture / negotiation posture (both pruned server-side). Exported so
+ * the DM path can be asserted directly in tests.
+ */
+export async function buildMessengerDecisionAuthority(args: {
+  latestClientText: string
+  adaptive: AdaptivePricingDecision | null
+  memory: YqaaConversationMemory | null
+  frustrated: boolean
+  budgetGapAlreadyExplained: boolean
+  hasNewScopeOrCounter: boolean
+  duplicateRisk?: boolean
+  highStakes?: boolean
+  triggers?: JevTrigger[]
+  jevRequest?: typeof requestCompanionJev
+}): Promise<CompanionDecision> {
+  return buildCompanionDecision({
+    channel: 'dm',
+    redactedQuery: sanitizeYqaaPublicQuestion(args.latestClientText),
+    evidence: [],
+    hostname: null,
+    pricing: args.adaptive,
+    frustration: args.frustrated,
+    duplicateRisk: Boolean(args.duplicateRisk),
+    budgetGapExplained: args.budgetGapAlreadyExplained,
+    hasNewScopeOrCounter: args.hasNewScopeOrCounter,
+    commerceIntent: commerceIntent(args.latestClientText),
+    highStakes: Boolean(args.highStakes),
+    journeyStage: args.memory?.journey_stage ?? null,
+    emotionBand: args.memory?.emotion_band ?? null,
+    priorPosture: args.memory?.last_posture ?? null,
+    scopeDepth: args.adaptive?.scope.depth ?? null,
+    counterClass: args.adaptive?.counter_class ?? null,
+    counterCount: args.adaptive?.negotiation.counter_count ?? 0,
+    triggers: args.triggers,
+    jevRequest: args.jevRequest,
+  })
 }
 
 /**
@@ -685,6 +791,9 @@ async function createOfferFromDecision(
     pricing: PricingAuthority
     memory: YqaaConversationMemory
     guardedPriceCents: number
+    /** Workload/scoped floor used by the guard for this offer (audit only). */
+    scopedFloorCents?: number | null
+    scopedScopeHash?: string | null
   },
 ): Promise<{ id: string; title: string; priceCents: number; currency: string; memory: YqaaConversationMemory } | null> {
   const settings = await getPaymentSettingsForApi()
@@ -809,7 +918,9 @@ async function createOfferFromDecision(
       ai_brand: 'YQAA',
       pricing_guarded: true,
       pricing_reference_mean_cents: args.pricing.referenceMeanCents,
-      pricing_floor_cents: args.pricing.minimumAutoOfferCents,
+      pricing_floor_cents: args.scopedFloorCents ?? args.pricing.minimumAutoOfferCents,
+      pricing_scoped_floor_cents: args.scopedFloorCents ?? null,
+      pricing_scope_hash: args.scopedScopeHash ?? null,
     },
   }).then(() => null, () => null)
 
@@ -961,21 +1072,99 @@ export async function maybeAutoReply(opts: {
         return { replied: false, skipped: 'pricing_authority_unavailable', aiMode }
       }
 
-      memory = buildGroundedConversationMemory({
+      const conversationMemory = buildGroundedConversationMemory({
         messages: msgs,
         clientId: client.id,
         pricing,
         metadata: conv.metadata,
       })
-      await recordAiDiagnostic(db, opts.conversationId, { ai_memory: memory })
-
       const providerLabel = provider.full_name || provider.email || 'this YouSafe specialist'
+      const priorAiBodies = msgs
+        .filter((m: any) => m?.metadata?.ai_generated && !m?.metadata?.ai_typing && m?.body)
+        .map((m: any) => String(m.body))
+      const frustrated = clientFrustrationOrExit(String(latestClientText || ''))
+      const budgetGapAlreadyExplained = budgetGapReplyAlreadySent(priorAiBodies.slice(0, -1))
+      const decisionTriggers = yqaaJevTriggers({
+        query: String(latestClientText || ''),
+        hostname: null,
+        evidence: [],
+      })
+      const highStakes = decisionTriggers.includes('high_stakes')
+
+      // Adaptive pricing is re-inferred on EVERY turn (scope, urgency, complexity,
+      // agency and budget all move), wrapping the market-evidence layer as audit
+      // evidence only. Numbers never come from the model (PRICING-ADAPTIVE §7.6).
+      const adaptive = await buildAdaptivePricingDecision({
+        db,
+        provider,
+        client,
+        messages: msgs,
+        latestClientText: String(latestClientText || ''),
+        pricing,
+        memory: conversationMemory,
+        channel: 'dm',
+        highStakes,
+      }).catch((err) => {
+        console.warn('[messengerAi] adaptive pricing failed', err instanceof Error ? err.message : err)
+        return null as AdaptivePricingDecision | null
+      })
+
+      const priorScopeHash = conversationMemory.negotiation?.scope_current?.scope_hash || null
+      const hasNewScopeOrCounter = Boolean(
+        adaptive &&
+        (adaptive.negotiation.counter_cents ||
+          adaptive.scope.narrowing ||
+          (priorScopeHash && priorScopeHash !== adaptive.scope.scope_hash && adaptive.scope.depth !== 'unknown')),
+      )
+
+      const companion = await buildMessengerDecisionAuthority({
+        latestClientText: String(latestClientText || ''),
+        adaptive,
+        memory: conversationMemory,
+        frustrated,
+        budgetGapAlreadyExplained,
+        hasNewScopeOrCounter,
+        highStakes,
+        triggers: decisionTriggers,
+      }).catch((err) => {
+        // The decision plane must never break a reply: deterministic policy remains.
+        console.warn('[messengerAi] companion decision failed', err instanceof Error ? err.message : err)
+        return null as CompanionDecision | null
+      })
+
+      const journeyStage = inferJourneyStage({
+        latestClientText: String(latestClientText || ''),
+        frustration: frustrated,
+        hasOffer: Boolean(conversationMemory.last_offer),
+        pricingStatus: adaptive?.status ?? pricing.status,
+        scopeDepth: adaptive?.scope.depth ?? null,
+        documentMentions: /\b(documents?|paperwork|transcripts?|forms?)\b/i.test(String(latestClientText || '')),
+      })
+      const emotionBand = frustrated ? 'frustrated' : highStakes ? 'distressed' : null
+      memory = adaptive
+        ? withAdaptivePricingInMemory(conversationMemory, {
+            decision: adaptive,
+            journeyStage,
+            emotionBand,
+            lastPosture: companion?.posture ?? null,
+          })
+        : { ...conversationMemory, journey_stage: journeyStage, emotion_band: emotionBand }
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_memory: memory,
+        ai_last_scope_hash: adaptive?.scope.scope_hash ?? null,
+        ai_last_counter_class: adaptive?.counter_class ?? null,
+        ai_last_negotiation_action: adaptive?.recommended_action ?? null,
+        ai_last_posture: companion?.posture ?? null,
+      })
+
       const systemBase = SYSTEM_PROMPT.replace(/\{provider\}/g, providerLabel)
       const systemWithContext = [
         systemBase,
         sitePack?.systemAppendix || '',
         legalEvidence || '',
         renderPricingAuthority(pricing),
+        adaptive ? renderNegotiationAuthority(adaptive) : '',
+        companion ? renderDecisionAuthority(companion) : '',
         renderConversationMemory(memory),
       ].filter(Boolean).join('\n\n')
 
@@ -1016,6 +1205,7 @@ export async function maybeAutoReply(opts: {
       let replyText = String(decision.reply || '').trim().slice(0, 8000)
       let approvedOffer: { priceCents: number } | null = null
       let providerReview = false
+      let approvalPending = Boolean(adaptive?.approval_required)
 
       // Never let the model bypass budget-first pricing merely by placing a
       // number in prose rather than the structured offer field.
@@ -1034,20 +1224,51 @@ export async function maybeAutoReply(opts: {
         decision.offer = null
       }
 
-      // Legal-buddy budget policy: on the FIRST budget_too_low turn the
-      // empathetic template is fine. If the gap was already explained — or the
-      // model reply would be a near-duplicate, or the client is frustrated —
-      // escalate to the provider instead of looping (Foley/Taylor). The model
-      // reply is also preferred when it already handles the gap without
-      // leaking floors.
-      if (pricing.status === 'budget_too_low' && pricing.budget) {
-        const priorAiBodies = msgs
-          .filter((m: any) => m?.metadata?.ai_generated && !m?.metadata?.ai_typing && m?.body)
-          .map((m: any) => String(m.body))
-        const alreadyExplained = budgetGapReplyAlreadySent(priorAiBodies.slice(0, -1))
-        const frustrated = clientFrustrationOrExit(String(latestClientText || ''))
+      // ── Adaptive pricing authority (PRICING-ADAPTIVE §3.6, §7.8) ──
+      // ACCEPT / MEET_MIDDLE / DOWNSCOPE may produce a guarded offer at the
+      // server-approved number. ESCALATE_PROVIDER / range quotes set
+      // `ai_pricing_approval_pending` + provider attention instead.
+      const adaptiveAuthorized = Boolean(
+        adaptive &&
+        adaptive.approved_price_cents &&
+        adaptive.channel === 'dm' &&
+        (adaptive.recommended_action === 'ACCEPT' ||
+          adaptive.recommended_action === 'MEET_MIDDLE' ||
+          adaptive.recommended_action === 'DOWNSCOPE' ||
+          adaptive.recommended_action === 'QUOTE'),
+      )
+      const buyIntent =
+        commerceBuyIntent(String(latestClientText || '')) ||
+        Boolean(adaptive?.negotiation.counter_cents)
+
+      if (adaptive && adaptiveAuthorized && adaptive.approved_price_cents) {
+        const approvedCents = Math.round(Number(adaptive.approved_price_cents))
+        if (decision.offer) {
+          // The server owns the figure: never let the model's number through.
+          decision.offer.price_usd = approvedCents / 100
+          decision.offer.price = undefined
+          if (!decision.offer.gig_id && adaptive.gig_id) decision.offer.gig_id = adaptive.gig_id
+        } else if (!decision.escalate && (buyIntent || containsPriceSuggestion(replyText))) {
+          const synthesized = synthesizeOfferFromQuote(adaptive)
+          if (synthesized) decision.offer = synthesized
+        }
+      } else if (adaptive && adaptive.recommended_action === 'ESCALATE_PROVIDER' && adaptive.counter_class !== 'none') {
+        decision.escalate = true
+        approvalPending = true
+        decision.offer = null
+      }
+
+      // Legal-buddy budget policy: when the adaptive layer could NOT authorize a
+      // scoped number, keep the PR #391 anti-loop behavior. On the FIRST
+      // budget_too_low turn the empathetic template is fine. If the gap was
+      // already explained — or the model reply would be a near-duplicate, or the
+      // client is frustrated — escalate to the provider instead of looping.
+      if (pricing.status === 'budget_too_low' && pricing.budget && !adaptiveAuthorized) {
         const nearDuplicate = isNearDuplicateReply(replyText, priorAiBodies)
-        const guard = guardMessengerOffer({ pricing })
+        const guard = guardMessengerOffer({
+          pricing,
+          negotiation: adaptiveGuardContext(adaptive),
+        })
         const guardReply = guard.ok || guard.reason !== 'budget_too_low' ? '' : String(guard.reply || '')
         const modelLeaksFloors = leaksInternalFloorLanguage(replyText)
         const modelHandlesBudgetEmpathetically = !modelLeaksFloors
@@ -1055,11 +1276,11 @@ export async function maybeAutoReply(opts: {
           && budgetStatusLeakForbidden.every((phrase) => !replyText.toLowerCase().includes(phrase))
         const veryShortModelReply = replyText.length < 120
 
-        if (decision.escalate || frustrated || alreadyExplained) {
+        if (decision.escalate || frustrated || budgetGapAlreadyExplained) {
           // Escalate: short empathetic handoff, never the canned template again.
-          if (frustrated || alreadyExplained) decision.escalate = true
-          if (decision.escalate && (frustrated || alreadyExplained || !modelHandlesBudgetEmpathetically)) {
-            replyText = veryShortModelReply && !frustrated && !alreadyExplained
+          if (frustrated || budgetGapAlreadyExplained) decision.escalate = true
+          if (decision.escalate && (frustrated || budgetGapAlreadyExplained || !modelHandlesBudgetEmpathetically)) {
+            replyText = veryShortModelReply && !frustrated && !budgetGapAlreadyExplained
               ? replyText
               : lowBudgetEscalationReply(providerLabel)
           }
@@ -1076,6 +1297,7 @@ export async function maybeAutoReply(opts: {
           replyText = guardReply
         }
         decision.offer = null
+        if (decision.escalate) approvalPending = true
       }
 
       if (decision.offer && !decision.escalate) {
@@ -1084,6 +1306,7 @@ export async function maybeAutoReply(opts: {
           proposedPriceUsd: decision.offer.price_usd,
           proposedPrice: decision.offer.price,
           gigId: decision.offer.gig_id || null,
+          negotiation: adaptiveGuardContext(adaptive),
         })
         if (guard.ok) {
           approvedOffer = { priceCents: guard.priceCents }
@@ -1092,6 +1315,46 @@ export async function maybeAutoReply(opts: {
           decision.offer = null
           providerReview = Boolean(guard.needsProviderReview)
         }
+      }
+
+      // ── Polish stage (rules first; one regeneration; then a safe template) ──
+      const allowedAmounts = companionAllowedAmounts(adaptive, approvedOffer)
+      const polish = await polishWithRegeneration(
+        {
+          reply: replyText,
+          posture: companion?.posture ?? null,
+          allowedAmountsCents: allowedAmounts,
+          approvedPriceCents: adaptive?.approved_price_cents ?? approvedOffer?.priceCents ?? null,
+          currency: pricing.currency,
+          previousAiBodies: priorAiBodies,
+          includes: adaptive?.client_safe.includes || [],
+          escalationReply: lowBudgetEscalationReply(providerLabel),
+        },
+        async (reasons) => {
+          try {
+            const raw = await callGrokChat({
+              system: `${systemWithContext}\n\n# POLISH — REGENERATE\nYour previous draft was rejected by the server for: ${reasons.join('; ')}. Rewrite it using ONLY the server-approved numbers, no internal pricing language, and a natural human tone.`,
+              user: userPrompt,
+              conversationId: opts.conversationId,
+            })
+            return parseDecision(raw).reply || null
+          } catch (err) {
+            console.warn('[messengerAi] polish regeneration failed', err instanceof Error ? err.message : err)
+            return null
+          }
+        },
+      )
+      replyText = polish.reply
+      if (polish.escalate) {
+        decision.escalate = true
+        decision.offer = null
+        if (polish.action === 'force_escalation') approvalPending = approvalPending || pricing.status !== 'ready'
+      }
+      if (polish.action === 'fallback_template' || polish.action === 'append_includes' || polish.action === 'strip_budget_ask') {
+        await recordAiDiagnostic(db, opts.conversationId, {
+          ai_last_polish_action: polish.action,
+          ai_last_polish_reasons: polish.reasons.slice(0, 6),
+        })
       }
 
       if (!replyText) return { replied: false, skipped: 'empty_reply', aiMode }
@@ -1145,10 +1408,21 @@ export async function maybeAutoReply(opts: {
             pricing,
             memory,
             guardedPriceCents: approvedOffer.priceCents,
+            scopedFloorCents: adaptive?.quote.scoped_floor_cents ?? null,
+            scopedScopeHash: adaptive?.scope.scope_hash ?? null,
           })
           if (created) {
             offerId = created.id
-            memory = created.memory
+            memory = adaptive
+              ? withAdaptivePricingInMemory(created.memory, {
+                  decision: adaptive,
+                  offerId: created.id,
+                  approvedPriceCents: created.priceCents,
+                  journeyStage,
+                  emotionBand,
+                  lastPosture: companion?.posture ?? null,
+                })
+              : created.memory
           }
         } catch (err) {
           console.warn('[messengerAi] offer create skipped', err instanceof Error ? err.message : err)
@@ -1169,8 +1443,22 @@ export async function maybeAutoReply(opts: {
         ai_last_offer_id: offerId,
         ai_last_pricing_status: pricing.status,
         ai_last_pricing_reference_mean_cents: pricing.referenceMeanCents,
+        ai_last_pricing_status_adaptive: adaptive?.status ?? null,
+        ai_last_scope_hash: adaptive?.scope.scope_hash ?? null,
+        ai_last_counter_class: adaptive?.counter_class ?? null,
+        ai_last_negotiation_action: adaptive?.recommended_action ?? null,
+        ai_last_posture: companion?.posture ?? null,
+        ai_last_approved_price_cents: decision.offer && approvedOffer ? approvedOffer.priceCents : null,
         ai_last_error: null,
         ai_last_skip: null,
+        ...(approvalPending
+          ? {
+              ai_pricing_approval_pending: true,
+              ai_pricing_approval_requested_at: new Date().toISOString(),
+              ai_provider_attention_requested: true,
+              ai_provider_attention_requested_at: new Date().toISOString(),
+            }
+          : {}),
         ...(shouldEscalate ? { ai_escalated_at: new Date().toISOString(), ai_escalation_reason: providerReview ? 'pricing_provider_review' : 'model_escalation' } : {}),
       }
       await db
