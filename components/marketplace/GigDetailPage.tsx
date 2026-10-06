@@ -6,6 +6,7 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { Card, ErrorState, EmptyState, Btn } from '../design/shared'
 import { responsiveImageProps } from '@/lib/responsiveImage'
+import { sizedImageUrl } from '@/lib/imageVariants'
 import {
   SellerProfileCard,
   PricingTiers,
@@ -738,7 +739,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         >
           <span className="ys-floating-message-avatar" aria-hidden="true">
             {gig.provider_headshot_url ? (
-              <img src={gig.provider_headshot_url} alt="" />
+              <img src={sizedImageUrl(gig.provider_headshot_url, 96) ?? gig.provider_headshot_url} alt="" width={48} height={48} loading="lazy" decoding="async" />
             ) : (
               providerInitials || 'YS'
             )}

@@ -725,7 +725,11 @@ export function FeaturedBriefsGrid({
                       className="plate-img"
                       src={sizedImageUrl(g.cover_image_url, 720) ?? g.cover_image_url}
                       alt={`${g.title || 'Service'} — preview`}
-                      loading="lazy"
+                      width={720}
+                      height={480}
+                      loading={idx < 2 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      fetchPriority={idx < 2 ? 'high' : undefined}
                       onError={(e) => { e.currentTarget.style.display = 'none' }}
                     />
                   ) : (
@@ -737,7 +741,7 @@ export function FeaturedBriefsGrid({
                   <div className="seller">
                     {g.providerHeadshot ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img className="av" src={g.providerHeadshot} alt={g.providerName} loading="lazy" style={{ objectFit: 'cover' }} />
+                      <img className="av" src={sizedImageUrl(g.providerHeadshot, 52) ?? g.providerHeadshot} alt={g.providerName} width={32} height={32} loading="lazy" decoding="async" style={{ objectFit: 'cover' }} />
                     ) : (
                       <span className="av" style={{ background: avatarBgFor(g.provider_type) }}>{initialsOf(g.providerName)}</span>
                     )}

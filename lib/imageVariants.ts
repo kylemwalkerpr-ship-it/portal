@@ -1,11 +1,16 @@
 /**
- * Display-size image variants for third-party CDNs that resize on the fly.
+ * Display-size image variants for CDNs that resize on the fly.
  *
  * Sanitization P9 (image compression): Market cards render at <=420 CSS px but
  * were pulling full-size Payhip (~100 KB each) and Pexels (w=1200) originals.
- * Only hosts with a known, verified resize API are rewritten; every other URL
- * (Supabase public storage has no transform on this plan) is returned as-is.
+ * Payhip / Pexels / Unsplash keep their native resize APIs. Supabase public
+ * objects go through lib/marketplaceDeliveryImage.ts (same-origin proxy +
+ * Cloudflare Image Resizing) because Supabase transforms are disabled and
+ * absolute Supabase URLs 403 on `/cdn-cgi/image`.
  */
+
+import { deliveryImageUrl } from '@/lib/marketplaceDeliveryImage'
+
 const PAYHIP_RESIZE = /^https:\/\/payhip\.com\/cdn-cgi\/image\/([^/]+)\/(https:\/\/.+)$/
 
 export function sizedImageUrl(url: string | null | undefined, width: number): string | null {
@@ -32,7 +37,7 @@ export function sizedImageUrl(url: string | null | undefined, width: number): st
       return u.toString()
     }
   } catch {
-    // not an absolute URL; leave untouched
+    // not an absolute URL; leave untouched below
   }
-  return url
+  return deliveryImageUrl(url, { width }) ?? url
 }
