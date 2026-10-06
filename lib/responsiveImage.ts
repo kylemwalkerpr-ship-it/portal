@@ -1,64 +1,49 @@
 /**
  * Responsive image utilities for gig marketplace images.
  *
- * IMPORTANT: Supabase Storage image transformations are NOT enabled on this
- * project. The `/storage/v1/render/image/...` endpoint returns 403
- * FeatureNotEnabled, and ordinary object URLs ignore `?width=&resize=&format=`
- * query params — the origin serves the same stored bytes either way.
+ * Supabase Storage transforms are NOT enabled (render/image → 403). Delivery
+ * instead goes through lib/marketplaceDeliveryImage.ts: a same-origin media
+ * proxy plus Cloudflare Image Resizing (`/cdn-cgi/image/…`) on the market zone,
+ * which rejects absolute Supabase URLs but resizes same-origin paths.
  *
- * These helpers therefore never fabricate width/format variants. Uploads are
- * optimized client-side before storage instead (lib/marketplaceImageOptimization.ts),
- * and `generateSrcSet` returns an empty string because no real variant sources
- * exist to describe.
- *
- * Usage in components:
- *   <img
- *     src={responsiveUrl(image.url, 600)}
- *     srcSet={generateSrcSet(image.url)}
- *     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
- *     loading="lazy"
- *     alt={title}
- *   />
+ * Usage:
+ *   <img {...responsiveImageProps(image.url, title)} />
  */
 
+import { deliveryImageUrl, marketplaceMediaProxyPath } from '@/lib/marketplaceDeliveryImage'
+
+const SRCSET_WIDTHS = [320, 480, 720, 960] as const
+
 /**
- * Returns the stored object URL unchanged.
- *
- * Supabase image transformations are disabled on this project (403
- * FeatureNotEnabled), so appending `width`/`resize`/`format` params would
- * request a variant that does not exist. The `width` and `format` arguments
- * are kept for API compatibility but intentionally ignored.
+ * Display URL at the requested width. Supabase public objects are rewritten to
+ * the marketplace media proxy (+ CF resize in production). Other URLs pass
+ * through unchanged.
  */
-export function responsiveUrl(url: string, _width: number, _format?: 'webp' | 'origin'): string {
-  return url
+export function responsiveUrl(url: string, width: number, _format?: 'webp' | 'origin'): string {
+  if (!url) return url
+  return deliveryImageUrl(url, { width }) ?? url
 }
 
 /**
- * Returns an empty string: no real image variant sources exist for stored
- * objects, so emitting width descriptors would be a false claim. Callers that
- * spread this onto an <img> still work — an empty srcSet is inert.
+ * Real width descriptors when the URL is a proxyable Supabase public object.
+ * Empty for every other host (no fabricated variants).
  */
-export function generateSrcSet(_url: string): string {
-  return ''
+export function generateSrcSet(url: string): string {
+  if (!url || !marketplaceMediaProxyPath(url)) return ''
+  return SRCSET_WIDTHS.map((w) => `${deliveryImageUrl(url, { width: w })} ${w}w`).join(', ')
 }
 
 /**
- * Generates a complete set of image props for a gig image.
- * Returns { src, srcSet, sizes, loading, fetchpriority, alt } for direct spread
- * onto an <img>.
- *
- * `src` is the original stored URL, `srcSet` is empty (no fabricated variants),
- * and `sizes` is retained only for API-shape compatibility with existing
- * callers — it has no effect while `srcSet` is empty.
- *
- * Priority-flagged images use 'eager' loading for LCP optimization.
+ * Complete <img> props for a gig image.
+ * Priority-flagged images use eager loading for LCP.
  */
 export function responsiveImageProps(url: string, title?: string, priority?: boolean) {
   return {
-    src: responsiveUrl(url, 600),
+    src: responsiveUrl(url, priority ? 720 : 480),
     srcSet: generateSrcSet(url),
     sizes: '(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw',
     loading: priority ? ('eager' as const) : ('lazy' as const),
+    decoding: 'async' as const,
     fetchpriority: priority ? ('high' as const) : undefined,
     alt: title || '',
   }

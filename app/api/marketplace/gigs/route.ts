@@ -8,6 +8,7 @@ import { providerDisplayName } from '@/lib/providerDisplayName'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { marketplaceGigSortOrder } from '@/lib/marketplaceGigSort'
+import { isPostgrestRangeNotSatisfiable } from '@/lib/marketplaceDeliveryImage'
 
 const CACHE_TTL_SECONDS = 60
 const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
@@ -169,9 +170,44 @@ export async function GET(req: Request) {
   const result = relevanceSearch
     ? await query.limit(500)
     : await query.range(offset, offset + limit - 1)
-  const gigs = result.data
-  const error = result.error
-  const count = result.count
+  let gigs = result.data
+  let error = result.error
+  let count = result.count
+  // PostgREST returns 416 / PGRST103 when offset is past the last row. That is a
+  // normal empty page for deep links like ?page=99 — never a 500. Prefer the
+  // Prefer:count=exact total when present so clients can clamp to the last page.
+  if (error && isPostgrestRangeNotSatisfiable(error)) {
+    gigs = []
+    error = null
+    if (typeof count !== 'number') {
+      // Same filters, head-only recount so out-of-range deep links still clamp.
+      let recount = db
+        .from('gigs')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'active')
+      if (safeQ) {
+        if (searchCandidateIds) {
+          recount = searchCandidateIds.length > 0
+            ? recount.in('id', searchCandidateIds)
+            : recount.eq('id', NO_MATCH_GIG_ID)
+        } else {
+          recount = recount.or(`title.plfts.${safeQ},pitch.plfts.${safeQ},description.plfts.${safeQ}`)
+        }
+      }
+      if (categories.length > 0) {
+        const categoryOr = buildCategoryOrFilter(categories)
+        if (categoryOr) recount = recount.or(categoryOr)
+      }
+      if (validProviderTypes.length === 1) recount = recount.eq('provider_type', validProviderTypes[0])
+      else if (validProviderTypes.length > 1) recount = recount.in('provider_type', validProviderTypes)
+      if (['us', 'uk', 'ca', 'au'].includes(country)) recount = recount.or(jurisdictionCountryOrFilter(country))
+      if (minRating) recount = recount.gte('avg_rating', parseFloat(minRating))
+      if (sort === 'best_rated') recount = recount.gte('review_count', 3)
+      if (sort === 'featured') recount = recount.not('featured_until', 'is', null)
+      const recounted = await recount
+      count = typeof recounted.count === 'number' ? recounted.count : 0
+    }
+  }
   if (error) return fail(error.message, 500)
 
   // Fetch saved gig IDs for client users to populate is_saved
