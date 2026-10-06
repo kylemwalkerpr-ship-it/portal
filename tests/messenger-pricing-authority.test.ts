@@ -4,8 +4,11 @@ import {
   extractClientBudget,
   guardMessengerOffer,
   isNearDuplicateReply,
+  leaksInternalFloorLanguage,
   lowBudgetReply,
   MIN_REFERENCE_RATIO,
+  pricingAuditSnapshot,
+  renderPricingAuthority,
   summarizePrices,
   type PricingAuthority,
 } from '@/lib/messengerPricingAuthority'
@@ -53,6 +56,88 @@ function pricing(overrides: Partial<PricingAuthority> = {}): PricingAuthority {
 describe('YQAA marketplace pricing authority', () => {
   test('uses 15% below mean as the automatic baseline floor policy', () => {
     expect(MIN_REFERENCE_RATIO).toBe(0.85)
+  })
+
+  test('a scoped negotiation decision validates against the workload floor, not the blended floor', () => {
+    const low = pricing({ status: 'budget_too_low', budget: { ...pricing().budget!, maxCents: 12_000 } })
+    // Without a scoped decision the blended floor still blocks and the template is used.
+    const blended = guardMessengerOffer({ pricing: low, proposedPriceUsd: 55 })
+    expect(blended.ok).toBe(false)
+
+    // With a scoped floor + server-approved number, the workload floor governs.
+    const scoped = guardMessengerOffer({
+      pricing: low,
+      proposedPriceUsd: 55,
+      negotiation: { scopedFloorCents: 4_500, approvedPriceCents: 5_500, scoped: true },
+    })
+    expect(scoped).toMatchObject({ ok: true, priceCents: 5_500 })
+  })
+
+  test('a price below the scoped floor needs a provider approval token', () => {
+    const p = pricing()
+    const blocked = guardMessengerOffer({
+      pricing: p,
+      proposedPriceUsd: 30,
+      negotiation: { scopedFloorCents: 4_500, approvedPriceCents: null, scoped: true },
+    })
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) {
+      expect(blocked.reason).toBe('below_guarded_floor')
+      expect(blocked.needsProviderReview).toBe(true)
+      expect(blocked.reply.toLowerCase()).not.toContain('floor')
+      expect(blocked.reply).not.toContain('revenue-safe')
+    }
+    const approved = guardMessengerOffer({
+      pricing: p,
+      proposedPriceUsd: 30,
+      negotiation: { scopedFloorCents: 4_500, approvedPriceCents: null, approvalToken: 'tok-1', scoped: true },
+    })
+    expect(approved).toMatchObject({ ok: true, priceCents: 3_000 })
+  })
+
+  test('the guard refuses a model figure that is not the server-approved one', () => {
+    const result = guardMessengerOffer({
+      pricing: pricing(),
+      proposedPriceUsd: 1_100,
+      negotiation: { scopedFloorCents: 90_000, approvedPriceCents: 105_000, scoped: true },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('invalid_price')
+  })
+
+  test('the model-facing pricing block is client-safe: no floors, means or evidence highs', () => {
+    const p = pricing({ rationale: ['Marketplace sample mean $1,100 and automatic floor $935.'] })
+    const rendered = renderPricingAuthority(p)
+    expect(rendered).toContain('SERVER-AUTHORIZED NUMBERS — use only these')
+    expect(rendered).not.toMatch(/NON-NEGOTIABLE/)
+    expect(rendered).not.toContain('$935')
+    expect(rendered).not.toContain('$1,100')
+    expect(rendered.toLowerCase()).not.toContain('reference mean')
+    const audit = pricingAuditSnapshot(p)
+    expect(audit.guarded_floor_cents).toBe(93_500)
+    expect(audit.reference_mean_cents).toBe(110_000)
+  })
+
+  test('leaksInternalFloorLanguage stays the shared base lexicon for the polish stage', () => {
+    expect(leaksInternalFloorLanguage('The lowest revenue-safe offer for this scope average is $250.')).toBe(true)
+    expect(leaksInternalFloorLanguage('Happy to narrow the scope so it fits.')).toBe(false)
+  })
+
+  test('parses BOTH ends of a client-stated budget range', () => {
+    const rows = [
+      { id: 'm1', sender_id: 'client', body: 'My budget is $50 to $100 for a consult.' },
+    ]
+    expect(extractClientBudget(rows, 'client')).toMatchObject({
+      minCents: 5_000,
+      maxCents: 10_000,
+      currency: 'usd',
+      confidence: 'explicit',
+    })
+  })
+
+  test('parses a suffixed range without dollar signs ("50 dollars to 100")', () => {
+    const rows = [{ id: 'm1', sender_id: 'client', body: 'My budget is 50 dollars to 100 dollars for the review.' }]
+    expect(extractClientBudget(rows, 'client')).toMatchObject({ minCents: 5_000, maxCents: 10_000 })
   })
 
   test('computes robust marketplace summary statistics', () => {
