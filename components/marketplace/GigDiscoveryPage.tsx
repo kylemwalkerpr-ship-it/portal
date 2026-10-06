@@ -560,9 +560,10 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
       if (seq !== requestSeqRef.current) return
       const resultTotal = data.total || data.gigs?.length || 0
       const lastPage = Math.max(1, Math.ceil(resultTotal / PAGE_SIZE))
-      if ((data.gigs || []).length === 0 && page > lastPage && resultTotal > 0) {
-        // Stale/out-of-range ?page=N: clamp to the last real page.
-        setPage(lastPage)
+      if ((data.gigs || []).length === 0 && page > 1) {
+        // Stale/out-of-range ?page=N: clamp to the last real page (or page 1 when
+        // the API could not supply a total — e.g. empty recount).
+        setPage(resultTotal > 0 ? Math.min(page, lastPage) : 1)
         return
       }
       setGigs(data.gigs || [])
@@ -602,7 +603,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
         postGigMetric({ gig_ids: impressionIds, event_type: 'impression' })
       }
     } catch (e: any) {
-      if (seq === requestSeqRef.current) setError(e.message)
+      if (seq !== requestSeqRef.current) return
+      const message = String(e?.message || 'Request failed')
+      // Defence in depth: older Workers still 500 on PostgREST 416. Step back
+      // so a deep-linked ?page=99 never sticks on an error screen.
+      if (page > 1 && /range not satisfiable/i.test(message)) {
+        setPage(page - 1)
+        return
+      }
+      setError(message)
     } finally {
       if (seq === requestSeqRef.current) setLoading(false)
     }
@@ -884,8 +893,13 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                 >
                 {view === 'grid' ? (
                   <div style={gigGrid} className="ys-gig-grid">
-                    {gigs.map(gig => (
-                      <GigCard key={gig.id} gig={gig} onSearchClick={trackResultClick} />
+                    {gigs.map((gig, index) => (
+                      <GigCard
+                        key={gig.id}
+                        gig={gig}
+                        onSearchClick={trackResultClick}
+                        imagePriority={index < 2}
+                      />
                     ))}
                   </div>
                 ) : (

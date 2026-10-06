@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { T } from './tokens'
 import { responsiveImageProps } from '@/lib/responsiveImage'
+import { sizedImageUrl } from '@/lib/imageVariants'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 
 const DISCOVERY_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
@@ -123,9 +124,11 @@ interface GigCardProps {
     gallery_images?: Array<{ url: string }>
   }
   onSearchClick?: (gigId: string) => void
+  /** Eager/high-priority cover for the first cards (LCP). */
+  imagePriority?: boolean
 }
 
-export function GigCard({ gig, onSearchClick }: GigCardProps) {
+export function GigCard({ gig, onSearchClick, imagePriority = false }: GigCardProps) {
   const [hovered, setHovered] = React.useState(false)
   const [saved, setSaved] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false
@@ -210,8 +213,9 @@ export function GigCard({ gig, onSearchClick }: GigCardProps) {
               transform: hovered ? 'scale(1.025)' : 'scale(1)',
               transition: 'transform 320ms cubic-bezier(.2,.7,.2,1)',
             }}
-            loading="lazy"
-            {...responsiveImageProps(imageUrl, gig.title)}
+            width={480}
+            height={320}
+            {...responsiveImageProps(imageUrl, gig.title, imagePriority)}
           />
         ) : (
           <div style={{ ...gigImage, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: T.inkSoft, fontWeight: 750, letterSpacing: '.04em' }}>
@@ -277,10 +281,12 @@ export function GigCard({ gig, onSearchClick }: GigCardProps) {
         >
           {(gig.provider_headshot_url || (gig as any).providerHeadshot) ? (
             <img
-              src={gig.provider_headshot_url || (gig as any).providerHeadshot}
+              src={sizedImageUrl(gig.provider_headshot_url || (gig as any).providerHeadshot, 52) || gig.provider_headshot_url || (gig as any).providerHeadshot}
               alt=""
               width={26}
               height={26}
+              loading="lazy"
+              decoding="async"
               style={{ ...providerAvatar, objectFit: 'cover', padding: 0 }}
             />
           ) : (

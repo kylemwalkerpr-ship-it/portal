@@ -54,13 +54,18 @@ const FULL_ROW = {
   provider: { id: 'p1', full_name: 'Jane Doe', email: 'jane@example.com', username: 'jane', country: 'US' },
 }
 
+let rangeError: { message: string; code: string } | null = null
+let rangeErrorCount: number | null = null
+
 class Query {
   table: string
+  private headOnly = false
   constructor(table: string) {
     this.table = table
   }
-  select(columns: string) {
+  select(columns: string, opts?: { count?: string; head?: boolean }) {
     selects.push(columns)
+    if (opts?.head) this.headOnly = true
     return this
   }
   eq() {
@@ -86,7 +91,17 @@ class Query {
     ranges.push([from, to])
     return this
   }
-  then<T>(onFulfilled: (v: { data: any[]; error: null; count: number }) => T) {
+  then<T>(onFulfilled: (v: { data: any[] | null; error: any; count: number | null }) => T) {
+    if (this.table === 'gigs' && rangeError && !this.headOnly) {
+      return Promise.resolve({
+        data: null,
+        error: rangeError,
+        count: rangeErrorCount,
+      }).then(onFulfilled)
+    }
+    if (this.headOnly) {
+      return Promise.resolve({ data: null, error: null, count: 217 }).then(onFulfilled)
+    }
     const rows = this.table === 'gigs' ? [FULL_ROW] : []
     return Promise.resolve({ data: rows, error: null, count: 217 }).then(onFulfilled)
   }
@@ -116,6 +131,8 @@ beforeEach(() => {
   selects = []
   ranges = []
   orders = []
+  rangeError = null
+  rangeErrorCount = null
   db = {
     rpc: jest.fn(async () => ({ data: null, error: { message: 'function unavailable' } })),
     from: (table: string) => new Query(table),
@@ -190,5 +207,33 @@ describe('GET /api/marketplace/gigs — view=card', () => {
   it('treats any other view value as the default response', async () => {
     const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?view=full&limit=20&page=1')
     expect(res.body.data.gigs[0].provider.email).toBe('jane@example.com')
+  })
+
+  it('returns an empty window (not 500) when PostgREST rejects an out-of-range page', async () => {
+    rangeError = { code: 'PGRST103', message: 'Requested range not satisfiable' }
+    rangeErrorCount = 217
+    const res = await request(jsonServer(GET)).get(
+      '/api/marketplace/gigs?view=card&sort=trending&limit=48&page=99',
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({
+      gigs: [],
+      total: 217,
+      page: 99,
+      limit: 48,
+      hasMore: false,
+    })
+  })
+
+  it('recounts with a head query when the range error carries no total', async () => {
+    rangeError = { code: 'PGRST103', message: 'Requested range not satisfiable' }
+    rangeErrorCount = null
+    const res = await request(jsonServer(GET)).get(
+      '/api/marketplace/gigs?view=card&limit=20&page=50',
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.data.gigs).toEqual([])
+    expect(res.body.data.total).toBe(217)
+    expect(selects.some((s) => s === 'id')).toBe(true)
   })
 })
