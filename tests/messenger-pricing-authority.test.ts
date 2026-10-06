@@ -1,6 +1,10 @@
 import {
+  budgetGapReplyAlreadySent,
+  clientFrustrationOrExit,
   extractClientBudget,
   guardMessengerOffer,
+  isNearDuplicateReply,
+  lowBudgetReply,
   MIN_REFERENCE_RATIO,
   summarizePrices,
   type PricingAuthority,
@@ -144,6 +148,49 @@ describe('YQAA marketplace pricing authority', () => {
   test('allows a supported price inside the revenue-safe corridor', () => {
     const result = guardMessengerOffer({ pricing: pricing(), proposedPriceUsd: 1050, gigId: 'gig-1' })
     expect(result).toEqual({ ok: true, priceCents: 105_000, reason: 'within_authority' })
+  })
+
+  test('lowBudgetReply never leaks revenue-safe or floor/mean math and offers empathy + paths', () => {
+    const p = pricing({ status: 'budget_too_low', budget: { ...pricing().budget!, maxCents: 10_000 } })
+    const reply = lowBudgetReply(p)
+    expect(reply.toLowerCase()).not.toContain('revenue-safe')
+    expect(reply).not.toMatch(/\$\s*\d/) // no dollar-floor / mean dump
+    expect(reply).toMatch(/narrow|provider/i)
+    expect(reply).toMatch(/thanks|hear|understand|upfront/i)
+  })
+
+  test('budget_too_low guard still blocks (server authority unchanged) with the empathetic template', () => {
+    const result = guardMessengerOffer({ pricing: pricing({ status: 'budget_too_low' }) })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('budget_too_low')
+      expect(result.reply.toLowerCase()).not.toContain('revenue-safe')
+      expect(result.reply).not.toMatch(/\$\s*\d/)
+    }
+  })
+
+  test('clientFrustrationOrExit catches Foley-style frustration and exit intent', () => {
+    expect(clientFrustrationOrExit('wow AI really just stops at the buck lol')).toBe(true)
+    expect(clientFrustrationOrExit("I'll go ask another AI then")).toBe(true)
+    expect(clientFrustrationOrExit('never mind, forget it')).toBe(true)
+    expect(clientFrustrationOrExit('this is useless and a waste of my time')).toBe(true)
+    expect(clientFrustrationOrExit('ok so what documents do I need next?')).toBe(false)
+    expect(clientFrustrationOrExit('')).toBe(false)
+  })
+
+  test('isNearDuplicateReply detects identical and near-identical replies', () => {
+    const prior = 'Thanks for sharing all of that context about your application timeline and goals. Here is what usually matters most for this pathway with the documents you described.'
+    expect(isNearDuplicateReply(prior, [prior])).toBe(true)
+    expect(isNearDuplicateReply(`${prior} Extra tail sentence.`, [prior])).toBe(true)
+    expect(isNearDuplicateReply('Completely different short reply.', [prior])).toBe(false)
+    expect(isNearDuplicateReply('', [prior])).toBe(false)
+  })
+
+  test('budgetGapReplyAlreadySent detects a prior budget-gap explanation', () => {
+    const gapReply = lowBudgetReply(pricing({ status: 'budget_too_low' }))
+    expect(budgetGapReplyAlreadySent([gapReply])).toBe(true)
+    expect(budgetGapReplyAlreadySent(['Hi there, happy to help with your application!'])).toBe(false)
+    expect(budgetGapReplyAlreadySent([])).toBe(false)
   })
 })
 
