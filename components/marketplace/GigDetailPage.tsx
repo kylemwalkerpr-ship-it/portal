@@ -22,6 +22,7 @@ import { signalSsrReady } from './SsrHydrateGate'
 import { GigDetailSkeleton } from './MarketplaceRouteSkeleton'
 import { normalizeGallery } from '@/lib/galleryImages'
 import { stripHtmlComments } from '@/lib/bioMarkdown'
+import { resolveGigOverviewText } from '@/lib/gigAiOverview'
 import { T, F } from './tokens'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
@@ -505,7 +506,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
     gig.provider,
     gig.provider_type === 'consultant' ? 'Consultant' : 'Licensed attorney',
   )
-  const summaryText = stripHtmlComments(String(gig.pitch || gig.seo_description || '')).trim()
+  const overviewText = resolveGigOverviewText(gig)
   const descriptionPlainText = stripHtmlComments(String(gig.description || '')).trim()
   const descriptionWordCount = descriptionPlainText ? descriptionPlainText.split(/\s+/).filter(Boolean).length : 0
   const descriptionIsLong = descriptionWordCount > 90
@@ -645,15 +646,15 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
 
             <Card className="ys-gig-about-card" style={{ padding: '24px' }}>
               <h2 style={sectionTitle}>About This Service</h2>
-              {summaryText && (
-                <div className="ys-gig-ai-summary" role="note" aria-label="AI summary">
-                  <div className="ys-gig-ai-summary-label">
+              {overviewText && (
+                <div className="ys-gig-curated-overview" role="note" aria-label="Service overview">
+                  <div className="ys-gig-curated-overview-label">
                     <span aria-hidden="true">✦</span>
-                    <span>AI summary</span>
+                    <span>Overview</span>
                   </div>
-                  <p>{summaryText}</p>
-                  <span className="ys-gig-ai-summary-note">
-                    Condensed from the provider’s service listing. Package scope and terms below remain authoritative.
+                  <p>{overviewText}</p>
+                  <span className="ys-gig-curated-overview-note">
+                    Curated service overview. Package scope and terms below remain authoritative.
                   </span>
                 </div>
               )}

@@ -162,7 +162,7 @@ export const KEYWORD_WEAVING_PLAYBOOK = [
 export type FieldName =
   | 'title' | 'seo_title' | 'seo_description'
   | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
-  | 'faq' | 'tier_features' | 'tier_description'
+  | 'faq' | 'tier_features' | 'tier_description' | 'ai_overview'
 
 export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consultant'): string {
   switch (field) {
@@ -235,6 +235,15 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
         'LOOP GUARD: revision language must always carry both COUNT and TIME WINDOW ("2 revision rounds within 14 days of delivery"). Never "unlimited revisions" without a bound — that\'s the gig-becomes-endless-rework hole.',
         'Pattern that works (Standard): "The best-value choice for applicants with a working draft who want a senior editor\'s eye. You\'ll get two structural-edit rounds within 14 days, a final proofread, and an originality report. Step up to Premium for priority turnaround and a 30-minute strategy call."',
         'Pattern that does NOT work: "Comprehensive editing tailored to your unique needs. Unlimited revisions until you\'re 100% satisfied. Get the premium experience." — banned adjective, loop-risk, no specifics, generic platitude.',
+      ].join('\n')
+    case 'ai_overview':
+      return [
+        '### Voice — CURATED OVERVIEW (ai_overview)',
+        'Standalone buyer-facing overview. 220–520 chars, 2–4 short sentences. Covers who it is for, what is included, and the outcome of the work.',
+        'Second-person bias. Never open with provider identity/credentials. Never label the text "Summary:" / "Overview:" / "TL;DR:".',
+        'This is NOT the pitch/tagline and NOT a patch bolted onto the long description — it must read as a complete curated overview on its own.',
+        'Pattern that works: "You need a final proofread before submission — grammar, spelling, punctuation, and consistency without rewriting your argument. You get a tracked-changes pass plus a short consistency note, scoped for thesis and dissertation manuscripts."',
+        'Pattern that does NOT work: "I am a US attorney admitted in New York. I check the Form I-765…" (provider mini-bio) or "Summary: Final-pass thesis proofreading…" (bolted label).',
       ].join('\n')
     case 'tags':
       return [

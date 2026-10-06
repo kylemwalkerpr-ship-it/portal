@@ -1,4 +1,5 @@
 import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
+import { isValidGigAiOverview, sanitizeGigAiOverview } from '@/lib/gigAiOverview'
 import { buildUniqueSlug } from '@/lib/fiverr'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
@@ -263,6 +264,12 @@ export async function POST(req: Request) {
     status,
     seo_title: body.seo_title || title,
     seo_description: body.seo_description || body.pitch || body.tagline || '',
+    ai_overview: (() => {
+      if (typeof body.ai_overview !== 'string') return null
+      const cleaned = sanitizeGigAiOverview(body.ai_overview)
+      if (!cleaned) return null
+      return isValidGigAiOverview(cleaned) ? cleaned : null
+    })(),
     slug,
   }
 

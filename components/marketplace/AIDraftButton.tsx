@@ -6,7 +6,7 @@ import { T, F } from './tokens'
 export type DraftField =
   | 'title' | 'seo_title' | 'seo_description'
   | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
-  | 'tier_features' | 'tier_description'
+  | 'tier_features' | 'tier_description' | 'ai_overview'
 
 export interface TierSummary {
   tier?: 'basic' | 'standard' | 'premium' | string
@@ -42,6 +42,7 @@ export interface DraftContext {
   tags?: string[] | null
   seo_title?: string | null
   seo_description?: string | null
+  ai_overview?: string | null
   faq?: FaqEntry[] | null
   tier?: TierSummary | null
   otherTiers?: TierSummary[] | null

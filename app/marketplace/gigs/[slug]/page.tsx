@@ -11,6 +11,7 @@ import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 import { providerDisplayLabel } from '@/lib/providerDisplayName'
 import { renderBioMarkdown, stripHtmlComments } from '@/lib/bioMarkdown'
+import { resolveGigOverviewText } from '@/lib/gigAiOverview'
 import {
   assertMarketplaceEstateNonEmpty,
   assertMarketplaceServiceRoleAuthority,
@@ -141,7 +142,7 @@ const loadGigForSeo = cache(async (slug: string): Promise<any | null> => {
     const { data: gig, error } = await db
       .from('gigs')
       .select(
-        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, gallery_images, faq, provider_id, provider_type, status, pitch, tags',
+        'id, slug, title, description, seo_title, seo_description, ai_overview, category, subcategory, jurisdiction, avg_rating, review_count, order_count, gallery_images, faq, provider_id, provider_type, status, pitch, tags',
       )
       .eq('slug', slug)
       .eq('status', 'active')
@@ -313,7 +314,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   // interactive UI. Without this block, crawlers only saw a loading shell
   // (~15 words) and treated active gigs as thin content.
   const ssrTitle = (gig?.seo_title || gig?.title || titleFromSlug(slug)) as string
-  const ssrPitch = (gig?.pitch || '').toString().trim()
+  const ssrOverview = resolveGigOverviewText({ ai_overview: gig?.ai_overview, pitch: gig?.pitch, seo_description: gig?.seo_description })
   const ssrDescription = (gig?.description || gig?.seo_description || '').toString().trim()
   const ssrFaq = Array.isArray(gig?.faq)
     ? (gig.faq as Array<{ question?: string; answer?: string }>).filter((f) => f?.question && f?.answer)
@@ -365,8 +366,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
               {typeof gig.order_count === 'number' && gig.order_count > 0 ? ` · ${gig.order_count} orders` : ''}
             </p>
           )}
-          {ssrPitch && (
-            <p style={{ fontSize: 17, lineHeight: 1.55, margin: '0 0 16px', fontWeight: 500 }}>{stripHtmlComments(ssrPitch)}</p>
+          {ssrOverview && (
+            <p style={{ fontSize: 17, lineHeight: 1.55, margin: '0 0 16px', fontWeight: 500 }}>{stripHtmlComments(ssrOverview)}</p>
           )}
           {ssrDescription && (
             <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 20 }}>
@@ -425,6 +426,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
           slug: gig.slug,
           title: gig.title,
           pitch: gig.pitch,
+          ai_overview: gig.ai_overview,
           description: gig.description,
           seo_title: gig.seo_title,
           seo_description: gig.seo_description,

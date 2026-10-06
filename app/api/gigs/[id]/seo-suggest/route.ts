@@ -59,6 +59,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     tags: gig.tags,
     seo_title: gig.seo_title,
     seo_description: gig.seo_description,
+    ai_overview: gig.ai_overview,
     faq: Array.isArray(gig.faq) ? gig.faq : null,
     tier: (body?.context?.tier && typeof body.context.tier === 'object')
       ? sanitizeTier(body.context.tier as Record<string, unknown>)
