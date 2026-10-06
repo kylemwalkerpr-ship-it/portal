@@ -189,6 +189,21 @@ function extractMoneyValues(text: string): Array<{ cents: number; currency: stri
   const budgetNumber = /\b(?:budget(?:\s+is|\s+of|\s+around|\s+about)?|spend|afford|pay|maximum|max|up\s+to)\s*(?:is|of|around|about|roughly|approximately|=|:)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k)?\b/i.exec(source)
   if (budgetNumber) push(budgetNumber[1], budgetNumber[2], 'usd')
 
+  // Range upper bound: "50 dollars to 100" / "$50–$100" only parses the first
+  // amount in the passes above, which under-reads the client's budget. Capture
+  // both ends of a range when a separator ("to", "-", "–", "—") is present.
+  const rangedPrefixed = /(?:\$\s*|\b(?:usd|cad)\b\s*)(\d[\d,]*(?:\.\d{1,2})?)\s*(?:-|–|—|to)\s*\$?\s*(\d[\d,]*(?:\.\d{1,2})?)/gi
+  while ((m = rangedPrefixed.exec(source))) {
+    push(m[1], undefined, undefined)
+    push(m[2], undefined, undefined)
+  }
+  const rangedSuffixed = /\b(\d[\d,]*(?:\.\d{1,2})?)\s*(dollars?|usd|cad|bucks?)\s*(?:-|–|—|to)\s*(\d[\d,]*(?:\.\d{1,2})?)/gi
+  while ((m = rangedSuffixed.exec(source))) {
+    const currency = /^cad$/i.test(m[2]) ? 'cad' : 'usd'
+    push(m[1], undefined, currency)
+    push(m[3], undefined, currency)
+  }
+
   return out
 }
 
@@ -473,31 +488,36 @@ export async function buildMessengerPricingAuthority(args: {
   return base
 }
 
+/**
+ * Model-facing pricing block. Client-safe numbers only: internal floors, means and
+ * evidence highs stay in the audit snapshot (`pricingAuditSnapshot`) and never reach
+ * the model, so they cannot leak into a client reply.
+ */
 export function renderPricingAuthority(pricing: PricingAuthority) {
+  const clientSafeRationale = (pricing.rationale || []).filter(
+    (line: string) => !/mean|floor|median|p25|p75|p90|revenue/i.test(String(line || '')),
+  )
   const lines = [
-    '# YQAA PRICING AUTHORITY — SERVER-CALCULATED, NON-NEGOTIABLE',
+    '# YQAA PRICING AUTHORITY — SERVER-AUTHORIZED NUMBERS — use only these',
     `Status: ${pricing.status}`,
     pricing.intent ? `Matched scope: ${pricing.intent.subcategoryName || pricing.intent.categoryName} (${pricing.intent.categoryId}${pricing.intent.subcategoryId ? `/${pricing.intent.subcategoryId}` : ''})` : 'Matched scope: not yet reliable',
     pricing.budget ? `Client-stated budget: ${pricing.budget.minCents ? `${money(pricing.budget.minCents, pricing.budget.currency)}–` : ''}${money(pricing.budget.maxCents, pricing.budget.currency)} ${pricing.budget.currency.toUpperCase()}` : 'Client-stated budget: NOT YET PROVIDED',
-    pricing.referenceMeanCents ? `Calculated reference mean: ${money(pricing.referenceMeanCents, pricing.currency)} ${pricing.currency.toUpperCase()}` : null,
-    pricing.market ? `Marketplace sample: n=${pricing.market.count}; mean=${money(pricing.market.meanCents, pricing.currency)}; median=${money(pricing.market.medianCents, pricing.currency)}; p25=${money(pricing.market.p25Cents, pricing.currency)}; p75=${money(pricing.market.p75Cents, pricing.currency)}; p90=${money(pricing.market.p90Cents, pricing.currency)}` : null,
-    pricing.provider ? `Provider same-scope tiers: n=${pricing.provider.count}; range=${money(pricing.provider.minCents, pricing.currency)}–${money(pricing.provider.maxCents, pricing.currency)}; mean=${money(pricing.provider.meanCents, pricing.currency)}` : 'Provider same-scope tiers: none found',
-    pricing.empiricalIncluded && pricing.empirical ? `Empirical paid sample: n=${pricing.empirical.count}; mean=${money(pricing.empirical.meanCents, pricing.currency)}; median=${money(pricing.empirical.medianCents, pricing.currency)}` : 'Empirical paid sample: insufficient to influence pricing',
-    pricing.minimumAutoOfferCents ? `Minimum price YQAA may auto-send for current matched scope: ${money(pricing.minimumAutoOfferCents, pricing.currency)}` : null,
-    pricing.evidenceHighCents ? `Highest current evidence point (not a hard price cap): ${money(pricing.evidenceHighCents, pricing.currency)}` : null,
+    pricing.market ? `Marketplace comparables considered: n=${pricing.market.count} live tier prices in the matched scope.` : null,
+    pricing.provider ? `This provider's own packages in the matched scope: n=${pricing.provider.count}.` : 'This provider has no same-scope package on record.',
+    pricing.empiricalIncluded && pricing.empirical ? `Paid-history sample considered: n=${pricing.empirical.count}.` : null,
     '',
     'MANDATORY PRICING BEHAVIOR:',
     '1. NEVER suggest a price or create an offer before the client has stated a budget estimate/range in the offer currency.',
     '2. The server validates every offer after your response. Never try to bypass the calculated floor, client budget, provider-gig ownership, or evidence checks.',
     '3. If status=need_budget, do not mention a proposed price. Ask one short, natural budget question.',
-    '4. If status=budget_too_low, respond with empathy ONCE: acknowledge the budget, offer a narrower scope or a direct handoff to the provider. Do NOT repeat the same budget explanation on later turns and do NOT loop — if the client is frustrated or the gap was already explained, escalate to the provider instead.',
+    '4. If status=budget_too_low, follow the NEGOTIATION STATE block: acknowledge the budget warmly, then use the server-authorized action (scoped/downscoped quote at the approved number, or a provider-approval escalation). Do NOT repeat the same budget explanation on later turns and do NOT loop.',
     '5. If status=ready, choose price based on actual scope and evidence. Do NOT simply consume a high budget. A higher budget is not permission to overquote.',
     '6. There is no statistical upper cap. However, a quote materially above live evidence must be supported by a provider-owned gig/value or will require human provider review before sending.',
     '7. Never reveal internal fee percentages, guard formulas, or seller revenue calculations unless the user specifically asks about platform pricing mechanics.',
-    '8. NEVER quote internal pricing floors, reference means, medians, “revenue-safe” figures, or guard math to the client. Speak in human terms about scope and options, and escalate to the provider when the budget cannot work.',
+    '8. NEVER quote internal pricing floors, means, medians, percentages, bands, rates, weights, or “revenue-safe” figures. Speak in human terms about scope and options; the server owns every number.',
     '',
     'Evidence notes:',
-    ...pricing.rationale.map((x) => `- ${x}`),
+    ...(clientSafeRationale.length ? clientSafeRationale.map((x) => `- ${x}`) : ['- Internal pricing evidence is held server-side only.']),
     '',
     pricing.providerRelevantGigIds.length ? `Provider-owned relevant gig IDs allowed for attachment: ${pricing.providerRelevantGigIds.join(', ')}` : 'Provider-owned relevant gig IDs allowed for attachment: none',
   ].filter((x): x is string => typeof x === 'string')
@@ -526,6 +546,26 @@ export function lowBudgetEscalationReply(providerLabel = 'the provider') {
 }
 
 const CLIENT_FRUSTRATION_EXIT_RE = /\b(another\s+ai|other\s+ai|different\s+ai|chatgpt|claude|perplexity|stops?\s+at\s+the\s+buck|just\s+wants?\s+(?:my\s+)?money|only\s+cares?\s+about\s+(?:the\s+)?money|all\s+about\s+the\s+money|no\s+help|not\s+helpful|never\s+helps?|useless|waste\s+of\s+time|wasting\s+my\s+time|never\s+mind|forget\s+it|forget\s+about\s+it|done\s+here|giving\s+up|give\s+up|good\s*bye|goodbye)\b/i
+
+/** Internal pricing phrases that must never reach a client-facing reply. */
+export const BUDGET_STATUS_LEAK_PHRASES = [
+  'revenue-safe',
+  'reference mean',
+  'guarded floor',
+  'guard formulas',
+  'minimum auto-offer',
+]
+
+const FLOOR_LEAK_RE = /\b(for\s+this\s+scope[^.]{0,80}(?:center|centers|averag|mean|floor)|lowest\s+(?:guarded\s+)?(?:revenue[-\s]*)?(?:safe\s+)?offer|revenue-safe)\b/i
+
+/** True when a client-facing reply leaks internal floors/means/guard math. */
+export function leaksInternalFloorLanguage(text: string): boolean {
+  const t = String(text || '')
+  if (!t) return false
+  const lower = t.toLowerCase()
+  if (BUDGET_STATUS_LEAK_PHRASES.some((phrase) => lower.includes(phrase))) return true
+  return FLOOR_LEAK_RE.test(t)
+}
 
 /** True when the client shows frustration or exit intent — escalate, do not lecture. */
 export function clientFrustrationOrExit(text: string): boolean {
@@ -580,13 +620,34 @@ export function budgetGapReplyAlreadySent(previousAiBodies: string[]): boolean {
   return false
 }
 
+/**
+ * Adaptive-pricing context for the offer guard. When present, the guard validates
+ * against the SCOPED/WORKLOAD floor instead of the blended market floor, and any
+ * figure below that scoped floor needs an explicit provider approval token.
+ */
+export type OfferNegotiationContext = {
+  /** Workload/scoped floor for the scope being offered (internal; never rendered). */
+  scopedFloorCents?: number | null
+  /** Price the adaptive layer has already finalized for this turn. */
+  approvedPriceCents?: number | null
+  /** Server-issued approval token for a below-floor figure (provider approved). */
+  approvalToken?: string | null
+  /** True when the adaptive layer evaluated the scope itself (so it owns the floor). */
+  scoped?: boolean
+}
+
 export function guardMessengerOffer(args: {
   pricing: PricingAuthority
   proposedPriceUsd?: number
   proposedPrice?: number
   gigId?: string | null
+  negotiation?: OfferNegotiationContext | null
 }): OfferGuardResult {
   const p = args.pricing
+  const negotiation = args.negotiation || null
+  const scopedFloorCents = Number(negotiation?.scopedFloorCents)
+  const hasScopedFloor = Boolean(negotiation && Number.isFinite(scopedFloorCents) && scopedFloorCents > 0)
+  const approvedPriceCents = Number(negotiation?.approvedPriceCents)
   if (p.status === 'insufficient_scope') {
     return { ok: false, reason: 'insufficient_scope', reply: 'I can price this once I understand the exact service you need. What would you like the provider to handle for you?' }
   }
@@ -596,7 +657,9 @@ export function guardMessengerOffer(args: {
   if (p.status === 'need_budget' || !p.budget) {
     return { ok: false, reason: 'missing_budget', reply: budgetQuestion(p.currency) }
   }
-  if (p.status === 'budget_too_low') {
+  // With a scoped negotiation decision the blended floor no longer gates the quote:
+  // the adaptive layer has already re-scoped the work to fit the client's budget.
+  if (p.status === 'budget_too_low' && !hasScopedFloor) {
     return { ok: false, reason: 'budget_too_low', reply: lowBudgetReply(p) }
   }
 
@@ -606,12 +669,29 @@ export function guardMessengerOffer(args: {
     return { ok: false, reason: 'invalid_price', reply: 'I have the scope and budget, but the offer price did not validate cleanly. I’ll recalculate it rather than send a questionable quote.' }
   }
 
-  const floor = p.minimumAutoOfferCents || p.platformMinimumCents
+  if (hasScopedFloor && Number.isFinite(approvedPriceCents) && approvedPriceCents > 0 && priceCents !== Math.round(approvedPriceCents)) {
+    return {
+      ok: false,
+      reason: 'invalid_price',
+      reply: 'The server already approved a specific figure for this scope. I’ll recalculate it rather than send a different number.',
+    }
+  }
+
+  const floor = hasScopedFloor
+    ? scopedFloorCents
+    : (p.minimumAutoOfferCents || p.platformMinimumCents)
   if (priceCents < floor) {
+    if (hasScopedFloor && negotiation?.approvalToken) {
+      // Provider-approved below-floor figure: allowed with the server token.
+      return { ok: true, priceCents, reason: 'within_authority', needsProviderReview: false }
+    }
     return {
       ok: false,
       reason: 'below_guarded_floor',
-      reply: `I can’t send that figure — it sits below what the current live evidence supports for this scope, and I don’t want to undercut the provider’s work. Rather than throwing numbers around, tell me the figure you’d be comfortable with and I’ll check it against the evidence, or we can narrow what’s included.`,
+      reply: hasScopedFloor
+        ? `That figure sits below what this scope of work needs, and I don’t want to undercut the provider’s work. I can ask the provider to review the pricing for this scope — want me to do that?`
+        : `I can’t send that figure — it sits below what the current live evidence supports for this scope, and I don’t want to undercut the provider’s work. Rather than throwing numbers around, tell me the figure you’d be comfortable with and I’ll check it against the evidence, or we can narrow what’s included.`,
+      needsProviderReview: hasScopedFloor,
     }
   }
   if (priceCents > p.budget.maxCents) {
