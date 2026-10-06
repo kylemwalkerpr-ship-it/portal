@@ -490,10 +490,11 @@ export function renderPricingAuthority(pricing: PricingAuthority) {
     '1. NEVER suggest a price or create an offer before the client has stated a budget estimate/range in the offer currency.',
     '2. The server validates every offer after your response. Never try to bypass the calculated floor, client budget, provider-gig ownership, or evidence checks.',
     '3. If status=need_budget, do not mention a proposed price. Ask one short, natural budget question.',
-    '4. If status=budget_too_low, explain respectfully and briefly that the budget sits more than 15% below the guarded comparable mean / provider floor; offer to narrow scope or revisit budget.',
+    '4. If status=budget_too_low, respond with empathy ONCE: acknowledge the budget, offer a narrower scope or a direct handoff to the provider. Do NOT repeat the same budget explanation on later turns and do NOT loop — if the client is frustrated or the gap was already explained, escalate to the provider instead.',
     '5. If status=ready, choose price based on actual scope and evidence. Do NOT simply consume a high budget. A higher budget is not permission to overquote.',
     '6. There is no statistical upper cap. However, a quote materially above live evidence must be supported by a provider-owned gig/value or will require human provider review before sending.',
     '7. Never reveal internal fee percentages, guard formulas, or seller revenue calculations unless the user specifically asks about platform pricing mechanics.',
+    '8. NEVER quote internal pricing floors, reference means, medians, “revenue-safe” figures, or guard math to the client. Speak in human terms about scope and options, and escalate to the provider when the budget cannot work.',
     '',
     'Evidence notes:',
     ...pricing.rationale.map((x) => `- ${x}`),
@@ -504,14 +505,79 @@ export function renderPricingAuthority(pricing: PricingAuthority) {
 }
 
 function budgetQuestion(currency: string) {
-  return `Before I price this, what budget range are you working with in ${currency.toUpperCase()}? A rough number is perfectly fine — I’ll compare it with this provider’s live gigs and similar Marketplace services so the offer stays fair. 🙂`
+  return `Happy to keep exploring options with you. Whenever you want a concrete offer, a rough budget range in ${currency.toUpperCase()} helps me match you with the right scope — no pressure either way. 🙂`
 }
 
-function lowBudgetReply(pricing: PricingAuthority) {
-  const budget = pricing.budget?.maxCents || 0
-  const mean = pricing.referenceMeanCents || 0
-  const floor = pricing.minimumAutoOfferCents || 0
-  return `Thanks — that gives me something concrete to work with. For this scope, comparable YouSafe Marketplace pricing centers around **${money(mean, pricing.currency)}**, and the lowest revenue-safe offer I can send automatically is about **${money(floor, pricing.currency)}**. Your **${money(budget, pricing.currency)}** budget is below that range, so I can’t responsibly send an offer at that amount. We can either narrow the scope or adjust the budget — whichever works better for you.`
+export function lowBudgetReply(_pricing: PricingAuthority) {
+  // Legal-buddy rule: empathize once, invite narrower scope or provider
+  // handoff. Never dump internal floors, means, or "revenue-safe" math on the
+  // client, and never repeat this same template across turns (Foley/Taylor).
+  return [
+    'Thanks for being upfront about your budget — that genuinely helps.',
+    'For the full scope you have described, I am not able to send an offer at that level automatically.',
+    'Two honest paths: we can narrow the scope so it fits what you are comfortable with, or I can hand this to the provider directly to talk through realistic options.',
+    'Just tell me which you would prefer. 🙂',
+  ].join(' ')
+}
+
+/** Short empathetic handoff used when the budget gap was already explained — escalate, never loop. */
+export function lowBudgetEscalationReply(providerLabel = 'the provider') {
+  return `I hear you — and I don’t want to keep going in circles on budget. I’m looping in ${providerLabel}, the licensed specialist on this thread, so you get a straight answer on what’s actually possible. They can see everything you’ve shared here. 🙂`
+}
+
+const CLIENT_FRUSTRATION_EXIT_RE = /\b(another\s+ai|other\s+ai|different\s+ai|chatgpt|claude|perplexity|stops?\s+at\s+the\s+buck|just\s+wants?\s+(?:my\s+)?money|only\s+cares?\s+about\s+(?:the\s+)?money|all\s+about\s+the\s+money|no\s+help|not\s+helpful|never\s+helps?|useless|waste\s+of\s+time|wasting\s+my\s+time|never\s+mind|forget\s+it|forget\s+about\s+it|done\s+here|giving\s+up|give\s+up|good\s*bye|goodbye)\b/i
+
+/** True when the client shows frustration or exit intent — escalate, do not lecture. */
+export function clientFrustrationOrExit(text: string): boolean {
+  return CLIENT_FRUSTRATION_EXIT_RE.test(String(text || ''))
+}
+
+function normalizeReplyForCompare(text: string) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[*_`#>|]/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[^a-z0-9$%\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function replyTokens(normalized: string) {
+  return new Set(normalized.split(' ').filter((t) => t.length > 2 && t !== '$'))
+}
+
+/** True when a candidate reply is identical or near-identical to a previous YQAA message. */
+export function isNearDuplicateReply(candidate: string, previousAiBodies: string | string[]): boolean {
+  const prior = Array.isArray(previousAiBodies) ? previousAiBodies : [previousAiBodies]
+  const a = normalizeReplyForCompare(candidate)
+  if (!a) return false
+  for (const body of prior) {
+    const b = normalizeReplyForCompare(body)
+    if (!b) continue
+    if (a === b) return true
+    if (a.length >= 80 && (a.includes(b) || b.includes(a))) return true
+    const ta = replyTokens(a)
+    const tb = replyTokens(b)
+    if (!ta.size || !tb.size || Math.min(ta.size, tb.size) < 6) continue
+    let shared = 0
+    for (const token of ta) if (tb.has(token)) shared += 1
+    const jaccard = shared / (ta.size + tb.size - shared)
+    if (jaccard >= 0.72) return true
+  }
+  return false
+}
+
+/** True when a previous YQAA message already explained the budget gap and offered alternatives. */
+export function budgetGapReplyAlreadySent(previousAiBodies: string[]): boolean {
+  for (const body of previousAiBodies || []) {
+    const normalized = normalizeReplyForCompare(body)
+    if (!normalized) continue
+    const mentionsBudget = /\bbudget\b/.test(normalized)
+    const offersAlternative = /\b(narrow|smaller scope|reduce the scope|adjust the budget|revisit|provider|hand)/.test(normalized)
+    const explainsGap = /\b(below|can t send|cant send|cannot send|not able to send|unable to send|more than|outside|at that level|automatically)\b/.test(normalized)
+    if (mentionsBudget && offersAlternative && explainsGap) return true
+  }
+  return false
 }
 
 export function guardMessengerOffer(args: {
@@ -545,7 +611,7 @@ export function guardMessengerOffer(args: {
     return {
       ok: false,
       reason: 'below_guarded_floor',
-      reply: `I can’t send that figure because it would undercut the current evidence for this scope. The lowest guarded offer is about **${money(floor, p.currency)}**. If that is above your comfort range, we can narrow what’s included instead.`,
+      reply: `I can’t send that figure — it sits below what the current live evidence supports for this scope, and I don’t want to undercut the provider’s work. Rather than throwing numbers around, tell me the figure you’d be comfortable with and I’ll check it against the evidence, or we can narrow what’s included.`,
     }
   }
   if (priceCents > p.budget.maxCents) {

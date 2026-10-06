@@ -23,8 +23,13 @@ import {
 } from '@/lib/fiverr'
 import { buildMessengerSiteKnowledge } from '@/lib/messengerSiteKnowledge'
 import {
+  budgetGapReplyAlreadySent,
   buildMessengerPricingAuthority,
+  clientFrustrationOrExit,
   guardMessengerOffer,
+  isNearDuplicateReply,
+  lowBudgetEscalationReply,
+  lowBudgetReply,
   pricingAuditSnapshot,
   renderPricingAuthority,
   type PricingAuthority,
@@ -36,6 +41,9 @@ import {
   type YqaaConversationMemory,
 } from '@/lib/messengerConversationMemory'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
+import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
+import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
+import { buildYqaaLiveResearchContext } from '@/lib/yqaaWebEvidence'
 
 export type AiMode = 'auto' | 'paused' | 'off'
 
@@ -202,10 +210,19 @@ async function resolveGrokAuth(force = false): Promise<MessengerGrokAuth> {
 const SYSTEM_PROMPT = `You are **YQAA — the YouSafe Quick Assistance Agent** for YouSafe Consultancy.
 
 IDENTITY:
-- YQAA stands for **YouSafe Quick Assistance Agent**. You are YouSafe's disclosed AI assistance agent helping a client communicate with the provider on this thread.
+- YQAA stands for **YouSafe Quick Assistance Agent**. You are YouSafe's disclosed AI assistance agent and a warm, capable **legal buddy**: a legal-orientation concierge helping clients navigate immigration and adjacent legal-adjacent questions, with the licensed provider available on this thread.
 - You are NOT the provider and never pretend to be a licensed attorney/consultant.
 - First reply only (or after genuine identity confusion): disclose naturally that you are YQAA and AI-powered. Do NOT repeat that disclosure every turn.
 - Never expose the underlying model/provider/authentication stack.
+
+LEGAL BUDDY — SUBSTANCE BEFORE SALES (HIGHEST PRIORITY):
+- When the client asks for orientation — “what are my options”, “how does X work”, “what are going rates”, “how do I start”, “is marriage or PR realistic” — answer the SUBSTANCE first: sketch the realistic pathways, what usually matters, what documents to gather, heads-up on timelines/costs in human terms. Grounded evidence is supplied in the GROUNDED LEGAL / PUBLIC EVIDENCE block: use it, prefer official government sources (IRCC, USCIS, GOV.UK, Home Affairs), and say when evidence is thin.
+- Never budget-interrogate before giving useful orientation. The budget question is NOT the first move when the client is seeking insight. Commerce comes second.
+- Be near-human: context-aware, specific, warm — engage the client’s actual story (their situation, documents, destination) rather than reciting generic lists.
+- Never repeat a prior YQAA reply. Vary structure. If your next message would look like the previous one, take the conversation forward instead.
+- Frustration or exit intent (“another AI”, “no help”, “never mind”, “stops at the buck”) → empathize briefly, set escalate=true, hand to the provider. STOP any budget lecture immediately.
+- If the budget cannot support the requested scope: empathize ONCE, offer a narrower scope or provider handoff, and never repeat the same budget explanation on later turns.
+- NEVER quote internal pricing floors, reference means, medians, “revenue-safe” figures, or guard math to the client.
 
 CONVERSATION QUALITY — VERY IMPORTANT:
 - Sound like a capable, friendly human marketplace concierge: warm, relaxed, context-aware and direct.
@@ -218,18 +235,19 @@ CONVERSATION QUALITY — VERY IMPORTANT:
 - Acknowledge what the client actually said; do not mechanically summarize their whole message back to them.
 
 SAFETY / YMYL:
-1. No outcome guarantees for visas, cases, admissions, refunds, or timelines.
-2. Do not invent legal advice, credentials, statutes, prices, policies, service availability, URLs, provider facts, or documents.
-3. High-risk legal matters, court deadlines, criminal/asylum/removal matters, or material uncertainty → set escalate=true and explain briefly why the human provider should take over.
+1. Educational orientation only — never a substitute for the licensed provider. No outcome guarantees for visas, cases, admissions, refunds, or timelines.
+2. Do not invent legal advice, credentials, statutes, prices, policies, service availability, URLs, provider facts, or documents. Only state what the supplied grounded evidence or thread actually supports; when unsure, say so and offer to verify or escalate.
+3. High-risk legal matters, court deadlines, criminal/asylum/removal matters, unauthorized-practice-of-law risk, or material uncertainty → set escalate=true and explain briefly why the human provider should take over.
 4. Never ask the client to leave YouSafe, pay off-platform, or share direct contact details.
 5. Prefer supplied site/provider knowledge. If evidence is insufficient, say so rather than guessing.
 
 DISCOVERY / ORDER TAKING:
 - You may actively move the conversation toward an order when the client wants a service.
 - Understand scope: destination/jurisdiction, work requested, documents, complexity, deadline, desired delivery and anything that materially changes effort.
-- BEFORE making ANY price suggestion, quote, or offer, you MUST have a client-stated budget estimate/range in the offer currency. If no budget exists, ask for it naturally. Never disclose a proposed price first.
+- BEFORE making ANY structured price suggestion, quote, or offer, you MUST have a client-stated budget estimate/range in the offer currency. If no budget exists and the client is asking to buy, ask for it naturally once. Never disclose a proposed structured price first.
+- While the client is asking for orientation (options, pathways, rates), answer helpfully WITHOUT pivoting to budget. Only ask about budget when the client wants paid help or you are about to make an offer.
 - Compare the budget against the server-calculated PRICING AUTHORITY appended below.
-- If the client budget is below the guarded floor, explain respectfully and concisely why the requested scope cannot be responsibly offered at that amount, and offer either narrower scope or a revised budget.
+- If the client budget is below the guarded floor, empathize ONCE and offer either narrower scope or a provider handoff. Do not repeat the budget explanation on later turns and do not quote internal floors or means.
 - A high client budget is NOT permission to charge the whole budget. Price from evidence and scope, not opportunistically.
 
 OFFERS — TRANSACTION AUTHORITY:
@@ -587,8 +605,73 @@ function containsPriceSuggestion(text: string) {
   return /(?:\$\s*\d|\b(?:usd|cad)\s*\d|\b\d[\d,]*(?:\.\d{1,2})?\s*(?:usd|cad|dollars?)\b)/i.test(String(text || ''))
 }
 
+const BUDGET_STATUS_LEAK_PHRASES = ['revenue-safe', 'reference mean', 'guarded floor', 'guard formulas', 'minimum auto-offer']
+const FLOOR_LEAK_RE = /\b(for\s+this\s+scope[^.]{0,80}(?:center|centers|averag|mean|floor)|lowest\s+(?:guarded\s+)?(?:revenue[-\s]*)?(?:safe\s+)?offer|revenue-safe)\b/i
+/** True when a client-facing reply leaks internal floors/means/guard math. */
+export function leaksInternalFloorLanguage(text: string): boolean {
+  const t = String(text || '')
+  if (!t) return false
+  const lower = t.toLowerCase()
+  if (BUDGET_STATUS_LEAK_PHRASES.some((phrase) => lower.includes(phrase))) return true
+  return FLOOR_LEAK_RE.test(t)
+}
+const budgetStatusLeakForbidden = BUDGET_STATUS_LEAK_PHRASES
+
 function commerceIntent(text: string) {
   return /\b(price|pricing|cost|quote|offer|budget|how much|hire|book|order|purchase|buy|pay|package|deal|send me an offer|ready to proceed|move forward)\b/i.test(String(text || ''))
+}
+
+/**
+ * Legal-buddy evidence: when the client asks a legal-orientation question,
+ * assemble grounded KB evidence (bundled + indexed) and, when freshness is
+ * requested, live public-web research. Sources are quoted with short excerpts
+ * into a GROUNDED LEGAL / PUBLIC EVIDENCE system block. All lookups fail soft.
+ */
+const LEGAL_ORIENTATION_RE = /\b(visa|immigrat|permanent\s+residence|\bpr\b|green\s+card|citizenship|marriage|spous(?:al)?|sponsor(?:ship)?|permit|asylum|removal|deport|appeal|pathway|eligib|options|going\s+rates?|how\s+do\s+i\s+start|what\s+are\s+my\s+options|work\s+permit|study\s+permit|f-?1|opt\b|h-?1b|ircc|uscis|home\s+affairs|legal\s+advice|attorney|lawyer|counsel|statute|regulation|court|hearing|landlord|tenant|evict|employment\s+law|contract\s+law|family\s+law|criminal|civil\s+claim|lawsuit|litigation|power\s+of\s+attorney|will\s+and\s+testament|estate\s+planning|consumer\s+rights|discrimination|human\s+rights)\b/i
+
+export function messengerNeedsLegalEvidence(text: string): boolean {
+  return LEGAL_ORIENTATION_RE.test(String(text || ''))
+}
+
+function renderYqaaEvidenceChunks(chunks: any[], limit = 6): string {
+  const lines: string[] = []
+  for (const chunk of chunks.slice(0, limit)) {
+    const title = String(chunk?.title || 'source').slice(0, 180)
+    const url = String(chunk?.sourceUrl || chunk?.source || '')
+    const excerpt = String(chunk?.body || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+    lines.push(`- **${title}**${url && /^https:\/\//i.test(url) ? ` — ${url}` : ''}\n  ${excerpt || '(no excerpt available)'}`)
+  }
+  return lines.join('\n')
+}
+
+export async function loadMessengerLegalEvidence(latestClientText: string): Promise<string | null> {
+  const query = String(latestClientText || '').trim()
+  if (!query || !messengerNeedsLegalEvidence(query)) return null
+
+  const parts: string[] = []
+  try {
+    const pack = await loadYqaaEvidence({ query, limit: 12 })
+    if (pack?.chunks?.length) {
+      parts.push(`## GROUNDED LEGAL / PUBLIC EVIDENCE\nSource: YouSafe curated knowledge${pack.source === 'database' || pack.source === 'database+bundled' ? ' + indexed knowledge base' : ''} (confidence ${(pack.retrievalConfidence || 0).toFixed(2)}).\n${renderYqaaEvidenceChunks(pack.chunks)}`)
+    }
+  } catch (err) {
+    console.warn('[messengerAi] loadYqaaEvidence failed', err instanceof Error ? err.message : err)
+  }
+
+  if (yqaaNeedsFreshWebResearch(query)) {
+    try {
+      const webChunks = await researchYqaaPublicWeb(query)
+      const liveContext = buildYqaaLiveResearchContext(webChunks, webChunks.length ? 'retrieved' : 'insufficient')
+      if (liveContext) {
+        parts.push(`## LIVE WEB RESEARCH THIS TURN\n${liveContext}\n${renderYqaaEvidenceChunks(webChunks, 3)}`)
+      }
+    } catch (err) {
+      console.warn('[messengerAi] researchYqaaPublicWeb failed', err instanceof Error ? err.message : err)
+    }
+  }
+
+  if (!parts.length) return null
+  return [...parts, 'Use only what these sources and the thread support. Never invent statutes, deadlines, or outcomes; when evidence is thin, say so and escalate to the provider.'].join('\n\n')
 }
 
 async function createOfferFromDecision(
@@ -840,7 +923,7 @@ export async function maybeAutoReply(opts: {
     let memory: YqaaConversationMemory | null = null
 
     try {
-      const [docSummary, sitePack, pricing] = await Promise.all([
+      const [docSummary, sitePack, pricing, legalEvidence] = await Promise.all([
         summarizeAttachments(db, msgs),
         buildMessengerSiteKnowledge({
           db,
@@ -858,6 +941,11 @@ export async function maybeAutoReply(opts: {
           latestClientText: String(latestClientText || ''),
         }).catch((err) => {
           console.warn('[messengerAi] pricing authority failed', err instanceof Error ? err.message : err)
+          return null
+        }),
+        loadMessengerLegalEvidence(String(latestClientText || '')).catch((err) => {
+          // Fail soft: legal orientation continues with the site pack only.
+          console.warn('[messengerAi] legal evidence failed', err instanceof Error ? err.message : err)
           return null
         }),
       ])
@@ -886,6 +974,7 @@ export async function maybeAutoReply(opts: {
       const systemWithContext = [
         systemBase,
         sitePack?.systemAppendix || '',
+        legalEvidence || '',
         renderPricingAuthority(pricing),
         renderConversationMemory(memory),
       ].filter(Boolean).join('\n\n')
@@ -945,9 +1034,47 @@ export async function maybeAutoReply(opts: {
         decision.offer = null
       }
 
-      if (pricing.status === 'budget_too_low' && pricing.budget && !decision.escalate) {
+      // Legal-buddy budget policy: on the FIRST budget_too_low turn the
+      // empathetic template is fine. If the gap was already explained — or the
+      // model reply would be a near-duplicate, or the client is frustrated —
+      // escalate to the provider instead of looping (Foley/Taylor). The model
+      // reply is also preferred when it already handles the gap without
+      // leaking floors.
+      if (pricing.status === 'budget_too_low' && pricing.budget) {
+        const priorAiBodies = msgs
+          .filter((m: any) => m?.metadata?.ai_generated && !m?.metadata?.ai_typing && m?.body)
+          .map((m: any) => String(m.body))
+        const alreadyExplained = budgetGapReplyAlreadySent(priorAiBodies.slice(0, -1))
+        const frustrated = clientFrustrationOrExit(String(latestClientText || ''))
+        const nearDuplicate = isNearDuplicateReply(replyText, priorAiBodies)
         const guard = guardMessengerOffer({ pricing })
-        if (!guard.ok && guard.reason === 'budget_too_low') replyText = guard.reply
+        const guardReply = guard.ok || guard.reason !== 'budget_too_low' ? '' : String(guard.reply || '')
+        const modelLeaksFloors = leaksInternalFloorLanguage(replyText)
+        const modelHandlesBudgetEmpathetically = !modelLeaksFloors
+          && /\b(narrow|smaller scope|reduce|provider|legal specialist|hand)/i.test(replyText)
+          && budgetStatusLeakForbidden.every((phrase) => !replyText.toLowerCase().includes(phrase))
+        const veryShortModelReply = replyText.length < 120
+
+        if (decision.escalate || frustrated || alreadyExplained) {
+          // Escalate: short empathetic handoff, never the canned template again.
+          if (frustrated || alreadyExplained) decision.escalate = true
+          if (decision.escalate && (frustrated || alreadyExplained || !modelHandlesBudgetEmpathetically)) {
+            replyText = veryShortModelReply && !frustrated && !alreadyExplained
+              ? replyText
+              : lowBudgetEscalationReply(providerLabel)
+          }
+        } else if (nearDuplicate) {
+          decision.escalate = true
+          replyText = lowBudgetEscalationReply(providerLabel)
+        } else if (modelLeaksFloors) {
+          // First budget_too_low turn with a leaking model reply: use the
+          // empathetic (floor-free) template instead of the leak.
+          replyText = guardReply || lowBudgetReply(pricing)
+        } else if (modelHandlesBudgetEmpathetically && !veryShortModelReply) {
+          // Model already explains the gap empathetically without floors — prefer it.
+        } else if (guardReply) {
+          replyText = guardReply
+        }
         decision.offer = null
       }
 
