@@ -47,7 +47,7 @@ describe('site hardening', () => {
     expect(responsive).not.toContain("searchParams.set('width'")
     expect(responsive).not.toContain("searchParams.set('format'")
     expect(responsive).toContain("from '@/lib/marketplaceDeliveryImage'")
-    expect(delivery).toContain('/api/marketplace/media/')
+    expect(delivery).toContain('/api/mm/')
     expect(responsive).toContain("loading: priority ? ('eager' as const) : ('lazy' as const)")
   })
 })

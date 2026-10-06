@@ -4,7 +4,7 @@
  * Unit tests for lib/responsiveImage.ts after same-origin CF delivery.
  *
  * Supabase Storage transforms stay disabled. Public gig/headshot objects are
- * rewritten to `/api/marketplace/media/...` (and `/cdn-cgi/image/...` in
+ * rewritten to `/api/mm/...` (and `/cdn-cgi/image/...` in
  * production). Tests run with NODE_ENV=test so CF wrapping is off — assertions
  * target the proxy path.
  */
@@ -21,7 +21,7 @@ const SUPABASE_AUTH_URL = `${PROJECT}/storage/v1/object/authenticated/gig-galler
 const SUPABASE_URL_WITH_PARAMS = `${SUPABASE_URL}?cache=123`
 const NON_SUPABASE_URL = 'https://example.com/images/photo.jpg'
 const CDN_URL = 'https://cdn.example.com/gig-gallery/abc-123/image.webp'
-const PROXY = '/api/marketplace/media/gig-gallery/seller-123/my-image.jpg'
+const PROXY = '/api/mm/gig-gallery/seller-123/my-image.jpg'
 
 describe('responsiveUrl', () => {
   describe('Supabase public storage object URLs', () => {
@@ -32,7 +32,7 @@ describe('responsiveUrl', () => {
     it('does not fabricate Supabase width/resize/format query params', () => {
       const result = responsiveUrl(SUPABASE_URL, 768, 'webp')
       expect(result).not.toContain('resize=')
-      expect(result.startsWith('/api/marketplace/media/')).toBe(true)
+      expect(result.startsWith('/api/mm/')).toBe(true)
     })
 
     it('leaves authenticated object URLs unchanged', () => {

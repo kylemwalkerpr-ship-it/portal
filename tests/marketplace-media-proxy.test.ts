@@ -1,6 +1,6 @@
 import http from 'http'
 import request from 'supertest'
-import { GET } from '@/app/api/marketplace/media/[...path]/route'
+import { GET } from '@/app/api/mm/[...path]/route'
 
 function jsonServer(handler: (req: Request, ctx: any) => Promise<Response>) {
   return http.createServer(async (req, res) => {
@@ -14,7 +14,7 @@ function jsonServer(handler: (req: Request, ctx: any) => Promise<Response>) {
   })
 }
 
-describe('GET /api/marketplace/media/[...path]', () => {
+describe('GET /api/mm/[...path]', () => {
   const original = process.env.NEXT_PUBLIC_SUPABASE_URL
 
   beforeAll(() => {
@@ -25,17 +25,17 @@ describe('GET /api/marketplace/media/[...path]', () => {
   })
 
   it('rejects disallowed buckets', async () => {
-    const res = await request(jsonServer(GET)).get('/api/marketplace/media/secret-bucket/a/b.jpg')
+    const res = await request(jsonServer(GET)).get('/api/mm/secret-bucket/a/b.jpg')
     expect(res.status).toBe(404)
   })
 
   it('rejects path traversal', async () => {
-    const res = await request(jsonServer(GET)).get('/api/marketplace/media/gig-gallery/../x.jpg')
+    const res = await request(jsonServer(GET)).get('/api/mm/gig-gallery/../x.jpg')
     expect(res.status).toBe(404)
   })
 
   it('requires bucket + object segment', async () => {
-    const res = await request(jsonServer(GET)).get('/api/marketplace/media/gig-gallery')
+    const res = await request(jsonServer(GET)).get('/api/mm/gig-gallery')
     expect(res.status).toBe(404)
   })
 })

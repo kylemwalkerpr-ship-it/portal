@@ -7,12 +7,12 @@
  * Supabase URLs are rejected (`cf-not-resized` 403).
  *
  * Strategy: rewrite allowlisted public object URLs to
- *   /api/marketplace/media/<bucket>/...
- * then wrap with `/cdn-cgi/image/width=…,quality=…,format=auto…` in production
+ *   /api/mm/<bucket>/...
+ * then wrap with `/cdn-cgi/image/w=…,q=…,f=auto…` in production
  * so cards/avatars download display-sized bytes instead of 80–180 KB originals.
  */
 
-export const MARKETPLACE_MEDIA_PROXY_PREFIX = '/api/marketplace/media/'
+export const MARKETPLACE_MEDIA_PROXY_PREFIX = '/api/mm/'
 
 /** Public buckets the marketplace is allowed to reverse-proxy. */
 export const MARKETPLACE_MEDIA_BUCKETS = [
@@ -108,7 +108,7 @@ export function deliveryImageUrl(
   if (!shouldUseCloudflareImageResize()) return proxy
   const width = clampWidth(options.width)
   const quality = clampQuality(options.quality)
-  return `/cdn-cgi/image/width=${width},quality=${quality},format=auto${proxy}`
+  return `/cdn-cgi/image/w=${width},q=${quality},f=auto${proxy}`
 }
 
 /** True when an error is PostgREST's out-of-range page response. */

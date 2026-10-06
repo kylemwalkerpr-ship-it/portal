@@ -24,14 +24,14 @@ describe('marketplaceDeliveryImage', () => {
 
   it('builds an encoded same-origin proxy path', () => {
     expect(marketplaceMediaProxyPath(COVER)).toBe(
-      '/api/marketplace/media/gig-gallery/a/b/cover.webp',
+      '/api/mm/gig-gallery/a/b/cover.webp',
     )
   })
 
   it('returns the proxy path in test (no CF wrap)', () => {
     expect(shouldUseCloudflareImageResize()).toBe(false)
     expect(deliveryImageUrl(COVER, { width: 420 })).toBe(
-      '/api/marketplace/media/gig-gallery/a/b/cover.webp',
+      '/api/mm/gig-gallery/a/b/cover.webp',
     )
   })
 
@@ -39,6 +39,25 @@ describe('marketplaceDeliveryImage', () => {
     expect(deliveryImageUrl('https://example.com/x.jpg', { width: 100 })).toBe(
       'https://example.com/x.jpg',
     )
+  })
+
+  it('wraps with short CF options when resize is forced on', () => {
+    const prev = process.env.NEXT_PUBLIC_CF_IMAGE_RESIZE
+    process.env.NEXT_PUBLIC_CF_IMAGE_RESIZE = '1'
+    try {
+      expect(shouldUseCloudflareImageResize()).toBe(true)
+      expect(deliveryImageUrl(COVER, { width: 720, quality: 70 })).toBe(
+        '/cdn-cgi/image/w=720,q=70,f=auto/api/mm/gig-gallery/a/b/cover.webp',
+      )
+      // Short forms keep market-root HTML under the payload budget vs width=/quality=/format=.
+      const wrapped = deliveryImageUrl(COVER, { width: 720 })!
+      expect(wrapped).not.toContain('width=')
+      expect(wrapped).not.toContain('quality=')
+      expect(wrapped).not.toContain('format=')
+    } finally {
+      if (prev === undefined) delete process.env.NEXT_PUBLIC_CF_IMAGE_RESIZE
+      else process.env.NEXT_PUBLIC_CF_IMAGE_RESIZE = prev
+    }
   })
 
   it('detects PostgREST range errors', () => {
@@ -52,7 +71,7 @@ describe('marketplaceDeliveryImage', () => {
 
 describe('sizedImageUrl + supabase', () => {
   it('routes supabase covers through the media proxy', () => {
-    expect(sizedImageUrl(COVER, 720)).toBe('/api/marketplace/media/gig-gallery/a/b/cover.webp')
+    expect(sizedImageUrl(COVER, 720)).toBe('/api/mm/gig-gallery/a/b/cover.webp')
   })
 
   it('still rewrites Payhip CDN URLs', () => {
