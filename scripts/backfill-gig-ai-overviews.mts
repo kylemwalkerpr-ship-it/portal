@@ -3,7 +3,7 @@
  *
  * Prefer Content Studio live models already authenticated in this estate:
  *   1. Grok (XAI_API_KEY / grok-4.6) — default
- *   2. DeepSeek first-party (DEEPSEEK_API_KEY / deepseek-flash)
+ *   2. DeepSeek first-party (DEEPSEEK_API_KEY / deepseek-chat; deepseek-flash ok with higher max_tokens)
  *
  * Usage:
  *   GIG_AI_OVERVIEW_BACKFILL=1 npx tsx scripts/backfill-gig-ai-overviews.mts
@@ -43,7 +43,7 @@ const db = createClient(supabaseUrl, serviceKey, {
 const XAI_KEY = String(process.env.XAI_API_KEY || '').trim()
 const XAI_MODEL = String(process.env.XAI_MODEL || 'grok-4.6').trim()
 const DEEPSEEK_KEY = String(process.env.DEEPSEEK_API_KEY || '').trim()
-const DEEPSEEK_MODEL = String(process.env.DEEPSEEK_MODEL || 'deepseek-flash').trim()
+const DEEPSEEK_MODEL = String(process.env.DEEPSEEK_MODEL || 'deepseek-chat').trim()
 const DEEPSEEK_BASE = String(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/$/, '')
 
 if (!XAI_KEY && !DEEPSEEK_KEY) {
@@ -71,9 +71,13 @@ async function post(url: string, key: string, body: Record<string, unknown>): Pr
   })
   const data = (await res.json().catch(() => ({}))) as any
   if (!res.ok) throw new Error(`${res.status} ${JSON.stringify(data).slice(0, 400)}`)
-  const content = data?.choices?.[0]?.message?.content
-  if (!content || typeof content !== 'string') throw new Error('empty model content')
-  return content
+  const message = data?.choices?.[0]?.message || {}
+  const content = message?.content
+  if (typeof content === 'string' && content.trim()) return content
+  // deepseek-flash may spend max_tokens on reasoning_content and leave content empty
+  const reasoning = message?.reasoning_content
+  if (typeof reasoning === 'string' && reasoning.trim()) return reasoning
+  throw new Error('empty model content')
 }
 
 async function generateOverview(source: GigOverviewSource): Promise<string> {
