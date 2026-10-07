@@ -6,6 +6,7 @@
   "required": [
     "schemaVersion",
     "architectureVersion",
+    "implementationEntry",
     "executorPolicy",
     "workerBudget",
     "phaseSnapshot"
@@ -15,7 +16,7 @@
       "const": "studio.delivery/1"
     },
     "architectureVersion": {
-      "const": "CS-2026.09.23.8"
+      "const": "CS-2026.09.24.1"
     },
     "executorPolicy": {
       "$ref": "#/$defs/executorPolicy"
@@ -290,6 +291,39 @@
               }
             }
           ]
+        }
+      }
+    },
+    "implementationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "authorizedAt",
+        "authorityRef",
+        "nextPacket",
+        "phaseGateRule",
+        "productionActions"
+      ],
+      "properties": {
+        "mode": {
+          "const": "SCOPED_A0_AND_DEPENDENT_BUILD_OPEN"
+        },
+        "authorizedAt": {
+          "const": "2026-09-24"
+        },
+        "authorityRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextPacket": {
+          "const": "A0.2_READ_ONLY_RUNTIME_BASELINE"
+        },
+        "phaseGateRule": {
+          "const": "P9_P11_OUTCOMES_OPEN_P12_ACTIVATION_P13_CLUSTER_CREATE"
+        },
+        "productionActions": {
+          "const": "SEPARATE_AUTHORIZATION_REQUIRED"
         }
       }
     }
@@ -690,7 +724,9 @@
               "effortCatalog": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "low" }
+                    "contains": {
+                      "const": "low"
+                    }
                   }
                 }
               }
@@ -710,7 +746,9 @@
               "effortCatalog": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "medium" }
+                    "contains": {
+                      "const": "medium"
+                    }
                   }
                 }
               }
@@ -730,7 +768,9 @@
               "effortCatalog": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "high" }
+                    "contains": {
+                      "const": "high"
+                    }
                   }
                 }
               }
@@ -750,7 +790,9 @@
               "effortCatalog": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "xhigh" }
+                    "contains": {
+                      "const": "xhigh"
+                    }
                   }
                 }
               }
@@ -770,7 +812,9 @@
               "effortCatalog": {
                 "properties": {
                   "verifiedInEnvironment": {
-                    "contains": { "const": "max" }
+                    "contains": {
+                      "const": "max"
+                    }
                   }
                 }
               }
