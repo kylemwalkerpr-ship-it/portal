@@ -13,7 +13,7 @@
  * DB failures are fail-open: the engine and the UI must continue without the
  * feeds (table not migrated yet, service-role key missing, etc.).
  */
-import { createClient } from '@supabase/supabase-js'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase'
 
 export const SPECIALIST_ROLES = [
   'policy_desk',
@@ -288,11 +288,7 @@ function signalRow(row: Record<string, unknown>): SpecialistSignal {
 const SIGNAL_TABLE = 'studio_specialist_signals'
 
 function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  )
+  return createSupabaseServiceRoleClient()
 }
 
 /**
@@ -305,7 +301,9 @@ export async function insertSignal(input: SpecialistSignalIn): Promise<{
   error?: string
 }> {
   try {
-    const { data, error } = await adminClient()
+    const db = adminClient()
+    if (!db) return { ok: false, error: 'service-role credential unavailable' }
+    const { data, error } = await db
       .from(SIGNAL_TABLE)
       .insert({
         role: input.role,
@@ -341,7 +339,9 @@ export interface SpecialistSignalListOptions {
  */
 export async function listSignals(options: SpecialistSignalListOptions = {}): Promise<SpecialistSignal[]> {
   try {
-    let q = adminClient()
+    const db = adminClient()
+    if (!db) return []
+    let q = db
       .from(SIGNAL_TABLE)
       .select('id, role, region, payload, status, priority, related_job_id, created_at, consumed_at')
       .order('priority', { ascending: true })
@@ -377,9 +377,11 @@ export async function setSignalStatus(
     if (!isSpecialistSignalStatus(status)) {
       return { ok: false, error: 'invalid status' }
     }
+    const db = adminClient()
+    if (!db) return { ok: false, error: 'service-role credential unavailable' }
     const patch: Record<string, unknown> = { status }
     if (status === 'consumed') patch.consumed_at = new Date().toISOString()
-    const { error } = await adminClient()
+    const { error } = await db
       .from(SIGNAL_TABLE)
       .update(patch)
       .eq('id', id)

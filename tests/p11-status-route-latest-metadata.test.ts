@@ -21,6 +21,7 @@ function builder(result: unknown = { data: [], error: null, count: 0 }) {
 
 jest.mock('@/lib/supabase', () => ({
   getSupabaseAdminClient: jest.fn(() => ({ from: () => builder() })),
+  createSupabaseServiceRoleClient: jest.fn(() => ({ from: () => builder() })),
   isServiceRoleAchieved: jest.fn(() => true),
 }))
 

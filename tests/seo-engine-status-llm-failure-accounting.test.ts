@@ -45,6 +45,7 @@ jest.mock('@/lib/seoEngine/ahrefsAudit', () => ({
 type Filter = { method: string; args: unknown[] }
 
 let promptAttempts = 3
+const queriedTables: string[] = []
 
 function hasFilter(filters: Filter[], method: string, ...args: unknown[]) {
   return filters.some((f) => f.method === method && args.every((arg, i) => f.args[i] === arg))
@@ -53,6 +54,7 @@ function hasFilter(filters: Filter[], method: string, ...args: unknown[]) {
 function makeSupabase() {
   return {
     from(table: string) {
+      queriedTables.push(table)
       const filters: Filter[] = []
       let selected = ''
       const builder: Record<string, unknown> = {}
@@ -93,13 +95,14 @@ function makeSupabase() {
 jest.mock('@/lib/supabase', () => ({
   getSupabaseAdminClient: jest.fn(() => makeSupabase()),
   createSupabaseAdminClient: jest.fn(() => makeSupabase()),
+  createSupabaseServiceRoleClient: jest.fn(() => null),
   isServiceRoleAchieved: jest.fn(() => true),
 }))
 
 import { GET } from '@/app/api/seo-engine/status/route'
 
 describe('GET /api/seo-engine/status — failed prompt audit accounting', () => {
-  beforeEach(() => { promptAttempts = 3 })
+  beforeEach(() => { promptAttempts = 3; queriedTables.length = 0 })
 
   it('reports unavailable when prompt attempts exist but none were measured, instead of substituting older fan-out share', async () => {
     const res = await GET(new Request('https://portal.example/api/seo-engine/status') as any)
@@ -113,6 +116,7 @@ describe('GET /api/seo-engine/status — failed prompt audit accounting', () => 
       shareOfVoice: null,
       measurementState: 'unavailable',
     }))
+    expect(queriedTables).not.toContain('seo_gate_runs')
   })
 
   it('does not fall back to legacy all-row history when no P11 prompt attempts exist', async () => {

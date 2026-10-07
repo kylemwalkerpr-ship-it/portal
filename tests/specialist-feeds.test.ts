@@ -120,8 +120,10 @@ function signal(over: Partial<SpecialistSignal> = {}): SpecialistSignal {
 
 beforeEach(() => {
   mockSupabase.__reset([])
-  delete process.env.NEXT_PUBLIC_SUPABASE_URL
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
+  process.env.SUPABASE_SERVICE_ROLE_JWT = `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ role: 'service_role' })).toString('base64url')}.signature`
   delete process.env.SUPABASE_SERVICE_ROLE_KEY
+  delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 })
 
 describe('parseSpecialistSignal — role + contract validators', () => {
@@ -261,6 +263,18 @@ describe('signalsToOpportunityHints', () => {
 })
 
 describe('insertSignal / listSignals / setSignalStatus (mocked supabase)', () => {
+  it('denies feed reads and writes when configured credentials are not service-role JWTs', async () => {
+    process.env.SUPABASE_SERVICE_ROLE_JWT = `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ role: 'anon' })).toString('base64url')}.signature`
+    process.env.SUPABASE_SERVICE_ROLE_KEY = `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ role: 'authenticated' })).toString('base64url')}.signature`
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    const input = parseSpecialistSignal({ role: 'lead_desk', payload: { intent: 'x' } })
+    expect(await listSignals()).toEqual([])
+    expect(await insertSignal(input)).toEqual({ ok: false, error: 'service-role credential unavailable' })
+    expect(await setSignalStatus('sig-1', 'queued')).toEqual({ ok: false, error: 'service-role credential unavailable' })
+    expect(mockSupabase.__getOps()).toEqual([])
+  })
+
   it('inserts a new signal with status new and returns its id', async () => {
     const parsed = parseSpecialistSignal({
       role: 'policy_desk',
