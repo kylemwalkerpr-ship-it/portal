@@ -17,6 +17,7 @@ import { getPlatformSettings } from '@/lib/platformConfig'
 import type { ReceiptInput, ReceiptItem } from '@/lib/receipts'
 import { renderReceiptHtml } from '@/lib/receiptHtml'
 import { COUNTRY_LIST } from '@/lib/countryList'
+import type { NextRequest } from 'next/server'
 
 function dollarsToCents(d: unknown) { return Math.round(Number(d || 0) * 100) }
 
@@ -55,8 +56,8 @@ const receiptResponse = (input: ReceiptInput) =>
     },
   })
 
-export async function GET(req: Request) {
-  const auth = await getCurrentStudent()
+export async function GET(req: NextRequest) {
+  const auth = await getCurrentStudent(req)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profile } = auth
 
