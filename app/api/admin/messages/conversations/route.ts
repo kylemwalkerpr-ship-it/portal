@@ -14,27 +14,35 @@
 import { requireAdminUser } from '@/lib/portalAuth'
 import { readAiMode } from '@/lib/messengerAi'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
 
 export async function GET(req: Request) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
-  const { db } = auth
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
 
-  const { searchParams } = new URL(req.url)
-  const q = searchParams.get('q')?.trim().toLowerCase() || ''
-  const roleFilter = (searchParams.get('role') || '').trim().toLowerCase()
-  const unreadOnly = ['1', 'true', 'yes'].includes((searchParams.get('unread') || '').toLowerCase())
-  const page = Math.max(1, Number(searchParams.get('page') || 1))
-  const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('page_size') || 50)))
+  try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+    const { db } = auth
 
-  let { data: convs, error } = await db
-    .from('conversations')
-    .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at, metadata')
-    .order('last_message_at', { ascending: false, nullsFirst: false })
-    .limit(2000)
+    const { searchParams } = new URL(req.url)
+    const q = searchParams.get('q')?.trim().toLowerCase() || ''
+    const roleFilter = (searchParams.get('role') || '').trim().toLowerCase()
+    const unreadOnly = ['1', 'true', 'yes'].includes((searchParams.get('unread') || '').toLowerCase())
+    const page = Math.max(1, Number(searchParams.get('page') || 1))
+    const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('page_size') || 50)))
+
+    let { data: convs, error } = await db
+      .from('conversations')
+      .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at, metadata')
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(500)
 
   // Part B metadata column may not be migrated yet — retry without it.
   if (error && /metadata|column/i.test(error.message || '')) {
@@ -42,7 +50,7 @@ export async function GET(req: Request) {
       .from('conversations')
       .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, last_message_id, created_at')
       .order('last_message_at', { ascending: false, nullsFirst: false })
-      .limit(2000)
+      .limit(500)
     convs = (fb.data || []).map((c: any) => ({ ...c, metadata: {} }))
     error = fb.error
   }
@@ -189,13 +197,20 @@ export async function GET(req: Request) {
   const total = conversations.length
   const paged = conversations.slice((page - 1) * pageSize, page * pageSize)
 
-  return Response.json({
-    conversations: paged,
-    total,
-    page,
-    page_size: pageSize,
-    total_pages: Math.max(1, Math.ceil(total / pageSize)),
-    has_more: page * pageSize < total,
-    counts,
-  })
+    return Response.json({
+      conversations: paged,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.max(1, Math.ceil(total / pageSize)),
+      has_more: page * pageSize < total,
+      counts,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

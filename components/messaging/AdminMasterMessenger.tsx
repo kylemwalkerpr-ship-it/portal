@@ -88,6 +88,9 @@ export default function AdminMasterMessenger() {
   const [page, setPage] = React.useState(1)
 
   const [conversations, setConversations] = React.useState<any[]>([])
+  const conversationsRef = React.useRef<any[]>([])
+  conversationsRef.current = conversations
+
   const [counts, setCounts] = React.useState<{ all?: number; unread?: number }>({})
   const [hasMore, setHasMore] = React.useState(false)
   const [listLoading, setListLoading] = React.useState(true)
@@ -152,7 +155,7 @@ export default function AdminMasterMessenger() {
     const token = guard.begin(silent ? 'poll' : 'full')
     if (!token) return
     if (!silent) setListLoading(true)
-    setListError('')
+    if (!silent) setListError('')
     try {
       const params = new URLSearchParams({ page: String(page), page_size: '50' })
       if (debouncedQ) params.set('q', debouncedQ)
@@ -170,10 +173,12 @@ export default function AdminMasterMessenger() {
       setConversations(data.conversations || [])
       setCounts(data.counts || {})
       setHasMore(Boolean(data.has_more))
+      setListError('')
     } catch (error: any) {
       if (guard.isCurrent(token)) {
-        setListError(error?.message || 'Failed to load conversations')
-        setConversations([])
+        if (!silent || conversationsRef.current.length === 0) {
+          setListError(error?.message || 'Failed to load conversations')
+        }
       }
     } finally {
       const current = guard.isCurrent(token)
@@ -219,9 +224,11 @@ export default function AdminMasterMessenger() {
         setActiveConv(data.conversation || null)
         setActiveMsgs(fresh)
         setThreadMeta(applyFullMeta(threadPage))
+        setThreadError('')
       } else if (kind === 'older') {
         setActiveMsgs((previous) => mergeById(previous, fresh))
         setThreadMeta((previous) => applyOlderMeta(previous, threadPage))
+        setThreadError('')
       } else {
         setActiveMsgs((previous) => mergeById(previous, fresh))
         setThreadMeta((previous) => applyPollMeta(previous, threadPage))
@@ -229,24 +236,29 @@ export default function AdminMasterMessenger() {
       }
     } catch (error: any) {
       if (guard.isCurrent(token) && activeIdRef.current === id) {
-        setThreadError(error?.message || 'Failed to load thread')
+        if (full || kind === 'older' || activeMsgs.length === 0) {
+          setThreadError(error?.message || 'Failed to load thread')
+        }
       }
     } finally {
       const mayClear = full && guard.isCurrent(token) && activeIdRef.current === id
       guard.end(token)
       if (mayClear) setThreadLoading(false)
     }
-  }, [])
+  }, [activeMsgs.length])
 
-  const openThread = React.useCallback((id: string) => {
+  const openThread = React.useCallback((id: string, opts: { resetState?: boolean } = {}) => {
+    const shouldReset = opts.resetState ?? (id !== activeIdRef.current)
     threadGuardRef.current!.switchSession()
     activeIdRef.current = id
     setActiveId(id)
     setMobileShowChat(true)
-    setActiveConv(null)
-    setActiveMsgs([])
-    setReplyTo(null)
-    setThreadMeta(initialThreadPageMeta)
+    if (shouldReset) {
+      setActiveConv(null)
+      setActiveMsgs([])
+      setReplyTo(null)
+      setThreadMeta(initialThreadPageMeta)
+    }
     setThreadError('')
     setDraft(draftByConvRef.current[id] || '')
     void loadThreadPage(id, { full: true })
