@@ -299,7 +299,7 @@ describe('companion decision — Jev integration', () => {
 describe('companion decision — DM path wiring', () => {
   const originalFetch = globalThis.fetch
 
-  test('the DM path calls Jev when TYPESAFE_API_KEY is configured (mock asserted)', async () => {
+  test('the DM path uses TYPESAFE_API_KEY when Cloudflare bindings are unavailable locally', async () => {
     const calls: Array<{ url: string; body: string }> = []
     process.env.TYPESAFE_API_KEY = 'typesafe-test-key'
     globalThis.fetch = (async (url: any, init: any) => {

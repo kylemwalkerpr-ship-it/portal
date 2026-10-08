@@ -42,6 +42,7 @@ import {
   withAdaptivePricingInMemory,
   withOfferInMemory,
   type YqaaConversationMemory,
+  type YqaaJourneyStage,
 } from '@/lib/messengerConversationMemory'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
@@ -83,6 +84,17 @@ const TRANSIENT_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504])
 const pendingLocks = new Map<string, Promise<AiReplyResult | null>>()
 const lastTriggerAt = new Map<string, number>()
 let authCache: { value: MessengerGrokAuth; expiresAt: number } | null = null
+
+function isYqaaJourneyStage(value: string): value is YqaaJourneyStage {
+  return value === 'orienting'
+    || value === 'pathway_map'
+    || value === 'docs_gather'
+    || value === 'consult_ready'
+    || value === 'commerce'
+    || value === 'post_offer'
+    || value === 'crisis'
+    || value === 'exit_risk'
+}
 
 export interface AiReplyResult {
   replied: boolean
@@ -1132,7 +1144,7 @@ export async function maybeAutoReply(opts: {
         return null as CompanionDecision | null
       })
 
-      const journeyStage = inferJourneyStage({
+      const inferredJourneyStage = inferJourneyStage({
         latestClientText: String(latestClientText || ''),
         frustration: frustrated,
         hasOffer: Boolean(conversationMemory.last_offer),
@@ -1140,6 +1152,9 @@ export async function maybeAutoReply(opts: {
         scopeDepth: adaptive?.scope.depth ?? null,
         documentMentions: /\b(documents?|paperwork|transcripts?|forms?)\b/i.test(String(latestClientText || '')),
       })
+      const journeyStage: YqaaJourneyStage = isYqaaJourneyStage(inferredJourneyStage)
+        ? inferredJourneyStage
+        : 'orienting'
       const emotionBand = frustrated ? 'frustrated' : highStakes ? 'distressed' : null
       memory = adaptive
         ? withAdaptivePricingInMemory(conversationMemory, {

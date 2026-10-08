@@ -312,10 +312,11 @@ export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: {
       const workerEnv = getCloudflareContext().env as CloudflareEnv & { TYPESAFE_API_KEY?: string }
       apiKey = workerEnv.TYPESAFE_API_KEY?.trim() || ''
     } catch {
-      // Local Next.js development can provide the server-only key as an env var.
-      apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
+      // Cloudflare context is unavailable in local Next.js development.
     }
   }
+  // Local/test runtimes may expose a Cloudflare context without its bindings.
+  if (!apiKey) apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
   return apiKey
 }
 

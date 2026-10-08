@@ -231,7 +231,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         ignored: result.ignored,
       }
       if (result.ignored.length) reasons.push('jev_option_pruned')
-    } else {
+    } else if ('reason' in result) {
       reasons.push(`jev_unavailable_${result.reason}`)
     }
   } catch {
