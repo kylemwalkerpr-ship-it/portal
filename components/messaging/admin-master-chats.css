@@ -544,31 +544,32 @@
 .admin-master-sender-label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   width: fit-content;
-  max-width: 78%;
-  margin: 8px 12px 2px;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 750;
+  max-width: 82%;
+  margin: 10px 14px 3px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.admin-master-sender-label[data-mine='true'] { margin-left: auto; text-align: right; }
-.admin-master-sender-label[data-kind='admin'] { color: var(--am-admin); }
-.admin-master-sender-label[data-kind='client'] { color: var(--am-client); }
-.admin-master-sender-label[data-kind='provider'] { color: var(--am-provider); }
+.admin-master-sender-label[data-mine='true'] {
+  margin-left: auto;
+  text-align: right;
+  flex-direction: row-reverse;
+}
 
 .admin-master-sender-tag {
-  padding: 2px 6px;
+  padding: 1.5px 7px;
   border-radius: 999px;
   color: #fff;
-  font-size: 8.5px;
-  font-weight: 850;
-  letter-spacing: .06em;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .03em;
   text-transform: uppercase;
 }
 
-.admin-master-sender-tag[data-kind='admin'] { background: var(--am-admin); }
+.admin-master-sender-tag[data-kind='admin'] { background: #0f172a; }
 .admin-master-sender-tag[data-kind='client'] { background: var(--am-client); }
 .admin-master-sender-tag[data-kind='provider'] { background: var(--am-provider); }
 .admin-master-sender-tag[data-kind='ai'] { background: #4338ca; }

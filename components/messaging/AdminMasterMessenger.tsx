@@ -679,13 +679,7 @@ export default function AdminMasterMessenger() {
           body = <a href={message.attachment_url} target="_blank" rel="noreferrer">📎 {message.attachment_name || 'Attachment'}</a>
         }
 
-        const bubbleStyle: React.CSSProperties | undefined = kind === 'admin'
-          ? { boxShadow: 'inset 0 0 0 1px rgba(157,34,53,.28)' }
-          : kind === 'provider'
-            ? { boxShadow: 'inset 3px 0 0 rgba(87,66,138,.32)' }
-            : kind === 'ai'
-              ? { boxShadow: 'inset 3px 0 0 rgba(67,56,202,.35)' }
-              : { boxShadow: 'inset 3px 0 0 rgba(31,122,85,.28)' }
+        const bubbleStyle: React.CSSProperties | undefined = undefined
 
         return (
           <React.Fragment key={message.id}>

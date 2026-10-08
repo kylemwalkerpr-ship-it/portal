@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { fmtFullTime } from '@/lib/messaging/format'
+import { formatWhatsAppText } from '@/lib/messaging/formatText'
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
 const EMOJI_GRID = [
@@ -286,7 +287,7 @@ export default function MessageBubble({
           </button>
         )}
 
-        <div className="bub-text">{body}</div>
+        <div className="bub-text">{typeof body === 'string' ? formatWhatsAppText(body) : body}</div>
 
         {timestamp && (
           <div className="bub-foot">
