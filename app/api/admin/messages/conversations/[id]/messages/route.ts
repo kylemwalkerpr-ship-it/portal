@@ -19,6 +19,7 @@ import {
   setConversationAiMode,
 } from '@/lib/messengerAi'
 import { buildThreadPage, cursorFilter, keyOf, parseCursor, parseThreadPageLimit } from '@/lib/adminMessages/threadPage'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
@@ -103,12 +104,19 @@ function resolveDirectedTo(
 }
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
-  const { db, profileId } = auth
-  const { id } = await context.params
+  if (_req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  _req.signal.addEventListener('abort', abortHandler)
 
-  let { data: conv, error } = await db
+  try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+    const { db, profileId } = auth
+    const { id } = await context.params
+
+    let { data: conv, error } = await db
     .from('conversations')
     .select('id, participant_a, participant_b, context_kind, context_id, status, type, last_message_at, created_at, metadata')
     .eq('id', id)
@@ -231,28 +239,35 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const page = buildThreadPage(messages, limit, keyOf)
 
-  return Response.json({
-    conversation: {
-      id: conv.id,
-      participant_a: participantA,
-      participant_b: participantB,
-      provider,
-      client,
-      participants: [participantA, participantB].filter(Boolean),
-      context_kind: conv.context_kind,
-      context_id: conv.context_id,
-      status: conv.status,
-      type: conv.type,
-      last_message_at: conv.last_message_at,
-      created_at: conv.created_at,
-      ai_mode: readAiMode((conv as any).metadata),
-      ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
-    },
-    messages: page.messages,
-    total: page.messages.length,
-    has_older: page.has_older,
-    older_cursor: page.older_cursor,
-  })
+    return Response.json({
+      conversation: {
+        id: conv.id,
+        participant_a: participantA,
+        participant_b: participantB,
+        provider,
+        client,
+        participants: [participantA, participantB].filter(Boolean),
+        context_kind: conv.context_kind,
+        context_id: conv.context_id,
+        status: conv.status,
+        type: conv.type,
+        last_message_at: conv.last_message_at,
+        created_at: conv.created_at,
+        ai_mode: readAiMode((conv as any).metadata),
+        ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
+      },
+      messages: page.messages,
+      total: page.messages.length,
+      has_older: page.has_older,
+      older_cursor: page.older_cursor,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    _req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
