@@ -2,6 +2,7 @@ import { verifyMobileBearer } from './mobileAuth'
 import { createSupabaseAdminClient } from './supabase'
 import { safetyGuard, type SafetyViolation } from './safety'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
+import { withSignedMessageAttachmentUrls } from '@/lib/messengerAttachmentAccess'
 
 /**
  * Shared logic for /api/mobile/messages* — Bearer-verified conversations.
@@ -302,6 +303,10 @@ export async function getMobileThread(
     }
     return enriched
   })
+  // Native clients can't send the portal session cookie to the
+  // /api/messages/attachments proxy, so hand them short-lived signed URLs.
+  // Safe: the participant check above already passed.
+  const messagesWithAccess = await withSignedMessageAttachmentUrls(db, messages)
 
   return {
     kind: 'ok',
@@ -315,7 +320,7 @@ export async function getMobileThread(
         created_at: conv.created_at,
         last_message_at: conv.last_message_at,
       },
-      messages,
+      messages: messagesWithAccess,
       participant: participantRes.data || null,
     },
   }

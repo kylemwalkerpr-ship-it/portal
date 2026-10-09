@@ -162,7 +162,8 @@ end$$;
 -- ============================================================
 -- 5. Sanity check on storage buckets
 --
--- We DON'T flip message-attachments here -- the existing message rows
+-- (Superseded 2026-10-09: message-attachments is now private, see
+-- message_attachments_private_oct2026.sql.) We DON'T flip message-attachments here -- the existing message rows
 -- store public URLs and flipping would break old conversations. The
 -- canonical document buckets (order-files, offer-attachments,
 -- chat-attachments, templates) should already be private; the check
