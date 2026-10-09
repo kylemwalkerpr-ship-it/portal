@@ -4,6 +4,7 @@
  * Keeps participant auth separate while writing into the shared conversation.
  */
 import { requireAdminUser } from '@/lib/portalAuth'
+import { messageAttachmentProxyPath } from '@/lib/messengerAttachmentAccess'
 import { setConversationAiMode } from '@/lib/messengerAi'
 
 const BUCKET = 'message-attachments'
@@ -81,7 +82,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     upsert: false,
   })
   if (upload.error && /bucket not found|does not exist/i.test(upload.error.message || '')) {
-    const create = await db.storage.createBucket(BUCKET, { public: true })
+    const create = await db.storage.createBucket(BUCKET, { public: false })
     if (create.error && !/already exists/i.test(create.error.message || '')) {
       return Response.json({ error: `Could not create bucket: ${create.error.message}` }, { status: 500 })
     }
@@ -92,8 +93,9 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
   if (upload.error) return Response.json({ error: upload.error.message }, { status: 500 })
 
-  const { data: publicUrl } = db.storage.from(BUCKET).getPublicUrl(storagePath)
-  const attachmentUrl = publicUrl?.publicUrl || storagePath
+  // Private bucket: store the participant-checked proxy path, never a public URL.
+  const messageId = crypto.randomUUID()
+  const attachmentUrl = messageAttachmentProxyPath(messageId)
   const messageType = requestedType === 'voice' ? 'voice' : 'attachment'
   const body = requestedType === 'voice' ? '🎙 Voice message' : `📎 ${safeName}`
 
@@ -111,6 +113,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const { data: message, error } = await db
     .from('conversation_messages')
     .insert({
+      id: messageId,
       conversation_id: id,
       sender_id: profileId,
       type: messageType,

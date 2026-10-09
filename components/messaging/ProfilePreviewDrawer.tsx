@@ -119,7 +119,10 @@ function extractThreadMedia(messages: any[]): ThreadMedia[] {
   const urlRegex = /https?:\/\/[^\s<>()]+/gi
 
   for (const message of messages) {
-    const attachmentUrl = safeUrl(message?.attachment_url)
+    // Private message-attachments rows carry a same-origin proxy path
+    // (/api/messages/attachments/<id>) instead of an absolute URL.
+    const rawAttachment = typeof message?.attachment_url === 'string' ? message.attachment_url.trim() : ''
+    const attachmentUrl = rawAttachment.startsWith('/api/messages/attachments/') ? rawAttachment : safeUrl(rawAttachment)
     if (attachmentUrl && !seen.has(attachmentUrl)) {
       seen.add(attachmentUrl)
       items.push({

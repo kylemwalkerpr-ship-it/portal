@@ -15,6 +15,7 @@
  * append it to the thread.
  */
 import { requirePortalUser } from '@/lib/portalAuth'
+import { messageAttachmentProxyPath } from '@/lib/messengerAttachmentAccess'
 import {
   isClientRole,
   setConversationAiMode,
@@ -86,14 +87,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     contentType: file.type || 'application/octet-stream',
     upsert: false,
   })
-  // Self-heal: if the bucket doesn't exist yet, create it (public so the
-  // public URL resolves in the browser) and retry the upload. Avoids the
+  // Self-heal: if the bucket doesn't exist yet, create it (PRIVATE; reads go
+  // through /api/messages/attachments/[id] signed URLs) and retry the upload. Avoids the
   // chicken-and-egg "bucket not found" error on first ever attachment.
   // See supabase/message_attachments_bucket.sql for the canonical
   // migration; this is a runtime fallback for tenants that haven't
   // run it yet.
   if (upload.error && /bucket not found|does not exist/i.test(upload.error.message || '')) {
-    const create = await db.storage.createBucket(BUCKET, { public: true })
+    const create = await db.storage.createBucket(BUCKET, { public: false })
     if (create.error && !/already exists/i.test(create.error.message || '')) {
       return Response.json({ error: `Could not create bucket: ${create.error.message}` }, { status: 500 })
     }
@@ -106,8 +107,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return Response.json({ error: upload.error.message }, { status: 500 })
   }
 
-  const { data: pub } = db.storage.from(BUCKET).getPublicUrl(storagePath)
-  const attachmentUrl = pub?.publicUrl || storagePath
+  // Private bucket: the row stores a same-origin proxy path that re-checks
+  // participation and redirects to a short-lived signed URL. Never store
+  // or return a public object URL for message attachments.
+  const messageId = crypto.randomUUID()
+  const attachmentUrl = messageAttachmentProxyPath(messageId)
 
   const messageType = requestedType === 'voice' ? 'voice' : 'attachment'
   const body = requestedType === 'voice'
@@ -117,6 +121,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const { data: message, error } = await db
     .from('conversation_messages')
     .insert({
+      id:              messageId,
       conversation_id: id,
       sender_id:       profileId,
       type:            messageType,

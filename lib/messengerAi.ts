@@ -44,6 +44,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import { buildYqaaLiveResearchContext } from '@/lib/yqaaWebEvidence'
+import { downloadMessageAttachment, isMessageAttachmentRow, resolveMessageAttachmentPath } from '@/lib/messengerAttachmentAccess'
 
 export type AiMode = 'auto' | 'paused' | 'off'
 
@@ -473,7 +474,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
   )
 }
 
-async function summarizeAttachments(_db: any, messages: any[]): Promise<string> {
+async function summarizeAttachments(db: any, messages: any[]): Promise<string> {
   const attachments = messages.filter((m) => m.attachment_url || m.type === 'attachment' || m.attachment_name)
   if (!attachments.length) return '(no attachments)'
 
@@ -482,21 +483,31 @@ async function summarizeAttachments(_db: any, messages: any[]): Promise<string> 
     const name = m.attachment_name || 'file'
     const url = m.attachment_url || ''
     let excerpt = ''
+    // message-attachments is a private bucket: read bytes server-side via
+    // the service-role storage client instead of an (expired/blocked) URL.
+    const readBytes = async (timeoutMs: number): Promise<ArrayBuffer | null> => {
+      if (isMessageAttachmentRow(m)) {
+        const objectPath = resolveMessageAttachmentPath(m)
+        return objectPath ? downloadMessageAttachment(db, objectPath) : null
+      }
+      const res = await fetchWithTimeout(url, {}, timeoutMs)
+      return res.ok ? res.arrayBuffer() : null
+    }
+    const hasExt = (re: RegExp) => re.test(name) || re.test(url)
     try {
-      if (url && /\.(txt|csv|md)(\?|$)/i.test(name + url)) {
-        const res = await fetchWithTimeout(url, {}, 3500)
-        if (res.ok) excerpt = (await res.text()).slice(0, 2500)
-      } else if (url && /\.pdf(\?|$)/i.test(name + url)) {
-        const res = await fetchWithTimeout(url, {}, 4500)
-        if (res.ok) {
-          const ab = await res.arrayBuffer()
+      if (url && hasExt(/\.(txt|csv|md)(\?|$)/i)) {
+        const bytes = await readBytes(3500)
+        if (bytes) excerpt = new TextDecoder('utf-8').decode(bytes).slice(0, 2500)
+      } else if (url && hasExt(/\.pdf(\?|$)/i)) {
+        const ab = await readBytes(4500)
+        if (ab) {
           const raw = new TextDecoder('latin1').decode(ab)
           const texts = [...raw.matchAll(/\((?:\\\)|[^)]){4,200}\)/g)]
             .map((x) => x[0].slice(1, -1))
             .filter((s) => /[A-Za-z]{3}/.test(s))
           excerpt = texts.join(' ').slice(0, 2500) || '(PDF attached; automatic text extraction is limited — confirm important facts with the client)'
         }
-      } else if ((url && /^image\//i.test(String(m.metadata?.mime_type || ''))) || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(name + url)) {
+      } else if ((url && /^image\//i.test(String(m.metadata?.mime_type || m.metadata?.mime || ''))) || hasExt(/\.(png|jpe?g|webp|gif)(\?|$)/i)) {
         excerpt = '(image attached — do not invent its contents)'
       }
     } catch {
