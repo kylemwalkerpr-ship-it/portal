@@ -787,6 +787,34 @@ export interface PlannerRun {
   persistErrors?: string[]
 }
 
+/** Hard per-brief deadline for the AI pair draft (lead + complement + merge). */
+export const PLANNER_BRIEF_DRAFT_TIMEOUT_MS = 45_000
+/** Wall-clock budget for the whole sequential brief-drafting pass. */
+export const PLANNER_BRIEF_DRAFT_BUDGET_MS = 240_000
+
+export class PlannerDeadlineError extends Error {
+  constructor(ms: number) {
+    super(`planner brief draft exceeded ${Math.round(ms / 1000)}s`)
+    this.name = 'PlannerDeadlineError'
+  }
+}
+
+/** Race `run` against a timer so one slow/hung provider leg can never stall
+ *  the planner past its deadline (the abandoned call settles on its own). */
+export async function withPlannerDeadline<T>(ms: number, run: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new PlannerDeadlineError(ms)), Math.max(1, ms))
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
   const pair = emptyPairRollup()
 
@@ -1072,6 +1100,15 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
 
   const plans: ClusterPlan[] = []
   const usedTerms = new Set<string>()
+  // Brief drafting is sequential AI pair work (lead + complement + merge) per
+  // plan. With no bound, 20 healthy-but-slow drafts outlived the daily cron's
+  // 15-minute request envelope (0 bytes returned, nothing persisted). Each
+  // draft gets a hard deadline and the whole drafting pass a wall-clock
+  // budget; plans past the budget persist with an empty brief, exactly as
+  // they do when the AI pair is unavailable.
+  const draftStartedAt = Date.now()
+  let draftsSkippedForBudget = 0
+  let draftsTimedOut = 0
 
   for (const c of candidates) {
     if (plans.length >= limit) break
@@ -1176,7 +1213,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       `Bias from ${cellBiasFor(bias, stage, country).toFixed(1)} weighted intel; predictive evidence ${predictiveByTopic.has(normalizePlannerTopic(primaryTerm)) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
 
     let brief = ''
-    if (draft) {
+    const draftBudgetLeft = PLANNER_BRIEF_DRAFT_BUDGET_MS - (Date.now() - draftStartedAt)
+    if (draft && draftBudgetLeft <= 0) draftsSkippedForBudget += 1
+    if (draft && draftBudgetLeft > 0) {
       // Registry resolution: an explicit pin must be commissioned; a
       // legacy/unknown value fails closed BEFORE any provider work. No
       // requested pin keeps the pair/lane-default behavior (undefined).
@@ -1188,7 +1227,8 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
         throw new ProviderSelectionRequiredError(engineSelection.legacyValue)
       }
       try {
-        const ai = await generateEngineText({
+        const briefDeadlineMs = Math.min(PLANNER_BRIEF_DRAFT_TIMEOUT_MS, draftBudgetLeft)
+        const ai = await withPlannerDeadline(briefDeadlineMs, () => generateEngineText({
           aiProvider: engineSelection?.kind === 'commissioned' ? engineSelection.pin : undefined,
           system: [
             editorialBriefPromptBlock(),
@@ -1208,12 +1248,14 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
           ].join('\n'),
           maxTokens: 600,
           temperature: 0.4,
-        })
+          timeoutMs: briefDeadlineMs,
+        }))
         accumulatePairRollup(pair, ai.pair)
         const extras = ai.pair?.extras
         const extraBits = [...(extras?.statutes || []), ...(extras?.urls || [])]
         brief = extraBits.length ? `${ai.text.trim()}\n\n[GLM extras] ${extraBits.join('; ')}` : ai.text.trim()
-      } catch {
+      } catch (err) {
+        if (err instanceof PlannerDeadlineError) draftsTimedOut += 1
         brief = ''
       }
     }
@@ -1252,6 +1294,13 @@ export async function runPlanner(req: PlanRequest = {}): Promise<PlannerRun> {
       longTailKeywords: partitioned.longTail,
       keywordPartitionSource: 'word_count_v1',
     })
+  }
+
+  if (draftsSkippedForBudget || draftsTimedOut) {
+    req.onProgress?.(
+      'plan',
+      `Brief drafting bounded: ${draftsTimedOut} draft(s) hit the ${Math.round(PLANNER_BRIEF_DRAFT_TIMEOUT_MS / 1000)}s deadline · ${draftsSkippedForBudget} plan(s) left without a brief after the ${Math.round(PLANNER_BRIEF_DRAFT_BUDGET_MS / 1000)}s drafting budget`,
+    )
   }
 
   plans.sort((a, b) => b.opportunityScore - a.opportunityScore)
