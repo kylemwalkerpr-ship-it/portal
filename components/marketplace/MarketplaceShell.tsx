@@ -10,6 +10,8 @@ import { ThemePicker } from './ThemePicker'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
 import { JurisdictionDropdown } from './JurisdictionDropdown'
+import { MarketJurisdictionSync } from './MarketJurisdictionSync'
+import type { MarketJurisdiction } from '@/lib/marketJurisdiction'
 import { CategoryBar } from './CategoryBar'
 import { CategoryBarSkeleton } from './MarketplaceRouteSkeleton'
 import { marketplaceOrdersHref, readOrderIdFromSearch } from '@/lib/orderLinks'
@@ -555,7 +557,9 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   const layoutSegment = useSelectedLayoutSegment()
 
   const [role, setRole] = React.useState<Role>(() => readCachedRole().role)
-  const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
+  // 'all' on the server and on the first client render (static HTML and
+  // hydration agree); MarketJurisdictionSync then applies URL > cookie > 'all'.
+  const [country, setCountry] = React.useState<MarketJurisdiction>('all')
   const [section, setSection] = React.useState<Section>('browse')
   const [openOrderId, setOpenOrderId] = React.useState<string | null>(null)
 
@@ -603,15 +607,15 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     }
   }, [refreshRole])
 
-  // Sync section + country from the URL. Read via window.location instead of
+  // Sync section from the URL. Read via window.location instead of
   // useSearchParams() so the shell never suspends (and never drags the whole
-  // page tree into a Suspense fallback) on client navigations.
+  // page tree into a Suspense fallback) on client navigations. The country is
+  // resolved by <MarketJurisdictionSync> (own Suspense boundary below).
   const onShop = pathname === '/shop' || pathname.startsWith('/shop/')
 
   React.useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     const view = sp.get('view')
-    setCountry(((sp.get('country') as 'all' | 'us' | 'uk' | 'ca') || 'all'))
     if (onShop) setSection('shop')
     else if (view) setSection(view as Section)
     else setSection('browse')
@@ -926,6 +930,9 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
           appear once the (cached or fetched) role resolves. Never gated on a
           network round-trip. */}
       <TopNav role={role} activeView={section} onNav={handleNav} country={country} shopActive={onShop} onHome={layoutSegment === null} />
+      <React.Suspense fallback={null}>
+        <MarketJurisdictionSync onResolved={setCountry} />
+      </React.Suspense>
 
       {/* Sub-nav — visa category bar stays on marketplace browse, not the file shop */}
       {section === 'browse' && !onShop && (
