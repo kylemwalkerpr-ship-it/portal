@@ -16,6 +16,24 @@
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
 jest.mock('@/lib/portalAuth', () => ({ requireAdminUser: jest.fn() }))
 
+/**
+ * The admin route calls verifyBacklinkClaim without an injected resolver, so
+ * it uses resolveHostAddresses. These route tests script fetch, not live DNS.
+ * Hostname lookups return a public address here; empty hosts, IP literals, and
+ * any call that supplies resolve4/resolve6 still use the real implementation.
+ */
+jest.mock('@/lib/seoFactory/hostResolution', () => {
+  const actual = jest.requireActual('@/lib/seoFactory/hostResolution') as typeof import('@/lib/seoFactory/hostResolution')
+  return {
+    ...actual,
+    resolveHostAddresses: (host: string, deps?: { resolve4?: unknown; resolve6?: unknown }) => {
+      const name = String(host || '').trim()
+      if (deps || !name || actual.isIpLiteral(name)) return actual.resolveHostAddresses(host, deps)
+      return Promise.resolve({ ok: true, addresses: ['93.184.216.34'] })
+    },
+  }
+})
+
 import { NextRequest } from 'next/server'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requireAdminUser } from '@/lib/portalAuth'
