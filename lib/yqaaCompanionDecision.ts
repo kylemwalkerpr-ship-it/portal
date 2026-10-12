@@ -18,6 +18,7 @@ import {
 } from '@/lib/jevAdvisory'
 import type { KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import type { AdaptivePricingDecision, CounterClass, NegotiationAction, ScopeDepth } from '@/lib/yqaaAdaptivePricing'
+import type { YqaaJourneyStage } from '@/lib/messengerConversationMemory'
 
 export type CompanionPosture = JevPosture
 export type CompanionChannel = 'dm' | 'public' | 'support'
@@ -231,7 +232,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         ignored: result.ignored,
       }
       if (result.ignored.length) reasons.push('jev_option_pruned')
-    } else {
+    } else if (result.available === false) {
       reasons.push(`jev_unavailable_${result.reason}`)
     }
   } catch {
@@ -359,7 +360,7 @@ export function inferJourneyStage(args: {
   pricingStatus?: string | null
   scopeDepth?: ScopeDepth | null
   documentMentions?: boolean
-}): string {
+}): YqaaJourneyStage {
   const text = String(args.latestClientText || '')
   if (args.frustration) return 'exit_risk'
   if (/\b(removal|deport|arrest|criminal|court date|asylum deadline|eviction notice)\b/i.test(text)) return 'crisis'

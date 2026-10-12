@@ -312,10 +312,13 @@ export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: {
       const workerEnv = getCloudflareContext().env as CloudflareEnv & { TYPESAFE_API_KEY?: string }
       apiKey = workerEnv.TYPESAFE_API_KEY?.trim() || ''
     } catch {
-      // Local Next.js development can provide the server-only key as an env var.
-      apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
+      // Cloudflare context is absent outside the Worker.
     }
   }
+  // An empty Worker binding (Jest's cloudflare stub returns `{ env: {} }` without
+  // throwing; local Next can do the same) must still honor TYPESAFE_API_KEY.
+  // A key present on the binding above wins.
+  if (!apiKey) apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
   return apiKey
 }
 
