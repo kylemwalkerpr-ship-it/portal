@@ -295,7 +295,7 @@ export function withAdaptivePricingInMemory(
   if (decision.negotiation.budget) {
     negotiation.budget_latest = decision.negotiation.budget
   }
-  if (decision.counter_cents && decision.counter_source !== 'budget') {
+  if (decision.counter_cents && decision.negotiation.counter_source !== 'budget') {
     negotiation.client_counters = uniqueByHash(
       [
         ...(negotiation.client_counters || []),
