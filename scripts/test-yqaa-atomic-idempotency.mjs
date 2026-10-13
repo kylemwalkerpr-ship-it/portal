@@ -106,12 +106,21 @@ try {
       || result.memory_offer !== payloads[0].offer_id || result.attention !== 'true') {
     throw new Error(`Atomic persistence assertions failed: ${JSON.stringify(result)}`)
   }
+  const retryOutput = psql([], `select set_config('request.jwt.claim.role', 'service_role', false);
+    select public.commit_yqaa_reply('${conversationId}', '${triggerId}',
+      jsonb_build_object('sender_id','${providerId}','body','Retry must return the original reply.','metadata','{}'::jsonb),
+      '{}'::jsonb, jsonb_build_object('ai_mode','paused'));`)
+  const retry = JSON.parse(retryOutput.split('\n').at(-1))
+  if (retry.reply_message_id !== payloads[0].reply_message_id || retry.offer_id !== payloads[0].offer_id) {
+    throw new Error('An existing ledger retry was not returned after the conversation entered paused mode.')
+  }
   psql([], `insert into public.conversation_messages (id, conversation_id, sender_id, type, body)
     values ('${failedTriggerId}', '${conversationId}', '${clientId}', 'text', 'Please retry persistence safely.');`)
-  psql([], `select set_config('request.jwt.claim.role', 'service_role', false);
+  psql([], `update public.conversations set metadata = jsonb_set(metadata, '{ai_mode}', '"off"') where id='${conversationId}';
+    select set_config('request.jwt.claim.role', 'service_role', false);
     select public.commit_yqaa_reply('${conversationId}', '${failedTriggerId}',
-      jsonb_build_object('sender_id','${providerId}','body','An offer is ready.','metadata','{}'::jsonb),
-      '{}'::jsonb, jsonb_build_object('ai_mode','auto'));`, false)
+      jsonb_build_object('sender_id','${providerId}','body','Escalation metadata must not bypass takeover.','metadata','{}'::jsonb),
+      '{}'::jsonb, jsonb_build_object('ai_mode','paused'));`, false)
   const rollbackCounts = JSON.parse(psql([], `select json_build_object(
     'commits',(select count(*) from public.yqaa_reply_commits where conversation_id='${conversationId}' and trigger_message_id='${failedTriggerId}'),
     'replies',(select count(*) from public.conversation_messages where conversation_id='${conversationId}' and metadata->>'yqaa_trigger_message_id'='${failedTriggerId}')
@@ -121,7 +130,8 @@ try {
   }
   psql([], `set role authenticated; ${call}`, false)
   console.log('PASS: two concurrent PostgreSQL RPC calls produced one reply, offer, offer card, memory update, and provider-attention update.')
-  console.log('PASS: an invalid offer rolls back its reply; authenticated role cannot execute the service-only RPC.')
+  console.log('PASS: paused/off takeover rejects new commits while an existing ledger retry returns its original IDs.')
+  console.log('PASS: authenticated role cannot execute the service-only RPC.')
 } finally {
   if (setupDone) {
     psql([], `

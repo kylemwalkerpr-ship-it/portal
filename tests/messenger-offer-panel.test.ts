@@ -21,6 +21,18 @@ describe('Messenger offer message contract', () => {
     expect(aiOfferMigration).toContain('ref_offer_id, ref_inquiry_id, metadata')
   })
 
+  test('AI offer titles satisfy the live offers 10–120 character constraint', () => {
+    expect(manualOffers).toContain('title.length < 10')
+    expect(aiOffers).toContain('if (title.length < 10 || description.length < 30) return null')
+    expect(aiOffers).toContain(".slice(0, 120)")
+  })
+
+  test('paused and off conversations reject all new atomic commits after retry lookup', () => {
+    expect(aiOfferMigration).toContain("if coalesce(v_conversation.metadata->>'ai_mode', 'auto') in ('paused', 'off') then")
+    expect(aiOfferMigration.indexOf('if found then\n    return jsonb_build_object'))
+      .toBeLessThan(aiOfferMigration.indexOf("if coalesce(v_conversation.metadata->>'ai_mode'"))
+  })
+
   test('offer cards reserve the sender avatar gutter and lower tail instead of floating', () => {
     expect(card).toContain('ys-offer-card-shell')
     expect(card).toContain('ys-offer-sender-avatar')

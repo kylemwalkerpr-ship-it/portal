@@ -854,7 +854,7 @@ async function createOfferFromDecision(
   const expiresInDays = Math.max(1, Math.min(60, Number(args.offer.expires_in_days || 7)))
   const expiresAt = new Date(Date.now() + expiresInDays * 86_400_000)
 
-  if (title.length < 5 || description.length < 30) return null
+  if (title.length < 10 || description.length < 30) return null
   if (!Number.isInteger(price) || price < settings.minimum_offer_amount_cents) return null
   if (settings.maximum_offer_amount_cents > 0 && price > settings.maximum_offer_amount_cents) return null
   if (!Number.isInteger(deliveryDays) || deliveryDays < 1) return null

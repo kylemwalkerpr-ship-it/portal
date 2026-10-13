@@ -108,8 +108,7 @@ begin
   if found then
     return jsonb_build_object('reply_message_id', v_existing.reply_message_id, 'offer_id', v_existing.offer_id);
   end if;
-  if coalesce(v_conversation.metadata->>'ai_mode', 'auto') in ('paused', 'off')
-     and p_conversation_metadata->>'ai_mode' = 'auto' then
+  if coalesce(v_conversation.metadata->>'ai_mode', 'auto') in ('paused', 'off') then
     raise exception 'YQAA was paused before the reply commit' using errcode = '40001';
   end if;
   if exists (
