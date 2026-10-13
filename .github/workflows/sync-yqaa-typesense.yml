@@ -1,0 +1,40 @@
+name: Publish YQAA Typesense snapshot
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Sync YQAA Knowledge Index]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: yqaa-typesense-snapshot
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require canonical main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install modal==1.5.5
+      - name: Export finalized public knowledge
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/export-yqaa-typesense.py
+      - name: Publish immutable snapshot and redeploy search
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.YQAA_MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.YQAA_MODAL_TOKEN_SECRET }}
+        run: |
+          VERSION=$(python -c 'import json; print(json.load(open("/tmp/yqaa-typesense-snapshot/manifest.json"))["sha256"])')
+          modal volume put yqaa-typesense-public-snapshots /tmp/yqaa-typesense-snapshot "/$VERSION"
+          YQAA_SNAPSHOT_VERSION="$VERSION" modal deploy services/yqaa_typesense/app.py
