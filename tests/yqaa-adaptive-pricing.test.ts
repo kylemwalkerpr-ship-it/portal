@@ -794,7 +794,7 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
     for (const text of leaks) expect(leaksCompanionPricingLanguage(text)).toBe(true)
   })
 
-  test('J1 Jev never receives cents and out-of-set picks are ignored', async () => {
+  test('J1 Jev never receives cents and malformed out-of-set picks are rejected', async () => {
     let sentBody = ''
     const fetcher = (async (_url: any, init: any) => {
       sentBody = String(init?.body || '')
@@ -824,12 +824,7 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
     expect(sentBody).not.toMatch(/\$\s*\d|\d+\s*cents|5000/)
     expect(sentBody).toContain('posture')
     expect(sentBody).toContain('negotiation_posture')
-    expect(result.available).toBe(true)
-    if (result.available) {
-      expect(result.posture).toBeNull()
-      expect(result.ignored).toEqual(expect.arrayContaining([expect.stringContaining('HANDOFF_SUPPORT')]))
-      expect(result.negotiationPosture).toBeNull()
-    }
+    expect(result).toEqual({ available: false, reason: 'invalid_response' })
     const payload = companionJevPayload({
       query: 'budget $50 to $100 for a consult',
       channel: 'dm',
@@ -853,10 +848,9 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
       const body = JSON.parse(String(init?.body || '{}'))
       expect(body.questions).not.toHaveProperty('negotiation_posture')
       return new Response(JSON.stringify({ answers: {
-        posture: { choice: 'NEGOTIATE' },
-        sufficient: { noul: 0.9 },
-        needs_handoff: { noul: 0.1 },
-        market: { choice: 'usa' },
+        sufficient: { type: 'noul', noul: 0.9 },
+        needs_handoff: { type: 'noul', noul: 0.1 },
+        market: { type: 'choice', choice: 'usa', confidence: 1, probabilities: { usa: 1, canada: 0, uk: 0, australia: 0, global: 0, unknown: 0 } },
       } }), { status: 200 })
     }) as unknown as typeof fetch
     const result = await requestCompanionJev({
