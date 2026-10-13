@@ -5,6 +5,8 @@ export class YqaaDeadlineError extends Error {
   }
 }
 
+export const YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS = 24_000
+
 /** Combines client disconnect with a bounded route deadline and rejects work at the deadline. */
 export function createYqaaDeadline(parent: AbortSignal | null, timeoutMs: number) {
   const deadlineAt = Date.now() + Math.max(1, timeoutMs)

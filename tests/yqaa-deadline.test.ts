@@ -1,4 +1,10 @@
-import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
+import {
+  createYqaaDeadline,
+  YqaaDeadlineError,
+  YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS,
+} from '@/lib/yqaaDeadline'
+import fs from 'node:fs'
+import path from 'node:path'
 
 describe('YQAA end-to-end deadline', () => {
   afterEach(() => jest.useRealTimers())
@@ -24,5 +30,41 @@ describe('YQAA end-to-end deadline', () => {
     client.abort()
     expect(deadline.signal.aborted).toBe(true)
     deadline.close()
+  })
+
+  it('ends scheduled DM work before the Cloudflare waitUntil lifetime and aborts its upstream request', async () => {
+    jest.useFakeTimers()
+    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS).toBe(24_000)
+    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS).toBeLessThan(30_000)
+
+    const deadline = createYqaaDeadline(null, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
+    let aborted = false
+    const work = new Promise<void>((_resolve, reject) => {
+      deadline.signal.addEventListener('abort', () => {
+        aborted = true
+        reject(deadline.signal.reason)
+      })
+    })
+    const result = deadline.race(work)
+    const assertion = expect(result).rejects.toBeInstanceOf(YqaaDeadlineError)
+
+    await jest.advanceTimersByTimeAsync(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
+    await assertion
+    expect(aborted).toBe(true)
+    expect(deadline.remainingMs()).toBe(0)
+    deadline.close()
+  })
+
+  it('records every missing scheduled reply and leaves an explicit stage when the runtime deadline expires', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
+    const scheduler = source.slice(source.indexOf('export function scheduleAutoReply('))
+
+    expect(scheduler).toContain('deadline.race(')
+    expect(scheduler).toContain("ai_last_run_status: 'running'")
+    expect(scheduler).toContain("ai_last_run_status: 'failed'")
+    expect(scheduler).toContain("ai_last_skip: timeout ? 'runtime_deadline' : 'schedule_exception'")
+    expect(scheduler).toContain('runtime deadline exceeded during ${runtime.stage}')
+    expect(scheduler).toContain('if (result?.replied) return result')
+    expect(scheduler).toContain("ai_last_skip: skip || 'no_result'")
   })
 })

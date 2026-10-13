@@ -45,6 +45,7 @@ import {
   type YqaaConversationMemory,
 } from '@/lib/messengerConversationMemory'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
+import { createYqaaDeadline, YqaaDeadlineError, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS } from '@/lib/yqaaDeadline'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import { buildYqaaLiveResearchContext } from '@/lib/yqaaWebEvidence'
@@ -79,6 +80,9 @@ const DEBOUNCE_MS = 8_000
 const REPLY_COOLDOWN_MS = 4_000
 const RESPONSES_TIMEOUT_MS = 18_000
 const CHAT_TIMEOUT_MS = 10_000
+// Cloudflare only keeps waitUntil work alive for 30s after the response. Start
+// this budget at scheduling time and leave 6s for a durable outcome diagnostic.
+export const DM_AUTOREPLY_RUNTIME_BUDGET_MS = YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS
 const AUTH_CACHE_TTL_MS = 120_000
 const MAX_OUTPUT_TOKENS = 1400
 const AUTH_FAILURE_STATUS = new Set([401, 403])
@@ -94,6 +98,13 @@ export interface AiReplyResult {
   messageId?: string
   offerId?: string | null
   aiMode?: AiMode
+}
+
+type DmAutoReplyRuntime = {
+  signal: AbortSignal
+  stage: string
+  startedAt: string
+  markStage(stage: string): Promise<void>
 }
 
 export function normalizeAiMode(raw: unknown): AiMode {
@@ -365,13 +376,17 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, parentSignal?: AbortSignal) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const abortFromParent = () => controller.abort(parentSignal?.reason)
+  if (parentSignal?.aborted) abortFromParent()
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true })
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
   try {
     return await fetch(url, { ...init, signal: controller.signal })
   } finally {
     clearTimeout(timer)
+    parentSignal?.removeEventListener('abort', abortFromParent)
   }
 }
 
@@ -405,11 +420,13 @@ async function postJson(
   init: RequestInit,
   timeoutMs: number,
   attempts = 1,
+  signal?: AbortSignal,
 ): Promise<{ response: Response; text: string }> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetchWithTimeout(url, init, timeoutMs)
+      if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
+      const response = await fetchWithTimeout(url, init, timeoutMs, signal)
       const text = await response.text()
       if (response.ok || !TRANSIENT_STATUS.has(response.status) || attempt === attempts - 1) {
         return { response, text }
@@ -425,7 +442,7 @@ async function postJson(
   throw lastError instanceof Error ? lastError : new Error('Messenger model request failed')
 }
 
-async function callGrokChat(args: { system: string; user: string; conversationId: string }): Promise<string> {
+async function callGrokChat(args: { system: string; user: string; conversationId: string; signal?: AbortSignal }): Promise<string> {
   let auth = await resolveGrokAuth()
   const headers = () => ({
     Authorization: `Bearer ${auth.apiKey}`,
@@ -457,6 +474,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
       },
       RESPONSES_TIMEOUT_MS,
       2,
+      args.signal,
     )
     responseStatus = result.response.status
     if (AUTH_FAILURE_STATUS.has(result.response.status)) {
@@ -478,6 +496,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
         },
         RESPONSES_TIMEOUT_MS,
         1,
+        args.signal,
       )
       responseStatus = result.response.status
     }
@@ -508,6 +527,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
       },
       CHAT_TIMEOUT_MS,
       1,
+      args.signal,
     )
     chatStatus = result.response.status
     chatDiagnostic = result.text.slice(0, 240)
@@ -952,6 +972,7 @@ export async function maybeAutoReply(opts: {
   conversationId: string
   triggerMessageId?: string | null
   force?: boolean
+  runtime?: DmAutoReplyRuntime
 }): Promise<AiReplyResult> {
   const key = opts.triggerMessageId ? `${opts.conversationId}:${opts.triggerMessageId}` : opts.conversationId
   const existing = pendingLocks.get(key)
@@ -1037,6 +1058,8 @@ export async function maybeAutoReply(opts: {
       conv.metadata = { ...(conv.metadata || {}), ai_mode: 'auto' }
     }
 
+    if (opts.runtime) await opts.runtime.markStage('prepare_context')
+
     if (!opts.force && lastMsg.sender_id !== client.id) return { replied: false, skipped: 'last_not_client', aiMode }
 
     const meta = conv.metadata || {}
@@ -1066,6 +1089,7 @@ export async function maybeAutoReply(opts: {
     let memory: YqaaConversationMemory | null = null
 
     try {
+      if (opts.runtime) await opts.runtime.markStage('pricing_and_evidence')
       const [docSummary, sitePack, pricing, legalEvidenceBundle] = await Promise.all([
         summarizeAttachments(db, msgs),
         buildMessengerSiteKnowledge({
@@ -1310,14 +1334,18 @@ export async function maybeAutoReply(opts: {
 
       let decision: GrokDecision
       try {
+        if (opts.runtime) await opts.runtime.markStage('model_generation')
         const raw = await callGrokChat({
           system: systemWithContext,
           user: userPrompt,
           conversationId: opts.conversationId,
+          signal: opts.runtime?.signal,
         })
+        if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
         decision = parseDecision(raw)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
         console.error('[messengerAi] model call failed', msg)
         await recordAiDiagnostic(db, opts.conversationId, {
           ai_last_skip: 'grok_error',
@@ -1473,7 +1501,9 @@ export async function maybeAutoReply(opts: {
               system: `${systemWithContext}\n\n# POLISH — REGENERATE\nYour previous draft was rejected by the server for: ${reasons.join('; ')}. Rewrite it using ONLY the server-approved numbers, no internal pricing language, and a natural human tone.`,
               user: userPrompt,
               conversationId: opts.conversationId,
+              signal: opts.runtime?.signal,
             })
+            if (opts.runtime?.signal.aborted) return null
             return parseDecision(raw).reply || null
           } catch (err) {
             console.warn('[messengerAi] polish regeneration failed', err instanceof Error ? err.message : err)
@@ -1500,6 +1530,8 @@ export async function maybeAutoReply(opts: {
       }
 
       await clearTypingBubble(db, typingId)
+
+      if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
 
       let offerPersistence: Record<string, any> | null = null
       if (decision.offer && approvedOffer && !decision.escalate && !providerReview) {
@@ -1566,6 +1598,9 @@ export async function maybeAutoReply(opts: {
         ai_last_approved_price_cents: decision.offer && approvedOffer ? approvedOffer.priceCents : null,
         ai_last_error: null,
         ai_last_skip: null,
+        ai_last_run_status: 'completed',
+        ai_last_run_stage: 'complete',
+        ai_last_run_finished_at: new Date().toISOString(),
         ...(approvalPending
           ? {
               ai_pricing_approval_status: 'pending',
@@ -1594,6 +1629,8 @@ export async function maybeAutoReply(opts: {
       const commitRpc = offerPersistence?.approval
         ? 'commit_yqaa_reply_with_pricing_approval'
         : 'commit_yqaa_reply'
+      if (opts.runtime) await opts.runtime.markStage('atomic_reply_commit')
+      if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
       const { data: committedReply, error: commitError } = await db.rpc(commitRpc, {
         p_conversation_id: opts.conversationId,
         p_trigger_message_id: triggerMessageId,
@@ -1635,34 +1672,57 @@ export async function maybeAutoReply(opts: {
 }
 
 export function scheduleAutoReply(conversationId: string, triggerMessageId?: string | null) {
-  const work = maybeAutoReply({ conversationId, triggerMessageId })
+  const deadline = createYqaaDeadline(null, DM_AUTOREPLY_RUNTIME_BUDGET_MS)
+  const runtime: DmAutoReplyRuntime = {
+    signal: deadline.signal,
+    stage: 'queued',
+    async markStage(stage: string) {
+      if (runtime.signal.aborted) return
+      runtime.stage = stage
+      await recordAiDiagnostic(createSupabaseAdminClient(), conversationId, {
+        ai_last_run_status: 'running',
+        ai_last_run_stage: stage,
+        ai_last_run_started_at: runtime.startedAt,
+        ai_last_run_trigger_message_id: triggerMessageId || null,
+      })
+    },
+    startedAt: new Date().toISOString(),
+  }
+
+  const work = deadline.race((async () => {
+    await runtime.markStage('queued')
+    return maybeAutoReply({ conversationId, triggerMessageId, runtime })
+  })())
     .then(async (result) => {
       if (result?.replied) return result
       const skip = result?.skipped
-      if (skip === 'empty_reply' || skip === 'empty_thread' || skip === 'not_found') {
-        try {
-          const db = createSupabaseAdminClient()
-          await recordAiDiagnostic(db, conversationId, {
-            ai_last_skip: skip,
-            ai_last_skip_at: new Date().toISOString(),
-            ai_last_error: `YQAA skipped: ${skip}`,
-            ai_last_error_at: new Date().toISOString(),
-          })
-        } catch {
-          /* ignore */
-        }
-      }
+      await recordAiDiagnostic(createSupabaseAdminClient(), conversationId, {
+        ai_last_run_status: 'skipped',
+        ai_last_run_stage: runtime.stage,
+        ai_last_run_finished_at: new Date().toISOString(),
+        ai_last_skip: skip || 'no_result',
+        ai_last_skip_at: new Date().toISOString(),
+        ai_last_error: skip ? `YQAA skipped: ${skip}` : 'YQAA run returned no result.',
+        ai_last_error_at: new Date().toISOString(),
+        ai_last_trigger_message_id: triggerMessageId || null,
+      })
       return result
     })
     .catch(async (err) => {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[messengerAi] scheduleAutoReply', msg)
+      const timeout = err instanceof YqaaDeadlineError
+      console.error('[messengerAi] scheduleAutoReply', timeout ? `runtime deadline exceeded during ${runtime.stage}` : msg)
       try {
         const db = createSupabaseAdminClient()
         await recordAiDiagnostic(db, conversationId, {
-          ai_last_skip: 'schedule_exception',
+          ai_last_run_status: 'failed',
+          ai_last_run_stage: runtime.stage,
+          ai_last_run_finished_at: new Date().toISOString(),
+          ai_last_skip: timeout ? 'runtime_deadline' : 'schedule_exception',
           ai_last_skip_at: new Date().toISOString(),
-          ai_last_error: msg.slice(0, 500),
+          ai_last_error: (timeout
+            ? `YQAA runtime deadline exceeded during ${runtime.stage} after ${DM_AUTOREPLY_RUNTIME_BUDGET_MS}ms.`
+            : msg).slice(0, 500),
           ai_last_error_at: new Date().toISOString(),
           ai_last_trigger_message_id: triggerMessageId || null,
         })
@@ -1670,6 +1730,7 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
         /* ignore */
       }
     })
+    .finally(() => deadline.close())
 
   try {
     getCloudflareContext().ctx.waitUntil(work)
