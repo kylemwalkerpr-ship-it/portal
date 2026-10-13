@@ -58,7 +58,7 @@ create temporary table yqaa_incremental_state (
   freshness_chunk_key text not null
 );
 create temporary table yqaa_incremental_success_signature (signature text);
-create temporary table yqaa_incremental_update_counter (updates integer not null default 0);
+create temporary table yqaa_incremental_update_counter (updates integer not null default 0, insert_attempts integer not null default 0);
 insert into yqaa_incremental_update_counter default values;
 
 do $setup$
@@ -200,12 +200,14 @@ create temporary table yqaa_incremental_ctids as
 create function public.${countFunction}() returns trigger
 language plpgsql security definer set search_path = public as $counter$
 begin
-  update pg_temp.yqaa_incremental_update_counter set updates = updates + 1;
+  update pg_temp.yqaa_incremental_update_counter
+     set updates = updates + case when TG_OP = 'UPDATE' then 1 else 0 end,
+         insert_attempts = insert_attempts + case when TG_OP = 'INSERT' then 1 else 0 end;
   return new;
 end;
 $counter$;
 create trigger ${countTrigger}
-  before update on public.yqaa_knowledge_chunks
+  before insert or update on public.yqaa_knowledge_chunks
   for each row execute function public.${countFunction}();
 grant update on yqaa_incremental_update_counter to service_role;
 
@@ -228,6 +230,7 @@ declare
   v_state record;
   v_unchanged_count integer;
   v_update_count integer;
+  v_insert_attempts integer;
   v_run record;
   v_live_signature text;
 begin
@@ -237,10 +240,12 @@ begin
     join public.yqaa_knowledge_chunks live using (chunk_key)
    where before_rows.row_tid = live.ctid;
   select updates into v_update_count from yqaa_incremental_update_counter;
+  select insert_attempts into v_insert_attempts from yqaa_incremental_update_counter;
   if v_unchanged_count <> v_state.chunk_count - 8 then
     raise exception 'unchanged chunk ctid count %, expected %', v_unchanged_count, v_state.chunk_count - 8;
   end if;
   if v_update_count <> 4 then raise exception 'chunk update trigger count %, expected 4', v_update_count; end if;
+  if v_insert_attempts <> 8 then raise exception 'chunk insert trigger count %, expected 8 (new and changed rows only)', v_insert_attempts; end if;
 
   select * into v_run from public.yqaa_knowledge_ingestion_runs where run_id = '${runId}';
   if v_run.status <> 'completed' or v_run.source_count <> v_state.source_count or v_run.chunk_count <> v_state.chunk_count then

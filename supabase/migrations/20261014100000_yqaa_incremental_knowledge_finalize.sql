@@ -181,6 +181,42 @@ begin
     fetched_at, lastmod, metadata, p_run_id
   from public.yqaa_knowledge_chunks_staging
   where ingestion_run_id = p_run_id
+    and not exists (
+      select 1
+        from public.yqaa_knowledge_chunks as live
+       where live.chunk_key = public.yqaa_knowledge_chunks_staging.chunk_key
+         and (
+           live.source_key,
+           live.site,
+           live.repository,
+           live.source_url,
+           live.title,
+           live.section_title,
+           live.chunk_index,
+           live.jurisdiction,
+           live.topic_tags,
+           live.body,
+           live.content_hash,
+           live.authority_tier,
+           live.lastmod,
+           live.metadata
+         ) is not distinct from (
+           public.yqaa_knowledge_chunks_staging.source_key,
+           public.yqaa_knowledge_chunks_staging.site,
+           public.yqaa_knowledge_chunks_staging.repository,
+           public.yqaa_knowledge_chunks_staging.source_url,
+           public.yqaa_knowledge_chunks_staging.title,
+           public.yqaa_knowledge_chunks_staging.section_title,
+           public.yqaa_knowledge_chunks_staging.chunk_index,
+           public.yqaa_knowledge_chunks_staging.jurisdiction,
+           public.yqaa_knowledge_chunks_staging.topic_tags,
+           public.yqaa_knowledge_chunks_staging.body,
+           public.yqaa_knowledge_chunks_staging.content_hash,
+           public.yqaa_knowledge_chunks_staging.authority_tier,
+           public.yqaa_knowledge_chunks_staging.lastmod,
+           public.yqaa_knowledge_chunks_staging.metadata
+         )
+    )
   on conflict (chunk_key) do update set
     source_key = excluded.source_key,
     site = excluded.site,

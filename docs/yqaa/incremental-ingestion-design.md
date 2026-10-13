@@ -50,6 +50,11 @@ that have no staged `chunk_key` in this run. Insert staged chunks and update
 conflicting chunk keys only when persisted chunk fields other than crawl-only
 `fetched_at` and `ingestion_run_id` differ. Inserts/changed rows receive the
 current `fetched_at` and `ingestion_run_id`; unchanged rows receive no UPDATE.
+The staged INSERT source also prefilters rows whose complete semantic tuple
+matches the live tuple, so unchanged rows never invoke `BEFORE INSERT` triggers.
+The `ON CONFLICT ... WHERE` comparison remains as a race-safe guard if a row
+changes after that prefilter. Equality compares body, metadata, and every other
+semantic field directly; it does not rely on a hash-only shortcut.
 Stable keys remain `source_key || ':' || chunk_index`.
 
 Build `site_counts` as a map of site to source count from the resulting snapshot,
