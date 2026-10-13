@@ -53,6 +53,7 @@ describe('messenger mobile parity', () => {
   test('mobile AI controls and dashboard menus cannot be squeezed off-screen', () => {
     expect(css).toContain("span[title='SuperGrok AI closer']")
     expect(css).toContain('flex: 1 1 100% !important')
+    expect(css).toContain("> button {\n    flex: 0 0 auto !important;\n    display: inline-flex !important;")
     expect(css).toContain('.yousafe-dashboard-shell .yousafe-sidebar-nav')
     expect(css).toContain('scroll-snap-type: x proximity')
     expect(css).toContain('overscroll-behavior-x: contain')

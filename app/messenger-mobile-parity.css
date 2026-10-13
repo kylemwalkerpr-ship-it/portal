@@ -185,6 +185,7 @@
 
   .yousafe-messenger .cv-head > div:has(> span[title='SuperGrok AI closer']) > button {
     flex: 0 0 auto !important;
+    display: inline-flex !important;
     min-height: 40px !important;
     padding: 8px 12px !important;
     white-space: nowrap !important;

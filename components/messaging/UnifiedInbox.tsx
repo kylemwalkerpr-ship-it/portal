@@ -1268,8 +1268,29 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   // ── Banner (archived inquiry) ───────────────────────────────────────
   const pricingApproval = activeConv?.pricing_approval
   const showPricingApproval = ['attorney', 'consultant'].includes(role) && pricingApproval && ['pending', 'approved', 'declined', 'used'].includes(pricingApproval.status)
-  const banner = (isArchived && !isDeleted) || showPricingApproval ? (
+  const providerAttention = activeConv?.provider_attention
+  const showProviderAttention = providerAttention?.requested && (providerAttention.pending || providerAttention.human_replied)
+  const banner = (isArchived && !isDeleted) || showPricingApproval || showProviderAttention ? (
     <div style={{ display: 'grid', gap: 8 }}>
+    {showProviderAttention && <div role="status" aria-live="polite" style={{
+      padding: '10px 14px',
+      background: providerAttention.pending ? '#FFF8E7' : 'var(--panel-2)',
+      color: providerAttention.pending ? '#624B13' : 'var(--text-soft)',
+      fontSize: 13,
+      lineHeight: 1.45,
+      borderBottom: '1px solid var(--border)',
+      }}>
+      {providerAttention.pending ? (['attorney', 'consultant'].includes(role) ? (
+        <><strong>Provider attention requested.</strong> The client is waiting for a human reply. {activeConv.ai_mode === 'auto' ? <>Use <strong>Take over</strong> above when you’re ready.</> : 'Reply here when you’re ready.'}</>
+      ) : (
+        <>
+          <strong>Waiting for a provider reply.</strong> A request for provider attention has been sent; a human reply is not in this conversation yet.
+          {providerAttention.provider_available === false && (
+            <> We can’t confirm the provider is available right now. <a href="https://support.yousafeconsultancy.com/" target="_blank" rel="noreferrer" style={{ color: 'inherit', fontWeight: 700, textDecoration: 'underline' }}>Contact YouSafe support</a>.</>
+          )}
+        </>
+      )) : <>A provider message has been added to this conversation.</>}
+    </div>}
     {showPricingApproval && <div style={{
       padding: '12px 14px', background: pricingApproval.status === 'pending' ? '#FFF8E7' : 'var(--panel-2)',
       color: 'var(--text-soft)', fontSize: 13, borderBottom: '1px solid var(--border)',

@@ -12,6 +12,7 @@ import {
 } from '@/lib/messengerAi'
 import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
+import { buildMessengerAttentionDisplay } from '@/lib/messengerAttentionDisplay'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -78,7 +79,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .order('created_at', { ascending: true })
       .limit(500),
     // Direct contact fields are intentionally never returned by Messenger.
-    db.from('profiles').select('id, full_name, avatar_url, role').eq('id', counterpartId).maybeSingle(),
+    db.from('profiles').select('id, full_name, avatar_url, role, status').eq('id', counterpartId).maybeSingle(),
     db.from('conversation_participants')
       .select('starred_message_ids, pinned_at, archived_at, muted_until')
       .eq('conversation_id', id)
@@ -94,6 +95,14 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
   const [counterpartRow] = await fillMissingProfileAvatars(db, [(counterpartRes as any).data].filter(Boolean))
+  const safeCounterpart = counterpartRow
+    ? {
+        id: counterpartRow.id,
+        full_name: counterpartRow.full_name,
+        avatar_url: counterpartRow.avatar_url,
+        role: counterpartRow.role,
+      }
+    : null
 
   let sharedOrders: any[] = []
   let sharedOffers: any[] = []
@@ -108,6 +117,23 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   } catch {}
 
   const rawMessages: any[] = messagesRes.data || []
+  const counterpartProfile = (counterpartRes as any).data || null
+  const providerId = ['attorney', 'consultant'].includes(auth.role)
+    ? profileId
+    : ['attorney', 'consultant'].includes(String(counterpartProfile?.role || ''))
+      ? counterpartId
+      : null
+  const providerStatus = providerId === profileId
+    ? auth.profile?.status
+    : providerId === counterpartId
+      ? counterpartProfile?.status
+      : null
+  const providerAttention = buildMessengerAttentionDisplay({
+    metadata,
+    messages: rawMessages,
+    providerId,
+    providerStatus,
+  })
   const offerIds = Array.from(new Set(
     rawMessages
       .filter((m) => m?.type === 'offer' && m?.ref_offer_id)
@@ -246,7 +272,12 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   return Response.json({
     conversation: {
       id: conv.id,
-      counterpart: counterpartRow || (counterpartRes as any).data || null,
+      counterpart: safeCounterpart || (counterpartProfile ? {
+        id: counterpartProfile.id,
+        full_name: counterpartProfile.full_name,
+        avatar_url: counterpartProfile.avatar_url,
+        role: counterpartProfile.role,
+      } : null),
       context_kind: conv.context_kind,
       context_id:   conv.context_id,
       status:       conv.status,
@@ -255,6 +286,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       source_inquiry_archived_at: sourceInquiryArchivedAt,
       ai_mode: readAiMode((conv as any).metadata),
       ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
+      provider_attention: providerAttention,
       pricing_approval: pricingApproval,
     },
     messages,
