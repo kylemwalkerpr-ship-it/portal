@@ -27,6 +27,7 @@ export function isRecoverableSelfEscalationPause(aiMode: unknown, metadata: unkn
 export function evaluateProviderAttention(args: {
   metadata: unknown
   messages: any[]
+  attentionMessages?: any[]
   providerId: string
 }): ProviderAttentionState {
   const meta = asMeta(args.metadata)
@@ -38,7 +39,13 @@ export function evaluateProviderAttention(args: {
   const reason = typeof meta.ai_escalation_reason === 'string' ? meta.ai_escalation_reason : null
   const requestedMs = requestedAt ? new Date(requestedAt).getTime() : 0
 
-  const humanRespondedAfterRequest = requestedMs > 0 && (args.messages || []).some((message: any) => {
+  // GET's rendered message list intentionally remains capped at its oldest
+  // 500 rows. The caller can supply a separately bounded provider-only
+  // history slice so later replies still settle the attention request.
+  const humanRespondedAfterRequest = requestedMs > 0 && [
+    ...(args.messages || []),
+    ...(args.attentionMessages || []),
+  ].some((message: any) => {
     if (message?.sender_id !== args.providerId) return false
     if (message?.metadata?.ai_generated || message?.metadata?.ai_assistant || message?.metadata?.ai_typing) return false
     const createdMs = message?.created_at ? new Date(message.created_at).getTime() : 0

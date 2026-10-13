@@ -79,7 +79,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .order('created_at', { ascending: true })
       .limit(500),
     // Direct contact fields are intentionally never returned by Messenger.
-    db.from('profiles').select('id, full_name, avatar_url, role, status').eq('id', counterpartId).maybeSingle(),
+    db.from('profiles').select('id, full_name, avatar_url, role').eq('id', counterpartId).maybeSingle(),
     db.from('conversation_participants')
       .select('starred_message_ids, pinned_at, archived_at, muted_until')
       .eq('conversation_id', id)
@@ -123,16 +123,55 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     : ['attorney', 'consultant'].includes(String(counterpartProfile?.role || ''))
       ? counterpartId
       : null
-  const providerStatus = providerId === profileId
-    ? auth.profile?.status
-    : providerId === counterpartId
-      ? counterpartProfile?.status
+
+  // These private availability fields are queried only after the participant
+  // ACL above. They are used only to produce a boolean for this response.
+  let providerProfile: any = null
+  let providerListing: any = null
+  if (providerId) {
+    const providerRole = providerId === profileId ? auth.role : counterpartProfile?.role
+    const listingTable = providerRole === 'attorney' ? 'attorneys' : providerRole === 'consultant' ? 'consultants' : null
+    const [profileAvailability, listingAvailability] = await Promise.all([
+      db.from('profiles')
+        .select('status, is_hidden, clerk_user_id')
+        .eq('id', providerId)
+        .maybeSingle(),
+      listingTable
+        ? db.from(listingTable).select('available').eq('profile_id', providerId).maybeSingle()
+        : Promise.resolve({ data: null, error: true } as any),
+    ])
+    if (!profileAvailability.error) providerProfile = profileAvailability.data
+    if (!listingAvailability.error) providerListing = listingAvailability.data
+  }
+
+  // Keep the rendered contract (oldest 500 rows) intact. Attention settlement
+  // reads a separate bounded slice containing only provider messages after the
+  // request, so ordinary client traffic cannot push a reply out of view.
+  const attentionRequestedAt = typeof metadata.ai_provider_attention_requested_at === 'string'
+    ? metadata.ai_provider_attention_requested_at
+    : typeof metadata.ai_escalated_at === 'string'
+      ? metadata.ai_escalated_at
       : null
+  let attentionMessages: any[] = []
+  if (providerId && attentionRequestedAt && Number.isFinite(new Date(attentionRequestedAt).getTime())) {
+    try {
+      const { data } = await db.from('conversation_messages')
+        .select('id, sender_id, metadata, created_at')
+        .eq('conversation_id', id)
+        .eq('sender_id', providerId)
+        .gt('created_at', attentionRequestedAt)
+        .order('created_at', { ascending: true })
+        .limit(500)
+      attentionMessages = data || []
+    } catch { /* fail closed: attention remains pending when history is unavailable */ }
+  }
   const providerAttention = buildMessengerAttentionDisplay({
     metadata,
     messages: rawMessages,
+    attentionMessages,
     providerId,
-    providerStatus,
+    providerProfile,
+    providerListing,
   })
   const offerIds = Array.from(new Set(
     rawMessages
