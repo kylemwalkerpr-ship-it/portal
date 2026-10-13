@@ -239,6 +239,7 @@ describe('YQAA provider pin and fallback policy', () => {
       .mockResolvedValueOnce({ text: 'Recovered Grok answer', model: 'grok-4.6' })
     const refreshAiVault = jest.fn(async () => ['DEEPSEEK_API_KEY'])
     const adapterComplete = jest.fn(async () => ({ text: 'Fallback answer', model: 'deepseek-flash' }))
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
     jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrok }))
     jest.doMock('@/lib/contentAiRegistry', () => ({
       DEEPSEEK_V41_FLASH_PIN: 'deepseek-v41-flash',
@@ -262,6 +263,7 @@ describe('YQAA provider pin and fallback policy', () => {
       expect(refreshAiVault).not.toHaveBeenCalled()
       expect(adapterComplete).not.toHaveBeenCalled()
     } finally {
+      clock.mockRestore()
       delete process.env.YQAA_PRIMARY_PROVIDER
       delete process.env.YQAA_FALLBACK_PROVIDER
       jest.dontMock('@/lib/superGrokAssistant')
