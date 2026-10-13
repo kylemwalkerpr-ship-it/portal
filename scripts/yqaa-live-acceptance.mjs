@@ -285,7 +285,8 @@ async function loadIncidentSource() {
   const conversations = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id&id=eq.${encodeURIComponent(sourceConversationId)}`)
   const source = conversations?.[0]
   const participants = [source?.participant_a, source?.participant_b]
-  if (conversations?.length !== 1 || source.id !== sourceConversationId || !participants.includes(sourceClientId) || !participants.includes(sourceProviderId) || sourceClientId === sourceProviderId || source.context_kind !== 'gig') throw new Error('Incident source conversation ownership could not be verified.')
+  const validSourceContext = source?.context_kind === 'gig' || (source?.context_kind === 'general' && source?.context_id == null)
+  if (conversations?.length !== 1 || source.id !== sourceConversationId || !participants.includes(sourceClientId) || !participants.includes(sourceProviderId) || sourceClientId === sourceProviderId || !validSourceContext) throw new Error('Incident source conversation ownership could not be verified.')
   const [clientRows, providerRows, messages] = await Promise.all([
     dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceClientId)}`),
     dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceProviderId)}`),
