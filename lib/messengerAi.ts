@@ -57,11 +57,11 @@ import {
 } from '@/lib/yqaaAdaptivePricing'
 import { approvalMatchesDecision, approvalQuoteMatchesDecision } from '@/lib/yqaaProviderControls'
 import {
-  buildCompanionDecision,
   inferJourneyStage,
   renderDecisionAuthority,
   type CompanionDecision,
 } from '@/lib/yqaaCompanionDecision'
+import { COMPANION_CHANNEL_CAPABILITIES, runCompanionOrchestrator } from '@/lib/yqaaDecisionOrchestrator'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
 import { polishWithRegeneration } from '@/lib/yqaaCompanionPolish'
 import {
@@ -739,30 +739,34 @@ export async function buildMessengerDecisionAuthority(args: {
   triggers?: JevTrigger[]
   jevRequest?: typeof requestCompanionJev
 }): Promise<CompanionDecision> {
-  return buildCompanionDecision({
+  const result = await runCompanionOrchestrator({
     channel: 'dm',
-    redactedQuery: sanitizeYqaaPublicQuestion(args.latestClientText),
-    evidence: args.evidence || [],
-    hostname: null,
-    pricing: args.adaptive,
-    frustration: args.frustrated,
-    duplicateRisk: Boolean(args.duplicateRisk),
-    budgetGapExplained: args.budgetGapAlreadyExplained,
-    hasNewScopeOrCounter: args.hasNewScopeOrCounter,
-    commerceIntent: commerceIntent(args.latestClientText),
-    highStakes: Boolean(args.highStakes),
-    thinEvidence: Boolean(args.missingLegalEvidence),
-    missingLegalEvidence: Boolean(args.missingLegalEvidence),
-    evidenceSensitive: Boolean(args.evidenceSensitive),
-    journeyStage: args.memory?.journey_stage ?? null,
-    emotionBand: args.memory?.emotion_band ?? null,
-    priorPosture: args.memory?.last_posture ?? null,
-    scopeDepth: args.adaptive?.scope.depth ?? null,
-    counterClass: args.adaptive?.counter_class ?? null,
-    counterCount: args.adaptive?.negotiation.counter_count ?? 0,
-    triggers: args.triggers,
-    jevRequest: args.jevRequest,
+    capabilities: COMPANION_CHANNEL_CAPABILITIES.dm,
+    decision: {
+      redactedQuery: sanitizeYqaaPublicQuestion(args.latestClientText),
+      evidence: args.evidence || [],
+      hostname: null,
+      pricing: args.adaptive,
+      frustration: args.frustrated,
+      duplicateRisk: Boolean(args.duplicateRisk),
+      budgetGapExplained: args.budgetGapAlreadyExplained,
+      hasNewScopeOrCounter: args.hasNewScopeOrCounter,
+      commerceIntent: commerceIntent(args.latestClientText),
+      highStakes: Boolean(args.highStakes),
+      thinEvidence: Boolean(args.missingLegalEvidence),
+      missingLegalEvidence: Boolean(args.missingLegalEvidence),
+      evidenceSensitive: Boolean(args.evidenceSensitive),
+      journeyStage: args.memory?.journey_stage ?? null,
+      emotionBand: args.memory?.emotion_band ?? null,
+      priorPosture: args.memory?.last_posture ?? null,
+      scopeDepth: args.adaptive?.scope.depth ?? null,
+      counterClass: args.adaptive?.counter_class ?? null,
+      counterCount: args.adaptive?.negotiation.counter_count ?? 0,
+      triggers: args.triggers,
+      jevRequest: args.jevRequest,
+    },
   })
+  return result.decision
 }
 
 /**

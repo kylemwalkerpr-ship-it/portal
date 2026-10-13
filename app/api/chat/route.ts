@@ -15,12 +15,12 @@ import { enforceCanonicalMarketCoverage } from '@/lib/assistantNetworkAuthority'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
-import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
+import { requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
-import { adaptPublicSafetyDecision, adaptSupportHandoffDecision } from '@/lib/yqaaDecisionOrchestrator'
+import { COMPANION_CHANNEL_CAPABILITIES, runCompanionOrchestrator } from '@/lib/yqaaDecisionOrchestrator'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import {
@@ -310,6 +310,10 @@ export async function POST(req: Request) {
         ? body.topic.trim()
         : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
       const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
+      const supportDecision = await runCompanionOrchestrator({
+        channel: 'support', capabilities: COMPANION_CHANNEL_CAPABILITIES.support,
+        reason: 'explicit_human_handoff',
+      })
       supportPostStarted = true
       const handoff = await deadline.race(escalateToSupport({
         message: lastUser.content,
@@ -319,7 +323,7 @@ export async function POST(req: Request) {
       }))
       await persistDecisionBestEffort(deadline, {
         channel: 'support', interactionKey: crypto.randomUUID(),
-        decision: adaptSupportHandoffDecision('explicit_human_handoff'),
+        decision: supportDecision.decision,
       })
       deadline.close()
       return withCors(req, {
@@ -407,7 +411,11 @@ export async function POST(req: Request) {
       jev = { available: false as const, reason: 'timeout' as const }
     }
     let jevMs = jevStage.durationMs || 0
-    let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
+    let publicDecision = await runCompanionOrchestrator({
+      channel: 'public', capabilities: COMPANION_CHANNEL_CAPABILITIES.public,
+      context: advisoryContext, jev,
+    })
+    let safety = publicDecision.safety
     let webEvidenceCount = 0
     let webResearchStatus: 'skipped' | 'verified' | 'retrieved' | 'insufficient' | 'failed' = 'skipped'
     const freshnessRequiresWeb = yqaaNeedsFreshWebResearch(lastUser.content)
@@ -436,16 +444,30 @@ export async function POST(req: Request) {
             secondJev = { available: false as const, reason: 'timeout' as const }
           }
           jevMs += secondJevStage.durationMs || 0
-          safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
+          publicDecision = await runCompanionOrchestrator({
+            channel: 'public', capabilities: COMPANION_CHANNEL_CAPABILITIES.public,
+            context: advisoryContext, jev: secondJev,
+          })
+          safety = publicDecision.safety
           webResearchStatus = safety.answer ? 'verified' : 'retrieved'
         } else {
-          safety = { answer: false, reason: 'web_evidence_insufficient' }
+          publicDecision = await runCompanionOrchestrator({
+            channel: 'public', capabilities: COMPANION_CHANNEL_CAPABILITIES.public,
+            context: advisoryContext, jev,
+            failClosedReason: 'web_evidence_insufficient',
+          })
+          safety = publicDecision.safety
           webResearchStatus = 'insufficient'
         }
       } catch (err) {
         finishStage(webStage, err instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
         console.warn('[system-assistant] web research failed', err instanceof Error ? err.message.slice(0, 180) : 'unknown')
-        safety = { answer: false, reason: 'web_research_failed' }
+        publicDecision = await runCompanionOrchestrator({
+          channel: 'public', capabilities: COMPANION_CHANNEL_CAPABILITIES.public,
+          context: advisoryContext, jev,
+          failClosedReason: 'web_research_failed',
+        })
+        safety = publicDecision.safety
         webResearchStatus = 'failed'
       }
     }
@@ -454,6 +476,10 @@ export async function POST(req: Request) {
       try {
         const viewer = await deadline.race(boundedViewerSnapshot())
         const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+        const supportDecision = await runCompanionOrchestrator({
+          channel: 'support', capabilities: COMPANION_CHANNEL_CAPABILITIES.support,
+          reason: safety.reason,
+        })
         supportPostStarted = true
         const handoff = await deadline.race(escalateToSupport({
           message: lastUser.content,
@@ -463,7 +489,7 @@ export async function POST(req: Request) {
         }))
         await persistDecisionBestEffort(deadline, {
           channel: 'support', interactionKey: crypto.randomUUID(),
-          decision: adaptSupportHandoffDecision(safety.reason),
+          decision: supportDecision.decision,
           evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
         })
         deadline.close()
@@ -539,7 +565,7 @@ export async function POST(req: Request) {
       })
       await persistDecisionBestEffort(deadline, {
         channel: 'public', interactionKey: crypto.randomUUID(),
-        decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+        decision: publicDecision.decision,
         evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
       })
       deadline.close()
@@ -609,7 +635,7 @@ export async function POST(req: Request) {
 
     await persistDecisionBestEffort(deadline, {
       channel: 'public', interactionKey: crypto.randomUUID(),
-      decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+      decision: publicDecision.decision,
       evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
     })
 
