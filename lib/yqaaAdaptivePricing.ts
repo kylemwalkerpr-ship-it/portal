@@ -1278,6 +1278,8 @@ const GIG_SELECT_FULL =
   'id,title,category,subcategory,provider_id,provider_type,status,order_count,negotiation_enabled,negotiation_flex_pct,min_floor_cents,unit_pricing,hourly_rate_cents,tiers:gig_tiers(id,gig_id,tier,title,description,price,delivery_days,revisions,is_active,features,scope_depth,scope_units)'
 const GIG_SELECT_BASE =
   'id,title,category,subcategory,provider_id,provider_type,status,order_count,tiers:gig_tiers(id,gig_id,tier,title,description,price,delivery_days,revisions,is_active,features)'
+const GIG_SELECT_SCOPE =
+  'id,title,category,subcategory,provider_id,provider_type,status,order_count,unit_pricing,hourly_rate_cents,tiers:gig_tiers(id,gig_id,tier,title,description,price,delivery_days,revisions,is_active,features,scope_depth,scope_units)'
 
 function normalizeGigRow(row: any): GigForScope {
   const tiers = (Array.isArray(row?.tiers) ? row.tiers : [])
@@ -1327,7 +1329,11 @@ export async function loadProviderGigsForScope(db: any, providerId: string): Pro
   try {
     rows = await run(GIG_SELECT_FULL)
   } catch {
-    rows = await run(GIG_SELECT_BASE).catch(() => [] as any[])
+    try {
+      rows = await run(GIG_SELECT_SCOPE)
+    } catch {
+      rows = await run(GIG_SELECT_BASE).catch(() => [] as any[])
+    }
   }
   return rows.map(normalizeGigRow)
 }

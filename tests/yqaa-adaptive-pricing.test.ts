@@ -11,6 +11,7 @@
  */
 import {
   buildAdaptivePricingDecision,
+  loadProviderGigsForScope,
   classifyCounter,
   downscopeOptions,
   eligibleActions,
@@ -900,6 +901,45 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
 })
 
 describe('adaptive pricing — migration tolerance', () => {
+  test('preserves deployed unit pricing and tier scope when per-gig override columns are missing', async () => {
+    const db = {
+      from: () => {
+        let selection = ''
+        const builder: any = {
+          select(columns: string) { selection = columns; return builder },
+          eq() { return builder },
+          in() { return builder },
+          limit() { return builder },
+          then(resolve: any, reject: any) {
+            if (selection.includes('negotiation_enabled')) {
+              return Promise.resolve({ data: null, error: { message: 'column gigs.negotiation_enabled does not exist' } }).then(resolve, reject)
+            }
+            const deployedFields = selection.includes('unit_pricing') && selection.includes('scope_units')
+            const row = {
+              id: 'gig-deployed',
+              ...(deployedFields ? {
+                unit_pricing: { unit: 'page', unit_price_cents: 1200 },
+                hourly_rate_cents: 9000,
+                tiers: [{ id: 'tier-deployed', tier: 'basic', title: 'Review 4 pages', price: 8000, is_active: true, scope_depth: 'review', scope_units: 4 }],
+              } : { tiers: [{ id: 'tier-deployed', tier: 'basic', title: 'Review 4 pages', price: 8000, is_active: true }] }),
+            }
+            return Promise.resolve({ data: [row], error: null }).then(resolve, reject)
+          },
+        }
+        return builder
+      },
+    }
+
+    const [gig] = await loadProviderGigsForScope(db, PROVIDER)
+
+    expect(gig).toMatchObject({
+      id: 'gig-deployed',
+      unit_pricing: { unit: 'page', unit_price_cents: 1200 },
+      hourly_rate_cents: 9000,
+      tiers: [{ scope_depth: 'review', scope_units: 4 }],
+    })
+  })
+
   test('works when the additive migration has not been applied', async () => {
     const decision = await decide({
       messages: [clientMessage('m1', 'I could maybe do $50 to $100 for a consult, happy to do the legwork.')],
