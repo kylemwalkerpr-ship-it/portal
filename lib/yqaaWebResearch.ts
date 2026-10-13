@@ -1,6 +1,7 @@
 import { explicitYqaaJurisdiction, yqaaOriginSite, type YqaaIndexedChunk } from '@/lib/yqaaKnowledgeDb'
 import { sanitizeYqaaPublicQuestion } from '@/lib/jevAdvisory'
 import { callSystemSuperGrokWebSearch } from '@/lib/superGrokAssistant'
+import { searchYqaaTypesearch } from '@/lib/yqaaTypesearch'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 const OFFICIAL_DOMAINS: Record<string, string[]> = {
@@ -253,6 +254,24 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
       console.warn('[system-assistant] Cloudflare Browser research failed', err instanceof Error ? err.message : 'unknown')
     }
   }
+
+  const articles = await searchYqaaTypesearch(publicQuestion, scope.allowedDomains, options.signal)
+  if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError')
+  const searched: YqaaIndexedChunk[] = []
+  for (const article of articles) {
+    const sourceUrl = safeCitation(article.url, scope.allowedDomains)
+    if (!sourceUrl || searched.some((chunk) => chunk.sourceUrl === sourceUrl)) continue
+    const excerpt = sanitizeYqaaPublicQuestion(article.excerpt).trim()
+    if (excerpt.length < 25) continue
+    searched.push({
+      id: `typesearch:${searched.length + 1}`, chunkKey: `typesearch:${searched.length + 1}`, sourceKey: 'typesearch:web_search',
+      title: sanitizeYqaaPublicQuestion(article.title) || new URL(sourceUrl).hostname,
+      body: `Article excerpt (not the complete page): ${excerpt}`, source: sourceUrl, sourceUrl,
+      site: 'public-web', jurisdiction: scope.jurisdiction || undefined, topicTags: [],
+      fetchedAt: new Date().toISOString(), authorityTier: scope.officialOnly ? 5 : 3, score: 8,
+    })
+  }
+  if (searched.length) return searched
 
   try {
     const result = await callSystemSuperGrokWebSearch(
