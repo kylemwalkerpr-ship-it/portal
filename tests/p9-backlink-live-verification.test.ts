@@ -26,7 +26,7 @@ jest.mock('@/lib/seoFactory/hostResolution', () => {
   const actual = jest.requireActual('@/lib/seoFactory/hostResolution') as typeof import('@/lib/seoFactory/hostResolution')
   return {
     ...actual,
-    resolveHostAddresses: (host: string, deps?: { resolve4?: unknown; resolve6?: unknown }) => {
+    resolveHostAddresses: (host: string, deps?: Parameters<typeof actual.resolveHostAddresses>[1]) => {
       const name = String(host || '').trim()
       if (deps || !name || actual.isIpLiteral(name)) return actual.resolveHostAddresses(host, deps)
       return Promise.resolve({ ok: true, addresses: ['93.184.216.34'] })
