@@ -4,7 +4,7 @@ import os from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { toYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
 import { evaluateYqaaGoldSet } from '@/lib/yqaaOfflineEvaluator'
-import { adaptPublicSafetyDecision } from '@/lib/yqaaDecisionOrchestrator'
+import { COMPANION_CHANNEL_CAPABILITIES, runCompanionOrchestrator } from '@/lib/yqaaDecisionOrchestrator'
 import { buildCompanionDecision } from '@/lib/yqaaCompanionDecision'
 
 describe('versioned YQAA decision records', () => {
@@ -95,16 +95,20 @@ describe('versioned YQAA decision records', () => {
   })
 
   it('preserves the shared high-stakes escalation posture across public and DM adapters', async () => {
-    const publicDecision = adaptPublicSafetyDecision({ answerAllowed: false, reason: 'high_stakes_handoff', triggers: ['high_stakes'] })
+    const publicDecision = await runCompanionOrchestrator({
+      channel: 'public', capabilities: COMPANION_CHANNEL_CAPABILITIES.public,
+      context: { query: 'What are my chances of winning my case?', evidence: [] },
+      jev: { available: false, reason: 'not_configured' },
+    })
     const dmDecision = await buildCompanionDecision({
       channel: 'dm', redactedQuery: 'What are my odds?', highStakes: true,
       frustration: false, duplicateRisk: false, budgetGapExplained: false,
       hasNewScopeOrCounter: false, commerceIntent: false,
       jevRequest: async () => ({ available: false, reason: 'not_configured' }),
     })
-    expect(publicDecision.escalate).toBe(true)
+    expect(publicDecision.decision.escalate).toBe(true)
     expect(dmDecision.escalate).toBe(true)
-    expect(publicDecision.posture).toBe('HANDOFF_SUPPORT')
+    expect(publicDecision.decision.posture).toBe('HANDOFF_SUPPORT')
     expect(dmDecision.posture).toBe('ESCALATE_PROVIDER')
   })
 })
