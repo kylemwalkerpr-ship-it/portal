@@ -17,7 +17,7 @@ const MAX_WAIT_MS = 45_000
 const RUN_ID = process.env.GITHUB_RUN_ID || `manual-${Date.now()}`
 const RUN_ATTEMPT = process.env.GITHUB_RUN_ATTEMPT || '1'
 const PROVIDER_USERNAME = `yqaa_live_acceptance_${RUN_ID}_${RUN_ATTEMPT}`.slice(0, 64)
-const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? (process.env.RUNNER_TEMP || path.resolve('artifacts/yqaa-live-acceptance')) : path.resolve('artifacts/yqaa-live-acceptance')
+const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance') : path.resolve('artifacts/yqaa-live-acceptance')
 const receipt = { version: 1, started_at: new Date().toISOString(), checks: [], scenarios: [], cleanup: 'pending' }
 let browser
 let clientPage
@@ -518,6 +518,7 @@ try {
   await loadAndVerifyFixtures()
   await providerUiChecks()
   await messengerSmoke()
+  await assertLiveIdentity()
   receipt.status = 'passed'
 } catch (caught) {
   error = safeFailure(caught)

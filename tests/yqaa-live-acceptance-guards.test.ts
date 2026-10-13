@@ -7,6 +7,12 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('receipt path matches workflow upload and success rechecks deployment identity', () => {
+    expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
+    expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')
+    expect(harness).toMatch(/await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+receipt.status = 'passed'/)
+  })
+
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
     const cleanupRegistry: Array<{ gigId: string; profileId: string; clerkUserId: string }> = []
     const verifiedGig = { gigId: 'owned-gig-1', profileId: 'owned-profile-1', clerkUserId: 'owned-user-1' }
