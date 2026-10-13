@@ -5,16 +5,19 @@ import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
+import { canEditProviderGig, normalizeGigPricingScope, normalizeTierScope, stripInternalGigPricing } from '@/lib/yqaaGigScope'
 
 // Coerce gallery_images into a canonical [{url, ...}] shape and mirror
 // the first entry into cover_image_url so any consumer reading either
 // field sees the cover. Older rows that stored bare URL strings heal
 // at the read boundary too — see app/api/marketplace/gigs/route.ts.
-function shapeGig(gig: any) {
+function shapeGig(gig: any, includeInternalPricing = false) {
   if (!gig) return gig
   const gallery = normalizeGallery(gig.gallery_images)
+  const publicGig = stripInternalGigPricing(gig)
   return {
-    ...gig,
+    ...publicGig,
+    ...(includeInternalPricing && gig.hourly_rate_cents != null ? { hourly_rate_cents: gig.hourly_rate_cents } : {}),
     gallery_images: gallery,
     cover_image_url: typeof gig.cover_image_url === 'string' && gig.cover_image_url.trim()
       ? gig.cover_image_url
@@ -26,19 +29,15 @@ async function loadGig(db: any, id: string) {
   return db.from('gigs').select('*, tiers:gig_tiers(*)').eq('id', id).single()
 }
 
-function owns(auth: any, gig: any) {
-  return auth.role === 'admin' || (gig.provider_id === auth.profileId && gig.provider_type === auth.role)
-}
-
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getOptionalPortalUser()
   const db = auth ? auth.db : createSupabaseAdminClient()
   const { id } = await context.params
   const { data: gig, error } = await loadGig(db, id)
   if (error || !gig) return fail(error?.message || 'Gig not found.', 404)
-  if (auth && !owns(auth, gig) && gig.status !== 'active') return fail('Forbidden.', 403)
+  if (auth && !canEditProviderGig(auth, gig) && gig.status !== 'active') return fail('Forbidden.', 403)
   if (!auth && gig.status !== 'active') return fail('Gig not found.', 404)
-  return ok({ gig: shapeGig(gig) })
+  return ok({ gig: shapeGig(gig, Boolean(auth && canEditProviderGig(auth, gig))) })
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -47,9 +46,23 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const { id } = await context.params
   const { data: existing } = await loadGig(auth.db, id)
   if (!existing) return fail('Gig not found.', 404)
-  if (!owns(auth, existing)) return fail('Forbidden.', 403)
+  if (!canEditProviderGig(auth, existing)) return fail('Forbidden.', 403)
 
   const body = await req.json().catch(() => ({}))
+  const pricingScope = normalizeGigPricingScope(body)
+  if (pricingScope.ok === false) return fail(pricingScope.message, 422, { fields: { [pricingScope.field]: pricingScope.message } })
+  if (Array.isArray(body.tiers)) {
+    for (const [index, tier] of body.tiers.entries()) {
+      if (!tier || typeof tier !== 'object' || Array.isArray(tier)) {
+        return fail('Tier must be an object.', 422, { fields: { [`tiers.${index}`]: 'Tier must be an object.' } })
+      }
+      const scope = normalizeTierScope({
+        ...('scope_depth' in tier ? { scope_depth: tier.scope_depth } : {}),
+        ...('scope_units' in tier ? { scope_units: tier.scope_units } : {}),
+      })
+      if (scope.ok === false) return fail(scope.message, 422, { fields: { [`tiers.${index}.${scope.field}`]: scope.message } })
+    }
+  }
 
   // Category gate: legal categories require Bar vetting on attorneys /
   // attorney_applications, which consultants do not have.
@@ -80,6 +93,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  Object.assign(payload, pricingScope.values)
   for (const key of ['title', 'category', 'subcategory', 'pitch', 'tagline', 'description', 'requirements', 'seo_title', 'seo_description', 'ai_overview', 'video_url']) {
     if (key in body) payload[key] = typeof body[key] === 'string' ? body[key].trim() : body[key]
   }
@@ -167,24 +181,37 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (error || !gig) return fail(error?.message || 'Could not update gig.', 500)
 
   if (Array.isArray(body.tiers)) {
-    const tierRows = body.tiers.slice(0, 3).map((tier: any, index: number) => ({
-      gig_id: id,
-      tier: ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index],
-      title: String(tier.title || tier.tier || 'Package').slice(0, 80),
-      description: String(tier.description || ''),
-      price: Math.max(100, Number(tier.price || 100)),
-      delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
-      revisions: Math.max(0, Number(tier.revisions || 0)),
-      features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
-      is_active: tier.is_active !== false,
-    }))
+    const existingTiers = new Map((existing.tiers || []).map((tier: any) => [tier.tier, tier]))
+    const tierRows: Record<string, unknown>[] = []
+    for (const [index, tier] of body.tiers.slice(0, 3).entries()) {
+      const scopePatch = normalizeTierScope({
+        ...('scope_depth' in tier ? { scope_depth: tier.scope_depth } : {}),
+        ...('scope_units' in tier ? { scope_units: tier.scope_units } : {}),
+      })
+      if (scopePatch.ok === false) return fail(scopePatch.message, 422, { fields: { [`tiers.${index}.${scopePatch.field}`]: scopePatch.message } })
+      const tierName = ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index]
+      const priorTier = existingTiers.get(tierName) as any
+      tierRows.push({
+        gig_id: id,
+        tier: tierName,
+        title: String(tier.title || tier.tier || 'Package').slice(0, 80),
+        description: String(tier.description || ''),
+        price: Math.max(100, Number(tier.price || 100)),
+        delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
+        revisions: Math.max(0, Number(tier.revisions || 0)),
+        features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
+        is_active: tier.is_active !== false,
+        scope_depth: 'scope_depth' in scopePatch.values ? scopePatch.values.scope_depth : priorTier?.scope_depth ?? null,
+        scope_units: 'scope_units' in scopePatch.values ? scopePatch.values.scope_units : priorTier?.scope_units ?? null,
+      })
+    }
     const { error: tierError } = await auth.db.from('gig_tiers').upsert(tierRows, { onConflict: 'gig_id,tier' })
     if (tierError) return fail(tierError.message, 500)
   }
 
   // Invalidate public gig listings (cached in KV) after this mutation.
   const { bumpCacheVersion } = await import('@/lib/cache'); await bumpCacheVersion('gigs')
-  return ok({ gig: shapeGig(gig) })
+  return ok({ gig: shapeGig(gig, true) })
 }
 
 export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -193,7 +220,7 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   const { id } = await context.params
   const { data: existing } = await loadGig(auth.db, id)
   if (!existing) return fail('Gig not found.', 404)
-  if (!owns(auth, existing)) return fail('Forbidden.', 403)
+  if (!canEditProviderGig(auth, existing)) return fail('Forbidden.', 403)
   const now = new Date().toISOString()
   const { data: gig, error } = await auth.db
     .from('gigs')

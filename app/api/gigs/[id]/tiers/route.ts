@@ -2,10 +2,11 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { getPaymentSettingsForApi, normalizeRevision, toCents } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { canEditProviderGig, normalizeTierScope } from '@/lib/yqaaGigScope'
 
 async function canEdit(auth: any, gigId: string) {
-  const { data: gig } = await auth.db.from('gigs').select('provider_id').eq('id', gigId).single()
-  return gig && (gig.provider_id === auth.profileId || auth.role === 'admin')
+  const { data: gig } = await auth.db.from('gigs').select('provider_id,provider_type').eq('id', gigId).single()
+  return gig && canEditProviderGig(auth, gig)
 }
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -30,6 +31,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if ((count ?? 0) >= 3) return fail('A gig can have at most 3 tiers.', 409)
 
   const body = await req.json().catch(() => ({}))
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return fail('Expected an object.', 422)
+  const scope = normalizeTierScope({
+    ...('scope_depth' in body ? { scope_depth: body.scope_depth } : {}),
+    ...('scope_units' in body ? { scope_units: body.scope_units } : {}),
+  })
+  if (scope.ok === false) return fail(scope.message, 422, { fields: { [scope.field]: scope.message } })
   const settings = await getPaymentSettingsForApi()
   const price = toCents(body.price)
   if (!Number.isInteger(price) || price < settings.minimum_gig_price_cents || price > settings.maximum_gig_price_cents) {
@@ -45,6 +52,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     delivery_days: Math.max(1, Number(body.delivery_days || 1)),
     revisions: normalizeRevision(body.revisions ?? 1),
     features: Array.isArray(body.features) ? body.features.slice(0, 8) : [],
+    scope_depth: scope.values.scope_depth ?? null,
+    scope_units: scope.values.scope_units ?? null,
   }).select('*').single()
   if (error || !tier) return fail(error?.message || 'Could not create tier.', 500)
   return ok({ tier }, { status: 201 })
