@@ -6,6 +6,7 @@ export class YqaaDeadlineError extends Error {
 }
 
 export const YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS = 24_000
+export const YQAA_DM_REPLY_COMMIT_RESERVE_MS = 4_000
 
 /** Keeps the request abort listener and timer alive through response body consumption. */
 export async function fetchYqaaJsonWithTimeout(
@@ -68,6 +69,9 @@ export function createYqaaDeadline(parent: AbortSignal | null, timeoutMs: number
   return {
     signal: controller.signal,
     remainingMs() { return Math.max(0, deadlineAt - Date.now()) },
+    providerRemainingMs() {
+      return Math.max(0, deadlineAt - Date.now() - YQAA_DM_REPLY_COMMIT_RESERVE_MS)
+    },
     race<T>(work: Promise<T>): Promise<T> { return Promise.race([work, deadline]) },
     close() {
       if (timer) clearTimeout(timer)
