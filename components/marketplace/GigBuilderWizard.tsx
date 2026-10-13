@@ -180,6 +180,8 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
     pitch: existingGig?.pitch || persistedDraft?.pitch || '',
     description: existingGig?.description || persistedDraft?.description || '',
     tags: existingGig?.tags || persistedDraft?.tags || [],
+    unit_pricing: existingGig?.unit_pricing ?? persistedDraft?.unit_pricing ?? null,
+    hourly_rate_cents: existingGig?.hourly_rate_cents ?? persistedDraft?.hourly_rate_cents ?? null,
     tiers: existingGig?.tiers || persistedDraft?.tiers || [
       { tier: 'basic', title: 'Basic', description: '', price: 2500, delivery_days: 7, revisions: 1, features: [], is_active: true },
       { tier: 'standard', title: 'Standard', description: '', price: 5000, delivery_days: 14, revisions: 2, features: [], is_active: true },
@@ -233,6 +235,9 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
     if (step === 2) {
       const activeTiers = gigData.tiers.filter((t: any) => t.is_active)
       if (activeTiers.length === 0) newErrors.tiers = 'At least one pricing tier must be active'
+      if (gigData.unit_pricing && (!Number.isSafeInteger(gigData.unit_pricing.unit_price_cents) || gigData.unit_pricing.unit_price_cents < 1)) {
+        newErrors.unit_pricing = 'Set a positive unit price or clear unit pricing to inherit.'
+      }
       activeTiers.forEach((tier: any, index: number) => {
         if (!tier.title.trim()) newErrors[`tier_${index}_title`] = 'Tier title is required'
         if (!tier.price || tier.price < 100) newErrors[`tier_${index}_price`] = 'Price must be at least $1.00'
@@ -1273,6 +1278,58 @@ function PricingStep({ gigData, errors, onChange, onTierChange, role }: any) {
         Create up to 3 pricing tiers with different scopes and delivery times. At least one tier must be active.
       </p>
 
+      <Card style={{ padding: '20px', marginBottom: '16px', border: `1px solid ${T.rule}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: T.ink }}>Optional unit pricing</h3>
+            <div style={formHint}>Leave unset to inherit the existing pricing behavior.</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange('unit_pricing', gigData.unit_pricing ? null : { unit: 'page', unit_price_cents: 100, included_units: 0, min_units: 1, base_cents: 0 })}
+            style={{ border: `1px solid ${T.rule}`, borderRadius: '8px', background: T.paper2, color: T.ink, padding: '8px 12px', cursor: 'pointer' }}
+          >
+            {gigData.unit_pricing ? 'Clear and inherit' : 'Set unit pricing'}
+          </button>
+        </div>
+        {gigData.unit_pricing && <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
+            <div>
+              <label style={formLabel}>Unit</label>
+              <select
+                value={gigData.unit_pricing.unit || 'page'}
+                onChange={e => onChange('unit_pricing', { ...gigData.unit_pricing, unit: e.target.value })}
+                style={selectStyle}
+              >
+                {['page', 'word', 'document', 'form', 'hour', 'session'].map(unit => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={formLabel}>Price per unit (USD)</label>
+              <input type="number" min="0.01" step="0.01" value={(gigData.unit_pricing.unit_price_cents ?? 100) / 100}
+                onChange={e => onChange('unit_pricing', { ...gigData.unit_pricing, unit_price_cents: Math.round(Number(e.target.value || 0) * 100) })} style={inputStyle} />
+            </div>
+            {(['included_units', 'min_units'] as const).map(field => <div key={field}>
+              <label style={formLabel}>{field === 'included_units' ? 'Included units' : 'Minimum billable units'}</label>
+              <input type="number" min="0" step="1" value={gigData.unit_pricing[field] ?? ''}
+                onChange={e => onChange('unit_pricing', { ...gigData.unit_pricing, [field]: e.target.value === '' ? null : Number(e.target.value) })} style={inputStyle} />
+            </div>)}
+            <div>
+              <label style={formLabel}>Base price (USD)</label>
+              <input type="number" min="0" step="0.01" value={gigData.unit_pricing.base_cents == null ? '' : gigData.unit_pricing.base_cents / 100}
+                onChange={e => onChange('unit_pricing', { ...gigData.unit_pricing, base_cents: e.target.value === '' ? null : Math.round(Number(e.target.value) * 100) })} style={inputStyle} />
+            </div>
+          </div>
+          {errors.unit_pricing && <div style={formError}>{errors.unit_pricing}</div>}
+        </>}
+        <div style={{ marginTop: '16px', maxWidth: '360px' }}>
+          <label style={formLabel}>Internal hourly rate override (USD/hour)</label>
+          <input type="number" min="0.01" step="0.01" value={gigData.hourly_rate_cents == null ? '' : gigData.hourly_rate_cents / 100}
+            onChange={e => onChange('hourly_rate_cents', e.target.value === '' ? null : Math.round(Number(e.target.value) * 100))} style={inputStyle} />
+          <div style={formHint}>Used for internal workload pricing. Blank inherits the configured rate.</div>
+        </div>
+      </Card>
+
       {gigData.tiers.map((tier: any, index: number) => (
         <Card
           key={index}
@@ -1321,6 +1378,25 @@ function PricingStep({ gigData, errors, onChange, onTierChange, role }: any) {
                 style={inputStyle}
               />
               {errors[`tier_${index}_price`] && <div style={formError}>{errors[`tier_${index}_price`]}</div>}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={formLabel}>Scope depth</label>
+              <select value={tier.scope_depth || ''} onChange={e => onTierChange(index, 'scope_depth', e.target.value || null)} style={selectStyle}>
+                <option value="">Inherit from tier</option>
+                <option value="consult">Consult</option>
+                <option value="review">Review</option>
+                <option value="partial">Partial</option>
+                <option value="full">Full</option>
+              </select>
+            </div>
+            <div>
+              <label style={formLabel}>Scope units</label>
+              <input type="number" min="1" step="1" value={tier.scope_units ?? ''}
+                onChange={e => onTierChange(index, 'scope_units', e.target.value === '' ? null : Number(e.target.value))} style={inputStyle} />
+              <div style={formHint}>Leave blank to infer the unit count from this tier.</div>
             </div>
           </div>
 

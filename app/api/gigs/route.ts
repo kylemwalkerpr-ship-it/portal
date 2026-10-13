@@ -5,6 +5,7 @@ import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
+import { normalizeGigPricingScope, normalizeTierScope } from '@/lib/yqaaGigScope'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
       .range(0, 99)
 
     if (error) return fail(error.message, 500)
-    const payload = { gigs: rows ?? [], total: count ?? 0 }
+    const payload = { gigs: (rows ?? []).map(({ hourly_rate_cents: _internalRate, ...gig }: any) => gig), total: count ?? 0 }
     await setCached(cacheKey, payload, 60)
     return ok(payload)
   }
@@ -216,6 +217,8 @@ export async function POST(req: Request) {
   if ((count ?? 0) >= postLimit) return fail(`You've reached your ${postLimit}-service limit. Delete or archive an existing service to create another. Grow to a higher seller level to unlock more slots.`, 409)
 
   const body = await req.json().catch(() => ({}))
+  const pricingScope = normalizeGigPricingScope(body)
+  if (pricingScope.ok === false) return fail(pricingScope.message, 422, { fields: { [pricingScope.field]: pricingScope.message } })
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Untitled service'
   const slug = await buildUniqueSlug(db, title)
   const status = 'draft' // new gigs always start as draft; use /publish to activate
@@ -248,6 +251,7 @@ export async function POST(req: Request) {
   const insertPayload: Record<string, any> = {
     provider_id: auth.profileId,
     provider_type: auth.role,
+    ...pricingScope.values,
     title,
     category,
     subcategory,
@@ -271,6 +275,28 @@ export async function POST(req: Request) {
       return isValidGigAiOverview(cleaned) ? cleaned : null
     })(),
     slug,
+  }
+
+  const preparedTierRows: Record<string, unknown>[] = []
+  for (const [index, tier] of (tiers.length ? tiers : [{ tier: 'basic', title: 'Basic', price: 100, delivery_days: 1, revisions: 1, features: [], is_active: true }]).entries()) {
+    if (!tier || typeof tier !== 'object' || Array.isArray(tier)) return fail('Tier must be an object.', 422, { fields: { [`tiers.${index}`]: 'Tier must be an object.' } })
+    const scopePatch = normalizeTierScope({
+      ...('scope_depth' in tier ? { scope_depth: tier.scope_depth } : {}),
+      ...('scope_units' in tier ? { scope_units: tier.scope_units } : {}),
+    })
+    if (scopePatch.ok === false) return fail(scopePatch.message, 422, { fields: { [`tiers.${index}.${scopePatch.field}`]: scopePatch.message } })
+    preparedTierRows.push({
+      tier: ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index],
+      title: String(tier.title || tier.tier || 'Package').slice(0, 80),
+      description: String(tier.description || ''),
+      price: Math.max(100, Number(tier.price || 100)),
+      delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
+      revisions: Math.max(0, Number(tier.revisions || 0)),
+      features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
+      is_active: tier.is_active !== false,
+      scope_depth: scopePatch.values.scope_depth ?? null,
+      scope_units: scopePatch.values.scope_units ?? null,
+    })
   }
 
   let { data: gig, error } = await db
@@ -299,19 +325,7 @@ export async function POST(req: Request) {
 
   if (error || !gig) return fail(error?.message || 'Could not create gig.', 500)
 
-  const tierRows = (tiers.length ? tiers : [{ tier: 'basic', title: 'Basic', price: 100, delivery_days: 1, revisions: 1, features: [], is_active: true }])
-    .map((tier: any, index: number) => ({
-      gig_id: gig.id,
-      tier: ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index],
-      title: String(tier.title || tier.tier || 'Package').slice(0, 80),
-      description: String(tier.description || ''),
-      price: Math.max(100, Number(tier.price || 100)),
-      delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
-      revisions: Math.max(0, Number(tier.revisions || 0)),
-      features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
-      is_active: tier.is_active !== false,
-    }))
-
+  const tierRows = preparedTierRows.map((tier) => ({ ...tier, gig_id: gig.id }))
   const { error: tierError } = await db.from('gig_tiers').insert(tierRows)
   if (tierError) return fail(tierError.message, 500)
 

@@ -3,6 +3,7 @@ import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { stripInternalGigPricing } from '@/lib/yqaaGigScope'
 
 const RECOMMENDATION_SELECT = 'id, provider_id, slug, title, pitch, avg_rating, review_count, order_count, gallery_images, category, subcategory, jurisdiction, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, username)'
 
@@ -93,6 +94,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   const cover = resolveCoverUrl(gig)
   const normalizedGallery = normalizeGallery(gig.gallery_images)
+  const clientSafeGig = stripInternalGigPricing(gig)
 
   // Preserve the commercial hierarchy while deduplicating records returned by
   // multiple shelves. A provider's other services come first, then category
@@ -129,7 +131,8 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   return ok({
     gig: {
-      ...gig,
+      ...clientSafeGig,
+      ...((isOwner || isAdmin) && gig.hourly_rate_cents != null ? { hourly_rate_cents: gig.hourly_rate_cents } : {}),
       gallery_images: normalizedGallery,
       cover_image_url: cover,
       provider_avg_rating: providerStats.avg_rating,
