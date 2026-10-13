@@ -22,6 +22,7 @@ import {
   toCents,
 } from '@/lib/fiverr'
 import { buildMessengerSiteKnowledge } from '@/lib/messengerSiteKnowledge'
+import type { KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import {
   BUDGET_STATUS_LEAK_PHRASES,
   budgetGapReplyAlreadySent,
@@ -320,6 +321,25 @@ type GrokDecision = {
     expires_in_days?: number
     gig_id?: string
   } | null
+}
+
+export function enforceCompanionEscalation(
+  modelDecision: GrokDecision,
+  companion: Pick<CompanionDecision, 'escalate'> | null,
+): GrokDecision {
+  if (!companion?.escalate) return modelDecision
+  return { ...modelDecision, escalate: true, offer: null }
+}
+
+export function insufficientEvidenceHandoffReply(providerLabel: string) {
+  const provider = String(providerLabel || 'the provider').trim().slice(0, 120) || 'the provider'
+  return `I don’t have enough reliable information here to answer that safely. I’m bringing ${provider} into the conversation to review it with you.`
+}
+
+export function yqaaOfferIdempotencyKey(conversationId: string, triggerMessageId: string | null | undefined) {
+  const conversation = String(conversationId || '').trim()
+  const trigger = String(triggerMessageId || '').trim()
+  return conversation && trigger ? `yqaa:${conversation}:${trigger}` : null
 }
 
 function parseDecision(raw: string): GrokDecision {
@@ -662,9 +682,8 @@ export function commerceBuyIntent(text: string) {
 function adaptiveGuardContext(adaptive: AdaptivePricingDecision | null) {
   if (!adaptive || !adaptive.approved_price_cents) return null
   return {
-    scopedFloorCents: adaptive.quote.scoped_floor_cents,
+    scopedFloorCents: adaptive.approved_floor_cents ?? adaptive.quote.scoped_floor_cents,
     approvedPriceCents: adaptive.approved_price_cents,
-    approvalToken: adaptive.approval_token,
     scoped: true,
   }
 }
@@ -705,6 +724,9 @@ export function companionAllowedAmounts(
  */
 export async function buildMessengerDecisionAuthority(args: {
   latestClientText: string
+  evidence?: KnowledgeChunk[]
+  missingLegalEvidence?: boolean
+  evidenceSensitive?: boolean
   adaptive: AdaptivePricingDecision | null
   memory: YqaaConversationMemory | null
   frustrated: boolean
@@ -718,7 +740,7 @@ export async function buildMessengerDecisionAuthority(args: {
   return buildCompanionDecision({
     channel: 'dm',
     redactedQuery: sanitizeYqaaPublicQuestion(args.latestClientText),
-    evidence: [],
+    evidence: args.evidence || [],
     hostname: null,
     pricing: args.adaptive,
     frustration: args.frustrated,
@@ -727,6 +749,9 @@ export async function buildMessengerDecisionAuthority(args: {
     hasNewScopeOrCounter: args.hasNewScopeOrCounter,
     commerceIntent: commerceIntent(args.latestClientText),
     highStakes: Boolean(args.highStakes),
+    thinEvidence: Boolean(args.missingLegalEvidence),
+    missingLegalEvidence: Boolean(args.missingLegalEvidence),
+    evidenceSensitive: Boolean(args.evidenceSensitive),
     journeyStage: args.memory?.journey_stage ?? null,
     emotionBand: args.memory?.emotion_band ?? null,
     priorPosture: args.memory?.last_posture ?? null,
@@ -761,14 +786,16 @@ function renderYqaaEvidenceChunks(chunks: any[], limit = 6): string {
   return lines.join('\n')
 }
 
-export async function loadMessengerLegalEvidence(latestClientText: string): Promise<string | null> {
+export async function loadMessengerLegalEvidenceBundle(latestClientText: string): Promise<{ appendix: string | null; evidence: KnowledgeChunk[] }> {
   const query = String(latestClientText || '').trim()
-  if (!query || !messengerNeedsLegalEvidence(query)) return null
+  if (!query || !messengerNeedsLegalEvidence(query)) return { appendix: null, evidence: [] }
 
   const parts: string[] = []
+  const evidence: KnowledgeChunk[] = []
   try {
     const pack = await loadYqaaEvidence({ query, limit: 12 })
     if (pack?.chunks?.length) {
+      evidence.push(...pack.chunks)
       parts.push(`## GROUNDED LEGAL / PUBLIC EVIDENCE\nSource: YouSafe curated knowledge${pack.source === 'database' || pack.source === 'database+bundled' ? ' + indexed knowledge base' : ''} (confidence ${(pack.retrievalConfidence || 0).toFixed(2)}).\n${renderYqaaEvidenceChunks(pack.chunks)}`)
     }
   } catch (err) {
@@ -778,6 +805,7 @@ export async function loadMessengerLegalEvidence(latestClientText: string): Prom
   if (yqaaNeedsFreshWebResearch(query)) {
     try {
       const webChunks = await researchYqaaPublicWeb(query)
+      evidence.push(...webChunks)
       const liveContext = buildYqaaLiveResearchContext(webChunks, webChunks.length ? 'retrieved' : 'insufficient')
       if (liveContext) {
         parts.push(`## LIVE WEB RESEARCH THIS TURN\n${liveContext}\n${renderYqaaEvidenceChunks(webChunks, 3)}`)
@@ -787,14 +815,22 @@ export async function loadMessengerLegalEvidence(latestClientText: string): Prom
     }
   }
 
-  if (!parts.length) return null
-  return [...parts, 'Use only what these sources and the thread support. Never invent statutes, deadlines, or outcomes; when evidence is thin, say so and escalate to the provider.'].join('\n\n')
+  if (!parts.length) return { appendix: null, evidence }
+  return {
+    appendix: [...parts, 'Use only what these sources and the thread support. Never invent statutes, deadlines, or outcomes; when evidence is thin, say so and escalate to the provider.'].join('\n\n'),
+    evidence,
+  }
+}
+
+export async function loadMessengerLegalEvidence(latestClientText: string): Promise<string | null> {
+  return (await loadMessengerLegalEvidenceBundle(latestClientText)).appendix
 }
 
 async function createOfferFromDecision(
   db: any,
   args: {
     conversationId: string
+    triggerMessageId: string
     conv: any
     provider: any
     client: any
@@ -847,22 +883,21 @@ async function createOfferFromDecision(
   }
 
   const chatId = providerType === 'attorney' ? inquiryId! : args.conversationId
+  const idempotencyKey = yqaaOfferIdempotencyKey(args.conversationId, args.triggerMessageId)
+  if (!idempotencyKey) return null
 
-  // Idempotency: do not fire an identical pending AI offer twice if retries or
-  // duplicate inbound events race each other.
-  try {
-    const { data: duplicate } = await db
+  const loadExistingByKey = async () => {
+    const { data } = await db
       .from('offers')
       .select('id,title,price,currency')
-      .eq('chat_id', chatId)
-      .eq('sender_id', args.provider.id)
-      .eq('recipient_id', args.client.id)
-      .eq('status', 'pending')
-      .eq('price', price)
-      .eq('title', title)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .eq('yqaa_idempotency_key', idempotencyKey)
       .maybeSingle()
+    return data
+  }
+
+  // Fast-path retries. The unique index below remains the atomic race boundary.
+  try {
+    const duplicate = await loadExistingByKey()
     if (duplicate?.id) {
       const memory = withOfferInMemory(args.memory, {
         id: duplicate.id,
@@ -872,8 +907,9 @@ async function createOfferFromDecision(
       })
       return { id: duplicate.id, title, priceCents: price, currency: duplicate.currency || settings.primary_currency, memory }
     }
-  } catch {
-    /* proceed; DB uniqueness is not relied on for correctness */
+  } catch (err) {
+    console.warn('[messengerAi] offer idempotency lookup failed', err instanceof Error ? err.message : err)
+    return null
   }
 
   const offerInsert: Record<string, any> = {
@@ -888,11 +924,28 @@ async function createOfferFromDecision(
     delivery_days: deliveryDays,
     revisions,
     expires_at: expiresAt.toISOString(),
+    yqaa_idempotency_key: idempotencyKey,
   }
   if (attachedGigId) offerInsert.gig_id = attachedGigId
 
   const { data: offer, error } = await db.from('offers').insert(offerInsert).select('id').maybeSingle()
   if (error || !offer) {
+    if (error?.code === '23505' || /yqaa_idempotency_key/i.test(error?.message || '')) {
+      try {
+        const duplicate = await loadExistingByKey()
+        if (duplicate?.id) {
+          const memory = withOfferInMemory(args.memory, {
+            id: duplicate.id,
+            title: duplicate.title || title,
+            priceCents: Number(duplicate.price) || price,
+            currency: duplicate.currency || settings.primary_currency,
+          })
+          return { id: duplicate.id, title: duplicate.title || title, priceCents: Number(duplicate.price) || price, currency: duplicate.currency || settings.primary_currency, memory }
+        }
+      } catch (lookupError) {
+        console.error('[messengerAi] duplicate offer lookup failed', lookupError instanceof Error ? lookupError.message : lookupError)
+      }
+    }
     console.error('[messengerAi] offer insert failed', error?.message)
     return null
   }
@@ -1045,7 +1098,7 @@ export async function maybeAutoReply(opts: {
     let memory: YqaaConversationMemory | null = null
 
     try {
-      const [docSummary, sitePack, pricing, legalEvidence] = await Promise.all([
+      const [docSummary, sitePack, pricing, legalEvidenceBundle] = await Promise.all([
         summarizeAttachments(db, msgs),
         buildMessengerSiteKnowledge({
           db,
@@ -1065,12 +1118,14 @@ export async function maybeAutoReply(opts: {
           console.warn('[messengerAi] pricing authority failed', err instanceof Error ? err.message : err)
           return null
         }),
-        loadMessengerLegalEvidence(String(latestClientText || '')).catch((err) => {
-          // Fail soft: legal orientation continues with the site pack only.
+        loadMessengerLegalEvidenceBundle(String(latestClientText || '')).catch((err) => {
+          // An empty source set is handled as a deterministic provider handoff.
           console.warn('[messengerAi] legal evidence failed', err instanceof Error ? err.message : err)
-          return null
+          return { appendix: null, evidence: [] }
         }),
       ])
+      const legalEvidence = legalEvidenceBundle.appendix
+      const legalEvidenceMissing = messengerNeedsLegalEvidence(String(latestClientText || '')) && legalEvidenceBundle.evidence.length === 0
 
       if (!pricing) {
         await clearTypingBubble(db, typingId)
@@ -1098,7 +1153,7 @@ export async function maybeAutoReply(opts: {
       const decisionTriggers = yqaaJevTriggers({
         query: String(latestClientText || ''),
         hostname: null,
-        evidence: [],
+        evidence: legalEvidenceBundle.evidence,
       })
       const highStakes = decisionTriggers.includes('high_stakes')
 
@@ -1130,6 +1185,9 @@ export async function maybeAutoReply(opts: {
 
       const companion = await buildMessengerDecisionAuthority({
         latestClientText: String(latestClientText || ''),
+        evidence: legalEvidenceBundle.evidence,
+        missingLegalEvidence: legalEvidenceMissing,
+        evidenceSensitive: messengerNeedsLegalEvidence(String(latestClientText || '')),
         adaptive,
         memory: conversationMemory,
         frustrated,
@@ -1217,6 +1275,16 @@ export async function maybeAutoReply(opts: {
       let approvedOffer: { priceCents: number } | null = null
       let providerReview = false
       let approvalPending = Boolean(adaptive?.approval_required)
+
+      // Model output cannot clear a server-required escalation or issue an offer
+      // on a handoff turn, regardless of the model's parsed `escalate` value.
+      const insufficientEvidenceHandoff = legalEvidenceMissing || Boolean(companion?.reasons.some(
+        (reason) => reason === 'legal_evidence_missing' || reason === 'jev_requires_handoff' || reason === 'jev_evidence_insufficient',
+      ))
+      decision = enforceCompanionEscalation(decision, companion || (legalEvidenceMissing ? { escalate: true } : null))
+      if (insufficientEvidenceHandoff) {
+        replyText = insufficientEvidenceHandoffReply(providerLabel)
+      }
 
       // Never let the model bypass budget-first pricing merely by placing a
       // number in prose rather than the structured offer field.
@@ -1412,6 +1480,7 @@ export async function maybeAutoReply(opts: {
         try {
           const created = await createOfferFromDecision(db, {
             conversationId: opts.conversationId,
+            triggerMessageId: opts.triggerMessageId || lastMsg.id,
             conv,
             provider,
             client,

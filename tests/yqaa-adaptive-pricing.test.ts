@@ -469,6 +469,21 @@ describe('adaptive pricing — N-series negotiation bands', () => {
     expect(finalized.price_cents).toBeLessThan(list)
   })
 
+  test('M3 a prior lower quote cannot push the final number below the current floor', () => {
+    const finalized = finalizeNumbers({
+      action: 'ACCEPT',
+      listPriceCents: 20_000,
+      floorCents: 12_000,
+      policy,
+      counterCents: 11_000,
+      clientBudgetMaxCents: 25_000,
+      scopeHash: 'scope-current',
+      previousQuotes: [{ cents: 10_000, scope_hash: 'scope-current' }],
+    })
+    expect(finalized).toMatchObject({ action: 'ESCALATE_PROVIDER', price_cents: null })
+    expect(finalized.reason_codes).toContain('monotonic_below_current_floor')
+  })
+
   test('N3 a 50% lowball downscopes to a scope that fits, and never prices below the floor', async () => {
     expect(APPROVAL_BAND_PCT).toBe(0.35)
     const gig = gigRow({

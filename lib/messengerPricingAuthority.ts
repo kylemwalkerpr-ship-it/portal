@@ -630,7 +630,7 @@ export type OfferNegotiationContext = {
   scopedFloorCents?: number | null
   /** Price the adaptive layer has already finalized for this turn. */
   approvedPriceCents?: number | null
-  /** Server-issued approval token for a below-floor figure (provider approved). */
+  /** Legacy generated decision token; it is not provider approval and is ignored. */
   approvalToken?: string | null
   /** True when the adaptive layer evaluated the scope itself (so it owns the floor). */
   scoped?: boolean
@@ -681,17 +681,13 @@ export function guardMessengerOffer(args: {
     ? scopedFloorCents
     : (p.minimumAutoOfferCents || p.platformMinimumCents)
   if (priceCents < floor) {
-    if (hasScopedFloor && negotiation?.approvalToken) {
-      // Provider-approved below-floor figure: allowed with the server token.
-      return { ok: true, priceCents, reason: 'within_authority', needsProviderReview: false }
-    }
     return {
       ok: false,
       reason: 'below_guarded_floor',
       reply: hasScopedFloor
         ? `That figure sits below what this scope of work needs, and I don’t want to undercut the provider’s work. I can ask the provider to review the pricing for this scope — want me to do that?`
         : `I can’t send that figure — it sits below what the current live evidence supports for this scope, and I don’t want to undercut the provider’s work. Rather than throwing numbers around, tell me the figure you’d be comfortable with and I’ll check it against the evidence, or we can narrow what’s included.`,
-      needsProviderReview: hasScopedFloor,
+      needsProviderReview: true,
     }
   }
   if (priceCents > p.budget.maxCents) {

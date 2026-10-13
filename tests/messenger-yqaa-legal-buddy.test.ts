@@ -1,4 +1,10 @@
-import { loadMessengerLegalEvidence, messengerNeedsLegalEvidence } from '@/lib/messengerAi'
+import {
+  enforceCompanionEscalation,
+  insufficientEvidenceHandoffReply,
+  loadMessengerLegalEvidence,
+  messengerNeedsLegalEvidence,
+  yqaaOfferIdempotencyKey,
+} from '@/lib/messengerAi'
 import { lowBudgetEscalationReply } from '@/lib/messengerPricingAuthority'
 
 jest.mock('@/lib/yqaaKnowledgeDb', () => ({
@@ -60,5 +66,26 @@ describe('legal-buddy escalation reply', () => {
     expect(reply.toLowerCase()).not.toContain('revenue-safe')
     expect(reply).not.toMatch(/\$\s*\d/)
     expect(reply).toMatch(/hear|circles|straight answer/i)
+  })
+
+  test('missing evidence handoff is explicit and names the human provider', () => {
+    const reply = insufficientEvidenceHandoffReply('Avery')
+    expect(reply).toContain('enough reliable information')
+    expect(reply).toContain('Avery')
+  })
+
+  test('server escalation overrides a model decline and removes its offer', () => {
+    expect(enforceCompanionEscalation(
+      { reply: 'Here is my answer.', escalate: false, offer: { title: 'Offer' } },
+      { escalate: true },
+    )).toMatchObject({ escalate: true, offer: null })
+  })
+
+  test('offer idempotency key is bound to the conversation and triggering message', () => {
+    expect(yqaaOfferIdempotencyKey('conversation-1', 'message-9')).toBe('yqaa:conversation-1:message-9')
+    expect(yqaaOfferIdempotencyKey('conversation-1', null)).toBeNull()
+    expect(yqaaOfferIdempotencyKey('conversation-1', 'message-10')).not.toBe(
+      yqaaOfferIdempotencyKey('conversation-1', 'message-9'),
+    )
   })
 })

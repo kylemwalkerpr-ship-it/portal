@@ -73,7 +73,7 @@ describe('YQAA marketplace pricing authority', () => {
     expect(scoped).toMatchObject({ ok: true, priceCents: 5_500 })
   })
 
-  test('a price below the scoped floor needs a provider approval token', () => {
+  test('a generated approval token cannot substitute for provider approval below the scoped floor', () => {
     const p = pricing()
     const blocked = guardMessengerOffer({
       pricing: p,
@@ -87,12 +87,12 @@ describe('YQAA marketplace pricing authority', () => {
       expect(blocked.reply.toLowerCase()).not.toContain('floor')
       expect(blocked.reply).not.toContain('revenue-safe')
     }
-    const approved = guardMessengerOffer({
+    const tokenIsNotApproval = guardMessengerOffer({
       pricing: p,
       proposedPriceUsd: 30,
       negotiation: { scopedFloorCents: 4_500, approvedPriceCents: null, approvalToken: 'tok-1', scoped: true },
     })
-    expect(approved).toMatchObject({ ok: true, priceCents: 3_000 })
+    expect(tokenIsNotApproval).toMatchObject({ ok: false, reason: 'below_guarded_floor', needsProviderReview: true })
   })
 
   test('the guard refuses a model figure that is not the server-approved one', () => {

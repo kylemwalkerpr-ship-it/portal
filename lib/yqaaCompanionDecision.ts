@@ -58,6 +58,10 @@ export type CompanionDecisionArgs = {
   highStakes?: boolean
   supportIssue?: boolean
   thinEvidence?: boolean
+  /** A legal-orientation query had no retrieved legal/public source this turn. */
+  missingLegalEvidence?: boolean
+  /** The reply will make factual legal/public claims that require evidence. */
+  evidenceSensitive?: boolean
   journeyStage?: string | null
   emotionBand?: string | null
   priorPosture?: string | null
@@ -148,6 +152,7 @@ export function deterministicCompanionGate(args: {
   hasNewScopeOrCounter: boolean
   highStakes?: boolean
   supportIssue?: boolean
+  missingLegalEvidence?: boolean
 }): { posture: CompanionPosture; escalate: boolean; reason: string } | null {
   if (args.supportIssue) {
     return { posture: 'HANDOFF_SUPPORT', escalate: false, reason: 'support_issue_handoff' }
@@ -157,6 +162,9 @@ export function deterministicCompanionGate(args: {
   }
   if (args.highStakes) {
     return { posture: 'ESCALATE_PROVIDER', escalate: true, reason: 'high_stakes_ymyl' }
+  }
+  if (args.missingLegalEvidence) {
+    return { posture: 'ESCALATE_PROVIDER', escalate: true, reason: 'legal_evidence_missing' }
   }
   if (args.duplicateRisk) {
     return { posture: 'ESCALATE_PROVIDER', escalate: true, reason: 'duplicate_reply_risk' }
@@ -170,7 +178,7 @@ export function deterministicCompanionGate(args: {
 export async function buildCompanionDecision(args: CompanionDecisionArgs): Promise<CompanionDecision> {
   const reasons: string[] = []
   const pricing = args.pricing || null
-  const gate = deterministicCompanionGate({
+  let gate = deterministicCompanionGate({
     channel: args.channel,
     frustration: args.frustration,
     duplicateRisk: args.duplicateRisk,
@@ -178,6 +186,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
     hasNewScopeOrCounter: args.hasNewScopeOrCounter,
     highStakes: args.highStakes,
     supportIssue: args.supportIssue,
+    missingLegalEvidence: args.missingLegalEvidence,
   })
 
   const postures = eligiblePostures({
@@ -232,6 +241,13 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         ignored: result.ignored,
       }
       if (result.ignored.length) reasons.push('jev_option_pruned')
+      if (!gate && (result.needsHandoff || (args.evidenceSensitive && !result.sufficient))) {
+        gate = {
+          posture: 'ESCALATE_PROVIDER',
+          escalate: true,
+          reason: result.needsHandoff ? 'jev_requires_handoff' : 'jev_evidence_insufficient',
+        }
+      }
     } else if (result.available === false) {
       reasons.push(`jev_unavailable_${result.reason}`)
     }

@@ -313,6 +313,8 @@ export type AdaptivePricingDecision = {
   eligible_actions: NegotiationAction[]
   recommended_action: NegotiationAction
   approved_price_cents: number | null
+  /** Internal floor paired with the approved number (never rendered to the client). */
+  approved_floor_cents: number | null
   approval_required: boolean
   approval_token: string | null
   downscope_options: DownscopeOption[]
@@ -1878,6 +1880,18 @@ export function finalizeNumbers(args: {
     }
   }
 
+  // A prior quote is not permission to cross today's floor. If the monotonic
+  // ceiling is now below the current floor, stop and ask the provider instead
+  // of returning a price that the guard would have to approve below-floor.
+  if (price < floor) {
+    return {
+      price_cents: null,
+      action: 'ESCALATE_PROVIDER',
+      concessions_used: concessionsUsed,
+      reason_codes: [...reasonCodes, 'monotonic_below_current_floor'],
+    }
+  }
+
   if (isConcession) concessionsUsed += 1
   return { price_cents: price, action: args.action, concessions_used: concessionsUsed, reason_codes: reasonCodes }
 }
@@ -1904,10 +1918,6 @@ function recommendedActionFor(args: {
   })()
   for (const candidate of preferred) if (args.eligible.includes(candidate)) return candidate
   return args.eligible[0] || 'HOLD_VALUE'
-}
-
-function approvalTokenFor(args: { scopeHash: string; action: NegotiationAction; priceCents: number | null; floorCents: number }) {
-  return stableHash(`approval|${args.scopeHash}|${args.action}|${args.priceCents}|${args.floorCents}`)
 }
 
 export async function buildAdaptivePricingDecision(args: {
@@ -2024,14 +2034,8 @@ export async function buildAdaptivePricingDecision(args: {
   const approvalRequired =
     channel === 'dm' &&
     (finalized.action === 'ESCALATE_PROVIDER' || quote.needs_provider_confirm || Boolean(policy.min_floor_cents && approvedPrice && approvedPrice < policy.min_floor_cents))
-  const approvalToken = finalized.action === 'HOLD_VALUE' || finalized.action === 'QUOTE' || finalized.action === 'ESCALATE_PROVIDER'
-    ? null
-    : approvalTokenFor({
-        scopeHash: finalizedScopeHash(recommended, bestDownscope, quote),
-        action: finalized.action,
-        priceCents: approvedPrice,
-        floorCents: quote.scoped_floor_cents,
-      })
+  // A generated token only describes this deterministic pricing decision. It
+  // is not evidence that a provider approved a below-floor exception.
 
   const status: AdaptivePricingStatus = (() => {
     if (channel === 'public') return 'public_no_negotiation'
@@ -2076,8 +2080,9 @@ export async function buildAdaptivePricingDecision(args: {
     eligible_actions: eligible,
     recommended_action: recommended,
     approved_price_cents: channel === 'public' ? null : approvedPrice,
+    approved_floor_cents: channel === 'public' || !approvedPrice ? null : downscopeFloor,
     approval_required: approvalRequired,
-    approval_token: approvalToken,
+    approval_token: null,
     downscope_options: options,
     client_safe: {
       approved_quote_cents: channel === 'public' ? null : approvedPrice,

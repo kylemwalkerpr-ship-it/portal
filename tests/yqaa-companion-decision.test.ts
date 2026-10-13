@@ -183,6 +183,25 @@ describe('companion decision — deterministic gates', () => {
     expect(decision.escalate).toBe(true)
   })
 
+  test('missing legal evidence forces a provider handoff even when Jev says sufficient', async () => {
+    const decision = await buildCompanionDecision(args({
+      missingLegalEvidence: true,
+      jevRequest: jevStub(jevSufficient),
+    }))
+    expect(decision).toMatchObject({ posture: 'ESCALATE_PROVIDER', escalate: true })
+    expect(decision.reasons).toContain('legal_evidence_missing')
+  })
+
+  test('Jev-reported insufficient evidence forces a provider handoff', async () => {
+    const decision = await buildCompanionDecision(args({
+      evidence: [{ id: 'kb-1', title: 'A source', body: 'Some relevant source text', site: 'canada' } as any],
+      evidenceSensitive: true,
+      jevRequest: jevStub({ ...jevSufficient, sufficient: false, confidence: 0.4 }),
+    }))
+    expect(decision).toMatchObject({ posture: 'ESCALATE_PROVIDER', escalate: true })
+    expect(decision.reasons).toContain('jev_evidence_insufficient')
+  })
+
   test('a budget gap already explained with no new scope or counter escalates', async () => {
     const gate = deterministicCompanionGate({
       channel: 'dm',

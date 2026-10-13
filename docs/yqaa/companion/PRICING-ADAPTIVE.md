@@ -120,8 +120,8 @@ Frustration/exit (`clientFrustrationOrExit`) is **not** abuse. It forces EMPATHI
 
 - Round to `round_to_cents`. Clamp to ≥ scopedFloor and ≤ client budget max (never quote above a stated budget without asking).
 - **Monotonic:** for the same `scope_hash`, a new quote ≤ the previous quote. A narrower scope may be lower; a wider scope may be higher only if the reply explains what was added.
-- `guardMessengerOffer` gains a `negotiation` arg. It validates against `scopedFloor` (not the blended floor) when `basis` ≠ `market_p25`, and requires an `approval_token` for anything below scopedFloor.
-- Below band with provider approval → set `ai_pricing_approval_pending` on conversation metadata + provider notification. The offer is created only after the provider approves (or the provider sends it themselves using the existing `original_price`/`discount_percent` offer fields).
+- `guardMessengerOffer` validates against the current scoped floor. A generated pricing-decision token is not provider approval and cannot authorize a below-floor offer. Until authenticated provider approval is represented by durable evidence, below-floor offers remain blocked and route for provider review.
+- Below band: set `ai_pricing_approval_pending` on conversation metadata + provider notification. A future approval flow may create the offer only after the provider's approval is durably recorded (or the provider sends it themselves using the existing `original_price`/`discount_percent` offer fields).
 
 ### 3.7 Negotiation memory (extends `YqaaConversationMemory` → v2, additive)
 
