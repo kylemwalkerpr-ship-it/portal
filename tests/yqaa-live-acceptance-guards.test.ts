@@ -7,6 +7,11 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('a failed public probe permits independent DM checks but cannot mark full acceptance passed', () => {
+    expect(harness).toContain('return ok')
+    expect(harness).toContain("if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')")
+  })
+
   test('quiet cleanup fetches every ownership field before validating the current-run thread', () => {
     const quiet = harness.slice(harness.indexOf('const quietOutcome ='))
     expect(quiet).toContain('conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${thread.id}')
@@ -17,7 +22,7 @@ describe('manual YQAA live acceptance safety guards', () => {
   test('receipt path matches workflow upload and success rechecks deployment identity', () => {
     expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
     expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')
-    expect(harness).toMatch(/await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+receipt.status = 'passed'/)
+    expect(harness).toMatch(/await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+if \(!publicGenerationOk\) throw new Error\([^\n]+\);?\s+receipt.status = 'passed'/)
   })
 
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
@@ -105,7 +110,7 @@ describe('manual YQAA live acceptance safety guards', () => {
   })
 
   test('public generation health probe runs after deployed identity and stores only bounded diagnostics', () => {
-    expect(harness).toMatch(/await assertLiveIdentity\(\);?\s+await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
+    expect(harness).toMatch(/await assertLiveIdentity\(\);?\s+const publicGenerationOk = await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
     expect(harness).toContain("'For a public service listing, what questions should someone ask before choosing a provider?'")
     expect(harness).toContain('model_category: modelCategory')
     expect(harness).toContain('await response.json().catch(() => null)')

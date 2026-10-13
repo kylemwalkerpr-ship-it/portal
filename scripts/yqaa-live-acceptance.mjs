@@ -139,11 +139,10 @@ async function publicGenerationProbe() {
     model_category: modelCategory,
     latency_ms: latencyMs,
   }
-  check(
-    'public YQAA generation probe',
-    response.status === 200 && modelCategory === 'ok',
-    `HTTP ${response.status}; model=${modelCategory}; ${latencyMs} ms`,
-  )
+  const ok = response.status === 200 && modelCategory === 'ok'
+  receipt.checks.push({ name: 'public YQAA generation probe', status: ok ? 'passed' : 'failed', detail: `HTTP ${response.status}; model=${modelCategory}; ${latencyMs} ms` })
+  console.log(`${ok ? 'PASS' : 'FAIL'} public YQAA generation probe: HTTP ${response.status}; model=${modelCategory}`)
+  return ok
 }
 
 async function loadAndVerifyFixtures() {
@@ -618,12 +617,13 @@ let error = null
 try {
   for (const key of ['CLERK_SECRET_KEY', 'YQAA_EXPECTED_SHA', 'YQAA_EXPECTED_BUILD_ID', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_REPOSITORY']) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
   await assertLiveIdentity()
-  await publicGenerationProbe()
+  const publicGenerationOk = await publicGenerationProbe()
   browser = await chromium.launch({ headless: true })
   await loadAndVerifyFixtures()
   await providerUiChecks()
   await messengerSmoke()
   await assertLiveIdentity()
+  if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')
   receipt.status = 'passed'
 } catch (caught) {
   error = safeFailure(caught)
