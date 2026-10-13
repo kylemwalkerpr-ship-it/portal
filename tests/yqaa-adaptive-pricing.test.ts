@@ -841,6 +841,34 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
     expect(serialized).not.toContain('negotiation_posture')
   })
 
+  test('J1c a sole eligible negotiation action is deterministic and omitted from Jev Choice', async () => {
+    const payload = companionJevPayload({
+      query: 'Can you meet me in the middle?',
+      postureOptions: ['NEGOTIATE'],
+      negotiationOptions: ['MEET_MIDDLE', 'MEET_MIDDLE'],
+    })
+    expect(payload.questions).not.toHaveProperty('negotiation_posture')
+
+    const fetcher = (async (_url: any, init: any) => {
+      const body = JSON.parse(String(init?.body || '{}'))
+      expect(body.questions).not.toHaveProperty('negotiation_posture')
+      return new Response(JSON.stringify({ answers: {
+        posture: { choice: 'NEGOTIATE' },
+        sufficient: { noul: 0.9 },
+        needs_handoff: { noul: 0.1 },
+        market: { choice: 'usa' },
+      } }), { status: 200 })
+    }) as unknown as typeof fetch
+    const result = await requestCompanionJev({
+      query: 'Can you meet me in the middle?',
+      postureOptions: ['NEGOTIATE'],
+      negotiationOptions: ['MEET_MIDDLE', 'MEET_MIDDLE'],
+    }, fetcher, { apiKey: 'test-key' })
+
+    expect(result.available).toBe(true)
+    if (result.available) expect(result.negotiationPosture).toBe('MEET_MIDDLE')
+  })
+
   test('J1b a Jev timeout never throws and reports the reason', async () => {
     const timeoutFetcher = (async () => {
       const error = new Error('timed out')

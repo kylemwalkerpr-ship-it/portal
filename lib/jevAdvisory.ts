@@ -368,7 +368,7 @@ export function companionJevPayload(ctx: CompanionJevContext) {
       criteria: { usa: 'United States', canada: 'Canada', uk: 'United Kingdom', australia: 'Australia', global: 'Multiple or network-wide jurisdictions', unknown: 'Cannot determine' },
     },
   }
-  if (negotiationOptions.length) {
+  if (negotiationOptions.length >= 2) {
     questions.negotiation_posture = {
       type: 'choice',
       instructions: `${JEV_INSTRUCTIONS} Choose the negotiation posture for this turn from the allowed list only. The server computes every number; never state or imply a price.`,
@@ -445,10 +445,12 @@ export async function requestCompanionJev(
       else ignored.push(`posture:${postureRaw}`)
     }
 
+    const allowedActions = [...new Set(ctx.negotiationOptions || [])].filter(Boolean)
     const negotiationRaw = (answers.negotiation_posture as Record<string, unknown> | undefined)?.choice
-    const allowedActions = [...new Set(ctx.negotiationOptions || [])]
-    let negotiationPosture: JevNegotiationAction | null = null
-    if (typeof negotiationRaw === 'string') {
+    let negotiationPosture: JevNegotiationAction | null = allowedActions.length === 1
+      ? allowedActions[0]
+      : null
+    if (allowedActions.length > 1 && typeof negotiationRaw === 'string') {
       if (allowedActions.includes(negotiationRaw as JevNegotiationAction)) negotiationPosture = negotiationRaw as JevNegotiationAction
       else ignored.push(`negotiation_posture:${negotiationRaw}`)
     }
