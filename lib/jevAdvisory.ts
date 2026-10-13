@@ -184,7 +184,7 @@ async function readBoundedResponse(response: Response, maxBytes: number): Promis
 export async function requestJevAdvisory(
   ctx: JevContext,
   fetcher: typeof fetch = fetch,
-  options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string } } = {},
+  options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string }; signal?: AbortSignal } = {},
 ): Promise<JevResult> {
   let apiKey = options.apiKey?.trim() || options.workerEnv?.TYPESAFE_API_KEY?.trim() || ''
   if (!apiKey) {
@@ -198,6 +198,9 @@ export async function requestJevAdvisory(
   }
   if (!apiKey) return { available: false, reason: 'not_configured' }
   const controller = new AbortController()
+  const abortForCaller = () => controller.abort(options.signal?.reason)
+  if (options.signal?.aborted) abortForCaller()
+  else options.signal?.addEventListener('abort', abortForCaller, { once: true })
   const timer = setTimeout(() => controller.abort(), JEV_TIMEOUT_MS)
   try {
     const response = await fetcher(JEV_ENDPOINT, {
@@ -245,7 +248,10 @@ export async function requestJevAdvisory(
     return advisory ? { available: true, advisory } : { available: false, reason: 'invalid_response' }
   } catch (error) {
     return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'request_failed' }
-  } finally { clearTimeout(timer) }
+  } finally {
+    clearTimeout(timer)
+    options.signal?.removeEventListener('abort', abortForCaller)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
