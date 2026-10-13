@@ -20,6 +20,7 @@ alter table public.inquiries add column if not exists status text;
 \ir ../../supabase/migrations/20261013150000_yqaa_provider_controls.sql
 \ir ../../supabase/migrations/20261013170000_yqaa_provider_controls_offer_authority.sql
 \ir ../../supabase/migrations/20261013230000_yqaa_runtime_diagnostics_and_atomic_inquiry.sql
+\ir ../../supabase/migrations/20261014090000_yqaa_reply_runtime_deadline.sql
 
 insert into public.profiles(id,role,status,full_name) values ('00000000-0000-4000-8000-000000000001','client','active','Local runtime client'),('00000000-0000-4000-8000-000000000002','attorney','active','Local runtime provider') on conflict(id) do nothing;
 
@@ -35,6 +36,8 @@ declare
   v_started boolean;
   v_count_before integer;
   v_count_after integer;
+  v_reply_count_before integer;
+  v_reply_count_after integer;
   v_offer jsonb;
 begin
   select c.id into v_client from public.profiles c
@@ -127,6 +130,35 @@ begin
    where client_profile_id = v_client and target_attorney_profile_id = v_provider;
   if v_count_after <> v_count_before then
     raise exception 'rejected reply left a durable inquiry outside the atomic commit';
+  end if;
+
+  -- Simulate PostgREST cancellation after the SQL transaction has begun: the
+  -- transaction-local deadline is already past when the final ledger insert
+  -- runs. The trigger must roll back the reply and transaction state; the
+  -- paused-path assertion above separately verifies inquiry rollback.
+  update public.conversations set metadata = metadata || '{"ai_mode":"auto"}'
+   where id = v_conversation;
+  v_offer := null;
+  select count(*) into v_reply_count_before from public.yqaa_reply_commits
+   where conversation_id = v_conversation and trigger_message_id = v_trigger_new;
+  begin
+    perform set_config('yqaa.runtime_deadline', (clock_timestamp() - interval '1 second')::text, true);
+    perform public.commit_yqaa_reply(
+      v_conversation, v_trigger_new,
+      jsonb_build_object('sender_id', v_provider, 'body', 'late reply'),
+      v_offer,
+      '{"ai_last_run_status":"completed"}'::jsonb
+    );
+    raise exception 'expired reply transaction unexpectedly committed';
+  exception when sqlstate '40001' then
+    null;
+  end;
+  select count(*) into v_count_after from public.inquiries
+   where client_profile_id = v_client and target_attorney_profile_id = v_provider;
+  select count(*) into v_reply_count_after from public.yqaa_reply_commits
+   where conversation_id = v_conversation and trigger_message_id = v_trigger_new;
+  if v_count_after <> v_count_before or v_reply_count_after <> v_reply_count_before then
+    raise exception 'expired reply left a durable inquiry or reply commit';
   end if;
 end
 $test$;

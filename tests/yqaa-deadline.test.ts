@@ -91,4 +91,14 @@ describe('YQAA end-to-end deadline', () => {
     expect(source).toContain("db.rpc('patch_yqaa_runtime_diagnostic'")
     expect(source).not.toContain('ai_last_error: msg.slice')
   })
+
+  it('cancels the final RPC and sends its server-enforced runtime cutoff', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
+    const commit = source.slice(source.indexOf('const commitRpc ='), source.indexOf('if (commitError || !committedReply?.reply_message_id)'))
+
+    expect(commit).toContain("'commit_yqaa_reply_with_runtime_deadline'")
+    expect(commit).toContain('p_deadline_at: new Date(Date.now() + opts.runtime.remainingMs()).toISOString()')
+    expect(commit).toContain('rpc.abortSignal(opts.runtime.signal)')
+    expect(commit).toContain('p_commit_rpc: commitRpc')
+  })
 })

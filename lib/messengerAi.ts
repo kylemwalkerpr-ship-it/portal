@@ -1632,7 +1632,7 @@ export async function maybeAutoReply(opts: {
           : 'commit_yqaa_reply'
       if (opts.runtime) await opts.runtime.markStage('atomic_reply_commit')
       if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
-      const { data: committedReply, error: commitError } = await db.rpc(commitRpc, {
+      const rpc = db.rpc(opts.runtime ? 'commit_yqaa_reply_with_runtime_deadline' : commitRpc, {
         p_conversation_id: opts.conversationId,
         p_trigger_message_id: triggerMessageId,
         p_reply: {
@@ -1650,7 +1650,15 @@ export async function maybeAutoReply(opts: {
         },
         p_offer: offerPersistence,
         p_conversation_metadata: nextMeta,
+        ...(opts.runtime ? {
+          p_deadline_at: new Date(Date.now() + opts.runtime.remainingMs()).toISOString(),
+          p_commit_rpc: commitRpc,
+        } : {}),
       })
+      const pendingCommit = opts.runtime?.signal && typeof rpc.abortSignal === 'function'
+        ? rpc.abortSignal(opts.runtime.signal)
+        : rpc
+      const { data: committedReply, error: commitError } = await pendingCommit
       if (commitError || !committedReply?.reply_message_id) {
           console.error('[messengerAi] atomic reply commit failed', 'atomic_persistence_failure')
         return { replied: false, skipped: 'persistence_failed', aiMode }
