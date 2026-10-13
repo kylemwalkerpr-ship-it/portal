@@ -18,6 +18,20 @@ describe('Modal public knowledge retrieval', () => {
     global.fetch=jest.fn(async () => new Response(null,{status})) as typeof fetch
     expect(await searchModalYqaaKnowledge(options)).toBeNull()
   })
+  it('reports a finite success status without response content', async () => {
+    const onStatus = jest.fn()
+    global.fetch = jest.fn(async () => Response.json({ready:true,chunks:[row]})) as typeof fetch
+    await searchModalYqaaKnowledge({...options,onStatus})
+    expect(onStatus.mock.calls).toEqual([['invalid'],['ok']])
+  })
+  it('reports disabled configuration before making a request', async () => {
+    delete process.env.YQAA_TYPESENSE_ENABLED
+    const onStatus = jest.fn()
+    global.fetch = jest.fn() as typeof fetch
+    expect(await searchModalYqaaKnowledge({...options,onStatus})).toBeNull()
+    expect(onStatus).toHaveBeenCalledWith('disabled')
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
   it('rejects jurisdiction mismatch',async () => {
     global.fetch=jest.fn(async () => Response.json({ready:true,chunks:[{...row,jurisdiction:'United States'}]})) as typeof fetch
     expect(await searchModalYqaaKnowledge(options)).toBeNull()

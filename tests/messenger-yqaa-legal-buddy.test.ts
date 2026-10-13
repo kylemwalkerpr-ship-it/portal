@@ -74,6 +74,16 @@ describe('legal-buddy escalation reply', () => {
     expect(reply).toContain('Avery')
   })
 
+  test('evidence handoff acknowledges the stated budget without approving a price', () => {
+    const reply = insufficientEvidenceHandoffReply('Avery', {
+      minCents:null, maxCents:45000, currency:'cad', sourceText:'', messageId:null, confidence:'explicit',
+    })
+    expect(reply).toContain('CAD 450.00')
+    expect(reply).toContain('confirm which scope fits')
+    expect(reply).toContain('Avery')
+    expect(reply).not.toMatch(/discount|offer created|approved price/i)
+  })
+
   test('server escalation overrides a model decline and removes its offer', () => {
     expect(enforceCompanionEscalation(
       { reply: 'Here is my answer.', escalate: false, offer: { title: 'Offer' } },
