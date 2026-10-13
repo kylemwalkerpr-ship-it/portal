@@ -23,7 +23,7 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('ids.includes(expectedBuild)')
   })
 
-  test('fixtures use supported username-only identities, hidden test data, three real categories, and bounded isolated chains', () => {
+  test('fixtures use supported username-only identities, hidden test data, and three continuous category threads', () => {
     expect(harness).toContain('Clerk username-only capability')
     expect(harness).toContain('userSettings.email_address?.required')
     expect(harness).toContain('is_test_account: true, is_hidden: true')
@@ -34,14 +34,19 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain("id: 'education', subcategoryId: 'university-admissions'")
     expect(harness).toContain("id: 'academic-writing', subcategoryId: 'application-essays'")
     expect(harness).toContain("id: 'mentorship', subcategoryId: 'student-mentorship'")
-    expect(harness).toContain('for (const provider of fixtureProviders)')
-    expect(harness).toContain('for (let index = 0; index < Math.min(scenarios.length, MAX_TURNS); index++)')
+    expect(harness).toContain("thread.scenario === 'negotiation'")
+    expect(harness).toContain('for (let index = 0; index < MAX_TURNS; index++)')
+    expect(harness).toContain('no quote produced in server conversation memory; refusing to invent one.')
+    expect(harness).toContain('The server quote record for this scope is')
+    expect(harness).not.toContain('The quoted total is CAD 600')
+    expect(harness).not.toContain('would you accept CAD 510')
+    expect(harness).toContain('frustration pause verified; later AI-required scenarios skipped')
     expect(harness).not.toContain('c2a46c19-abd0-4404-91e2-f4139938428d')
     expect(harness).toContain('/api/messages/conversations/')
-    expect(harness).toContain('MAX_TURNS = 9')
+    expect(harness).toContain('MAX_TURNS = 6')
     expect(harness).toContain('MAX_WAIT_MS = 45_000')
     expect(harness).toContain('AbortSignal.timeout(10_000)')
-    for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'disclosure', 'no_stale_floors', 'provider_attention']) {
+    for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {
       expect(harness).toContain(`name: '${scenario}'`)
     }
   })
@@ -54,6 +59,11 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain("replace(/(__clerk_ticket=)")
     expect(harness).toContain("body: { status: 'archived'")
     expect(harness).toContain("status: 'cancelled'")
+    expect(harness).toContain('ai_paused_reason: \'acceptance_cleanup\'')
+    expect(harness).toContain('late_ai_replies: lateReplies.length')
+    expect(harness).toContain('new_offers_after_pause: newOffers.length')
+    expect(harness).toContain('quietOutcome.ai_paused !== true')
+    expect(harness).not.toMatch(/\/api\/(orders|payments)/)
     expect(harness).toContain("status: 'paused'")
     expect(workflow).toContain('timeout-minutes: 45')
     expect(harness).toContain("archive_action: 'guarded_owner_scoped_database_update'")

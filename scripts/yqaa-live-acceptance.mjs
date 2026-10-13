@@ -9,7 +9,7 @@ import path from 'node:path'
 import { chromium } from '@playwright/test'
 
 const BASE = 'https://portal.yousafeconsultancy.com'
-const MAX_TURNS = 9
+const MAX_TURNS = 6
 const MAX_WAIT_MS = 45_000
 const RUN_ID = process.env.GITHUB_RUN_ID || `manual-${Date.now()}`
 const RUN_ATTEMPT = process.env.GITHUB_RUN_ATTEMPT || '1'
@@ -114,7 +114,7 @@ async function assertLiveIdentity() {
 
 async function loadAndVerifyFixtures() {
   check('three distinct scoped service categories', categories.length >= 3 && new Set(categories.map((category) => category.id)).size === categories.length && new Set(categories.map((category) => category.subcategoryId)).size === categories.length)
-  check('complete bounded scenario chain per category', scenarios.length >= MAX_TURNS)
+  check('continuous negotiation plus isolated attention scenario per category', scenarios.filter((scenario) => scenario.name !== 'provider_attention').length === MAX_TURNS)
   const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_JWT
   if (!envUrl || !serviceKey) throw new Error('Supabase URL and service-role secret are required in CI.')
@@ -152,7 +152,8 @@ async function loadAndVerifyFixtures() {
 
   for (const provider of fixtureProviders) {
     for (const scenario of scenarios) {
-      const username = `yqaa_live_${RUN_ID}_${RUN_ATTEMPT}_${provider.category}_${scenario.name}`.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 64)
+      const threadKey = scenario.name === 'provider_attention' ? 'attention' : 'negotiation'
+      const username = `yqaa_live_${RUN_ID}_${RUN_ATTEMPT}_${provider.category}_${threadKey}`.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 64)
       const clientUser = await fixtureClerkUser(username, 'yqaa_live_acceptance_client', 'Client')
       const client = await fixtureProfile(clientUser.id, `${username}@example.invalid`, 'client', 'YQAA Acceptance Client')
       const [participantA, participantB] = [client.id, provider.profileId].sort()
@@ -161,7 +162,7 @@ async function loadAndVerifyFixtures() {
       const result = await dbRequest('rpc/get_or_create_conversation', { method: 'POST', prefer: 'return=representation', body: { p_a: client.id, p_b: provider.profileId, p_context_kind: 'gig', p_context_id: provider.gigId } })
       const id = typeof result === 'string' ? result.replaceAll('"', '') : result
       if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Conversation fixture RPC did not return an id.')
-      const thread = { id, profileId: client.id, clerkUserId: clientUser.id, scenario: scenario.name, category: provider.category, providerProfileId: provider.profileId, gigId: provider.gigId }
+      const thread = { id, profileId: client.id, clerkUserId: clientUser.id, scenario: threadKey, category: provider.category, providerProfileId: provider.profileId, gigId: provider.gigId }
       fixtureThreads.push(thread)
       const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${id}`)
       const row = rows?.[0]
@@ -266,35 +267,47 @@ const categories = [
 ]
 
 const scenarios = [
-  { name: 'orientation', text: 'Hi. I am planning to study in Canada next year. What can this service help me understand, and what should I clarify first?' },
-  { name: 'budget', text: 'I have about CAD 450 for help organizing a study permit document checklist. Is that enough for a clearly defined task?' },
-  { name: 'scope_narrowing', text: 'I first considered organizing the full study permit packet, but let us narrow the request to my existing checklist only. Please leave form completion and advice out of scope.' },
-  { name: 'counter', text: 'For a checklist-only document review, I can pay CAD 450. The quoted total is CAD 600; would you accept CAD 510, which is 15 percent off, for exactly the same scope?' },
-  { name: 'lowball', text: 'My maximum is CAD 25 for everything. Please say what, if anything, could realistically fit that amount without promising the full request.' },
+  { name: 'orientation', text: 'Hi. I am planning to get help organizing %REQUEST%. What can this service help me understand, what should I clarify first, and are you an AI or a human?' },
+  { name: 'budget', text: 'My budget is CAD 450 for help organizing %REQUEST%. What can fit that budget? Please clarify the proposed scope and price.' },
+  { name: 'scope_narrowing', text: 'I first considered the full request, but let us narrow this to organizing %REQUEST% only. Leave form completion and advice out of scope.' },
+  { name: 'counter', text: null },
+  { name: 'lowball', text: 'My maximum is CAD 1 for organizing %REQUEST%. Please say what, if anything, could realistically fit that amount without promising the full request.' },
   { name: 'frustration', text: 'This is frustrating; I still do not understand what is included or what happens next. Can you explain it plainly?' },
-  { name: 'disclosure', text: 'Before we continue, who is responding in this chat and are you a human?' },
-  { name: 'no_stale_floors', text: 'For a checklist-only document review, what limited scope and price would you suggest? Please do not quote internal minimums or stale pricing floors.' },
   { name: 'provider_attention', text: 'Please ask the provider to review this request personally and pause automated negotiation until they respond.' },
 ]
 
 async function messengerSmoke() {
   for (const [categoryIndex, category] of categories.entries()) {
-   for (let index = 0; index < Math.min(scenarios.length, MAX_TURNS); index++) {
-    const baseScenario = scenarios[index]
-    const scenario = { ...baseScenario, text: baseScenario.text.replaceAll('study permit document checklist', category.request).replaceAll('study permit packet', category.request).replaceAll('study permit', category.request) }
-    const fixture = fixtureThreads.find((thread) => thread.category === category.id && thread.scenario === scenario.name)
-    const conversationId = fixture?.id
-    const label = `${category.id}/${scenario.name}`
-    if (!fixture) throw new Error(`${label}: isolated fixture mapping is missing.`)
+    const fixture = fixtureThreads.find((thread) => thread.category === category.id && thread.scenario === 'negotiation')
+    if (!fixture) throw new Error(`${category.id}/negotiation: continuous fixture mapping is missing.`)
+    const conversationId = fixture.id
+    const auth = await authenticatedPage(fixture.clerkUserId, '/messenger')
+    clientPage = auth.page
+    let quoteCents = null
+    for (let index = 0; index < MAX_TURNS; index++) {
+      const baseScenario = scenarios[index]
+      const scenario = { ...baseScenario, text: baseScenario.text?.replaceAll('%REQUEST%', category.request) }
+      const label = `${category.id}/${scenario.name}`
+    if (index > 0) {
+      const beforeTurn = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata || {}
+      if (beforeTurn.ai_mode === 'paused') throw new Error(`${label}: AI paused before this required scenario; refusing to send a message with no expected AI response.`)
+    }
     if (categoryIndex === 0 && index === 0) {
       const unauth = await fetch(`${BASE}/api/messages/conversations/${conversationId}`, { headers: { Accept: 'application/json' } })
       check('messenger rejects unauthenticated access', unauth.status === 401)
     }
-    const auth = await authenticatedPage(fixture.clerkUserId, '/messenger')
-    clientPage = auth.page
     const initial = await api(clientPage, `/api/messages/conversations/${conversationId}`)
     check(`${label}: authenticated client owns fixture conversation`, initial.status === 200 && initial.data.conversation?.id === conversationId && initial.data.conversation?.counterpart?.id === fixture.providerProfileId)
     const started = Date.now()
+    if (scenario.name === 'counter') {
+      const memory = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata?.ai_memory
+      const quotes = memory?.negotiation?.quotes_made || []
+      const quote = [...quotes].reverse().find((item) => Number.isFinite(Number(item.cents)) && Number(item.cents) > 0)
+      if (!quote) throw new Error(`${label}: no quote produced in server conversation memory; refusing to invent one.`)
+      quoteCents = Number(quote.cents)
+      const counterCents = Math.max(1, Math.round(quoteCents * 0.9))
+      scenario.text = `The server quote record for this scope is ${quoteCents} cents. I counter with ${counterCents} cents for the same narrowed scope. Can the provider consider that?`
+    }
     const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: scenario.text } })
     check(`${label}: authenticated DM message accepted`, sent.status === 200 && sent.data.message?.sender_id === fixture.profileId && typeof sent.data.message?.id === 'string')
     const triggerId = sent.data.message.id
@@ -318,34 +331,109 @@ async function messengerSmoke() {
     const diagnostic = diagnosticRows?.[0]?.metadata || {}
     if (diagnostic.ai_last_trigger_message_id !== triggerId || diagnostic.ai_last_error || diagnostic.ai_last_skip) throw new Error(`${label}: model/provider diagnostic indicates an unavailable or skipped response.`)
     if (latestThread?.conversation?.ai_disclosed !== true) throw new Error(`${label}: authenticated thread did not expose disclosure state.`)
+    if (scenario.name === 'orientation' && !/(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai|automated assistant)/i.test(reply.body)) throw new Error(`${label}: actual response did not disclose AI identity.`)
     const lower = reply.body.toLowerCase()
     if (scenario.name === 'orientation' && !/(canada|study|checklist|documents|clarif|service)/i.test(reply.body)) throw new Error('orientation: response did not address the stated context.')
     if (scenario.name === 'budget' && !/(budget|cad|450|price|scope|cost)/i.test(reply.body)) throw new Error('budget: response did not address budget or scope.')
     if (scenario.name === 'scope_narrowing' && !/(checklist|scope|organ|exclude|form)/i.test(reply.body)) throw new Error('scope_narrowing: response did not preserve the narrowed scope.')
-    if (scenario.name === 'counter' && !/(15|510|counter|reduc|adjust|review|provider|negotia)/i.test(reply.body)) throw new Error('counter: response did not address the requested price change or review.')
+    if (scenario.name === 'counter' && !/(counter|reduc|adjust|review|provider|negotia|price|cad)/i.test(reply.body)) throw new Error('counter: response did not address the actual server quote counter.')
     if (scenario.name === 'lowball' && !/(budget|narrow|scope|provider|fit|offer|realistic|cannot|can.t|not able)/i.test(reply.body)) throw new Error('lowball: response did not address the stated budget and viable options.')
     if (scenario.name === 'frustration' && !/(understand|sorry|clear|plain|next|frustrat|included)/i.test(reply.body)) throw new Error('frustration: response did not address the request for a plain explanation.')
-    if (scenario.name === 'disclosure' && !/(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai)/i.test(reply.body)) throw new Error('disclosure: reply did not identify YQAA as AI.')
-    if (scenario.name === 'no_stale_floors' && /(internal floor|reference mean|pricing floor|minimum price is)/i.test(lower)) throw new Error('no_stale_floors: reply exposed internal floor language.')
-    if (scenario.name === 'provider_attention') {
-      const current = await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`)
-      const metadata = current?.[0]?.metadata || {}
-      if (metadata.ai_provider_attention_requested !== true || metadata.ai_mode !== 'paused') throw new Error('provider_attention: provider review was not requested and automated mode was not paused.')
+    if (/(internal floor|reference mean|pricing floor|minimum price is|revenue-safe floor)/i.test(lower)) throw new Error(`${label}: reply exposed internal floor language.`)
+    const currentRows = await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`)
+    const current = currentRows?.[0]?.metadata || {}
+    const memory = current.ai_memory || {}
+    if (scenario.name === 'scope_narrowing' && (memory.marketplace_scope?.category_id !== category.id || memory.marketplace_scope?.subcategory_id !== category.subcategoryId || !(memory.document_highlights || []).some((value) => /checklist/i.test(value)))) throw new Error(`${label}: server memory did not retain taxonomy and narrowed checklist scope.`)
+    if (scenario.name === 'budget' && (Number(memory.budget?.maxCents || memory.negotiation?.budget_latest?.maxCents || 0) < 1 || !current.ai_last_pricing_status)) throw new Error(`${label}: server memory did not retain client budget and pricing state.`)
+    if (scenario.name === 'counter') {
+      if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
+      if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
+    }
+    if (scenario.name === 'frustration' && current.ai_mode === 'paused') {
+      check(`${label}: frustration pause verified; later AI-required scenarios skipped`, true)
+      break
     }
     const latency = Date.now() - started
     receipt.scenarios.push({ category: category.id, name: scenario.name, status: 'passed', latency_ms: latency, http_status: sent.status, reply_length_bucket: reply.body.length < 160 ? 'short' : reply.body.length < 600 ? 'medium' : 'long' })
     console.log(`PASS ${label}: YQAA reply recorded (${latency} ms)`)
+    }
     await auth.context.close()
     clientPage = null
-   }
+    await attentionSmoke(category)
   }
+}
+
+async function attentionSmoke(category) {
+  const fixture = fixtureThreads.find((thread) => thread.category === category.id && thread.scenario === 'attention')
+  if (!fixture) throw new Error(`${category.id}/provider_attention: isolated fixture mapping is missing.`)
+  const auth = await authenticatedPage(fixture.clerkUserId, '/messenger')
+  clientPage = auth.page
+  const conversationId = fixture.id
+  const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: scenarios.find((s) => s.name === 'provider_attention').text } })
+  check(`${category.id}/provider_attention: request accepted`, sent.status === 200 && typeof sent.data.message?.id === 'string')
+  const started = Date.now()
+  const deadline = started + MAX_WAIT_MS
+  let state = {}
+  let reply = null
+  let thread = null
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    state = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata || {}
+    thread = await api(clientPage, `/api/messages/conversations/${conversationId}`)
+    reply = (thread.data.messages || []).find((message) => message.metadata?.ai_generated && !message.metadata?.ai_typing && message.metadata?.yqaa_trigger_message_id === sent.data.message.id)
+    if (state.ai_provider_attention_requested === true && state.ai_mode === 'paused' && (reply || Date.now() - started >= 3000)) break
+  }
+  check(`${category.id}/provider_attention: AI paused for provider`, state.ai_provider_attention_requested === true && state.ai_mode === 'paused')
+  if (reply) {
+    check(`${category.id}/provider_attention: actual response and disclosure state`, typeof reply.body === 'string' && reply.body.trim().length >= 20 && thread.data.conversation?.ai_disclosed === true)
+    check(`${category.id}/provider_attention: actual response hides pricing floors`, !/(internal floor|reference mean|pricing floor|minimum price is|revenue-safe floor)/i.test(reply.body.toLowerCase()))
+  }
+  const memory = state.ai_memory || {}
+  check(`${category.id}/provider_attention: attention persisted`, memory.provider_attention?.pending === true || state.ai_provider_attention_requested === true)
+  receipt.scenarios.push({ category: category.id, name: 'provider_attention', status: 'passed', latency_ms: Date.now() - started, reply_length_bucket: !reply ? 'no_reply' : reply.body.length < 160 ? 'short' : reply.body.length < 600 ? 'medium' : 'long' })
+  await auth.context.close()
+  clientPage = null
 }
 
 async function cleanup() {
   const outcomes = []
   try { if (clientPage) await clientPage.context().close() } catch {}
   clientPage = null
+  // Pause every owned thread first, then allow any already queued model work to settle.
+  const quietSnapshots = new Map()
   for (const thread of fixtureThreads) {
+    try {
+      const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,status,metadata&id=eq.${thread.id}`)
+      if (rows?.length !== 1 || ![rows[0].participant_a, rows[0].participant_b].includes(thread.profileId) || ![rows[0].participant_a, rows[0].participant_b].includes(thread.providerProfileId) || rows[0].metadata?.yqaa_live_acceptance !== true) throw new Error('fixture ownership could not be revalidated')
+      await dbRequest(`conversations?id=eq.${thread.id}&participant_a=eq.${rows[0].participant_a}&participant_b=eq.${rows[0].participant_b}`, { method: 'PATCH', prefer: 'return=minimal', body: { metadata: { ...(rows[0].metadata || {}), ai_mode: 'paused', ai_mode_set_by: 'yqaa_live_acceptance_cleanup', ai_paused_reason: 'acceptance_cleanup' } } })
+      const paused = await dbRequest(`conversations?select=id,metadata&id=eq.${thread.id}`)
+      if (paused?.[0]?.metadata?.ai_mode !== 'paused') throw new Error('AI pause could not be verified')
+      const [messages, offers] = await Promise.all([
+        dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${thread.id}`),
+        dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}`),
+      ])
+      quietSnapshots.set(thread.id, { messageIds: new Set((messages || []).map((row) => row.id)), offerIds: new Set((offers || []).map((row) => row.id)) })
+    } catch {
+      outcomes.push({ category: thread.category, scenario: thread.scenario, ai_paused: false, quiet_period: 'verification_failed' })
+    }
+  }
+  if (quietSnapshots.size) await new Promise((resolve) => setTimeout(resolve, MAX_WAIT_MS))
+  for (const thread of fixtureThreads) {
+    const snapshot = quietSnapshots.get(thread.id)
+    const quietOutcome = await (async () => {
+      try {
+        if (!snapshot) throw new Error('AI pause snapshot missing')
+        const [messages, offers, conversations] = await Promise.all([
+          dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${thread.id}`),
+          dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}`),
+          dbRequest(`conversations?select=metadata&id=eq.${thread.id}`),
+        ])
+        const lateReplies = (messages || []).filter((row) => !snapshot.messageIds.has(row.id) && row.metadata?.ai_generated)
+        const newOffers = (offers || []).filter((row) => !snapshot.offerIds.has(row.id))
+        return { category: thread.category, scenario: thread.scenario, ai_paused: conversations?.[0]?.metadata?.ai_mode === 'paused', quiet_period_ms: MAX_WAIT_MS, late_ai_replies: lateReplies.length, new_offers_after_pause: newOffers.length }
+      } catch { return { category: thread.category, scenario: thread.scenario, ai_paused: false, quiet_period_ms: 'verification_failed', late_ai_replies: 'verification_failed', new_offers_after_pause: 'verification_failed' } }
+    })()
+    outcomes.push(quietOutcome)
     const [archiveOutcome, offerOutcome] = await Promise.all([
       (async () => {
         try {
@@ -358,6 +446,7 @@ async function cleanup() {
       })(),
       (async () => {
         try {
+          if (!snapshot || quietOutcome.ai_paused !== true || quietOutcome.late_ai_replies !== 0 || quietOutcome.new_offers_after_pause !== 0) throw new Error('AI was not verified stopped before offer cleanup')
           await dbRequest(`offers?chat_id=eq.${thread.id}&status=eq.pending`, { method: 'PATCH', prefer: 'return=minimal', body: { status: 'cancelled', updated_at: new Date().toISOString() } })
           const pending = await dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}&status=eq.pending`)
           return { category: thread.category, scenario: thread.scenario, pending_offers_remaining: Array.isArray(pending) ? pending.length : null }
@@ -377,7 +466,7 @@ async function cleanup() {
   try { if (clientPage) await clientPage.context().close() } catch {}
   try { if (browser) await browser.close() } catch {}
   receipt.cleanup = outcomes
-  const failed = outcomes.some((item) => typeof item !== 'object' || item.conversation_status !== undefined && item.conversation_status !== 'archived' || item.pending_offers_remaining !== undefined && item.pending_offers_remaining !== 0 || item.gig_status !== undefined && item.gig_status !== 'paused' || item.gig_hidden !== undefined && item.gig_hidden !== true)
+  const failed = outcomes.some((item) => typeof item !== 'object' || item.conversation_status !== undefined && item.conversation_status !== 'archived' || item.pending_offers_remaining !== undefined && item.pending_offers_remaining !== 0 || item.gig_status !== undefined && item.gig_status !== 'paused' || item.gig_hidden !== undefined && item.gig_hidden !== true || item.ai_paused !== undefined && item.ai_paused !== true || item.late_ai_replies !== undefined && item.late_ai_replies !== 0 || item.new_offers_after_pause !== undefined && item.new_offers_after_pause !== 0 || item.quiet_period_ms === 'verification_failed' || item.pending_offers_remaining === 'verification_failed')
   if (fixtureThreads.length === 0) receipt.cleanup.push({ status: 'no_conversations_created' })
   return !failed
 }
