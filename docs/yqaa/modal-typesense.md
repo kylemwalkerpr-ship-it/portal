@@ -1,0 +1,11 @@
+# Modal Typesense retrieval
+
+Supabase remains authoritative. Only finalized public knowledge is exported; private conversations, profiles, orders and permissions are never indexed. A versioned snapshot is mounted read-only and imported into a container-local Typesense 30.2 database. Hash, unique IDs, import outcomes and document count must all pass before readiness. New snapshot deployment changes the image environment to restart against the new version. Previous snapshots remain available for rollback.
+
+The CPU service scales to zero, allows one container and 16 concurrent requests, and uses 1 GiB memory. It requires a dedicated bearer token for the narrow POST /search endpoint. Native Typesense APIs are bound only to container loopback. Queries, credentials and returned bodies are not logged. GET /health returns count, readiness and snapshot hash only.
+
+The shared YQAA evidence loader tries this service when enabled. It caps the request at two seconds, validates response size, sources and jurisdiction, then retains existing canonical bundled facts and policy checks. On cold start, network errors, rejection or empty results it uses the existing Supabase/bundled path. Cold starts may take approximately 20 seconds; a deployed endpoint does not promise an always-warm process. Typesense scores are not used directly: lexical token coverage produces the bounded existing score signal. This remains heuristic evidence ranking, not legal confidence.
+
+Server-only GitHub secrets: YQAA_TYPESENSE_URL, YQAA_TYPESENSE_TOKEN, YQAA_TYPESENSE_ENABLED. The dedicated Modal secret yqaa-typesense-search contains YQAA_SEARCH_TOKEN. Production Worker wiring goes only through the official deploy.yml workflow. YQAA_MODAL_TOKEN_ID and YQAA_MODAL_TOKEN_SECRET allow the canonical main-only snapshot workflow to publish updated public knowledge after a successful knowledge sync. No credentials appear in build-time or browser environment.
+
+Rollback: set YQAA_TYPESENSE_ENABLED=false through the official Worker release path. To roll back the Modal index, redeploy the exact service source with YQAA_SNAPSHOT_VERSION set to a retained validated snapshot hash. Monitor Modal credits and usage; scale-to-zero reduces idle cost but does not guarantee zero billing under load.

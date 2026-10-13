@@ -202,6 +202,9 @@ jobs:
           # secrets file and is never included in build-time/client env.
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           # DataForSEO Backlinks API — Master SEO Engine links subsystem
+          YQAA_TYPESENSE_URL: ${{ secrets.YQAA_TYPESENSE_URL }}
+          YQAA_TYPESENSE_TOKEN: ${{ secrets.YQAA_TYPESENSE_TOKEN }}
+          YQAA_TYPESENSE_ENABLED: ${{ secrets.YQAA_TYPESENSE_ENABLED }}
           # (lib/seoFactory/backlinkProvider.ts). Basic auth login + password.
           DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}

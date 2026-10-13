@@ -1,5 +1,6 @@
 import { selectYqaaKnowledge, shouldUseDeepNetworkKnowledge, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import { getSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
+import { searchModalYqaaKnowledge } from '@/lib/yqaaTypesense'
 
 export type YqaaIndexedChunk = KnowledgeChunk & {
   chunkKey: string
@@ -15,7 +16,7 @@ export type YqaaIndexedChunk = KnowledgeChunk & {
 
 export type YqaaEvidencePack = {
   chunks: YqaaIndexedChunk[]
-  source: 'database' | 'bundled' | 'database+bundled'
+  source: 'database' | 'bundled' | 'database+bundled' | 'typesense' | 'typesense+bundled'
   retrievalConfidence: number
   freshEnough: boolean
   jurisdictions: string[]
@@ -242,8 +243,18 @@ export async function loadYqaaEvidence(opts: {
 
   let indexed: YqaaEvidencePack | null = null
   try {
+    const rows = await searchModalYqaaKnowledge({ query: opts.query,
+      site: yqaaOriginSite(opts.hostname), jurisdiction: explicitYqaaJurisdiction(opts.query), limit,
+      signal: opts.signal })
+    if (rows?.length) {
+      const chunks = rows.map(rowToChunk).filter(Boolean) as YqaaIndexedChunk[]
+      if (chunks.length) indexed = { chunks, source: 'typesense', retrievalConfidence: evidenceConfidence(chunks),
+        freshEnough: chunks.slice(0, 6).every((chunk) => freshnessWeight(chunk.fetchedAt) >= 0.72),
+        jurisdictions: [...new Set(chunks.map((chunk) => chunk.jurisdiction).filter(Boolean))] as string[],
+        sites: [...new Set(chunks.map((chunk) => chunk.site).filter(Boolean))] as string[] }
+    }
     const db = opts.db || (isServiceRoleAchieved() ? getSupabaseAdminClient() : null)
-    if (db) {
+    if (!indexed && db && !opts.signal?.aborted) {
       indexed = await searchYqaaKnowledgeIndex(db, {
         query: opts.query,
         hostname: opts.hostname,
@@ -272,7 +283,9 @@ export async function loadYqaaEvidence(opts: {
   const chunks = mergeEvidence(indexed.chunks, bundled, limit)
   return {
     chunks,
-    source: bundled.length ? 'database+bundled' : 'database',
+    source: indexed.source === 'typesense'
+      ? (bundled.length ? 'typesense+bundled' : 'typesense')
+      : (bundled.length ? 'database+bundled' : 'database'),
     retrievalConfidence: Math.max(indexed.retrievalConfidence, evidenceConfidence(chunks)),
     freshEnough: indexed.freshEnough,
     jurisdictions: indexed.jurisdictions,

@@ -368,6 +368,7 @@ export async function POST(req: Request) {
   }
 
   const stageTimings: StageTiming[] = []
+  let knowledgeSource = 'unknown'
   const startStage = (name: string): StageTiming => {
     const stage = { name, startedAt: Date.now() }
     stageTimings.push(stage)
@@ -395,6 +396,7 @@ export async function POST(req: Request) {
         }),
       )
       finishStage(knowledgeStage)
+      knowledgeSource = evidencePack.source
     } catch (error) {
       finishStage(knowledgeStage, error instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
       throw error
@@ -668,6 +670,7 @@ export async function POST(req: Request) {
       {
         headers: {
           'Server-Timing': stageTimingHeader(stageTimings, totalMs),
+          'X-YQAA-Knowledge-Source': knowledgeSource,
         },
       },
     )
@@ -696,7 +699,8 @@ export async function POST(req: Request) {
       },
       {
         status: timedOut ? 504 : 502,
-        headers: { 'Server-Timing': stageTimingHeader(stageTimings, totalMs) },
+        headers: { 'Server-Timing': stageTimingHeader(stageTimings, totalMs),
+          'X-YQAA-Knowledge-Source': knowledgeSource },
       },
     )
   }
