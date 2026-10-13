@@ -836,13 +836,12 @@ async function createOfferFromDecision(
     client: any
     offer: NonNullable<GrokDecision['offer']>
     pricing: PricingAuthority
-    memory: YqaaConversationMemory
     guardedPriceCents: number
     /** Workload/scoped floor used by the guard for this offer (audit only). */
     scopedFloorCents?: number | null
     scopedScopeHash?: string | null
   },
-): Promise<{ id: string; title: string; priceCents: number; currency: string; memory: YqaaConversationMemory } | null> {
+): Promise<Record<string, any> | null> {
   const settings = await getPaymentSettingsForApi()
   const title = String(args.offer.title || '').trim().slice(0, 120)
   const descriptionRaw = String(args.offer.description || '').trim().slice(0, 1200)
@@ -886,32 +885,6 @@ async function createOfferFromDecision(
   const idempotencyKey = yqaaOfferIdempotencyKey(args.conversationId, args.triggerMessageId)
   if (!idempotencyKey) return null
 
-  const loadExistingByKey = async () => {
-    const { data } = await db
-      .from('offers')
-      .select('id,title,price,currency')
-      .eq('yqaa_idempotency_key', idempotencyKey)
-      .maybeSingle()
-    return data
-  }
-
-  // Fast-path retries. The unique index below remains the atomic race boundary.
-  try {
-    const duplicate = await loadExistingByKey()
-    if (duplicate?.id) {
-      const memory = withOfferInMemory(args.memory, {
-        id: duplicate.id,
-        title,
-        priceCents: price,
-        currency: duplicate.currency || settings.primary_currency,
-      })
-      return { id: duplicate.id, title, priceCents: price, currency: duplicate.currency || settings.primary_currency, memory }
-    }
-  } catch (err) {
-    console.warn('[messengerAi] offer idempotency lookup failed', err instanceof Error ? err.message : err)
-    return null
-  }
-
   const offerInsert: Record<string, any> = {
     chat_id: chatId,
     sender_id: args.provider.id,
@@ -928,74 +901,35 @@ async function createOfferFromDecision(
   }
   if (attachedGigId) offerInsert.gig_id = attachedGigId
 
-  const { data: offer, error } = await db.from('offers').insert(offerInsert).select('id').maybeSingle()
-  if (error || !offer) {
-    if (error?.code === '23505' || /yqaa_idempotency_key/i.test(error?.message || '')) {
-      try {
-        const duplicate = await loadExistingByKey()
-        if (duplicate?.id) {
-          const memory = withOfferInMemory(args.memory, {
-            id: duplicate.id,
-            title: duplicate.title || title,
-            priceCents: Number(duplicate.price) || price,
-            currency: duplicate.currency || settings.primary_currency,
-          })
-          return { id: duplicate.id, title: duplicate.title || title, priceCents: Number(duplicate.price) || price, currency: duplicate.currency || settings.primary_currency, memory }
-        }
-      } catch (lookupError) {
-        console.error('[messengerAi] duplicate offer lookup failed', lookupError instanceof Error ? lookupError.message : lookupError)
-      }
-    }
-    console.error('[messengerAi] offer insert failed', error?.message)
-    return null
-  }
-
   const platformFee = computePlatformFeeCents(price, providerType, settings)
   const netPayout = computeNetPayoutCents(price, providerType, settings)
   const audit = pricingAuditSnapshot(args.pricing)
   const messageBody = `Custom offer · ${title} · ${settings.primary_currency.toUpperCase()} ${(price / 100).toFixed(0)} · ${deliveryDays}-day delivery`
 
-  if (providerType === 'attorney' && inquiryId) {
-    await db.from('inquiry_messages').insert({
-      inquiry_id: inquiryId,
-      sender_role: 'system',
-      sender_profile_id: args.provider.id,
+  return {
+    idempotency_key: idempotencyKey,
+    row: offerInsert,
+    message: {
       body: messageBody,
-    }).then(() => null, () => null)
-  }
-
-  await db.from('conversation_messages').insert({
-    conversation_id: args.conversationId,
-    sender_id: args.provider.id,
-    type: 'offer',
-    body: messageBody,
-    ref_offer_id: offer.id,
-    ref_inquiry_id: inquiryId,
-    metadata: {
-      title,
-      price,
-      currency: settings.primary_currency,
-      delivery_days: deliveryDays,
-      expires_at: expiresAt.toISOString(),
-      ai_generated: true,
-      ai_assistant: true,
-      ai_brand: 'YQAA',
-      pricing_guarded: true,
-      pricing_reference_mean_cents: args.pricing.referenceMeanCents,
-      pricing_floor_cents: args.scopedFloorCents ?? args.pricing.minimumAutoOfferCents,
-      pricing_scoped_floor_cents: args.scopedFloorCents ?? null,
-      pricing_scope_hash: args.scopedScopeHash ?? null,
+      ref_inquiry_id: inquiryId,
+      metadata: {
+        title,
+        price,
+        currency: settings.primary_currency,
+        delivery_days: deliveryDays,
+        expires_at: expiresAt.toISOString(),
+        ai_generated: true,
+        ai_assistant: true,
+        ai_brand: 'YQAA',
+        pricing_guarded: true,
+        pricing_reference_mean_cents: args.pricing.referenceMeanCents,
+        pricing_floor_cents: args.scopedFloorCents ?? args.pricing.minimumAutoOfferCents,
+        pricing_scoped_floor_cents: args.scopedFloorCents ?? null,
+        pricing_scope_hash: args.scopedScopeHash ?? null,
+      },
     },
-  }).then(() => null, () => null)
-
-  // Auditable commercial trail: seller/platform protection decisions can be
-  // reviewed later without exposing them to the client-facing conversation.
-  await db.from('admin_audit_log').insert({
-    admin_id: null,
-    action_type: 'yqaa_offer_created',
-    target_table: 'offers',
-    target_id: offer.id,
-    payload_snapshot: {
+    inquiry_message: providerType === 'attorney' && inquiryId ? { inquiry_id: inquiryId, sender_role: 'system', sender_profile_id: args.provider.id, body: messageBody } : null,
+    audit: {
       conversation_id: args.conversationId,
       provider_id: args.provider.id,
       client_id: args.client.id,
@@ -1005,16 +939,7 @@ async function createOfferFromDecision(
       attached_gig_id: attachedGigId,
       pricing: audit,
     },
-    reason: 'YQAA Messenger offer passed deterministic marketplace pricing authority.',
-  }).then(() => null, () => null)
-
-  const memory = withOfferInMemory(args.memory, {
-    id: offer.id,
-    title,
-    priceCents: price,
-    currency: settings.primary_currency,
-  })
-  return { id: offer.id, title, priceCents: price, currency: settings.primary_currency, memory }
+  }
 }
 
 export async function maybeAutoReply(opts: {
@@ -1022,21 +947,15 @@ export async function maybeAutoReply(opts: {
   triggerMessageId?: string | null
   force?: boolean
 }): Promise<AiReplyResult> {
-  const key = opts.conversationId
+  const key = opts.triggerMessageId ? `${opts.conversationId}:${opts.triggerMessageId}` : opts.conversationId
   const existing = pendingLocks.get(key)
   if (existing) return existing
 
   const run = (async (): Promise<AiReplyResult> => {
-    const now = Date.now()
-    const last = lastTriggerAt.get(key) || 0
-    if (!opts.force && now - last < DEBOUNCE_MS) return { replied: false, skipped: 'debounced' }
-    lastTriggerAt.set(key, now)
-
     const db = createSupabaseAdminClient()
     const conv = await getConversationAiState(db, opts.conversationId)
     if (!conv) return { replied: false, skipped: 'not_found' }
     const aiMode = conv.ai_mode as AiMode
-    if (aiMode !== 'auto' && !opts.force) return { replied: false, skipped: `ai_mode_${aiMode}`, aiMode }
 
     const { provider, client } = await resolveProviderAndClient(db, conv)
     if (!provider || !client) {
@@ -1045,6 +964,28 @@ export async function maybeAutoReply(opts: {
         ai_last_skip_at: new Date().toISOString(),
       })
       return { replied: false, skipped: 'not_provider_client_thread', aiMode }
+    }
+
+    const loadCommittedReply = async (triggerId: string) => {
+      const { data, error } = await db
+        .from('yqaa_reply_commits')
+        .select('reply_message_id, offer_id')
+        .eq('conversation_id', opts.conversationId)
+        .eq('trigger_message_id', triggerId)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    }
+    if (opts.triggerMessageId) {
+      try {
+        const committed = await loadCommittedReply(opts.triggerMessageId)
+        if (committed?.reply_message_id) {
+          return { replied: true, messageId: committed.reply_message_id, offerId: committed.offer_id || null, aiMode }
+        }
+      } catch (err) {
+        console.error('[messengerAi] durable reply lookup failed', err instanceof Error ? err.message : err)
+        return { replied: false, skipped: 'persistence_unavailable', aiMode }
+      }
     }
 
     const { data: messages } = await db
@@ -1057,6 +998,30 @@ export async function maybeAutoReply(opts: {
     const msgs = (messages || []).filter((m: any) => !m?.metadata?.ai_typing)
     const lastMsg = msgs[msgs.length - 1]
     if (!lastMsg) return { replied: false, skipped: 'empty_thread', aiMode }
+    const triggerMessageId = opts.triggerMessageId || (lastMsg.sender_id === client.id ? lastMsg.id : null)
+    const triggerMessage = triggerMessageId ? msgs.find((message: any) => message.id === triggerMessageId) : null
+    if (!triggerMessage || triggerMessage.sender_id !== client.id) {
+      return { replied: false, skipped: 'invalid_trigger_message', aiMode }
+    }
+
+    // A committed trigger returns its durable result, including after a Worker
+    // crash. A missing migration/table is a hard stop before any reply is made.
+    if (!opts.triggerMessageId) {
+      try {
+        const committed = await loadCommittedReply(triggerMessageId)
+        if (committed?.reply_message_id) {
+          return { replied: true, messageId: committed.reply_message_id, offerId: committed.offer_id || null, aiMode }
+        }
+      } catch (err) {
+        console.error('[messengerAi] durable reply lookup failed', err instanceof Error ? err.message : err)
+        return { replied: false, skipped: 'persistence_unavailable', aiMode }
+      }
+    }
+    if (aiMode !== 'auto' && !opts.force) return { replied: false, skipped: `ai_mode_${aiMode}`, aiMode }
+    const now = Date.now()
+    const last = lastTriggerAt.get(key) || 0
+    if (!opts.force && now - last < DEBOUNCE_MS) return { replied: false, skipped: 'debounced', aiMode }
+    lastTriggerAt.set(key, now)
 
     if (aiMode === 'auto' && (conv.metadata as any)?.ai_mode == null) {
       await recordAiDiagnostic(db, opts.conversationId, {
@@ -1069,9 +1034,6 @@ export async function maybeAutoReply(opts: {
     if (!opts.force && lastMsg.sender_id !== client.id) return { replied: false, skipped: 'last_not_client', aiMode }
 
     const meta = conv.metadata || {}
-    if (opts.triggerMessageId && meta.ai_last_trigger_message_id === opts.triggerMessageId) {
-      return { replied: false, skipped: 'already_replied_trigger', aiMode }
-    }
     if (meta.ai_last_reply_at && Date.now() - new Date(String(meta.ai_last_reply_at)).getTime() < REPLY_COOLDOWN_MS) {
       return { replied: false, skipped: 'cooldown', aiMode }
     }
@@ -1081,7 +1043,7 @@ export async function maybeAutoReply(opts: {
       return { replied: false, skipped: 'ai_already_after_client', aiMode }
     }
 
-    const latestClientText = [...msgs].reverse().find((m: any) => m.sender_id === client.id)?.body || lastMsg.body || ''
+    const latestClientText = String(triggerMessage.body || '') || [...msgs].reverse().find((m: any) => m.sender_id === client.id)?.body || lastMsg.body || ''
     const disclosed = Boolean(meta.ai_disclosed)
     const history = msgs
       .slice(-40)
@@ -1443,84 +1405,54 @@ export async function maybeAutoReply(opts: {
 
       await clearTypingBubble(db, typingId)
 
-      const { data: inserted, error: insertErr } = await db
-        .from('conversation_messages')
-        .insert({
-          conversation_id: opts.conversationId,
-          sender_id: provider.id,
-          type: 'text',
-          body: replyText,
-          metadata: {
-            ai_generated: true,
-            ai_assistant: true,
-            ai_brand: 'YQAA',
-            ai_escalate: Boolean(decision.escalate || providerReview),
-            disclosure: true,
-            pricing_status: pricing.status,
-            pricing_reference_mean_cents: pricing.referenceMeanCents,
-          },
-        })
-        .select('id')
-        .maybeSingle()
-
-      if (insertErr || !inserted) {
-        const msg = insertErr?.message || 'insert returned no row'
-        console.error('[messengerAi] insert reply failed', msg)
-        await recordAiDiagnostic(db, opts.conversationId, {
-          ai_last_skip: 'insert_failed',
-          ai_last_skip_at: new Date().toISOString(),
-          ai_last_error: String(msg).slice(0, 500),
-          ai_last_error_at: new Date().toISOString(),
-        })
-        return { replied: false, skipped: 'insert_failed', aiMode }
-      }
-
-      let offerId: string | null = null
+      let offerPersistence: Record<string, any> | null = null
       if (decision.offer && approvedOffer && !decision.escalate && !providerReview) {
         try {
-          const created = await createOfferFromDecision(db, {
+          offerPersistence = await createOfferFromDecision(db, {
             conversationId: opts.conversationId,
-            triggerMessageId: opts.triggerMessageId || lastMsg.id,
+            triggerMessageId,
             conv,
             provider,
             client,
             offer: decision.offer,
             pricing,
-            memory,
             guardedPriceCents: approvedOffer.priceCents,
             scopedFloorCents: adaptive?.quote.scoped_floor_cents ?? null,
             scopedScopeHash: adaptive?.scope.scope_hash ?? null,
           })
-          if (created) {
-            offerId = created.id
-            memory = adaptive
-              ? withAdaptivePricingInMemory(created.memory, {
-                  decision: adaptive,
-                  offerId: created.id,
-                  approvedPriceCents: created.priceCents,
-                  journeyStage,
-                  emotionBand,
-                  lastPosture: companion?.posture ?? null,
-                })
-              : created.memory
-          }
         } catch (err) {
-          console.warn('[messengerAi] offer create skipped', err instanceof Error ? err.message : err)
+          console.error('[messengerAi] offer preparation failed', err instanceof Error ? err.message : err)
+        }
+        // Never persist offer-sounding reply text without the corresponding
+        // durable offer row and offer card in the same database transaction.
+        if (!offerPersistence) return { replied: false, skipped: 'offer_preparation_failed', aiMode }
+        memory = withOfferInMemory(memory, {
+          id: '__YQAA_OFFER_ID__',
+          title: String(offerPersistence.row.title),
+          priceCents: Number(offerPersistence.row.price),
+          currency: String(offerPersistence.row.currency),
+        })
+        if (adaptive) {
+          memory = withAdaptivePricingInMemory(memory, {
+            decision: adaptive,
+            offerId: '__YQAA_OFFER_ID__',
+            approvedPriceCents: Number(offerPersistence.row.price),
+            journeyStage,
+            emotionBand,
+            lastPosture: companion?.posture ?? null,
+          })
         }
       }
 
       const shouldEscalate = Boolean(decision.escalate || providerReview)
       const nextMode: AiMode = shouldEscalate ? 'paused' : aiMode
       const nextMeta = {
-        ...(conv.metadata || {}),
         ai_mode: nextMode,
         ai_disclosed: true,
         ai_brand: 'YQAA',
         ai_memory: memory,
         ai_last_reply_at: new Date().toISOString(),
-        ai_last_trigger_message_id: opts.triggerMessageId || lastMsg.id,
-        ai_last_message_id: inserted.id,
-        ai_last_offer_id: offerId,
+        ai_last_trigger_message_id: triggerMessageId,
         ai_last_pricing_status: pricing.status,
         ai_last_pricing_reference_mean_cents: pricing.referenceMeanCents,
         ai_last_pricing_status_adaptive: adaptive?.status ?? null,
@@ -1541,13 +1473,35 @@ export async function maybeAutoReply(opts: {
           : {}),
         ...(shouldEscalate ? { ai_escalated_at: new Date().toISOString(), ai_escalation_reason: providerReview ? 'pricing_provider_review' : 'model_escalation' } : {}),
       }
-      await db
-        .from('conversations')
-        .update({ metadata: nextMeta, updated_at: new Date().toISOString() })
-        .eq('id', opts.conversationId)
-        .then(() => null, () => null)
-
-      return { replied: true, messageId: inserted.id, offerId, aiMode: nextMode }
+      const { data: committedReply, error: commitError } = await db.rpc('commit_yqaa_reply', {
+        p_conversation_id: opts.conversationId,
+        p_trigger_message_id: triggerMessageId,
+        p_reply: {
+          sender_id: provider.id,
+          body: replyText,
+          metadata: {
+            ai_generated: true,
+            ai_assistant: true,
+            ai_brand: 'YQAA',
+            ai_escalate: Boolean(decision.escalate || providerReview),
+            disclosure: true,
+            pricing_status: pricing.status,
+            pricing_reference_mean_cents: pricing.referenceMeanCents,
+          },
+        },
+        p_offer: offerPersistence,
+        p_conversation_metadata: nextMeta,
+      })
+      if (commitError || !committedReply?.reply_message_id) {
+        console.error('[messengerAi] atomic reply commit failed', commitError?.message || 'RPC returned no reply id')
+        return { replied: false, skipped: 'persistence_failed', aiMode }
+      }
+      return {
+        replied: true,
+        messageId: committedReply.reply_message_id,
+        offerId: committedReply.offer_id || null,
+        aiMode: nextMode,
+      }
     } finally {
       await clearTypingBubble(db, typingId)
     }

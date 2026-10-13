@@ -11,10 +11,25 @@ Candidate: `a6da10f3`.
 
 ## Required database migration
 
-`supabase/migrations/20261013120000_yqaa_offer_idempotency.sql` adds the nullable `offers.yqaa_idempotency_key` column and a partial unique index. It is **not applied** by this repair. Apply through the repository's normal migration/release process before enabling the offer code in production. No production database was modified.
+`supabase/migrations/20261013120000_yqaa_offer_idempotency.sql` adds the nullable `offers.yqaa_idempotency_key` column and partial unique index, a service-only durable trigger ledger, and `commit_yqaa_reply`. The RPC verifies the service role, conversation participants, client trigger ownership/currentness, offer sender/recipient, inquiry ownership, and gig ownership. A conversation row lock serializes workers. The reply, offer, offer card, attorney inquiry message, audit record, memory, provider-attention/escalation metadata, and trigger ledger commit in one transaction. A retry returns the ledger's original reply and offer IDs. Public and authenticated roles cannot execute the RPC or read the ledger.
+
+The application checks the durable ledger before generation and fails closed if the table is missing. It creates no reply when offer preparation fails; when the RPC fails, PostgreSQL rolls back both reply and offer effects. This makes deployment safe before the migration, while the migration remains a prerequisite for YQAA replies to resume.
+
+The migration is **not applied** by this repair. Apply it only through the repository's normal migration/release process. No production database was modified.
+
+## Concurrent database test
+
+`node scripts/test-yqaa-atomic-idempotency.mjs` runs two independent `psql` processes concurrently against the RPC, checks that only one reply/offer/card/commit exists and that memory/provider-attention state is durable, verifies rollback when offer validation fails, and confirms `authenticated` cannot execute the RPC. It applies the migration only to the configured isolated local database. Set `YQAA_TEST_DATABASE_URL` to a loopback PostgreSQL URL whose database name contains `test`, `local`, or `yqaa`; the script rejects other hosts and database names and cleans up its fixtures.
 
 Provider approval is not currently represented by an approval record or endpoint in this phase. The generated pricing token was therefore removed as an authorization signal; below-floor offers remain blocked and require provider review.
 
 ## Verification evidence
 
-Focused regressions cover companion escalation enforcement, absent/insufficient evidence handoff, floor-vs-monotonic conflicts, ignored generated approval tokens, and trigger-bound idempotency keys. Full Jest and TypeScript results are recorded in the repair report after execution.
+Completed in this repair:
+
+- Full Jest: **571 suites passed, 2 skipped; 6,388 tests passed, 4 skipped**.
+- TypeScript: `npx tsc --noEmit` passed.
+- Migration policy: `node scripts/migration-ledger-policy.mjs --check` passed (69 files; manifest, naming, transaction safety).
+- Script syntax and whitespace: `node --check scripts/test-yqaa-atomic-idempotency.mjs` and `git diff --check` passed.
+- Concurrent PostgreSQL integration: **not run**. This environment has no `psql`, PostgreSQL server, Supabase CLI, Docker, or `YQAA_TEST_DATABASE_URL`. Run the documented script against an isolated local Supabase/PostgreSQL database before merging.
+- Jev route/gate could not run because `jevctl` reported that the TypeSafe API key was unavailable; no credential value was accessed or printed.

@@ -10,13 +10,15 @@ describe('Messenger offer message contract', () => {
   const offerApi = read('app/api/offers/[id]/route.ts')
   const manualOffers = read('app/api/offers/route.ts')
   const aiOffers = read('lib/messengerAi.ts')
+  const aiOfferMigration = read('supabase/migrations/20261013120000_yqaa_offer_idempotency.sql')
   const orderLinks = read('lib/orderLinks.ts')
 
-  test('manual and AI offers preserve the authoritative provider as sender', () => {
+  test('manual offers and atomic AI offer commits preserve the authoritative provider as sender', () => {
     expect(manualOffers).toContain('sender_id: auth.profileId')
     expect(aiOffers).toContain('sender_id: args.provider.id')
-    expect(aiOffers).toContain("type: 'offer'")
-    expect(aiOffers).toContain('ref_offer_id: offer.id')
+    expect(aiOffers).toContain("db.rpc('commit_yqaa_reply'")
+    expect(aiOfferMigration).toContain("p_conversation_id, v_provider_id, 'offer'")
+    expect(aiOfferMigration).toContain('ref_offer_id, ref_inquiry_id, metadata')
   })
 
   test('offer cards reserve the sender avatar gutter and lower tail instead of floating', () => {
