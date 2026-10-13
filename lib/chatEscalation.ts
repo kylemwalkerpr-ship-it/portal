@@ -50,10 +50,12 @@ export async function escalateToSupport(opts: {
   visitor: SupportVisitor | null
   topic?: string
   conversationId?: string | null
+  signal?: AbortSignal
 }): Promise<SupportHandoffResult> {
   const res = await fetch(SUPPORT_WIDGET_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: opts.signal,
     body: JSON.stringify({
       message: opts.message,
       visitor: opts.visitor || undefined,

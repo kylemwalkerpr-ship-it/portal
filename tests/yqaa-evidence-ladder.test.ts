@@ -17,27 +17,46 @@ async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
   jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean;
   generationError?: boolean
+  generationHang?: boolean
+  evidenceHang?: boolean
+  supportHang?: boolean
+  decisionRecordHang?: boolean
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
-  const loadYqaaEvidence = jest.fn(async () => ({ chunks, source: 'database',
+  const loadYqaaEvidence = jest.fn(async (input?: { signal?: AbortSignal }) => {
+    if (opts.evidenceHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
+    return ({ chunks, source: 'database',
     retrievalConfidence: opts.confidence ?? 0.9, freshEnough: opts.fresh ?? true,
-    jurisdictions: ['United States'], sites: [...new Set(chunks.map((c) => c.site))] }))
+    jurisdictions: ['United States'], sites: [...new Set(chunks.map((c) => c.site))] })
+  })
   const requestJevAdvisory = jest.fn()
   for (const value of opts.jev ?? [clearJev()]) requestJevAdvisory.mockResolvedValueOnce(value)
   const researchYqaaPublicWeb = jest.fn(opts.webError
     ? async () => { throw new Error('web unavailable') }
     : async () => opts.web ?? [])
-  const generateYqaaAnswer = jest.fn(async () => {
+  const generateYqaaAnswer = jest.fn(async (_system?: string, _turns?: unknown, input?: { signal?: AbortSignal }) => {
+    if (opts.generationHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
     if (opts.generationError) throw new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')
     return { text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }
   })
-  const escalateToSupport = jest.fn(async () => ({ conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }))
+  const escalateToSupport = jest.fn(async (input?: { signal?: AbortSignal }) => {
+    if (opts.supportHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
+    return { conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }
+  })
+  const persistYqaaDecisionRecord = jest.fn(async (_db: unknown, _input: unknown, options?: { signal?: AbortSignal }) => {
+    if (opts.decisionRecordHang) return await new Promise<void>((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true })
+    })
+  })
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
   jest.doMock('@/lib/yqaaWebResearch', () => ({ ...jest.requireActual('@/lib/yqaaWebResearch'), researchYqaaPublicWeb }))
   jest.doMock('@/lib/yqaaGeneration', () => ({ generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
   jest.doMock('@/lib/chatEscalation', () => ({ ...jest.requireActual('@/lib/chatEscalation'), escalateToSupport }))
+  jest.doMock('@/lib/yqaaDecisionRecord', () => ({
+    ...jest.requireActual('@/lib/yqaaDecisionRecord'), persistYqaaDecisionRecord,
+  }))
   if (opts.useRealFastReplies) {
     jest.dontMock('@/lib/assistantFastReplies')
   } else {
@@ -56,7 +75,7 @@ async function setup(opts: {
     }))
     return { status: response.status, body: await response.json() as Record<string, any> }
   }
-  return { ask, loadYqaaEvidence, requestJevAdvisory, researchYqaaPublicWeb, generateYqaaAnswer, escalateToSupport }
+  return { ask, loadYqaaEvidence, requestJevAdvisory, researchYqaaPublicWeb, generateYqaaAnswer, escalateToSupport, persistYqaaDecisionRecord }
 }
 
 describe('YQAA final evidence ladder', () => {
@@ -129,6 +148,73 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.researchYqaaPublicWeb).not.toHaveBeenCalled()
     expect(flow.requestJevAdvisory).toHaveBeenCalledTimes(1)
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  test.each(['database', 'model'] as const)('non-fast public chat cancels slow %s work and returns a bounded honest timeout', async (stage) => {
+    jest.useFakeTimers()
+    const flow = await setup({ ...(stage === 'database' ? { evidenceHang: true } : { generationHang: true }) })
+    const pending = flow.ask('How can I understand my immigration options?')
+    await jest.advanceTimersByTimeAsync(42_000)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(504)
+    expect(result.body.retryable).toBe(true)
+    expect(result.body.error).toMatch(/time limit|retry/i)
+    if (stage === 'database') expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
+    if (stage === 'model') expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
+  })
+
+  test('starts the deadline before JSON parsing and cancels a hung request body', async () => {
+    jest.useFakeTimers()
+    const flow = await setup()
+    const { POST } = await import('@/app/api/chat/route')
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+      cancel() { cancelled = true },
+    })
+    const req = new Request('https://usa.yousafeconsultancy.com/api/chat', { method: 'POST', body, duplex: 'half' } as RequestInit & { duplex: 'half' })
+    const pending = POST(req)
+    await jest.advanceTimersByTimeAsync(42_000)
+    const response = await pending
+    expect(response.status).toBe(504)
+    expect((await response.json()).retryable).toBe(true)
+    expect(cancelled).toBe(true)
+    expect(flow.loadYqaaEvidence).not.toHaveBeenCalled()
+    jest.useRealTimers()
+  })
+
+  test.each([
+    ['explicit agent', 'Please connect me to a human support agent', { requestAgent: true }],
+    ['high-stakes support', 'My landlord is evicting me tomorrow; should I sue?', {}],
+  ] as const)('%s support handoff is bounded and returns an honest unknown outcome when stalled', async (_kind, query, extra) => {
+    jest.useFakeTimers()
+    const flow = await setup({ supportHang: true })
+    const pending = flow.ask(query, extra)
+    await jest.advanceTimersByTimeAsync(42_000)
+    const result = await pending
+    jest.useRealTimers()
+    expect(flow.escalateToSupport).toHaveBeenCalledTimes(1)
+    expect((flow.escalateToSupport.mock.calls as any[][])[0][0].signal.aborted).toBe(true)
+    expect(result.status).toBe(504)
+    expect(result.body.provider).toBe('handoff-unknown')
+    expect(result.body.handoffState).toBe('unknown')
+    expect(result.body.retryable).toBe(false)
+    expect(result.body.reply).toMatch(/outcome is unknown.*check the support chat/i)
+  })
+
+  test('a stalled decision record does not change a successful support handoff or its answer', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ decisionRecordHang: true })
+    const pending = flow.ask('Please connect me to a human support agent', { requestAgent: true })
+    await jest.advanceTimersByTimeAsync(801)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(result.body.provider).toBe('handoff')
+    expect(result.body.handoff.conversationId).toBe('support-1')
+    expect(result.body.reply).toMatch(/connecting you to a live support agent/i)
+    expect(flow.persistYqaaDecisionRecord).toHaveBeenCalledTimes(1)
   })
 
   test('high-confidence fresh KB answers a simple question when Jev is unavailable', async () => {

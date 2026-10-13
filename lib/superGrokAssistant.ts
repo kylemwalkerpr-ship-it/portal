@@ -56,13 +56,19 @@ function headersFor(auth: MessengerGrokAuth): Record<string, string> {
   }
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, parentSignal?: AbortSignal) {
   const controller = new AbortController()
+  const onAbort = () => controller.abort(parentSignal?.reason)
+  if (parentSignal?.aborted) onAbort()
+  else parentSignal?.addEventListener('abort', onAbort, { once: true })
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    const text = await response.text()
+    return { response, text }
   } finally {
     clearTimeout(timer)
+    parentSignal?.removeEventListener('abort', onAbort)
   }
 }
 
@@ -71,12 +77,13 @@ async function postJsonWithRetry(
   init: RequestInit,
   timeoutMs: number,
   attempts = 2,
+  signal?: AbortSignal,
 ): Promise<{ response: Response; text: string }> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetchWithTimeout(url, init, timeoutMs)
-      const text = await response.text()
+      if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
+      const { response, text } = await fetchWithTimeout(url, init, timeoutMs, signal)
       if (response.ok || !TRANSIENT_STATUS.has(response.status) || attempt === attempts - 1) {
         return { response, text }
       }
@@ -85,7 +92,7 @@ async function postJsonWithRetry(
       lastError = err
       const timeout = err instanceof Error && err.name === 'AbortError'
       // Timeouts switch protocol immediately instead of repeating a slow call.
-      if (timeout || attempt === attempts - 1) throw err
+      if (signal?.aborted || timeout || attempt === attempts - 1) throw err
       await wait(250 * (attempt + 1))
     }
   }
@@ -123,6 +130,7 @@ function parseResponsesContent(text: string): string {
 async function callResponses(
   auth: MessengerGrokAuth,
   messages: Array<{ role: string; content: string }>,
+  signal?: AbortSignal,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/responses`,
@@ -140,12 +148,14 @@ async function callResponses(
     },
     RESPONSES_TIMEOUT_MS,
     2,
+    signal,
   )
 }
 
 async function callChatCompletions(
   auth: MessengerGrokAuth,
   messages: Array<{ role: string; content: string }>,
+  signal?: AbortSignal,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/chat/completions`,
@@ -162,6 +172,7 @@ async function callChatCompletions(
     },
     CHAT_TIMEOUT_MS,
     1,
+    signal,
   )
 }
 
@@ -176,6 +187,7 @@ async function callChatCompletions(
 export async function callSystemSuperGrok(
   system: string,
   turns: SystemAssistantTurn[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<{ text: string; model: string; authMode: string; latencyMs: number }> {
   const startedAt = Date.now()
   let auth = await resolveCachedAuth()
@@ -187,13 +199,13 @@ export async function callSystemSuperGrok(
   let responsesStatus = 0
   let responsesDiagnostic = ''
   try {
-    let response = await callResponses(auth, messages)
+    let response = await callResponses(auth, messages, options.signal)
     responsesStatus = response.response.status
 
     if (AUTH_FAILURE_STATUS.has(response.response.status)) {
       authCache = null
       auth = await resolveCachedAuth(true)
-      response = await callResponses(auth, messages)
+      response = await callResponses(auth, messages, options.signal)
       responsesStatus = response.response.status
     }
 
@@ -210,13 +222,14 @@ export async function callSystemSuperGrok(
       }
     }
   } catch (err) {
+    if (options.signal?.aborted) throw err
     responsesDiagnostic = err instanceof Error ? err.message : String(err)
   }
 
   let chatStatus = 0
   let chatDiagnostic = ''
   try {
-    const chat = await callChatCompletions(auth, messages)
+    const chat = await callChatCompletions(auth, messages, options.signal)
     chatStatus = chat.response.status
     chatDiagnostic = chat.text.slice(0, 240)
     if (chat.response.ok) {
@@ -231,6 +244,7 @@ export async function callSystemSuperGrok(
       }
     }
   } catch (err) {
+    if (options.signal?.aborted) throw err
     chatDiagnostic = err instanceof Error ? err.message : String(err)
   }
 
@@ -384,6 +398,7 @@ export function safeWebSearchResponseMeta(raw: string) {
 export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<{ text: string; citations: string[]; webSearchCalls: number; sources: SystemWebSearchSource[] }> {
   let resolvedAuth = await resolveCachedAuth()
   const request = (selectedAuth: MessengerGrokAuth) => postJsonWithRetry(
@@ -410,6 +425,7 @@ export async function callSystemSuperGrokWebSearch(
     },
     30_000,
     1,
+    options.signal,
   )
 
   const parseIfUsable = (candidate: { response: Response; text: string }) => {
@@ -440,6 +456,7 @@ export async function callSystemSuperGrokWebSearch(
   }> = []
 
   for (let index = 0; index < candidates.length; index += 1) {
+    if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError')
     let selectedAuth = candidates[index]
     try {
       let result = await request(selectedAuth)
@@ -457,6 +474,7 @@ export async function callSystemSuperGrokWebSearch(
         meta: safeWebSearchResponseMeta(result.text),
       })
     } catch (err) {
+      if (options.signal?.aborted) throw err
       diagnostics.push({
         authMode: selectedAuth.authMode,
         status: 'network',

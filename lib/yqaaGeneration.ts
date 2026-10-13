@@ -34,9 +34,9 @@ export function classifyYqaaProviderFailure(error: unknown): YqaaFallbackEvidenc
   return { kind, status, eligible: ['timeout', 'network', 'rate_limit', 'server_error'].includes(kind) }
 }
 
-async function generateWithProvider(provider: YqaaProvider, system: string, turns: SystemAssistantTurn[]): Promise<{ text: string; model: string }> {
+async function generateWithProvider(provider: YqaaProvider, system: string, turns: SystemAssistantTurn[], signal?: AbortSignal): Promise<{ text: string; model: string }> {
   if (provider === 'grok') {
-    const result = await callSystemSuperGrok(system, turns)
+    const result = await callSystemSuperGrok(system, turns, { signal })
     return { text: result.text, model: result.model }
   }
   const adapter = adapterFor(DEEPSEEK_V41_FLASH_PIN as CommissionedProviderPin, {
@@ -49,6 +49,7 @@ async function generateWithProvider(provider: YqaaProvider, system: string, turn
     disableThinking: true,
     exclusive: true,
     skipQualityContract: true,
+    signal,
   })
   const result = await adapter.complete()
   const text = result.text.trim()
@@ -66,12 +67,13 @@ function compactGrokRecoverySystem(system: string): string {
 }
 
 /** Provider-neutral YQAA answer seam. Grok remains default; fallback needs an exact server pin. */
-export async function generateYqaaAnswer(system: string, turns: SystemAssistantTurn[]): Promise<YqaaGenerationResult> {
+export async function generateYqaaAnswer(system: string, turns: SystemAssistantTurn[], options: { signal?: AbortSignal } = {}): Promise<YqaaGenerationResult> {
   const selection = configuredYqaaProviders()
   try {
-    const generated = await generateWithProvider(selection.primary, system, turns)
+    const generated = await generateWithProvider(selection.primary, system, turns, options.signal)
     return { ...generated, provider: selection.primary, fallback: false }
   } catch (error) {
+    if (options.signal?.aborted) throw error
     const evidence = classifyYqaaProviderFailure(error)
     if (!evidence.eligible) throw error
 
@@ -80,9 +82,10 @@ export async function generateYqaaAnswer(system: string, turns: SystemAssistantT
     // crossing providers. This also keeps YQAA operational when the optional
     // DeepSeek credential has not been provisioned.
     try {
-      const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns)
+      const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns, options.signal)
       return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
     } catch (recoveryError) {
+      if (options.signal?.aborted) throw recoveryError
       const recoveryEvidence = classifyYqaaProviderFailure(recoveryError)
       if (!selection.fallback || !recoveryEvidence.eligible) throw recoveryError
 
@@ -93,7 +96,7 @@ export async function generateYqaaAnswer(system: string, turns: SystemAssistantT
       // final error when the actual failure was Grok.
       await refreshAiVault()
       if (!resolveDeepseekFirstPartyApiKey()) throw recoveryError
-      const generated = await generateWithProvider(selection.fallback, system, turns)
+      const generated = await generateWithProvider(selection.fallback, system, turns, options.signal)
       return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: recoveryEvidence }
     }
   }

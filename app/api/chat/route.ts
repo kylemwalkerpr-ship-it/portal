@@ -18,6 +18,9 @@ import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
 import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
+import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
+import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
+import { adaptPublicSafetyDecision, adaptSupportHandoffDecision } from '@/lib/yqaaDecisionOrchestrator'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import {
@@ -30,6 +33,7 @@ import {
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
 const VIEWER_CONTEXT_BUDGET_MS = 1_500
+const PUBLIC_YQAA_DEADLINE_MS = 42_000
 
 type ViewerSnapshot = {
   visitor: SupportVisitor | null
@@ -127,8 +131,61 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
+async function persistDecisionBestEffort(
+  deadline: ReturnType<typeof createYqaaDeadline>,
+  input: Parameters<typeof persistYqaaDecisionRecord>[1],
+): Promise<void> {
+  const timeoutMs = Math.min(800, deadline.remainingMs())
+  if (timeoutMs <= 0 || deadline.signal.aborted) return
+  const controller = new AbortController()
+  const abortForDeadline = () => controller.abort(deadline.signal.reason)
+  deadline.signal.addEventListener('abort', abortForDeadline, { once: true })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      persistYqaaDecisionRecord(createSupabaseAdminClient, input, { signal: controller.signal, timeoutMs }),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          controller.abort(new YqaaDeadlineError())
+          resolve()
+        }, timeoutMs)
+      }),
+    ])
+  } catch (error) {
+    console.warn('[yqaa-decision-record] persistence unavailable', error instanceof Error ? error.message.slice(0, 120) : 'unknown')
+  } finally {
+    if (timer) clearTimeout(timer)
+    deadline.signal.removeEventListener('abort', abortForDeadline)
+    controller.abort()
+  }
+}
+
+async function readJsonWithSignal(req: Request, signal: AbortSignal): Promise<unknown> {
+  if (!req.body) throw new SyntaxError('Missing request body')
+  const reader = req.body.getReader()
+  const onAbort = () => { void reader.cancel(signal.reason).catch(() => {}) }
+  if (signal.aborted) onAbort()
+  else signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    const decoder = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (signal.aborted) throw signal.reason || new YqaaDeadlineError()
+      if (done) break
+      text += decoder.decode(value, { stream: true })
+    }
+    text += decoder.decode()
+    return JSON.parse(text)
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+}
+
 export async function POST(req: Request) {
   const requestStartedAt = Date.now()
+  const deadline = createYqaaDeadline(req.signal, PUBLIC_YQAA_DEADLINE_MS)
   let body: {
     messages?: unknown
     requestAgent?: unknown
@@ -138,18 +195,23 @@ export async function POST(req: Request) {
     pageContext?: unknown
   }
   try {
-    body = await req.json()
+    body = await deadline.race(readJsonWithSignal(req, deadline.signal)) as typeof body
   } catch {
+    const expired = deadline.signal.aborted
+    deadline.close()
+    if (expired) return withCors(req, { error: 'Request body did not arrive before the time limit.', retryable: true }, { status: 504 })
     return withCors(req, { error: 'Expected JSON body', retryable: false }, { status: 400 })
   }
 
   const rawMessages = Array.isArray(body.messages) ? body.messages : []
   const cleaned: SystemAssistantTurn[] = rawMessages.filter(isValidTurn).slice(-MAX_HISTORY_TURNS)
   if (cleaned.length === 0 || cleaned[cleaned.length - 1].role !== 'user') {
+    deadline.close()
     return withCors(req, { error: 'Send at least one user message', retryable: false }, { status: 400 })
   }
   const lastUser = cleaned[cleaned.length - 1]
   if (lastUser.content.length > MAX_USER_MESSAGE_CHARS) {
+    deadline.close()
     return withCors(
       req,
       { error: `Message too long — keep it under ${MAX_USER_MESSAGE_CHARS} characters.`, retryable: false },
@@ -164,6 +226,7 @@ export async function POST(req: Request) {
   if (!wantsAgent) {
     const fastReply = getDeterministicYqaaReply(cleaned)
     if (fastReply) {
+      deadline.close()
       const total = Date.now() - requestStartedAt
       return withCors(
         req,
@@ -185,19 +248,26 @@ export async function POST(req: Request) {
   }
 
   if (wantsAgent) {
-    const viewer = await boundedViewerSnapshot()
-    const incomingVisitor = asVisitor(body.visitor)
-    const topic = typeof body.topic === 'string' && body.topic.trim()
-      ? body.topic.trim()
-      : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
-    const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
-
+    let supportPostStarted = false
     try {
-      const handoff = await escalateToSupport({
+      const viewer = await deadline.race(boundedViewerSnapshot())
+      const incomingVisitor = asVisitor(body.visitor)
+      const topic = typeof body.topic === 'string' && body.topic.trim()
+        ? body.topic.trim()
+        : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
+      const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
+      supportPostStarted = true
+      const handoff = await deadline.race(escalateToSupport({
         message: lastUser.content,
         visitor,
         topic,
+        signal: deadline.signal,
+      }))
+      await persistDecisionBestEffort(deadline, {
+        channel: 'support', interactionKey: crypto.randomUUID(),
+        decision: adaptSupportHandoffDecision('explicit_human_handoff'),
       })
+      deadline.close()
       return withCors(req, {
         handoff: {
           conversationId: handoff.conversationId,
@@ -214,11 +284,18 @@ export async function POST(req: Request) {
       })
     } catch (err) {
       console.error('[system-assistant] escalation failed', err instanceof Error ? err.message.slice(0, 160) : 'unknown')
+      const expired = deadline.signal.aborted || err instanceof YqaaDeadlineError
+      deadline.close()
       return withCors(req, {
-        reply: 'I could not connect you to support just now. I will not guess about this request. Please retry the handoff or contact YouSafe Support directly.',
-        provider: 'handoff-unavailable',
-        retryable: true,
-      }, { status: 503 })
+        reply: supportPostStarted
+          ? expired
+            ? 'The support handoff did not finish before the time limit. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+            : 'The support handoff did not return a confirmation. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+          : 'I could not prepare the support handoff before the time limit. No support request was sent; please retry or contact YouSafe Support directly.',
+        provider: supportPostStarted ? 'handoff-unknown' : 'handoff-unavailable',
+        ...(supportPostStarted ? { handoffState: 'unknown' } : {}),
+        retryable: !supportPostStarted,
+      }, { status: expired ? 504 : 503 })
     }
   }
 
@@ -227,12 +304,13 @@ export async function POST(req: Request) {
     const pageContext = [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings]
       .filter(Boolean)
       .join(' ')
-    const evidencePack = await loadYqaaEvidence({
+    const evidencePack = await deadline.race(loadYqaaEvidence({
       query: lastUser.content,
       hostname: inquiryOrigin.hostname,
       pageContext,
       limit: 12,
-    })
+      signal: deadline.signal,
+    }))
     let publicEvidence = evidencePack.chunks
     const knowledgeMs = Date.now() - knowledgeStartedAt
 
@@ -243,7 +321,7 @@ export async function POST(req: Request) {
     }
     const triggers = yqaaJevTriggers(advisoryContext)
     const jevStartedAt = Date.now()
-    const jev = await requestJevAdvisory(advisoryContext)
+    const jev = await deadline.race(requestJevAdvisory(advisoryContext))
     let jevMs = Date.now() - jevStartedAt
     let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     let webEvidenceCount = 0
@@ -252,13 +330,13 @@ export async function POST(req: Request) {
     if (safety.reason !== 'high_stakes_handoff' &&
         (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
       try {
-        const webChunks = await researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname)
+        const webChunks = await deadline.race(researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname, { signal: deadline.signal }))
         webEvidenceCount = webChunks.length
         if (webChunks.length) {
           publicEvidence = [...webChunks, ...evidencePack.chunks].slice(0, 12)
           advisoryContext = { ...advisoryContext, evidence: publicEvidence }
           const secondJevStartedAt = Date.now()
-          const secondJev = await requestJevAdvisory(advisoryContext)
+          const secondJev = await deadline.race(requestJevAdvisory(advisoryContext))
           jevMs += Date.now() - secondJevStartedAt
           safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
           webResearchStatus = safety.answer ? 'verified' : 'retrieved'
@@ -273,14 +351,23 @@ export async function POST(req: Request) {
       }
     }
     if (!safety.answer && safety.reason === 'high_stakes_handoff') {
-      const viewer = await boundedViewerSnapshot()
-      const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+      let supportPostStarted = false
       try {
-        const handoff = await escalateToSupport({
+        const viewer = await deadline.race(boundedViewerSnapshot())
+        const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+        supportPostStarted = true
+        const handoff = await deadline.race(escalateToSupport({
           message: lastUser.content,
           visitor: handoffVisitor,
           topic: 'yqaa-safety-handoff',
+          signal: deadline.signal,
+        }))
+        await persistDecisionBestEffort(deadline, {
+          channel: 'support', interactionKey: crypto.randomUUID(),
+          decision: adaptSupportHandoffDecision(safety.reason),
+          evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
         })
+        deadline.close()
         return withCors(req, {
           reply: safety.reason === 'high_stakes_handoff'
             ? 'This request needs individualized professional advice. I am connecting you to support for a qualified person to review it.'
@@ -290,19 +377,26 @@ export async function POST(req: Request) {
           retryable: false,
         })
       } catch {
+        const expired = deadline.signal.aborted
+        deadline.close()
         return withCors(req, {
-          reply: 'I could not verify enough public evidence or connect to support right now. Please retry the handoff or contact YouSafe Support directly.',
-          provider: 'safety-handoff-unavailable',
-          retryable: true,
-        }, { status: 503 })
+          reply: supportPostStarted
+            ? expired
+              ? 'The support handoff did not finish before the time limit. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+              : 'The support handoff did not return a confirmation. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+            : 'I could not prepare the support handoff before the time limit. No support request was sent; please retry or contact YouSafe Support directly.',
+          provider: supportPostStarted ? 'handoff-unknown' : 'handoff-unavailable',
+          ...(supportPostStarted ? { handoffState: 'unknown' } : {}),
+          retryable: !supportPostStarted,
+        }, { status: expired ? 504 : 503 })
       }
     }
 
-    const baseSystemKnowledge = await buildCentralAssistantKnowledge({
+    const baseSystemKnowledge = await deadline.race(buildCentralAssistantKnowledge({
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
       curatedChunks: publicEvidence,
-    })
+    }))
     const liveResearchContext = buildYqaaLiveResearchContext(publicEvidence, webResearchStatus)
     const evidenceLimit = safety.answer ? '' : [
       '# CURRENT TURN EVIDENCE LIMIT',
@@ -318,9 +412,9 @@ export async function POST(req: Request) {
     try {
       // generateYqaaAnswer already performs the commissioned compact Grok
       // recovery and only crosses to DeepSeek when a real credential exists.
-      result = await generateYqaaAnswer(systemKnowledge, cleaned)
+      result = await deadline.race(generateYqaaAnswer(systemKnowledge, cleaned, { signal: deadline.signal }))
     } catch (generationError) {
-      if (!verifiedLiveResearch) throw generationError
+      if (deadline.signal.aborted || generationError instanceof YqaaDeadlineError || !verifiedLiveResearch) throw generationError
       const digest = buildYqaaVerifiedWebDigest(publicEvidence)
       if (!digest) throw generationError
       const modelMs = Date.now() - modelStartedAt
@@ -330,6 +424,12 @@ export async function POST(req: Request) {
         webEvidenceCount,
         totalMs,
       })
+      await persistDecisionBestEffort(deadline, {
+        channel: 'public', interactionKey: crypto.randomUUID(),
+        decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+        evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
+      })
+      deadline.close()
       return withCors(
         req,
         {
@@ -399,6 +499,13 @@ export async function POST(req: Request) {
       webResearchStatus,
     })
 
+    await persistDecisionBestEffort(deadline, {
+      channel: 'public', interactionKey: crypto.randomUUID(),
+      decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+      evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
+    })
+
+    deadline.close()
     return withCors(
       req,
       {
@@ -425,19 +532,21 @@ export async function POST(req: Request) {
       },
     )
   } catch (err) {
+    deadline.close()
     const message = err instanceof Error ? err.message : 'Unknown error'
     const totalMs = Date.now() - requestStartedAt
     console.error('[system-assistant] model error', message, { totalMs })
     return withCors(
       req,
       {
-        error:
-          "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
+        error: err instanceof YqaaDeadlineError || deadline.signal.aborted
+          ? "I couldn't verify enough evidence to complete that response before the time limit. Your message is still here — please retry or ask for a human."
+          : "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
         retryable: true,
         marketplaceRecommendation,
       },
       {
-        status: 502,
+        status: err instanceof YqaaDeadlineError || deadline.signal.aborted ? 504 : 502,
         headers: { 'Server-Timing': timingHeader([['total', totalMs]]) },
       },
     )

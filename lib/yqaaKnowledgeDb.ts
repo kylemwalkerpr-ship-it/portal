@@ -126,15 +126,18 @@ export async function searchYqaaKnowledgeIndex(db: any, opts: {
   query: string
   hostname?: string | null
   limit?: number
+  signal?: AbortSignal
 }): Promise<YqaaEvidencePack> {
   const originSite = yqaaOriginSite(opts.hostname)
   const jurisdiction = explicitYqaaJurisdiction(opts.query)
-  const { data, error } = await db.rpc('search_yqaa_knowledge', {
+  let query = db.rpc('search_yqaa_knowledge', {
     p_query: String(opts.query || '').slice(0, 2000),
     p_origin_site: originSite,
     p_jurisdiction: jurisdiction,
     p_limit: Math.max(1, Math.min(24, opts.limit || 12)),
   })
+  if (opts.signal && typeof query.abortSignal === 'function') query = query.abortSignal(opts.signal)
+  const { data, error } = await query
   if (error) throw error
   const chunks = (Array.isArray(data) ? data : []).map(rowToChunk).filter(Boolean) as YqaaIndexedChunk[]
   const retrievalConfidence = evidenceConfidence(chunks)
@@ -225,6 +228,7 @@ export async function loadYqaaEvidence(opts: {
   pageContext?: string | null
   limit?: number
   db?: any
+  signal?: AbortSignal
 }): Promise<YqaaEvidencePack> {
   const limit = Math.max(1, Math.min(24, opts.limit || 12))
   const deep = shouldUseDeepNetworkKnowledge(opts.query)
@@ -244,6 +248,7 @@ export async function loadYqaaEvidence(opts: {
         query: opts.query,
         hostname: opts.hostname,
         limit,
+        signal: opts.signal,
       })
     }
   } catch (error) {

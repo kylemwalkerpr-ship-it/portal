@@ -141,6 +141,7 @@ function markdownEvidence(markdown: string, query: string): { title?: string; bo
 async function researchViaCloudflareBrowser(
   query: string,
   scope: ReturnType<typeof yqaaResearchScope>,
+  signal?: AbortSignal,
 ): Promise<YqaaIndexedChunk[]> {
   const browser = browserBinding()
   if (!browser) return []
@@ -149,6 +150,7 @@ async function researchViaCloudflareBrowser(
     ? ` (${scope.allowedDomains.slice(0, 5).map((domain) => `site:${domain}`).join(' OR ')})`
     : ''
   const discoveryUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`${publicQuestion}${domainClause}`)}`
+  if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
   const links = await browserAction<string[]>(browser, 'links', {
     url: discoveryUrl,
     rejectResourceTypes: ['image', 'font', 'media', 'stylesheet'],
@@ -163,6 +165,7 @@ async function researchViaCloudflareBrowser(
   }
   const chunks: YqaaIndexedChunk[] = []
   for (const sourceUrl of candidates) {
+    if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
     try {
       const page = await browserAction<string>(browser, 'markdown', {
         url: sourceUrl,
@@ -230,7 +233,7 @@ function xaiEvidenceChunks(
 }
 
 /** Keep only public, citation-linked search findings; a model summary alone is not evidence. */
-export async function researchYqaaPublicWeb(query: string, hostname?: string | null): Promise<YqaaIndexedChunk[]> {
+export async function researchYqaaPublicWeb(query: string, hostname?: string | null, options: { signal?: AbortSignal } = {}): Promise<YqaaIndexedChunk[]> {
   const scope = yqaaResearchScope(query, hostname)
   const publicQuestion = sanitizeYqaaPublicQuestion(query)
 
@@ -239,7 +242,7 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
   // to invoke a provider-side search tool.
   if (scope.officialOnly) {
     try {
-      const browserEvidence = await researchViaCloudflareBrowser(query, scope)
+      const browserEvidence = await researchViaCloudflareBrowser(query, scope, options.signal)
       if (browserEvidence.length) return browserEvidence
     } catch (err) {
       console.warn('[system-assistant] Cloudflare Browser research failed', err instanceof Error ? err.message : 'unknown')
@@ -250,6 +253,7 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
     const result = await callSystemSuperGrokWebSearch(
       `${publicQuestion}\nJurisdiction: ${scope.jurisdiction || 'unspecified'}. Cite each factual sentence with its source URL.`,
       scope.allowedDomains,
+      options,
     )
     const chunks = xaiEvidenceChunks(result, scope)
     if (chunks.length) return chunks
@@ -260,7 +264,7 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
   // Non-YMYL and provider-search failure both get the same bounded browser
   // fallback. safeCitation() still rejects credentialed/private URLs.
   try {
-    return await researchViaCloudflareBrowser(query, scope)
+    return await researchViaCloudflareBrowser(query, scope, options.signal)
   } catch (err) {
     console.warn('[system-assistant] Cloudflare Browser fallback unavailable', err instanceof Error ? err.message : 'unknown')
     return []
