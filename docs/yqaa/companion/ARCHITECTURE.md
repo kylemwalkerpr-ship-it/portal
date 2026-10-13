@@ -1,9 +1,9 @@
 # YQAA Legal Companion Architecture
 
-**Status:** Research/planning only (2026-10-06 ET, revised same day for system-wide scope + adaptive pricing). No implementation in this packet.  
-**Audience:** CoS + Freebuff (YouSafe Bridge on Mac).  
+**Status:** Architecture reference for modules shipped on `main` as of 2026-10-13; remaining work is called out explicitly below.
+**Audience:** Portal maintainers.
 **Scope:** **System-wide**: every provider, every gig/category, every YQAA surface (provider DMs, public chat, AI offers, support handoff). Nothing is provider- or practice-area-specific; past incidents are regression fixtures only.  
-**Grounding:** portal `main` @ `471d6b2` (PR **#391** merged: empathy + DM evidence v0 + budget-loop harden); 2026-10-05 low-budget DM incident (fixture F1); public-chat Jev plane (`lib/jevAdvisory.ts`); TypeSafe SystemOne (`jev-latest`); pricing code `lib/messengerPricingAuthority.ts`. Companion pricing design: **`PRICING-ADAPTIVE.md`**.
+**Grounding:** portal `main` @ `79f8008b` plus the companion modules listed below. The 2026-10-05 low-budget DM incident is fixture F1 only. Companion pricing design: **`PRICING-ADAPTIVE.md`**.
 
 ---
 
@@ -17,7 +17,7 @@ YQAA (**YouSafe Quick Assistance Agent**) is a **human legal companion** for imm
 - Never practices law; never guarantees outcomes; never impersonates providers (every provider is a human professional; YQAA is disclosed AI on their thread).
 - **Prices fairly and adaptively**: re-quotes when the client narrows scope, flexes within a provider-configured band on reasonable counters, offers smaller scopes or provider review below the band, and never leaks internal numbers (see `PRICING-ADAPTIVE.md`).
 
-PR #391 (merged) is the **baseline fix**: stop budget-template loops, substance-first prompt, DM evidence. This architecture is the **full recursive companion** beyond that patch, and it applies the same way to every provider and surface.
+PR #391 established the budget-loop, substance-first, and DM-evidence baseline. The architecture below describes the shipped decision and pricing modules as well as optional and external follow-up work; it is not a claim that counsel review or expert-labelled gold acceptance has happened.
 
 ---
 
@@ -67,19 +67,21 @@ Jev **never** writes client prose, never overrides deterministic safety, never c
 
 ## 3. What exists today (ground truth)
 
+The channel boundary is `lib/yqaaDecisionOrchestrator.ts`. `runCompanionOrchestrator` accepts a typed channel and its exact capability set, then delegates to the existing authorities: public safety to `applyYqaaSafetyPolicy`, DM posture/negotiation to `buildCompanionDecision`, and support records to the already-authorized handoff caller. Public and support cannot authorize commerce or negotiation. DM prices and offers remain finalized by the existing server pricing/offer callers. The orchestrator does not add persistence; `lib/yqaaDecisionRecord.ts` remains the record adapter.
+
 | Capability | Public `/api/chat` | Provider DM `messengerAi` |
 |---|---|---|
 | SuperGrok draft | ✅ `generateYqaaAnswer` | ✅ `maybeAutoReply` |
 | Curated messenger KB | partial (central assistant) | ✅ `content/messenger-kb/*` |
 | YQAA knowledge index + web evidence | ✅ ladder + 2nd Jev pass | ✅ in PR #391 via `loadMessengerLegalEvidence` |
-| **Jev advisory** (`requestJevAdvisory`) | ✅ wired | ❌ **not wired** (gap) |
-| Pricing authority / offer guard | n/a | ✅ `messengerPricingAuthority` (**scope-blind**: blended all-tier category mean × 0.85; binary guard) |
-| Budget-loop harden | n/a | ✅ PR #391 (empathize once, frustration/duplicate → escalate) |
-| Scope re-quote / negotiation / flex band | n/a (no pricing in public chat) | ❌ **target** (`PRICING-ADAPTIVE.md`) |
-| Range-aware budget + counter memory | n/a | ❌ ("$X to Y" drops upper bound; memory keeps latest budget + one offer) |
-| Journey / emotion model | ❌ | ❌ (memory has markets/docs/budget only) |
-| Grammar polish stage | ❌ (prompt-only) | ❌ (prompt-only) |
-| Recursive learning store | ❌ | ❌ |
+| **Channel decision entrypoint** | ✅ `runCompanionOrchestrator` | ✅ `runCompanionOrchestrator` |
+| Deterministic YMYL/evidence policy | ✅ `applyYqaaSafetyPolicy` | ✅ `buildCompanionDecision` deterministic gates |
+| **Jev advisory** | ✅ public evidence ladder | ✅ optional advisory over redacted companion context |
+| Pricing / negotiation | n/a; no public offers | ✅ `yqaaAdaptivePricing.ts`, with server-finalized numbers and offer guard |
+| Budget-loop and frustration gates | n/a | ✅ `yqaaCompanionDecision.ts` plus messenger authority caller |
+| Journey / negotiation memory | n/a | ✅ `messengerConversationMemory.ts` |
+| Rules-based grammar / leak / stale-number polish | public guards | ✅ `yqaaCompanionPolish.ts`; a separate polish model is optional |
+| Decision records / offline review | ✅ shared versioned records | ✅ shared versioned records; no online policy rewrite |
 
 **Jev (found):** TypeSafe **SystemOne** model `jev-latest` (pinned responses like `jev-1.13.0`). Endpoint `POST https://api.typesafe.ai/v1/systemone` with typed questions (`noul` / `choice` / `score`). Portal adapter: `lib/jevAdvisory.ts`. Auth: server-only `TYPESAFE_API_KEY`. Instructions today: *bounded advisory on public evidence only; do not draft visitor answers or override safety policy.*
 
@@ -127,42 +129,19 @@ Forbidden postures are **removed from the choice set**, not down-weighted (TypeS
 
 ### 4.3 Decision Plane — Jev in the loop
 
-Extend messenger + public chat to share one **Decision Adapter**:
+The shared entrypoint is shipped in `lib/yqaaDecisionOrchestrator.ts`. Its inputs are channel-specific, and the supplied capability object must exactly match the channel contract:
 
 ```ts
-// Conceptual interface (implement later on Mac)
-type CompanionDecisionState = {
-  channel: 'dm' | 'public' | 'support'
-  redacted_query: string
-  role_frame: 'seeker' | ...
-  journey_stage: string
-  emotion_hint?: number
-  evidence_digest: { id; title; url; jurisdiction; excerpt }[]  // ≤12, ≤600 chars
-  prior_posture?: string
-  budget_status?: 'none' | 'need_budget' | 'budget_too_low' | 'ready'
-  scope_depth?: 'consult' | 'review' | 'partial' | 'full' | 'unknown'
-  counter_bucket?: 'none' | 'reasonable' | 'reasonable_meet' | 'stretch' | 'lowball' | 'abusive'  // bucket only, no numbers
-  counter_count?: number
-  frustration?: boolean
-  duplicate_risk?: boolean
-  triggers: JevTrigger[]
-}
+type PublicInput = { channel: 'public'; capabilities: PublicCapabilities; context: JevContext; jev: JevResult }
+type DmInput = { channel: 'dm'; capabilities: DmCapabilities; decision: Omit<CompanionDecisionArgs, 'channel'> }
+type SupportInput = { channel: 'support'; capabilities: SupportCapabilities; reason: string }
 
-type CompanionJevQuestions = {
-  posture: Choice<EDUCATE|DISCOVER|EMPATHIZE|COMMERCE|NEGOTIATE|ESCALATE_PROVIDER|HANDOFF_SUPPORT|ABSTAIN>
-  negotiation_posture?: Choice<ACCEPT|MEET_MIDDLE|DOWNSCOPE|HOLD_VALUE|ESCALATE_PROVIDER>  // pruned to eligible set; Jev never sees/sets cents
-  sufficient: Noul
-  conflict: Noul
-  needs_handoff: Noul
-  market: Choice<usa|canada|uk|australia|global|unknown>
-  emotion?: Score  // Calm → Distressed
-  grammar_risk?: Noul  // "Would a canned/template reply harm trust here?"
-}
+runCompanionOrchestrator(PublicInput | DmInput | SupportInput)
 ```
 
-**Timeout:** keep ≤1400ms for advisory (existing). On timeout: deterministic policy only (budget-loop + adaptive-pricing defaults still apply).
+For public turns, the entrypoint delegates to `applyYqaaSafetyPolicy` and emits an EDUCATE, ABSTAIN, or handoff record. For DM turns, it delegates to `buildCompanionDecision`; all price and offer amounts remain in the existing server pricing/offer callers. For support turns, it records only the caller's authorized handoff. Public/support capabilities set commerce, DM offers, negotiation, and money authority to false/none; public retains licensed-human handoff capability. Jev timeout uses the existing deterministic fallbacks. The public `/api/chat` total deadline remains 42 seconds.
 
-**Messenger wiring (phase 2+):** after evidence load, before Grok draft — call Jev; inject `# DECISION AUTHORITY` block (posture + reasons). Grok must follow posture; server re-checks escalate/commerce.
+**Messenger wiring:** after evidence load, before Grok draft, the DM authority calls the shared entrypoint; `# DECISION AUTHORITY` carries posture and reasons. The existing server re-checks escalation, pricing, and offer eligibility.
 
 ### 4.4 Evidence Plane
 
@@ -240,21 +219,21 @@ Loop:
 
 ---
 
-## 5. Data flow (happy path DM)
+## 5. Data flow (happy path DM; current modules)
 
 ```
 Client message
   → intake (ai_mode=auto?)
   → context graph update (memory + journey + frustration detect)
   → evidence (site + legal KB + optional web)
-  → Jev decision (posture, handoff, market, emotion)
-  → adaptive pricing (scope signal → scoped quote → flex policy → counter class → eligible actions)
+  → `runCompanionOrchestrator` → `buildCompanionDecision` (deterministic gates + bounded Jev advisory)
+  → `yqaaAdaptivePricing` (scope signal → scoped quote → flex policy → counter class → eligible actions)
   → deterministic merge (budget-loop rules, pricing/negotiation action, high_stakes)
   → Grok draft (only server-approved numbers in prompt)
   → polish (grammar/positioning/leak scrub/stale-number scrub/anti-dup)
   → offer guard (scoped floor; approval token below band)
   → send OR escalate OR support handoff
-  → DecisionRecord + memory persist
+  → `persistYqaaDecisionRecord` + conversation memory persist
 ```
 
 ---
@@ -293,16 +272,9 @@ Client message
 
 ---
 
-## 8. Channel unification strategy
+## 8. Channel unification status
 
-Long-term: one **Companion Orchestrator** shared by public chat and DMs, with channel-specific actuators (offer creation only on DM; support queue on public).
-
-Short-term: keep files, extract shared modules:
-
-- `lib/yqaaCompanionContext.ts`  
-- `lib/yqaaCompanionDecision.ts` (Jev + deterministic merge)  
-- `lib/yqaaCompanionPolish.ts`  
-- Keep `messengerAi.ts` / `app/api/chat/route.ts` as thin adapters.
+The shared typed boundary is implemented in `lib/yqaaDecisionOrchestrator.ts`; `app/api/chat/route.ts` and `lib/messengerAi.ts` call it, and public support handoffs record through it after the caller receives a successful handoff. Channel capabilities are checked at runtime as well as constrained by the TypeScript input union. Surface-specific evidence loading, deadlines, offer actuation, and support queue behavior remain in their existing callers.
 
 ---
 

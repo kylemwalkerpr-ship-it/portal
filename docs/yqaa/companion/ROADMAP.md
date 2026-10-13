@@ -1,9 +1,9 @@
 # YQAA Legal Companion — Roadmap
 
-**Baseline:** PR **#391** (merged to `main` @ `471d6b2`) = legal-buddy orientation + budget-loop harden + DM evidence **v0**.  
+**Baseline:** PR **#391** (`main` ancestor) = legal-buddy orientation + budget-loop harden + DM evidence **v0**. Current implementation status below is grounded in `main` @ `79f8008b`.
 **Scope:** System-wide. Every provider, gig, category, and YQAA surface.  
 **Repo:** `kylemwalkerpr-ship-it/portal`  
-**Implementation lane:** Freebuff via YouSafe Bridge on Mac (not this CoS box coding task).
+**Implementation lane:** repository code and checks; production still follows the repository GitHub Actions release workflow.
 
 ---
 
@@ -17,39 +17,26 @@
 - [ ] Live low-budget DM smoke on a staging provider (see Test plan)  
 - [ ] Confirm no client-facing “revenue-safe” / $812/$690 dumps  
 
-**Freebuff:** finish any CI flakes only; do not expand scope until merged.
+Historical phase; production deployment and live smoke remain release/operator activities and are not performed by this code task.
 
 ---
 
-## Phase 1 — Companion Decision + Adaptive Pricing (first Freebuff build after #391)
+## Phase 1 — Companion Decision + Adaptive Pricing
 
 **Goal:** Jev-compatible decision layer on **DM** + **adaptive pricing/negotiation** (scope re-quote, flex band, counter classes, negotiation memory) + grammar/positioning/leak/stale-number polish. Still YMYL-safe, for all providers. The earlier "no pricing-math changes" rule is **reversed** (Sharon, 2026-10-06).
 
-### Build first
+### Shipped modules
 
-1. Extract shared helpers (no behavior change):  
-   - `lib/yqaaCompanionDecision.ts` wrapping deterministic budget-loop/frustration gates + optional Jev  
-   - `lib/yqaaCompanionPolish.ts` (rules: leak scrub, stale-number scrub, posture check, anti-dup; reuse #391 helpers)
-   - `lib/yqaaAdaptivePricing.ts` (scope signal, range-aware budget/counter, scoped quote, flex policy, counter classifier, finalizeNumbers)
-2. Wire **Jev into messenger** path (mirror public chat):  
-   - After `loadMessengerLegalEvidence`, call `requestJevAdvisory` (or extended companion questions)  
-   - Inject `# DECISION AUTHORITY` into system context  
-   - On Jev timeout: deterministic-only (loop-safe + pricing defaults)
-3. Replace the unconditional `decision.offer = null` on `budget_too_low` with the adaptive decision (ACCEPT / MEET_MIDDLE / DOWNSCOPE offers at server-approved numbers; ESCALATE_PROVIDER approval path)
-4. Extend memory schema v1→v2 **additive**: `journey_stage`, `emotion_band`, `last_posture`, `negotiation{…}` (nullable)
-5. Additive migration `supabase/yqaa_adaptive_pricing.sql` (gig flex/unit fields, tier scope fields, `provider_pricing_preferences`). Code tolerates it not being applied.
-6. Docs: `docs/yqaa/` companion decision contract + `PRICING-ADAPTIVE.md`  
-7. Tests: companion fixtures + PRICING-ADAPTIVE §5 (F1–F5, N1–N7, M1–M2, L1, J1, P1)
+The companion decision, adaptive pricing, memory, polish, and regression modules exist in `lib/yqaaCompanionDecision.ts`, `lib/yqaaAdaptivePricing.ts`, `lib/messengerConversationMemory.ts`, `lib/yqaaCompanionPolish.ts`, and their tests. Pricing and money movement remain under existing server authorities. This roadmap does not imply that every proposed fixture has expert acceptance.
 
-### Build later (still Phase 1 if capacity)
+### Optional
 
 - Optional Jev `emotion` score + `posture` choice questions (shadow log first)
-- Public chat + DM shared orchestrator thin wrapper
+- Dedicated grammar-polish model; existing rules-based polish remains shipped
 
 ### Explicitly later (Phase 2+)
 
 - Full recursive learning warehouse  
-- Second-model grammar polish LLM  
 - Provider-inactive auto-reroute product  
 - Provider dashboard UI for flex settings + provider-authored offer hints (Phase 2)  
 - Dedicated pricing-approvals table (Phase 2; metadata in Phase 1)  
@@ -81,14 +68,16 @@
 
 ---
 
-## Phase 4 — Unification & polish SOTA
+## Phase 4 — Shared decision contract and remaining review
 
-- Single Companion Orchestrator for DM + public + support handoff  
-- Optional dedicated grammar polish model (content-safe)  
-- Latency observability (`Server-Timing` for DM)  
-- US YMYL counsel review of disclosure + escalate copy  
+- [x] Required: one typed channel-aware entrypoint used by public, DM, and support adapters (`lib/yqaaDecisionOrchestrator.ts`); exact channel capabilities prevent public/support commerce and negotiation authorization.
+- [x] Required: preserve public high-stakes handoff, deterministic YMYL/evidence authorities, Jev timeout fallback, existing DM server pricing authority, support unknown-outcome behavior, and the public 42-second cancellable deadline.
+- [x] Required: versioned privacy-minimized decision records remain a separate persistence adapter; no new decision-path DB writes.
+- [x] Required: DM `Server-Timing` and public chat stage timing/deadline are shipped.
+- [ ] External review: US YMYL counsel review of disclosure and escalation copy.
+- [ ] Optional: dedicated grammar-polish model. Rules-based leak, stale-number, and positioning guards already ship.
 
-**Bounded packet status (2026-10-13):** public, DM, and support paths now share a small deterministic decision-record contract; the existing DM authority remains authoritative. DM `Server-Timing` visibility and a 42-second cancellable public `/api/chat` deadline are implemented. This is not a broad orchestrator rewrite; optional polish model and counsel review remain open.
+**Bounded packet status (2026-10-13):** the required shared decision entrypoint is implemented and called by all three channel adapters. It delegates to existing authorities and only returns decision data; decision records remain separate. Required Phase 4 code is complete. Counsel review remains an external prerequisite, while a dedicated polish model is optional. No counsel approval or gold-set acceptance is claimed here.
 
 ---
 
@@ -103,7 +92,7 @@
 | P1 | Regression pack in CI (companion + pricing fixtures) | Never re-loop, never leak, never stale |
 | P2 | Journey/emotion memory fields | Context understanding |
 | P3 | Learning loop storage | Recursive improvement |
-| P4 | Orchestrator unify | Clean architecture long-term |
+| P4 | Shared channel-aware orchestrator | Required contract shipped; counsel review is still external |
 
 ---
 
