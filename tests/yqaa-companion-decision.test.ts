@@ -323,13 +323,18 @@ describe('companion decision — DM path wiring', () => {
     process.env.TYPESAFE_API_KEY = 'typesafe-test-key'
     globalThis.fetch = (async (url: any, init: any) => {
       calls.push({ url: String(url), body: String(init?.body || '') })
+      const payload = JSON.parse(String(init?.body || '{}'))
+      const postures = Object.keys(payload.questions.posture.criteria)
+      const postureProbabilities = Object.fromEntries(postures.map((option: string, index: number) => [option, index === 0 ? 0.8 : 0.2 / (postures.length - 1)]))
+      const markets = Object.keys(payload.questions.market.criteria)
+      const marketProbabilities = Object.fromEntries(markets.map((option: string) => [option, option === 'canada' ? 0.9 : option === 'global' ? 0.1 : 0]))
       return new Response(
         JSON.stringify({
           answers: {
-            posture: { choice: 'EDUCATE' },
-            sufficient: { noul: 0.9 },
-            needs_handoff: { noul: 0.1 },
-            market: { choice: 'canada' },
+            posture: { type: 'choice', choice: postures[0], probabilities: postureProbabilities, confidence: 0.6 },
+            sufficient: { type: 'noul', noul: 0.9 },
+            needs_handoff: { type: 'noul', noul: 0.1 },
+            market: { type: 'choice', choice: 'canada', probabilities: marketProbabilities, confidence: 0.8 },
           },
         }),
         { status: 200 },
@@ -352,6 +357,7 @@ describe('companion decision — DM path wiring', () => {
       expect(calls[0].body).not.toMatch(/\$\s*\d|\b5000\b|\b10000\b/)
       expect(calls[0].body).toContain('"posture"')
       expect(decision.jev).not.toBeNull()
+      expect(decision.jev?.choiceDiagnostics).toMatchObject({ posture: { confidence: 0.6, selectedProbability: 0.8 }, market: { confidence: 0.8, selectedProbability: 0.9 } })
       expect(decision.posture).toBe('EDUCATE')
     } finally {
       globalThis.fetch = originalFetch
@@ -382,6 +388,80 @@ describe('companion decision — DM path wiring', () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  test('omits singleton Choice questions and deterministically selects a singleton eligible posture', async () => {
+    const { companionJevPayload, requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const context: CompanionJevContext = { query: 'Hello', postureOptions: ['EDUCATE'], negotiationOptions: ['HOLD_VALUE'] }
+    const payload = companionJevPayload(context)
+    const marketProbabilities = Object.fromEntries(Object.keys((payload.questions.market as any).criteria).map((option: string) => [option, option === 'global' ? 0.8 : 0.04]))
+    expect(payload.questions).not.toHaveProperty('posture')
+    expect(payload.questions).not.toHaveProperty('negotiation_posture')
+    const fetcher = (async () => new Response(JSON.stringify({ answers: {
+      sufficient: { type: 'noul', noul: 0.9 }, needs_handoff: { type: 'noul', noul: 0.1 },
+      market: { type: 'choice', choice: 'global', probabilities: marketProbabilities, confidence: 0.8 },
+    } }), { status: 200 })) as typeof fetch
+    await expect(requestCompanionJev(context, fetcher, { apiKey: 'test' })).resolves.toMatchObject({ available: true, posture: 'EDUCATE', negotiationPosture: 'HOLD_VALUE' })
+    expect(companionJevPayload({ ...context, postureOptions: [] }).questions).not.toHaveProperty('posture')
+    expect(companionJevPayload({ ...context, negotiationOptions: [] }).questions).not.toHaveProperty('negotiation_posture')
+  })
+
+  test('rejects a Choice answer with missing contract fields and preserves only bounded selection diagnostics', async () => {
+    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const context: CompanionJevContext = { query: 'Hello', postureOptions: ['EDUCATE', 'DISCOVER'] }
+    const response = (answers: unknown) => new Response(JSON.stringify({ answers }), { status: 200 })
+    const marketProbabilities = { usa: 0.04, canada: 0.04, uk: 0.04, australia: 0.04, global: 0.8, unknown: 0.04 }
+    const incomplete = (async () => response({
+      sufficient: { type: 'noul', noul: 0.9 }, needs_handoff: { type: 'noul', noul: 0.1 },
+      market: { type: 'choice', choice: 'global', probabilities: marketProbabilities, confidence: 0.8 },
+      posture: { choice: 'EDUCATE' },
+    })) as typeof fetch
+    await expect(requestCompanionJev(context, incomplete, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'invalid_response' })
+
+    const valid = (async () => response({
+      sufficient: { type: 'noul', noul: 0.9 }, needs_handoff: { type: 'noul', noul: 0.1 },
+      market: { type: 'choice', choice: 'global', probabilities: marketProbabilities, confidence: 0.6 },
+      posture: { type: 'choice', choice: 'EDUCATE', probabilities: { EDUCATE: 0.7, DISCOVER: 0.3 }, confidence: 0.4 },
+    })) as typeof fetch
+    await expect(requestCompanionJev(context, valid, { apiKey: 'test' })).resolves.toMatchObject({
+      available: true, posture: 'EDUCATE', choiceDiagnostics: { posture: { confidence: 0.4, selectedProbability: 0.7 }, market: { confidence: 0.6, selectedProbability: 0.8 } },
+    })
+  })
+
+  test.each([[401, 'http_401'], [422, 'http_422'], [429, 'http_429'], [529, 'http_529']] as const)(
+    'returns safe finite diagnostics for HTTP %i without reading the response body', async (status, reason) => {
+      const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+      const fetcher = (async () => new Response('private provider detail and payload', { status })) as typeof fetch
+      await expect(requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test' })).resolves.toEqual({ available: false, reason })
+    },
+  )
+
+  test('classifies transport failures without retaining exception text', async () => {
+    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const fetcher = (async () => { throw new Error('socket failed while sending private payload') }) as typeof fetch
+    await expect(requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'network_error' })
+  })
+
+  test('rejects oversized response bodies and an already-aborted caller deadline', async () => {
+    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const context: CompanionJevContext = { query: 'Hello', postureOptions: [] }
+    const oversized = (async () => new Response('x'.repeat(4097), { status: 200 })) as typeof fetch
+    await expect(requestCompanionJev(context, oversized, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'invalid_response' })
+    const controller = new AbortController()
+    controller.abort()
+    const stalled = (async () => new Promise<Response>(() => {})) as typeof fetch
+    await expect(requestCompanionJev(context, stalled, { apiKey: 'test', signal: controller.signal })).resolves.toEqual({ available: false, reason: 'timeout' })
+  })
+
+  test('aborts an in-flight response body at the caller deadline', async () => {
+    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const controller = new AbortController()
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Response(new ReadableStream({ pull() { return new Promise(() => {}) } }))
+    }) as typeof fetch
+    const pending = requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test', timeoutMs: 20, signal: controller.signal })
+    await expect(pending).resolves.toEqual({ available: false, reason: 'timeout' })
+    controller.abort()
   })
 })
 

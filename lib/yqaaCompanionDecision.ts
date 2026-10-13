@@ -33,6 +33,7 @@ export type CompanionJevSummary = {
   market: string
   used: boolean
   ignored: string[]
+  choiceDiagnostics?: Partial<Record<'posture' | 'negotiation_posture' | 'market', { confidence: number; selectedProbability: number }>>
 }
 
 export type CompanionDecision = {
@@ -239,6 +240,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         market: result.market,
         used: false,
         ignored: result.ignored,
+        choiceDiagnostics: result.choiceDiagnostics,
       }
       if (result.ignored.length) reasons.push('jev_option_pruned')
       if (!gate && (result.needsHandoff || (args.evidenceSensitive && !result.sufficient))) {
