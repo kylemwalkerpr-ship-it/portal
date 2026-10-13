@@ -145,6 +145,17 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(replay).not.toMatch(/console\.(log|error).*turns|console\.(log|error).*reply/i)
   })
 
+  test('incident gig mirror uses deployed columns and provider preferences', () => {
+    const fixtures = harness.slice(harness.indexOf('async function createIncidentFixtures'), harness.indexOf('async function runIncidentReplay'))
+    expect(fixtures).toContain('unit_pricing,hourly_rate_cents&provider_id=eq.')
+    expect(fixtures).not.toContain('negotiation_flex_pct')
+    expect(fixtures).not.toContain('min_floor_cents: sourceGig')
+    expect(fixtures).toContain('provider_pricing_preferences?select=negotiation_enabled')
+    expect(harness).toContain('const code = /^(?:PGRST\\d{3}|[0-9A-Z]{5})$/')
+    const request = harness.slice(harness.indexOf('async function dbRequest'), harness.indexOf('async function dbRequest') + 900)
+    expect(request).not.toContain('data.message')
+  })
+
   test('workflow requires the exact deployed SHA and build identity before the live harness', () => {
     expect(workflow).toContain('inputs.expected_sha')
     expect(workflow).toContain('inputs.expected_build_id')
