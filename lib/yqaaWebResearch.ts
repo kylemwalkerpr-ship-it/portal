@@ -143,6 +143,9 @@ async function researchViaCloudflareBrowser(
   scope: ReturnType<typeof yqaaResearchScope>,
   signal?: AbortSignal,
 ): Promise<YqaaIndexedChunk[]> {
+  // Browser.quickAction has no documented cancellation parameter. Do not put
+  // that uncancellable work behind a caller-owned deadline.
+  if (signal) return []
   const browser = browserBinding()
   if (!browser) return []
   const publicQuestion = sanitizeYqaaPublicQuestion(query)
@@ -234,6 +237,7 @@ function xaiEvidenceChunks(
 
 /** Keep only public, citation-linked search findings; a model summary alone is not evidence. */
 export async function researchYqaaPublicWeb(query: string, hostname?: string | null, options: { signal?: AbortSignal } = {}): Promise<YqaaIndexedChunk[]> {
+  if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError')
   const scope = yqaaResearchScope(query, hostname)
   const publicQuestion = sanitizeYqaaPublicQuestion(query)
 
@@ -245,6 +249,7 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
       const browserEvidence = await researchViaCloudflareBrowser(query, scope, options.signal)
       if (browserEvidence.length) return browserEvidence
     } catch (err) {
+      if (options.signal?.aborted) throw err
       console.warn('[system-assistant] Cloudflare Browser research failed', err instanceof Error ? err.message : 'unknown')
     }
   }
@@ -258,6 +263,7 @@ export async function researchYqaaPublicWeb(query: string, hostname?: string | n
     const chunks = xaiEvidenceChunks(result, scope)
     if (chunks.length) return chunks
   } catch (err) {
+    if (options.signal?.aborted) throw err
     console.warn('[system-assistant] xAI web research unavailable', err instanceof Error ? err.message : 'unknown')
   }
 

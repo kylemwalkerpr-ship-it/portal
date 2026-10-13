@@ -19,6 +19,7 @@ async function setup(opts: {
   generationError?: boolean
   generationHang?: boolean
   evidenceHang?: boolean
+  webHang?: boolean
   supportHang?: boolean
   decisionRecordHang?: boolean
 } = {}) {
@@ -32,7 +33,11 @@ async function setup(opts: {
   })
   const requestJevAdvisory = jest.fn()
   for (const value of opts.jev ?? [clearJev()]) requestJevAdvisory.mockResolvedValueOnce(value)
-  const researchYqaaPublicWeb = jest.fn(opts.webError
+  const researchYqaaPublicWeb = jest.fn(opts.webHang
+    ? async (_query: string, _hostname?: string | null, input?: { signal?: AbortSignal }) => await new Promise<any>((_resolve, reject) => {
+      input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true })
+    })
+    : opts.webError
     ? async () => { throw new Error('web unavailable') }
     : async () => opts.web ?? [])
   const generateYqaaAnswer = jest.fn(async (_system?: string, _turns?: unknown, input?: { signal?: AbortSignal }) => {
@@ -73,7 +78,7 @@ async function setup(opts: {
       method: 'POST', headers: { Origin: 'https://usa.yousafeconsultancy.com', 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: [{ role: 'user', content: query }], ...extra }),
     }))
-    return { status: response.status, body: await response.json() as Record<string, any> }
+    return { status: response.status, headers: response.headers, body: await response.json() as Record<string, any> }
   }
   return { ask, loadYqaaEvidence, requestJevAdvisory, researchYqaaPublicWeb, generateYqaaAnswer, escalateToSupport, persistYqaaDecisionRecord }
 }
@@ -160,8 +165,39 @@ describe('YQAA final evidence ladder', () => {
     expect(result.status).toBe(504)
     expect(result.body.retryable).toBe(true)
     expect(result.body.error).toMatch(/time limit|retry/i)
+    expect(result.headers.get('Server-Timing')).toMatch(stage === 'database' ? /knowledge;dur=6000;desc="timeout"/ : /model;dur=26000;desc="timeout"/)
     if (stage === 'database') expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
     if (stage === 'model') expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
+  })
+
+  test('optional web research is cancelled at its stage budget and synthesis still runs', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ confidence: 0.2, jev: [weakJev()], webHang: true })
+    const pending = flow.ask('Please compare general public service information for me')
+    await jest.advanceTimersByTimeAsync(6_501)
+    const result = await pending
+    jest.useRealTimers()
+    const webSignal = (flow.researchYqaaPublicWeb.mock.calls as any[][])[0][2].signal as AbortSignal
+    expect(webSignal.aborted).toBe(true)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect(result.status).toBe(200)
+    expect(result.headers.get('Server-Timing')).toMatch(/web;dur=6000;desc="timeout"/)
+    expect(result.headers.get('Server-Timing')).toMatch(/model;dur=\d+;desc="ok"/)
+    expect(result.body.reply).toContain('General answer from evidence.')
+  })
+
+  test('failure timing names completed and failed stages without echoing request text', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ evidenceHang: true })
+    const pending = flow.ask('private wording must never enter timing diagnostics')
+    await jest.advanceTimersByTimeAsync(6_001)
+    const result = await pending
+    jest.useRealTimers()
+    const timing = result.headers.get('Server-Timing') || ''
+    expect(result.status).toBe(504)
+    expect(timing).toMatch(/knowledge;dur=6000;desc="timeout"/)
+    expect(timing).toMatch(/total;dur=\d+/)
+    expect(timing).not.toContain('private wording')
   })
 
   test('starts the deadline before JSON parsing and cancels a hung request body', async () => {

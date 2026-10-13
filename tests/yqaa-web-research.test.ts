@@ -84,6 +84,29 @@ describe('YQAA public web research', () => {
     expect(quickAction).toHaveBeenCalledTimes(2)
   })
 
+  test('caller cancellation avoids uncancellable Browser quickAction and stops without retrying transports', async () => {
+    const controller = new AbortController()
+    const cancelBody = jest.fn()
+    const browserResponse = new Response('unused', { status: 200 })
+    jest.spyOn(browserResponse.body!, 'cancel').mockImplementation(cancelBody)
+    const quickAction = jest.fn(async () => browserResponse)
+    const callSystemSuperGrokWebSearch = jest.fn(async (_query: string, _domains: string[] | undefined, options: { signal?: AbortSignal }) => {
+      controller.abort(new DOMException('Cancelled', 'AbortError'))
+      throw options.signal?.reason
+    })
+    jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: { BROWSER: { quickAction } } }) }))
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrokWebSearch }))
+    const { researchYqaaPublicWeb } = await import('@/lib/yqaaWebResearch')
+
+    await expect(researchYqaaPublicWeb('What are the latest OPT requirements?', 'portal.yousafeconsultancy.com', { signal: controller.signal }))
+      .rejects.toThrow('Cancelled')
+
+    expect(quickAction).not.toHaveBeenCalled()
+    expect(callSystemSuperGrokWebSearch).toHaveBeenCalledTimes(1)
+    expect(callSystemSuperGrokWebSearch.mock.calls[0][2].signal).toBe(controller.signal)
+    expect(cancelBody).not.toHaveBeenCalled()
+  })
+
   test('latest/current intent is freshness-sensitive and OPT scopes to US primary sources', async () => {
     const callSystemSuperGrokWebSearch = jest.fn(async () => ({
       text: 'USCIS publishes current OPT information.',

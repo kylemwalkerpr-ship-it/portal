@@ -34,6 +34,11 @@ const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
 const VIEWER_CONTEXT_BUDGET_MS = 1_500
 const PUBLIC_YQAA_DEADLINE_MS = 42_000
+const KNOWLEDGE_STAGE_BUDGET_MS = 6_000
+const JEV_STAGE_BUDGET_MS = 1_500
+const WEB_STAGE_BUDGET_MS = 6_000
+const CONTEXT_STAGE_BUDGET_MS = 500
+const MODEL_STAGE_BUDGET_MS = 26_000
 
 type ViewerSnapshot = {
   visitor: SupportVisitor | null
@@ -129,6 +134,55 @@ async function boundedViewerSnapshot(): Promise<ViewerSnapshot> {
 
 function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
+}
+
+type StageState = 'ok' | 'timeout' | 'failed'
+type StageTiming = { name: string; startedAt: number; durationMs?: number; state?: StageState }
+
+class YqaaStageTimeoutError extends Error {
+  constructor(readonly stage: string) {
+    super(`YQAA ${stage} stage timed out`)
+    this.name = 'YqaaStageTimeoutError'
+  }
+}
+
+async function runBoundedStage<T>(
+  deadline: ReturnType<typeof createYqaaDeadline>,
+  stage: string,
+  budgetMs: number,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController()
+  const abortForDeadline = () => controller.abort(deadline.signal.reason)
+  if (deadline.signal.aborted) abortForDeadline()
+  else deadline.signal.addEventListener('abort', abortForDeadline, { once: true })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work(controller.signal),
+      deadline.race(new Promise<T>(() => {})),
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new YqaaStageTimeoutError(stage))
+          reject(new YqaaStageTimeoutError(stage))
+        }, Math.max(1, Math.min(budgetMs, deadline.remainingMs())))
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+    deadline.signal.removeEventListener('abort', abortForDeadline)
+    controller.abort()
+  }
+}
+
+function stageTimingHeader(stages: StageTiming[], totalMs: number): string {
+  const metrics = stages.map((stage) => {
+    const duration = stage.durationMs ?? Date.now() - stage.startedAt
+    const state = stage.state || 'failed'
+    return `${stage.name};dur=${Math.max(0, Math.round(duration))};desc="${state}"`
+  })
+  metrics.push(`total;dur=${Math.max(0, Math.round(totalMs))}`)
+  return metrics.join(', ')
 }
 
 async function persistDecisionBestEffort(
@@ -299,20 +353,40 @@ export async function POST(req: Request) {
     }
   }
 
+  const stageTimings: StageTiming[] = []
+  const startStage = (name: string): StageTiming => {
+    const stage = { name, startedAt: Date.now() }
+    stageTimings.push(stage)
+    return stage
+  }
+  const finishStage = (stage: StageTiming, state: StageState = 'ok') => {
+    stage.durationMs = Date.now() - stage.startedAt
+    stage.state = state
+  }
+
   try {
-    const knowledgeStartedAt = Date.now()
+    const knowledgeStage = startStage('knowledge')
     const pageContext = [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings]
       .filter(Boolean)
       .join(' ')
-    const evidencePack = await deadline.race(loadYqaaEvidence({
-      query: lastUser.content,
-      hostname: inquiryOrigin.hostname,
-      pageContext,
-      limit: 12,
-      signal: deadline.signal,
-    }))
+    let evidencePack
+    try {
+      evidencePack = await runBoundedStage(deadline, 'knowledge', KNOWLEDGE_STAGE_BUDGET_MS, (signal) =>
+        loadYqaaEvidence({
+          query: lastUser.content,
+          hostname: inquiryOrigin.hostname,
+          pageContext,
+          limit: 12,
+          signal,
+        }),
+      )
+      finishStage(knowledgeStage)
+    } catch (error) {
+      finishStage(knowledgeStage, error instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
+      throw error
+    }
     let publicEvidence = evidencePack.chunks
-    const knowledgeMs = Date.now() - knowledgeStartedAt
+    const knowledgeMs = knowledgeStage.durationMs || 0
 
     let advisoryContext = {
       query: lastUser.content,
@@ -320,24 +394,48 @@ export async function POST(req: Request) {
       evidence: publicEvidence,
     }
     const triggers = yqaaJevTriggers(advisoryContext)
-    const jevStartedAt = Date.now()
-    const jev = await deadline.race(requestJevAdvisory(advisoryContext))
-    let jevMs = Date.now() - jevStartedAt
+    const jevStage = startStage('jev')
+    let jev
+    try {
+      jev = await runBoundedStage(deadline, 'jev', JEV_STAGE_BUDGET_MS, (signal) =>
+        requestJevAdvisory(advisoryContext, fetch, { signal }),
+      )
+      finishStage(jevStage, jev.available ? 'ok' : jev.reason === 'timeout' ? 'timeout' : 'failed')
+    } catch (error) {
+      if (!(error instanceof YqaaStageTimeoutError)) throw error
+      finishStage(jevStage, 'timeout')
+      jev = { available: false as const, reason: 'timeout' as const }
+    }
+    let jevMs = jevStage.durationMs || 0
     let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     let webEvidenceCount = 0
     let webResearchStatus: 'skipped' | 'verified' | 'retrieved' | 'insufficient' | 'failed' = 'skipped'
     const freshnessRequiresWeb = yqaaNeedsFreshWebResearch(lastUser.content)
     if (safety.reason !== 'high_stakes_handoff' &&
         (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
+      const webStage = startStage('web')
       try {
-        const webChunks = await deadline.race(researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname, { signal: deadline.signal }))
+        const webChunks = await runBoundedStage(deadline, 'web', WEB_STAGE_BUDGET_MS, (signal) =>
+          researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname, { signal }),
+        )
+        finishStage(webStage, webChunks.length ? 'ok' : 'failed')
         webEvidenceCount = webChunks.length
         if (webChunks.length) {
           publicEvidence = [...webChunks, ...evidencePack.chunks].slice(0, 12)
           advisoryContext = { ...advisoryContext, evidence: publicEvidence }
-          const secondJevStartedAt = Date.now()
-          const secondJev = await deadline.race(requestJevAdvisory(advisoryContext))
-          jevMs += Date.now() - secondJevStartedAt
+          const secondJevStage = startStage('jev')
+          let secondJev
+          try {
+            secondJev = await runBoundedStage(deadline, 'jev', JEV_STAGE_BUDGET_MS, (signal) =>
+              requestJevAdvisory(advisoryContext, fetch, { signal }),
+            )
+            finishStage(secondJevStage, secondJev.available ? 'ok' : secondJev.reason === 'timeout' ? 'timeout' : 'failed')
+          } catch (error) {
+            if (!(error instanceof YqaaStageTimeoutError)) throw error
+            finishStage(secondJevStage, 'timeout')
+            secondJev = { available: false as const, reason: 'timeout' as const }
+          }
+          jevMs += secondJevStage.durationMs || 0
           safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
           webResearchStatus = safety.answer ? 'verified' : 'retrieved'
         } else {
@@ -345,6 +443,7 @@ export async function POST(req: Request) {
           webResearchStatus = 'insufficient'
         }
       } catch (err) {
+        finishStage(webStage, err instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
         console.warn('[system-assistant] web research failed', err instanceof Error ? err.message.slice(0, 180) : 'unknown')
         safety = { answer: false, reason: 'web_research_failed' }
         webResearchStatus = 'failed'
@@ -392,11 +491,21 @@ export async function POST(req: Request) {
       }
     }
 
-    const baseSystemKnowledge = await deadline.race(buildCentralAssistantKnowledge({
-      latestUserMessage: lastUser.content,
-      origin: inquiryOrigin,
-      curatedChunks: publicEvidence,
-    }))
+    const contextStage = startStage('context')
+    let baseSystemKnowledge: string
+    try {
+      baseSystemKnowledge = await runBoundedStage(deadline, 'context', CONTEXT_STAGE_BUDGET_MS, () =>
+        buildCentralAssistantKnowledge({
+          latestUserMessage: lastUser.content,
+          origin: inquiryOrigin,
+          curatedChunks: publicEvidence,
+        }),
+      )
+      finishStage(contextStage)
+    } catch (error) {
+      finishStage(contextStage, error instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
+      throw error
+    }
     const liveResearchContext = buildYqaaLiveResearchContext(publicEvidence, webResearchStatus)
     const evidenceLimit = safety.answer ? '' : [
       '# CURRENT TURN EVIDENCE LIMIT',
@@ -407,17 +516,21 @@ export async function POST(req: Request) {
     ].join('\n')
     const systemKnowledge = [baseSystemKnowledge, liveResearchContext, evidenceLimit].filter(Boolean).join('\n\n')
     const verifiedLiveResearch = webEvidenceCount > 0 && (webResearchStatus === 'verified' || webResearchStatus === 'retrieved')
-    const modelStartedAt = Date.now()
+    const modelStage = startStage('model')
     let result
     try {
       // generateYqaaAnswer already performs the commissioned compact Grok
       // recovery and only crosses to DeepSeek when a real credential exists.
-      result = await deadline.race(generateYqaaAnswer(systemKnowledge, cleaned, { signal: deadline.signal }))
+      result = await runBoundedStage(deadline, 'model', MODEL_STAGE_BUDGET_MS, (signal) =>
+        generateYqaaAnswer(systemKnowledge, cleaned, { signal }),
+      )
+      finishStage(modelStage)
     } catch (generationError) {
+      finishStage(modelStage, generationError instanceof YqaaStageTimeoutError || generationError instanceof YqaaDeadlineError ? 'timeout' : 'failed')
       if (deadline.signal.aborted || generationError instanceof YqaaDeadlineError || !verifiedLiveResearch) throw generationError
       const digest = buildYqaaVerifiedWebDigest(publicEvidence)
       if (!digest) throw generationError
-      const modelMs = Date.now() - modelStartedAt
+      const modelMs = modelStage.durationMs || 0
       const totalMs = Date.now() - requestStartedAt
       console.warn('[system-assistant] model synthesis unavailable after verified web research', {
         generation: generationError instanceof Error ? generationError.message.slice(0, 160) : 'unknown',
@@ -447,17 +560,12 @@ export async function POST(req: Request) {
         {
           status: 200,
           headers: {
-            'Server-Timing': timingHeader([
-              ['knowledge', knowledgeMs],
-              ['jev', jevMs],
-              ['model', modelMs],
-              ['total', totalMs],
-            ]),
+            'Server-Timing': stageTimingHeader(stageTimings, totalMs),
           },
         },
       )
     }
-    const modelMs = Date.now() - modelStartedAt
+    const modelMs = modelStage.durationMs || 0
     const guarded = enforceCanonicalMarketCoverage(lastUser.content, result.text)
     const pricingGuard = guardYqaaPricingClaims(lastUser.content, guarded.text)
     const researchGuardedText = guardVerifiedLiveResearchDisclosure(pricingGuard.text, verifiedLiveResearch)
@@ -522,32 +630,32 @@ export async function POST(req: Request) {
       },
       {
         headers: {
-          'Server-Timing': timingHeader([
-            ['knowledge', knowledgeMs],
-            ['jev', jevMs],
-            ['model', modelMs],
-            ['total', totalMs],
-          ]),
+          'Server-Timing': stageTimingHeader(stageTimings, totalMs),
         },
       },
     )
   } catch (err) {
+    const failedStage = stageTimings[stageTimings.length - 1]
+    if (failedStage && failedStage.state === undefined) {
+      finishStage(failedStage, err instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
+    }
     deadline.close()
     const message = err instanceof Error ? err.message : 'Unknown error'
     const totalMs = Date.now() - requestStartedAt
+    const timedOut = err instanceof YqaaDeadlineError || err instanceof YqaaStageTimeoutError || deadline.signal.aborted
     console.error('[system-assistant] model error', message, { totalMs })
     return withCors(
       req,
       {
-        error: err instanceof YqaaDeadlineError || deadline.signal.aborted
+        error: timedOut
           ? "I couldn't verify enough evidence to complete that response before the time limit. Your message is still here — please retry or ask for a human."
           : "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
         retryable: true,
         marketplaceRecommendation,
       },
       {
-        status: err instanceof YqaaDeadlineError || deadline.signal.aborted ? 504 : 502,
-        headers: { 'Server-Timing': timingHeader([['total', totalMs]]) },
+        status: timedOut ? 504 : 502,
+        headers: { 'Server-Timing': stageTimingHeader(stageTimings, totalMs) },
       },
     )
   }
