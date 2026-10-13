@@ -49,9 +49,11 @@ The companion decision, adaptive pricing, memory, polish, and regression modules
 - Journey stage classifier (rules + Jev choice)  
 - Posture enum enforced server-side (forbidden actions removed from choice set)  
 - Richer immigrant-journey KB slices (US F-1/OPT/H-1B/marriage/asylum *orientation* cards — curated, cited)  
-- Provider attention UX when escalate + inactive account  
+- [x] Provider attention UX when escalate + inactive/unavailable account (participant-authorized conversation status, provider alert with existing takeover control, client pending-reply state, and official support link)
 - Provider pricing-preferences UI; one-tap approve/decline for below-band requests  
 - [x] Gig editor: optional unit pricing + tier scope_depth/scope_units (implemented on `feat/yqaa-gig-scope-controls-20261013`; merge/deploy pending)
+
+**Provider attention UX packet status (2026-10-13):** the conversation API returns only a sanitized attention state to authenticated conversation participants. Messenger distinguishes a pending human reply from an actual provider message after the request, alerts the provider, and points clients to official support when availability cannot be confirmed. A message clears the pending indicator; the UI does not claim review completion or licensed approval. This is display/state UX only and does not reroute conversations or change pricing.
 
 ---
 

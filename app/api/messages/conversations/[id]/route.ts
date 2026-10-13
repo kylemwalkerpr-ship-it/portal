@@ -12,6 +12,7 @@ import {
 } from '@/lib/messengerAi'
 import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
+import { buildMessengerAttentionDisplay } from '@/lib/messengerAttentionDisplay'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -94,6 +95,14 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
   const [counterpartRow] = await fillMissingProfileAvatars(db, [(counterpartRes as any).data].filter(Boolean))
+  const safeCounterpart = counterpartRow
+    ? {
+        id: counterpartRow.id,
+        full_name: counterpartRow.full_name,
+        avatar_url: counterpartRow.avatar_url,
+        role: counterpartRow.role,
+      }
+    : null
 
   let sharedOrders: any[] = []
   let sharedOffers: any[] = []
@@ -108,6 +117,67 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   } catch {}
 
   const rawMessages: any[] = messagesRes.data || []
+  const counterpartProfile = (counterpartRes as any).data || null
+  const providerId = ['attorney', 'consultant'].includes(auth.role)
+    ? profileId
+    : ['attorney', 'consultant'].includes(String(counterpartProfile?.role || ''))
+      ? counterpartId
+      : null
+
+  // These private availability fields are queried only after the participant
+  // ACL above. They are used only to produce a boolean for this response.
+  let providerProfile: any = null
+  let providerListing: any = null
+  if (providerId) {
+    const providerRole = providerId === profileId ? auth.role : counterpartProfile?.role
+    const listingTable = providerRole === 'attorney' ? 'attorneys' : providerRole === 'consultant' ? 'consultants' : null
+    const [profileAvailability, listingAvailability] = await Promise.all([
+      db.from('profiles')
+        .select('status, is_hidden, clerk_user_id')
+        .eq('id', providerId)
+        .maybeSingle(),
+      listingTable
+        ? db.from(listingTable).select('available').eq('profile_id', providerId).maybeSingle()
+        : Promise.resolve({ data: null, error: true } as any),
+    ])
+    if (!profileAvailability.error) providerProfile = profileAvailability.data
+    if (!listingAvailability.error) providerListing = listingAvailability.data
+  }
+
+  // Keep the rendered contract (oldest 500 rows) intact. Attention settlement
+  // reads a separate bounded slice containing only provider messages after the
+  // request, so ordinary client traffic cannot push a reply out of view.
+  const attentionRequestedAt = typeof metadata.ai_provider_attention_requested_at === 'string'
+    ? metadata.ai_provider_attention_requested_at
+    : typeof metadata.ai_escalated_at === 'string'
+      ? metadata.ai_escalated_at
+      : null
+  let attentionMessages: any[] = []
+  if (providerId && attentionRequestedAt && Number.isFinite(new Date(attentionRequestedAt).getTime())) {
+    try {
+      const { data } = await db.from('conversation_messages')
+        .select('id, sender_id, metadata, created_at')
+        .eq('conversation_id', id)
+        .eq('sender_id', providerId)
+        .gt('created_at', attentionRequestedAt)
+        // AI messages share the provider sender_id. Apply these exclusions in
+        // SQL before the bounded fetch; `is.null` retains legacy/null metadata.
+        .or('metadata->>ai_generated.is.null,metadata->>ai_generated.eq.false')
+        .or('metadata->>ai_assistant.is.null,metadata->>ai_assistant.eq.false')
+        .or('metadata->>ai_typing.is.null,metadata->>ai_typing.eq.false')
+        .order('created_at', { ascending: true })
+        .limit(500)
+      attentionMessages = data || []
+    } catch { /* fail closed: attention remains pending when history is unavailable */ }
+  }
+  const providerAttention = buildMessengerAttentionDisplay({
+    metadata,
+    messages: rawMessages,
+    attentionMessages,
+    providerId,
+    providerProfile,
+    providerListing,
+  })
   const offerIds = Array.from(new Set(
     rawMessages
       .filter((m) => m?.type === 'offer' && m?.ref_offer_id)
@@ -246,7 +316,12 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   return Response.json({
     conversation: {
       id: conv.id,
-      counterpart: counterpartRow || (counterpartRes as any).data || null,
+      counterpart: safeCounterpart || (counterpartProfile ? {
+        id: counterpartProfile.id,
+        full_name: counterpartProfile.full_name,
+        avatar_url: counterpartProfile.avatar_url,
+        role: counterpartProfile.role,
+      } : null),
       context_kind: conv.context_kind,
       context_id:   conv.context_id,
       status:       conv.status,
@@ -255,6 +330,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       source_inquiry_archived_at: sourceInquiryArchivedAt,
       ai_mode: readAiMode((conv as any).metadata),
       ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
+      provider_attention: providerAttention,
       pricing_approval: pricingApproval,
     },
     messages,
