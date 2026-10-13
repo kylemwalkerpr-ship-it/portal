@@ -50,10 +50,10 @@ function check(name, ok, detail = '') {
   if (!ok) throw new Error(`Acceptance check failed: ${name}`)
 }
 
-async function checkedFetch(url, init = {}, label = 'request') {
+async function checkedFetch(url, init = {}, label = 'request', timeoutMs = 10_000) {
   let response
   try {
-    response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000) })
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
   } catch {
     throw new Error(`${label}: network failure`)
   }
@@ -117,6 +117,34 @@ async function assertLiveIdentity() {
   receipt.deployment = { sha: expectedSha, build_id_hash: safeHash(expectedBuild), workflow_run: latest.run_number }
 }
 
+async function publicGenerationProbe() {
+  const startedAt = Date.now()
+  const response = await checkedFetch(`${BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'For a public service listing, what questions should someone ask before choosing a provider?' }],
+      origin: BASE,
+    }),
+  }, 'public YQAA generation probe', 50_000)
+  const timing = response.headers.get('server-timing') || ''
+  const match = timing.match(/(?:^|,\s*)model;dur=\d+;desc="(ok|auth|config|protocol|network|timeout|other|failed)"/)
+  const modelCategory = match?.[1] || 'missing'
+  // Consume and discard the response. The receipt stores only HTTP status,
+  // the bounded model category, and latency; never prompt or response text.
+  await response.json().catch(() => null)
+  const latencyMs = Date.now() - startedAt
+  receipt.public_generation = {
+    status: response.status,
+    model_category: modelCategory,
+    latency_ms: latencyMs,
+  }
+  const ok = response.status === 200 && modelCategory === 'ok'
+  receipt.checks.push({ name: 'public YQAA generation probe', status: ok ? 'passed' : 'failed', detail: `HTTP ${response.status}; model=${modelCategory}; ${latencyMs} ms` })
+  console.log(`${ok ? 'PASS' : 'FAIL'} public YQAA generation probe: HTTP ${response.status}; model=${modelCategory}`)
+  return ok
+}
+
 async function loadAndVerifyFixtures() {
   check('three distinct scoped service categories', categories.length >= 3 && new Set(categories.map((category) => category.id)).size === categories.length && new Set(categories.map((category) => category.subcategoryId)).size === categories.length)
   check('continuous negotiation plus isolated attention scenario per category', scenarios.filter((scenario) => scenario.name !== 'provider_attention').length === MAX_TURNS)
@@ -125,14 +153,14 @@ async function loadAndVerifyFixtures() {
   if (!envUrl || !serviceKey) throw new Error('Supabase URL and service-role secret are required in CI.')
   supabaseUrl = envUrl.replace(/\/$/, '')
   if (new URL(supabaseUrl).hostname.endsWith('.supabase.co') !== true) throw new Error('Refusing non-production Supabase host.')
-  const designatedEmail = String(process.env.YQAA_CLIENT_EMAIL || '').trim().toLowerCase()
+  const designatedProfileId = String(process.env.YQAA_CLIENT_PROFILE_ID || '').trim()
   let designatedClient = null
-  if (designatedEmail) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(designatedEmail)) throw new Error('Optional designated client email is invalid.')
-    const matches = await dbRequest(`profiles?select=id,email,role,status,is_test_account,is_hidden,clerk_user_id&email=eq.${encodeURIComponent(designatedEmail)}`)
-    if (matches?.length !== 1 || matches[0].id !== DESIGNATED_CLIENT_ID || matches[0].email?.toLowerCase() !== designatedEmail || matches[0].role !== 'client' || matches[0].status !== 'active' || matches[0].is_test_account !== false || matches[0].is_hidden !== false || !matches[0].clerk_user_id) throw new Error('Designated client profile does not uniquely match the authorized active client.')
+  if (designatedProfileId) {
+    if (designatedProfileId !== DESIGNATED_CLIENT_ID) throw new Error('Designated client profile ID is not authorized.')
+    const matches = await dbRequest(`profiles?select=id,email,role,status,is_test_account,is_hidden,clerk_user_id&id=eq.${encodeURIComponent(designatedProfileId)}`)
+    if (matches?.length !== 1 || matches[0].id !== DESIGNATED_CLIENT_ID || !matches[0].email || matches[0].role !== 'client' || matches[0].status !== 'active' || matches[0].is_test_account !== false || matches[0].is_hidden !== false || !matches[0].clerk_user_id) throw new Error('Designated client profile does not uniquely match the authorized active client.')
     const clerkIdentity = await clerkApi(`/users/${encodeURIComponent(matches[0].clerk_user_id)}`)
-    const verifiedEmail = (clerkIdentity.email_addresses || []).find((item) => item.id === clerkIdentity.primary_email_address_id && item.email_address?.toLowerCase() === designatedEmail && item.verification?.status === 'verified')
+    const verifiedEmail = (clerkIdentity.email_addresses || []).find((item) => item.id === clerkIdentity.primary_email_address_id && item.email_address?.toLowerCase() === matches[0].email.toLowerCase() && item.verification?.status === 'verified')
     if (clerkIdentity.id !== matches[0].clerk_user_id || !verifiedEmail) throw new Error('Designated client Clerk identity or verified primary email could not be confirmed.')
     designatedClient = { id: matches[0].id, clerkUserId: matches[0].clerk_user_id }
   }
@@ -247,28 +275,40 @@ async function authenticatedPage(clerkUserId, landing) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   const page = await context.newPage()
   try {
-    await page.goto(`${BASE}/sign-in?__clerk_ticket=${encodeURIComponent(token.token)}&return_to=${encodeURIComponent(landing)}`, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+    await page.goto(`${BASE}/sign-in`, { waitUntil: 'domcontentloaded', timeout: 45_000 })
   } catch {
     await context.close()
     throw new Error('Clerk sign-in page could not be reached.')
   }
-  const result = await page.evaluate(async (ticket) => {
+  const result = await page.evaluate(async ({ ticket, expectedUserId }) => {
     for (let i = 0; i < 80; i++) {
       const root = window.Clerk
-      if (root?.client && root?.setActive) break
+      if (root?.loaded && root?.client && root?.setActive) break
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
     const root = window.Clerk
-    if (!root?.setActive) return { ok: false }
+    if (!root?.loaded || !root?.setActive) return { ok: false, category: 'clerk_not_loaded' }
     try {
       const client = await root.client
       const attempt = await client.signIn.create({ strategy: 'ticket', ticket })
-      if (!attempt.createdSessionId) return { ok: false }
+      if (!attempt.createdSessionId) return { ok: false, category: 'clerk_session_missing' }
       await root.setActive({ session: attempt.createdSessionId })
+      let userId = null
+      for (let i = 0; i < 40; i++) {
+        userId = root.user?.id || (await root.session?.user)?.id || null
+        if (userId) break
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
+      if (userId !== expectedUserId) return { ok: false, category: 'clerk_identity_mismatch' }
       return { ok: true }
-    } catch { return { ok: false } }
-  }, token.token)
-  if (!result?.ok) { await context.close(); throw new Error('Clerk one-time token could not establish a browser session.') }
+    } catch (failure) {
+      const status = Number(failure?.status)
+      const code = String(failure?.errors?.[0]?.code || failure?.code || '')
+      const safeCode = ['ticket_invalid', 'ticket_expired', 'ticket_already_used', 'session_exists'].includes(code) ? code : null
+      return { ok: false, category: safeCode || (status >= 400 && status < 500 ? 'clerk_http_4xx' : status >= 500 && status < 600 ? 'clerk_http_5xx' : 'clerk_sdk_rejected') }
+    }
+  }, { ticket: token.token, expectedUserId: clerkUserId })
+  if (!result?.ok) { await context.close(); throw new Error(`Clerk one-time token session failed (${result?.category || 'clerk_session_failed'}).`) }
   await page.goto(`${BASE}${landing}`, { waitUntil: 'domcontentloaded', timeout: 45_000 })
   return { context, page }
 }
@@ -509,7 +549,7 @@ async function cleanup() {
         const [messages, offers, conversations] = await Promise.all([
           dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${thread.id}`),
           dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}`),
-          dbRequest(`conversations?select=metadata&id=eq.${thread.id}`),
+          dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${thread.id}`),
         ])
         const lateReplies = (messages || []).filter((row) => !snapshot.messageIds.has(row.id) && row.metadata?.ai_generated)
         const newOffers = (offers || []).filter((row) => !snapshot.offerIds.has(row.id))
@@ -577,11 +617,13 @@ let error = null
 try {
   for (const key of ['CLERK_SECRET_KEY', 'YQAA_EXPECTED_SHA', 'YQAA_EXPECTED_BUILD_ID', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_REPOSITORY']) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
   await assertLiveIdentity()
+  const publicGenerationOk = await publicGenerationProbe()
   browser = await chromium.launch({ headless: true })
   await loadAndVerifyFixtures()
   await providerUiChecks()
   await messengerSmoke()
   await assertLiveIdentity()
+  if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')
   receipt.status = 'passed'
 } catch (caught) {
   error = safeFailure(caught)

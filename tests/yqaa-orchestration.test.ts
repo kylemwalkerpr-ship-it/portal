@@ -226,6 +226,9 @@ describe('YQAA provider pin and fallback policy', () => {
   it('classifies only deterministic transient failures as fallback eligible', async () => {
     const { classifyYqaaProviderFailure } = await import('@/lib/yqaaGeneration')
     expect(classifyYqaaProviderFailure(new Error('request timed out')).eligible).toBe(true)
+    const abortedModelBudget = new Error('YQAA model budget exhausted')
+    abortedModelBudget.name = 'AbortError'
+    expect(classifyYqaaProviderFailure(abortedModelBudget)).toMatchObject({ kind: 'timeout', eligible: true })
     expect(classifyYqaaProviderFailure(new Error('responses=401 unauthorized')).eligible).toBe(false)
     expect(classifyYqaaProviderFailure(new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')).kind).toBe('timeout')
     expect(classifyYqaaProviderFailure(new Error('Assistant model unavailable after bounded recovery (responses=409 conflict; chat=409 conflict)')).eligible).toBe(true)

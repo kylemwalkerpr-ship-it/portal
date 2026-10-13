@@ -16,7 +16,7 @@ import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
 import { requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
-import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
+import { classifyYqaaProviderFailure, generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
@@ -136,7 +136,7 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
-type StageState = 'ok' | 'timeout' | 'failed'
+type StageState = 'ok' | 'timeout' | 'failed' | 'auth' | 'config' | 'protocol' | 'network' | 'other'
 type StageTiming = { name: string; startedAt: number; durationMs?: number; state?: StageState }
 
 class YqaaStageTimeoutError extends Error {
@@ -183,6 +183,16 @@ function stageTimingHeader(stages: StageTiming[], totalMs: number): string {
   })
   metrics.push(`total;dur=${Math.max(0, Math.round(totalMs))}`)
   return metrics.join(', ')
+}
+
+function generationFailureCategory(error: unknown): Extract<StageState, 'auth' | 'config' | 'protocol' | 'network' | 'timeout' | 'other'> {
+  const kind = classifyYqaaProviderFailure(error).kind
+  if (kind === 'authentication') return 'auth'
+  if (kind === 'configuration') return 'config'
+  if (kind === 'network') return 'network'
+  if (kind === 'timeout') return 'timeout'
+  if (kind === 'invalid_output' || kind === 'rate_limit' || kind === 'server_error') return 'protocol'
+  return 'other'
 }
 
 async function persistDecisionBestEffort(
@@ -552,14 +562,15 @@ export async function POST(req: Request) {
       )
       finishStage(modelStage)
     } catch (generationError) {
-      finishStage(modelStage, generationError instanceof YqaaStageTimeoutError || generationError instanceof YqaaDeadlineError ? 'timeout' : 'failed')
+      const failureCategory = generationFailureCategory(generationError)
+      finishStage(modelStage, generationError instanceof YqaaStageTimeoutError || generationError instanceof YqaaDeadlineError ? 'timeout' : failureCategory)
       if (deadline.signal.aborted || generationError instanceof YqaaDeadlineError || !verifiedLiveResearch) throw generationError
       const digest = buildYqaaVerifiedWebDigest(publicEvidence)
       if (!digest) throw generationError
       const modelMs = modelStage.durationMs || 0
       const totalMs = Date.now() - requestStartedAt
       console.warn('[system-assistant] model synthesis unavailable after verified web research', {
-        generation: generationError instanceof Error ? generationError.message.slice(0, 160) : 'unknown',
+        category: failureCategory,
         webEvidenceCount,
         totalMs,
       })
@@ -666,10 +677,14 @@ export async function POST(req: Request) {
       finishStage(failedStage, err instanceof YqaaStageTimeoutError ? 'timeout' : 'failed')
     }
     deadline.close()
-    const message = err instanceof Error ? err.message : 'Unknown error'
     const totalMs = Date.now() - requestStartedAt
-    const timedOut = err instanceof YqaaDeadlineError || err instanceof YqaaStageTimeoutError || deadline.signal.aborted
-    console.error('[system-assistant] model error', message, { totalMs })
+    const failedStageCategory = failedStage?.name === 'model' ? generationFailureCategory(err) : undefined
+    const timedOut = err instanceof YqaaDeadlineError || err instanceof YqaaStageTimeoutError || deadline.signal.aborted || failedStageCategory === 'timeout'
+    console.error('[system-assistant] generation failed', {
+      stage: failedStage?.name || 'request',
+      category: failedStageCategory || (timedOut ? 'timeout' : 'other'),
+      totalMs,
+    })
     return withCors(
       req,
       {
