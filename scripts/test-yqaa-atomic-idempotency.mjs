@@ -126,8 +126,8 @@ try {
   if (setupDone) {
     psql([], `
       delete from public.admin_audit_log where target_table='offers' and payload_snapshot->>'conversation_id'='${conversationId}';
-      delete from public.offers where yqaa_idempotency_key like 'yqaa:${conversationId}:%';
       delete from public.conversations where id='${conversationId}';
+      delete from public.offers where yqaa_idempotency_key like 'yqaa:${conversationId}:%';
       delete from public.profiles where id in ('${providerId}','${clientId}');
     `)
   }

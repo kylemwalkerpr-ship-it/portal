@@ -31,5 +31,5 @@ Completed in this repair:
 - TypeScript: `npx tsc --noEmit` passed.
 - Migration policy: `node scripts/migration-ledger-policy.mjs --check` passed (69 files; manifest, naming, transaction safety).
 - Script syntax and whitespace: `node --check scripts/test-yqaa-atomic-idempotency.mjs` and `git diff --check` passed.
-- Concurrent PostgreSQL integration: **not run**. This environment has no `psql`, PostgreSQL server, Supabase CLI, Docker, or `YQAA_TEST_DATABASE_URL`. Run the documented script against an isolated local Supabase/PostgreSQL database before merging.
+- Concurrent PostgreSQL integration: **passed** on isolated PostgreSQL 16 with a minimal schema fixture. Two real concurrent processes share one durable reply/offer, invalid offer rollback and authenticated-role denial passed. This verifies RPC transactional behavior, not full production-schema parity.
 - Jev route/gate could not run because `jevctl` reported that the TypeSafe API key was unavailable; no credential value was accessed or printed.
