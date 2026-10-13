@@ -147,14 +147,18 @@ async function publicGenerationProbe() {
   return ok
 }
 
-async function loadAndVerifyFixtures() {
-  check('three distinct scoped service categories', categories.length >= 3 && new Set(categories.map((category) => category.id)).size === categories.length && new Set(categories.map((category) => category.subcategoryId)).size === categories.length)
-  check('continuous negotiation plus isolated attention scenario per category', scenarios.filter((scenario) => scenario.name !== 'provider_attention').length === MAX_TURNS)
+function initializeFixtureDatabase() {
   const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_JWT
   if (!envUrl || !serviceKey) throw new Error('Supabase URL and service-role secret are required in CI.')
   supabaseUrl = envUrl.replace(/\/$/, '')
   if (new URL(supabaseUrl).hostname.endsWith('.supabase.co') !== true) throw new Error('Refusing non-production Supabase host.')
+}
+
+async function loadAndVerifyFixtures() {
+  check('three distinct scoped service categories', categories.length >= 3 && new Set(categories.map((category) => category.id)).size === categories.length && new Set(categories.map((category) => category.subcategoryId)).size === categories.length)
+  check('continuous negotiation plus isolated attention scenario per category', scenarios.filter((scenario) => scenario.name !== 'provider_attention').length === MAX_TURNS)
+  initializeFixtureDatabase()
   const designatedProfileId = String(process.env.YQAA_CLIENT_PROFILE_ID || '').trim()
   let designatedClient = null
   if (designatedProfileId) {
@@ -442,6 +446,7 @@ async function runIncidentReplay(sourceData, fixtureData) {
     metrics.budget_first = seenBudget && firstQuoteTurn !== null && turns.findIndex((turn) => /\b(budget|maximum|max|afford)\b/i.test(turn) && /\$|\bcad\b/i.test(turn)) <= firstQuoteTurn
     if (metrics.posture === 'held_at_turn_bound' && metrics.evidence_count > 0) metrics.posture = 'source_turns_exhausted'
     receipt.incident = { name: INCIDENT_MODE, status: 'completed', ...metrics }
+    initializeFixtureDatabase()
     receipt.mode = 'incident'
     receipt.status = 'incident_completed'
   } finally {
@@ -829,6 +834,7 @@ try {
   const replayIncident = String(process.env.YQAA_REPLAY_INCIDENT || 'none')
   if (replayIncident !== 'none' && replayIncident !== INCIDENT_MODE) throw new Error('Unsupported incident replay mode.')
   if (replayIncident === INCIDENT_MODE) {
+    initializeFixtureDatabase()
     receipt.mode = 'incident'
     receipt.incident = { name: INCIDENT_MODE, status: 'running' }
     browser = await chromium.launch({ headless: true })

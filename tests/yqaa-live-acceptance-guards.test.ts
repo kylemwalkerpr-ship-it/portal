@@ -7,6 +7,10 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('incident mode initializes database before loading source', () => {
+    expect(harness).toMatch(/if \(replayIncident === INCIDENT_MODE\) \{\s+initializeFixtureDatabase\(\)/)
+  })
+
   test('a failed public probe permits independent DM checks but cannot mark full acceptance passed', () => {
     expect(harness).toContain('return ok')
     expect(harness).toContain("if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')")
