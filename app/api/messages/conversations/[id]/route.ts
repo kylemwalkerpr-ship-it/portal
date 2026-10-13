@@ -160,6 +160,11 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
         .eq('conversation_id', id)
         .eq('sender_id', providerId)
         .gt('created_at', attentionRequestedAt)
+        // AI messages share the provider sender_id. Apply these exclusions in
+        // SQL before the bounded fetch; `is.null` retains legacy/null metadata.
+        .or('metadata->>ai_generated.is.null,metadata->>ai_generated.eq.false')
+        .or('metadata->>ai_assistant.is.null,metadata->>ai_assistant.eq.false')
+        .or('metadata->>ai_typing.is.null,metadata->>ai_typing.eq.false')
         .order('created_at', { ascending: true })
         .limit(500)
       attentionMessages = data || []
