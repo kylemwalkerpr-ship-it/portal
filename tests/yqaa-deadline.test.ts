@@ -3,6 +3,7 @@ import {
   fetchYqaaJsonWithTimeout,
   YqaaDeadlineError,
   YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS,
+  YQAA_DM_REPLY_COMMIT_RESERVE_MS,
 } from '@/lib/yqaaDeadline'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -74,6 +75,24 @@ describe('YQAA end-to-end deadline', () => {
     deadline.close()
   })
 
+  it('keeps a fixed commit reserve as model and polish retries consume the phase budget', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-13T15:24:26.707Z'))
+    const deadline = createYqaaDeadline(null, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
+    const originalDeadline = Date.now() + deadline.remainingMs()
+    const providerBudget = () => deadline.providerRemainingMs()
+
+    expect(deadline.remainingMs()).toBe(24_000)
+    expect(providerBudget()).toBe(24_000 - YQAA_DM_REPLY_COMMIT_RESERVE_MS)
+    jest.advanceTimersByTime(15_000)
+    // A provider retry / polish regeneration reads the same shrinking phase budget.
+    expect(providerBudget()).toBe(5_000)
+    jest.advanceTimersByTime(1_001)
+    expect(providerBudget()).toBe(3_999)
+    expect(Date.now() + deadline.remainingMs()).toBe(originalDeadline)
+    expect(deadline.remainingMs()).toBe(7_999)
+    deadline.close()
+  })
+
   it('records every missing scheduled reply and leaves an explicit stage when the runtime deadline expires', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
     const scheduler = source.slice(source.indexOf('export function scheduleAutoReply('))
@@ -88,7 +107,7 @@ describe('YQAA end-to-end deadline', () => {
     expect(scheduler).toContain("ai_last_skip: skip || 'no_result'")
     expect(scheduler).toContain('runTriggerMessageId')
     expect(scheduler).toContain('AbortSignal.timeout(4_000)')
-    expect(source).toContain('remainingMs: opts.runtime?.remainingMs')
+    expect(source).toContain('remainingMs: opts.runtime?.providerRemainingMs')
     expect(source).toContain("db.rpc('patch_yqaa_runtime_diagnostic'")
     expect(source).not.toContain('ai_last_error: msg.slice')
   })

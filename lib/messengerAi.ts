@@ -80,8 +80,7 @@ const DEBOUNCE_MS = 8_000
 const REPLY_COOLDOWN_MS = 4_000
 const RESPONSES_TIMEOUT_MS = 18_000
 const CHAT_TIMEOUT_MS = 10_000
-// Cloudflare only keeps waitUntil work alive for 30s after the response. Start
-// this budget at scheduling time and leave 6s for a durable outcome diagnostic.
+// Keep DM reply work inside the 24s runtime and reserve a separate 4s diagnostic cap.
 export const DM_AUTOREPLY_RUNTIME_BUDGET_MS = YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS
 const AUTH_CACHE_TTL_MS = 120_000
 const MAX_OUTPUT_TOKENS = 1400
@@ -117,6 +116,7 @@ type DmAutoReplyRuntime = {
   startedAt: string
   triggerMessageId: string | null
   remainingMs(): number
+  providerRemainingMs(): number
   markStage(stage: string): Promise<void>
 }
 
@@ -1340,7 +1340,7 @@ export async function maybeAutoReply(opts: {
           user: userPrompt,
           conversationId: opts.conversationId,
           signal: opts.runtime?.signal,
-          remainingMs: opts.runtime?.remainingMs,
+          remainingMs: opts.runtime?.providerRemainingMs,
         })
         if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
         decision = parseDecision(raw)
@@ -1502,7 +1502,7 @@ export async function maybeAutoReply(opts: {
               user: userPrompt,
               conversationId: opts.conversationId,
               signal: opts.runtime?.signal,
-              remainingMs: opts.runtime?.remainingMs,
+              remainingMs: opts.runtime?.providerRemainingMs,
             })
             if (opts.runtime?.signal.aborted) return null
             return parseDecision(raw).reply || null
@@ -1693,6 +1693,7 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
     stage: 'queued',
     triggerMessageId: runTriggerMessageId,
     remainingMs: () => deadline.remainingMs(),
+    providerRemainingMs: () => deadline.providerRemainingMs(),
     async markStage(stage: string) {
       if (runtime.signal.aborted || !runTriggerMessageId) return
       runtime.stage = stage
