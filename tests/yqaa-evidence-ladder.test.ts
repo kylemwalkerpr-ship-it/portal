@@ -17,6 +17,7 @@ async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
   jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean;
   generationError?: boolean
+  generationFailure?: string
   generationHang?: boolean
   evidenceHang?: boolean
   evidenceDelayMs?: number
@@ -44,6 +45,11 @@ async function setup(opts: {
     : async () => opts.web ?? [])
   const generateYqaaAnswer = jest.fn(async (_system?: string, _turns?: unknown, input?: { signal?: AbortSignal }) => {
     if (opts.generationHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
+    if (opts.generationFailure) {
+      const error = new Error(opts.generationFailure)
+      if (opts.generationFailure === 'YQAA model budget exhausted') error.name = 'AbortError'
+      throw error
+    }
     if (opts.generationError) throw new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')
     return { text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }
   })
@@ -59,7 +65,7 @@ async function setup(opts: {
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
   jest.doMock('@/lib/yqaaWebResearch', () => ({ ...jest.requireActual('@/lib/yqaaWebResearch'), researchYqaaPublicWeb }))
-  jest.doMock('@/lib/yqaaGeneration', () => ({ generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
+  jest.doMock('@/lib/yqaaGeneration', () => ({ ...jest.requireActual('@/lib/yqaaGeneration'), generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
   jest.doMock('@/lib/chatEscalation', () => ({ ...jest.requireActual('@/lib/chatEscalation'), escalateToSupport }))
   jest.doMock('@/lib/yqaaDecisionRecord', () => ({
     ...jest.requireActual('@/lib/yqaaDecisionRecord'), persistYqaaDecisionRecord,
@@ -233,6 +239,24 @@ describe('YQAA final evidence ladder', () => {
     expect(timing).toMatch(/knowledge;dur=12000;desc="timeout"/)
     expect(timing).toMatch(/total;dur=\d+/)
     expect(timing).not.toContain('private wording')
+  })
+
+  test.each([
+    ['provider timeout', 'YQAA model budget exhausted', 'timeout', 504],
+    ['authentication failure', 'Assistant model unavailable after bounded recovery (responses=401 unauthorized; chat=401 unauthorized)', 'auth', 502],
+    ['configuration failure', 'Grok is not configured for messenger AI', 'config', 502],
+    ['upstream protocol failure', 'Assistant model unavailable after bounded recovery (responses=502 invalid response; chat=502 invalid response)', 'protocol', 502],
+    ['network failure', 'fetch failed', 'network', 502],
+  ] as const)('reports bounded %s diagnostics without provider or prompt text', async (_label, failure, category, expectedStatus) => {
+    const flow = await setup({ generationFailure: failure })
+    const result = await flow.ask('private question text must not appear in diagnostic headers')
+    const timing = result.headers.get('Server-Timing') || ''
+    expect(result.status).toBe(expectedStatus)
+    expect(timing).toMatch(new RegExp(`model;dur=\\d+;desc="${category}"`))
+    expect(timing).not.toContain('private question')
+    expect(timing).not.toContain(failure)
+    expect(JSON.stringify(result.body)).not.toContain(failure)
+    expect(JSON.stringify(result.body)).not.toContain('private question')
   })
 
   test('starts the deadline before JSON parsing and cancels a hung request body', async () => {

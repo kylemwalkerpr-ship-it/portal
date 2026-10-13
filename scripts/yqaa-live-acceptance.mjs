@@ -50,10 +50,10 @@ function check(name, ok, detail = '') {
   if (!ok) throw new Error(`Acceptance check failed: ${name}`)
 }
 
-async function checkedFetch(url, init = {}, label = 'request') {
+async function checkedFetch(url, init = {}, label = 'request', timeoutMs = 10_000) {
   let response
   try {
-    response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000) })
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
   } catch {
     throw new Error(`${label}: network failure`)
   }
@@ -115,6 +115,35 @@ async function assertLiveIdentity() {
   const manifest = await checkedFetch(`${BASE}/_next/static/${expectedBuild}/_buildManifest.js`, {}, 'production build manifest')
   check('expected deployed build manifest is live', manifest.status === 200, `HTTP ${manifest.status}`)
   receipt.deployment = { sha: expectedSha, build_id_hash: safeHash(expectedBuild), workflow_run: latest.run_number }
+}
+
+async function publicGenerationProbe() {
+  const startedAt = Date.now()
+  const response = await checkedFetch(`${BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'For a public service listing, what questions should someone ask before choosing a provider?' }],
+      origin: BASE,
+    }),
+  }, 'public YQAA generation probe', 50_000)
+  const timing = response.headers.get('server-timing') || ''
+  const match = timing.match(/(?:^|,\s*)model;dur=\d+;desc="(ok|auth|config|protocol|network|timeout|other|failed)"/)
+  const modelCategory = match?.[1] || 'missing'
+  // Consume and discard the response. The receipt stores only HTTP status,
+  // the bounded model category, and latency; never prompt or response text.
+  await response.json().catch(() => null)
+  const latencyMs = Date.now() - startedAt
+  receipt.public_generation = {
+    status: response.status,
+    model_category: modelCategory,
+    latency_ms: latencyMs,
+  }
+  check(
+    'public YQAA generation probe',
+    response.status === 200 && modelCategory === 'ok',
+    `HTTP ${response.status}; model=${modelCategory}; ${latencyMs} ms`,
+  )
 }
 
 async function loadAndVerifyFixtures() {
@@ -577,6 +606,7 @@ let error = null
 try {
   for (const key of ['CLERK_SECRET_KEY', 'YQAA_EXPECTED_SHA', 'YQAA_EXPECTED_BUILD_ID', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_REPOSITORY']) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
   await assertLiveIdentity()
+  await publicGenerationProbe()
   browser = await chromium.launch({ headless: true })
   await loadAndVerifyFixtures()
   await providerUiChecks()

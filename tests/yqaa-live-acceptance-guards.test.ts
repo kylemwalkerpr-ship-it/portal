@@ -97,6 +97,16 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('ids.includes(expectedBuild)')
   })
 
+  test('public generation health probe runs after deployed identity and stores only bounded diagnostics', () => {
+    expect(harness).toMatch(/await assertLiveIdentity\(\);?\s+await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
+    expect(harness).toContain("'For a public service listing, what questions should someone ask before choosing a provider?'")
+    expect(harness).toContain('model_category: modelCategory')
+    expect(harness).toContain('await response.json().catch(() => null)')
+    expect(harness).toMatch(/model;dur=\\d\+;desc=.*auth\|config\|protocol\|network\|timeout\|other/)
+    expect(harness).not.toContain('reply: await response.json()')
+    expect(harness).not.toContain('response_body:')
+  })
+
   test('fixtures use supported username-only identities, hidden test data, and three continuous category threads', () => {
     expect(harness).toContain('Clerk username-only capability')
     expect(harness).toContain('userSettings.email_address?.required')
@@ -130,7 +140,8 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('MAX_TURNS = 6')
     expect(harness).toContain("getByTitle('Jump to: Pricing', { exact: true })")
     expect(harness).toContain('MAX_WAIT_MS = 45_000')
-    expect(harness).toContain('AbortSignal.timeout(10_000)')
+    expect(harness).toContain("label = 'request', timeoutMs = 10_000")
+    expect(harness).toContain('AbortSignal.timeout(timeoutMs)')
     for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {
       expect(harness).toContain(`name: '${scenario}'`)
     }
