@@ -83,10 +83,13 @@ async function postJsonWithRetry(
   signal?: AbortSignal,
 ): Promise<{ response: Response; text: string }> {
   let lastError: unknown = null
+  const deadlineAt = Date.now() + timeoutMs
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
-      const { response, text } = await fetchWithTimeout(url, init, timeoutMs, signal)
+      const remainingMs = deadlineAt - Date.now()
+      if (remainingMs <= 0) throw new Error('Assistant request timed out')
+      const { response, text } = await fetchWithTimeout(url, init, remainingMs, signal)
       if (response.ok || !TRANSIENT_STATUS.has(response.status) || attempt === attempts - 1) {
         return { response, text }
       }
@@ -134,6 +137,7 @@ async function callResponses(
   auth: MessengerGrokAuth,
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal,
+  timeoutMs = RESPONSES_TIMEOUT_MS,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/responses`,
@@ -149,7 +153,7 @@ async function callResponses(
         store: false,
       }),
     },
-    RESPONSES_TIMEOUT_MS,
+    timeoutMs,
     2,
     signal,
   )
@@ -159,6 +163,7 @@ async function callChatCompletions(
   auth: MessengerGrokAuth,
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal,
+  timeoutMs = CHAT_TIMEOUT_MS,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/chat/completions`,
@@ -173,7 +178,7 @@ async function callChatCompletions(
         messages,
       }),
     },
-    CHAT_TIMEOUT_MS,
+    timeoutMs,
     1,
     signal,
   )
@@ -190,10 +195,13 @@ async function callChatCompletions(
 export async function callSystemSuperGrok(
   system: string,
   turns: SystemAssistantTurn[],
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<{ text: string; model: string; authMode: string; latencyMs: number }> {
   const startedAt = Date.now()
-  let auth = await resolveCachedAuth()
+  const deadlineAt = options.timeoutMs === undefined ? null : startedAt + Math.max(1, options.timeoutMs)
+  const remainingMs = () => deadlineAt === null ? Number.POSITIVE_INFINITY : Math.max(0, deadlineAt - Date.now())
+  const boundedTimeout = (defaultMs: number) => Math.max(1, Math.min(defaultMs, remainingMs()))
+  let auth = await withTimeout(resolveCachedAuth(), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth resolution')
   const messages = [
     { role: 'system', content: system },
     ...turns.map((turn) => ({ role: turn.role, content: turn.content })),
@@ -202,13 +210,18 @@ export async function callSystemSuperGrok(
   let responsesStatus = 0
   let responsesDiagnostic = ''
   try {
-    let response = await callResponses(auth, messages, options.signal)
+    // Split a caller-supplied attempt budget across both protocols. This
+    // leaves time for Chat Completions after a slow Responses timeout.
+    const responseBudget = deadlineAt === null
+      ? RESPONSES_TIMEOUT_MS
+      : boundedTimeout(Math.min(RESPONSES_TIMEOUT_MS, Math.max(1, Math.floor(remainingMs() * 0.55))))
+    let response = await callResponses(auth, messages, options.signal, responseBudget)
     responsesStatus = response.response.status
 
     if (AUTH_FAILURE_STATUS.has(response.response.status)) {
       authCache = null
-      auth = await resolveCachedAuth(true)
-      response = await callResponses(auth, messages, options.signal)
+      auth = await withTimeout(resolveCachedAuth(true), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth refresh')
+      response = await callResponses(auth, messages, options.signal, boundedTimeout(responseBudget))
       responsesStatus = response.response.status
     }
 
@@ -232,7 +245,8 @@ export async function callSystemSuperGrok(
   let chatStatus = 0
   let chatDiagnostic = ''
   try {
-    const chat = await callChatCompletions(auth, messages, options.signal)
+    if (remainingMs() <= 0) throw new Error('Assistant model attempt budget exhausted before Chat Completions')
+    const chat = await callChatCompletions(auth, messages, options.signal, boundedTimeout(CHAT_TIMEOUT_MS))
     chatStatus = chat.response.status
     chatDiagnostic = chat.text.slice(0, 240)
     if (chat.response.ok) {

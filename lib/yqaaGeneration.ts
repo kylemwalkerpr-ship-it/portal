@@ -7,6 +7,21 @@ export type YqaaFailureKind = 'timeout' | 'network' | 'rate_limit' | 'server_err
 export type YqaaFallbackEvidence = { kind: YqaaFailureKind; status: number | null; eligible: boolean }
 export type YqaaGenerationResult = { text: string; provider: YqaaProvider; model: string; fallback: boolean; failureEvidence?: YqaaFallbackEvidence }
 export type YqaaProviderEnvironment = Readonly<Record<string, string | undefined>>
+const GROK_GENERATION_BUDGET_MS = 26_000
+const COMPACT_RECOVERY_RESERVE_MS = 9_000
+
+function waitForAbortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason || new DOMException('Aborted', 'AbortError'))
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const onAbort = () => {
+      cleanup()
+      reject(signal.reason || new DOMException('Aborted', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then((value) => { cleanup(); resolve(value) }, (error) => { cleanup(); reject(error) })
+  })
+}
 
 /** Stable public response label; provider identity stays in server telemetry only. */
 export function publicYqaaProviderLabel(): string { return 'system-ai' }
@@ -34,9 +49,9 @@ export function classifyYqaaProviderFailure(error: unknown): YqaaFallbackEvidenc
   return { kind, status, eligible: ['timeout', 'network', 'rate_limit', 'server_error'].includes(kind) }
 }
 
-async function generateWithProvider(provider: YqaaProvider, system: string, turns: SystemAssistantTurn[], signal?: AbortSignal): Promise<{ text: string; model: string }> {
+async function generateWithProvider(provider: YqaaProvider, system: string, turns: SystemAssistantTurn[], signal?: AbortSignal, timeoutMs?: number): Promise<{ text: string; model: string }> {
   if (provider === 'grok') {
-    const result = await callSystemSuperGrok(system, turns, { signal })
+    const result = await callSystemSuperGrok(system, turns, { signal, timeoutMs })
     return { text: result.text, model: result.model }
   }
   const adapter = adapterFor(DEEPSEEK_V41_FLASH_PIN as CommissionedProviderPin, {
@@ -44,7 +59,7 @@ async function generateWithProvider(provider: YqaaProvider, system: string, turn
     prompt: turns.map((turn) => `${turn.role.toUpperCase()}:\n${turn.content}`).join('\n\n'),
     maxTokens: 1200,
     temperature: 0.2,
-    timeoutMs: 10_000,
+    timeoutMs: Math.max(1, Math.min(10_000, timeoutMs ?? 10_000)),
     strictTimeout: true,
     disableThinking: true,
     exclusive: true,
@@ -69,35 +84,58 @@ function compactGrokRecoverySystem(system: string): string {
 /** Provider-neutral YQAA answer seam. Grok remains default; fallback needs an exact server pin. */
 export async function generateYqaaAnswer(system: string, turns: SystemAssistantTurn[], options: { signal?: AbortSignal } = {}): Promise<YqaaGenerationResult> {
   const selection = configuredYqaaProviders()
+  const startedAt = Date.now()
+  const deadlineAt = startedAt + GROK_GENERATION_BUDGET_MS
+  const controller = new AbortController()
+  const abortForParent = () => controller.abort(options.signal?.reason)
+  if (options.signal?.aborted) abortForParent()
+  else options.signal?.addEventListener('abort', abortForParent, { once: true })
+  const timer = setTimeout(() => controller.abort(new DOMException('YQAA model budget exhausted', 'AbortError')), GROK_GENERATION_BUDGET_MS)
+  const remainingMs = () => Math.max(0, deadlineAt - Date.now())
   try {
-    const generated = await generateWithProvider(selection.primary, system, turns, options.signal)
-    return { ...generated, provider: selection.primary, fallback: false }
-  } catch (error) {
-    if (options.signal?.aborted) throw error
-    const evidence = classifyYqaaProviderFailure(error)
-    if (!evidence.eligible) throw error
-
-    // A transient Grok timeout is common on evidence-heavy live-research
-    // turns. Give the commissioned primary one compact recovery attempt before
-    // crossing providers. This also keeps YQAA operational when the optional
-    // DeepSeek credential has not been provisioned.
+    if (controller.signal.aborted) throw options.signal?.reason || new DOMException('Aborted', 'AbortError')
     try {
-      const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns, options.signal)
-      return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
-    } catch (recoveryError) {
-      if (options.signal?.aborted) throw recoveryError
-      const recoveryEvidence = classifyYqaaProviderFailure(recoveryError)
-      if (!selection.fallback || !recoveryEvidence.eligible) throw recoveryError
+      const primaryBudget = Math.min(
+        GROK_GENERATION_BUDGET_MS - COMPACT_RECOVERY_RESERVE_MS,
+        Math.max(1, remainingMs() - COMPACT_RECOVERY_RESERVE_MS),
+      )
+      const generated = await generateWithProvider(selection.primary, system, turns, controller.signal, primaryBudget)
+      return { ...generated, provider: selection.primary, fallback: false }
+    } catch (error) {
+      if (controller.signal.aborted) throw error
+      const evidence = classifyYqaaProviderFailure(error)
+      if (!evidence.eligible) throw error
 
-      // The commissioned DeepSeek adapter is vault-aware, but YQAA normally
-      // reaches Grok without initializing the Content Studio vault. Hydrate it
-      // only now, then execute DeepSeek only when a real first-party credential
-      // exists. Never turn a missing optional fallback key into the visitor's
-      // final error when the actual failure was Grok.
-      await refreshAiVault()
-      if (!resolveDeepseekFirstPartyApiKey()) throw recoveryError
-      const generated = await generateWithProvider(selection.fallback, system, turns, options.signal)
-      return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: recoveryEvidence }
+      // A transient Grok timeout is common on evidence-heavy live-research
+      // turns. Give the commissioned primary one compact recovery attempt before
+      // crossing providers. This also keeps YQAA operational when the optional
+      // DeepSeek credential has not been provisioned.
+      try {
+        const recoveryBudget = Math.min(COMPACT_RECOVERY_RESERVE_MS, remainingMs())
+        if (recoveryBudget <= 0) throw error
+        const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns, controller.signal, recoveryBudget)
+        return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
+      } catch (recoveryError) {
+        if (controller.signal.aborted) throw recoveryError
+        const recoveryEvidence = classifyYqaaProviderFailure(recoveryError)
+        if (!selection.fallback || !recoveryEvidence.eligible) throw recoveryError
+
+        // The commissioned DeepSeek adapter is vault-aware, but YQAA normally
+        // reaches Grok without initializing the Content Studio vault. Hydrate it
+        // only now, then execute DeepSeek only when a real first-party credential
+        // exists. Never turn a missing optional fallback key into the visitor's
+        // final error when the actual failure was Grok.
+        const fallbackBudget = remainingMs()
+        if (fallbackBudget <= 0 || controller.signal.aborted) throw recoveryError
+        await waitForAbortable(refreshAiVault(), controller.signal)
+        if (controller.signal.aborted || remainingMs() <= 0) throw recoveryError
+        if (!resolveDeepseekFirstPartyApiKey()) throw recoveryError
+        const generated = await generateWithProvider(selection.fallback, system, turns, controller.signal, remainingMs())
+        return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: recoveryEvidence }
+      }
     }
+  } finally {
+    clearTimeout(timer)
+    options.signal?.removeEventListener('abort', abortForParent)
   }
 }
