@@ -156,14 +156,17 @@ function parseAdvisory(value: unknown): JevAdvisory | null {
   return { sufficient: v.sufficient, confidence: v.confidence, conflict: v.conflict, needsHandoff: v.needsHandoff, market: market as JevAdvisory['market'] }
 }
 
-async function readBoundedResponse(response: Response, maxBytes: number): Promise<string | null> {
+async function readBoundedResponse(response: Response, maxBytes: number, signal?: AbortSignal): Promise<string | null> {
   const declaredLength = Number(response.headers.get('content-length') || 0)
   if (declaredLength > maxBytes) return null
   if (!response.body) return ''
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
+  const cancelOnAbort = () => { void reader.cancel().catch(() => undefined) }
+  signal?.addEventListener('abort', cancelOnAbort, { once: true })
   try {
+    if (signal?.aborted) cancelOnAbort()
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -174,7 +177,10 @@ async function readBoundedResponse(response: Response, maxBytes: number): Promis
       }
       chunks.push(value)
     }
-  } finally { reader.releaseLock() }
+  } finally {
+    signal?.removeEventListener('abort', cancelOnAbort)
+    reader.releaseLock()
+  }
   const bytes = new Uint8Array(total)
   let offset = 0
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
@@ -258,8 +264,8 @@ export async function requestJevAdvisory(
 // Companion (DM) advisory: posture + negotiation posture.
 //
 // Jev recommends, policy authorizes: the caller prunes both choice sets to the
-// options it is willing to honour BEFORE the call, and any answer outside the
-// pruned set is ignored. Jev never sees or sets a price — the payload carries
+// options it is willing to honour BEFORE the call. Malformed or off-list
+// responses fail closed to deterministic handling. Jev never sees or sets a price — the payload carries
 // only enums, buckets and counts (no cents, no rates, no floors).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -308,8 +314,9 @@ export type CompanionJevResult =
       needsHandoff: boolean
       market: JevAdvisory['market']
       ignored: string[]
+      choiceDiagnostics?: Partial<Record<'posture' | 'negotiation_posture' | 'market', { confidence: number; selectedProbability: number }>>
     }
-  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' }
+  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_422' | 'http_429' | 'http_529' }
 
 export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string } } = {}) {
   let apiKey = options.apiKey?.trim() || options.workerEnv?.TYPESAFE_API_KEY?.trim() || ''
@@ -348,11 +355,11 @@ export function companionJevPayload(ctx: CompanionJevContext) {
     excerpt: redactMoney(String(item.body).replace(/\s+/g, ' ')).slice(0, JEV_MAX_EXCERPT_CHARS),
   }))
   const questions: Record<string, unknown> = {
-    posture: {
+    ...(postureOptions.length >= 2 ? { posture: {
       type: 'choice',
       instructions: `${JEV_INSTRUCTIONS} Pick the single best conversational posture for the next YQAA reply, from the allowed list only.`,
       criteria: Object.fromEntries(postureOptions.map((option) => [option, option])),
-    },
+    } } : {}),
     sufficient: {
       type: 'noul',
       instructions: `${JEV_INSTRUCTIONS} Is the supplied public evidence sufficient for a cautious general informational answer to the question?`,
@@ -368,7 +375,7 @@ export function companionJevPayload(ctx: CompanionJevContext) {
       criteria: { usa: 'United States', canada: 'Canada', uk: 'United Kingdom', australia: 'Australia', global: 'Multiple or network-wide jurisdictions', unknown: 'Cannot determine' },
     },
   }
-  if (negotiationOptions.length) {
+  if (negotiationOptions.length >= 2) {
     questions.negotiation_posture = {
       type: 'choice',
       instructions: `${JEV_INSTRUCTIONS} Choose the negotiation posture for this turn from the allowed list only. The server computes every number; never state or imply a price.`,
@@ -399,76 +406,125 @@ export function companionJevPayload(ctx: CompanionJevContext) {
 export async function requestCompanionJev(
   ctx: CompanionJevContext,
   fetcher: typeof fetch = fetch,
-  options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string }; timeoutMs?: number } = {},
+  options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string }; timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<CompanionJevResult> {
   const apiKey = await resolveJevApiKey(options)
   if (!apiKey) return { available: false, reason: 'not_configured' }
+  if (options.signal?.aborted) return { available: false, reason: 'timeout' }
   const controller = new AbortController()
+  const abortForCaller = () => controller.abort(options.signal?.reason)
+  if (options.signal?.aborted) abortForCaller()
+  else options.signal?.addEventListener('abort', abortForCaller, { once: true })
   const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0
     ? Number(options.timeoutMs)
     : JEV_COMPANION_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetcher(JEV_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(companionJevPayload(ctx)),
-      signal: controller.signal,
-      redirect: 'error',
+  let resolveTimedOut = () => {}
+  let removeTimeoutListener = () => {}
+  const timedOut = controller.signal.aborted
+    ? Promise.resolve<CompanionJevResult>({ available: false, reason: 'timeout' })
+    : new Promise<CompanionJevResult>((resolve) => {
+      resolveTimedOut = () => resolve({ available: false, reason: 'timeout' })
+      const onAbort = () => resolveTimedOut()
+      controller.signal.addEventListener('abort', onAbort, { once: true })
+      removeTimeoutListener = () => controller.signal.removeEventListener('abort', onAbort)
     })
-    if (!response.ok) return { available: false, reason: 'request_failed' }
-    const responseText = await readBoundedResponse(response, 4096)
-    if (responseText === null) return { available: false, reason: 'invalid_response' }
-    let raw: Record<string, unknown> | null = null
-    try { raw = JSON.parse(responseText) as Record<string, unknown> } catch { return { available: false, reason: 'invalid_response' } }
-    const answers = raw?.answers && typeof raw.answers === 'object' ? raw.answers as Record<string, unknown> : null
-    if (!answers) return { available: false, reason: 'invalid_response' }
+  const request = (async (): Promise<CompanionJevResult> => {
+    try {
+      const response = await fetcher(JEV_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(companionJevPayload(ctx)),
+        signal: controller.signal,
+        redirect: 'error',
+      })
+      if (!response.ok) {
+        const statusReasons: Record<number, Extract<CompanionJevResult, { available: false }>['reason']> = {
+          401: 'http_401', 422: 'http_422', 429: 'http_429', 529: 'http_529',
+        }
+        return { available: false, reason: statusReasons[response.status] || 'request_failed' }
+      }
+      const responseText = await readBoundedResponse(response, 4096, controller.signal)
+      if (responseText === null) return { available: false, reason: 'invalid_response' }
+      let raw: Record<string, unknown> | null = null
+      try { raw = JSON.parse(responseText) as Record<string, unknown> } catch { return { available: false, reason: 'invalid_response' } }
+      const answers = raw?.answers && typeof raw.answers === 'object' ? raw.answers as Record<string, unknown> : null
+      if (!answers) return { available: false, reason: 'invalid_response' }
 
-    const isProbability = (value: unknown): value is number =>
-      typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
-    const sufficientProbability = (answers.sufficient as Record<string, unknown> | undefined)?.noul
-    const handoffProbability = (answers.needs_handoff as Record<string, unknown> | undefined)?.noul
-    const market = (answers.market as Record<string, unknown> | undefined)?.choice
-    if (!isProbability(sufficientProbability) || !isProbability(handoffProbability)) {
-      return { available: false, reason: 'invalid_response' }
-    }
-    if (typeof market !== 'string' || !['usa', 'canada', 'uk', 'australia', 'global', 'unknown'].includes(market)) {
-      return { available: false, reason: 'invalid_response' }
-    }
+      const isProbability = (value: unknown): value is number =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+      const sufficientAnswer = answers.sufficient as Record<string, unknown> | undefined
+      const handoffAnswer = answers.needs_handoff as Record<string, unknown> | undefined
+      const sufficientProbability = sufficientAnswer?.noul
+      const handoffProbability = handoffAnswer?.noul
+      const marketAnswer = answers.market as Record<string, unknown> | undefined
+      const market = marketAnswer?.choice
+      if (sufficientAnswer?.type !== 'noul' || handoffAnswer?.type !== 'noul') return { available: false, reason: 'invalid_response' }
+      if (!isProbability(sufficientProbability) || !isProbability(handoffProbability)) {
+        return { available: false, reason: 'invalid_response' }
+      }
+      if (typeof market !== 'string' || !['usa', 'canada', 'uk', 'australia', 'global', 'unknown'].includes(market)) {
+        return { available: false, reason: 'invalid_response' }
+      }
 
-    const ignored: string[] = []
-    const postureRaw = (answers.posture as Record<string, unknown> | undefined)?.choice
-    const allowedPostures = [...new Set(ctx.postureOptions)]
-    let posture: JevPosture | null = null
-    if (typeof postureRaw === 'string') {
-      if (allowedPostures.includes(postureRaw as JevPosture)) posture = postureRaw as JevPosture
-      else ignored.push(`posture:${postureRaw}`)
-    }
+      const readChoice = (answer: unknown, allowed: string[]): { choice: string; confidence: number; selectedProbability: number } | null => {
+        if (!answer || typeof answer !== 'object') return null
+        const value = answer as Record<string, unknown>
+        if (value.type !== 'choice' || typeof value.choice !== 'string' || !isProbability(value.confidence) || !value.probabilities || typeof value.probabilities !== 'object' || Array.isArray(value.probabilities)) return null
+        const probabilities = value.probabilities as Record<string, unknown>
+        const keys = Object.keys(probabilities)
+        if (keys.length < 2 || keys.length > 255 || keys.some((key) => !isProbability(probabilities[key]))) return null
+        const total = keys.reduce((sum, key) => sum + (probabilities[key] as number), 0)
+        if (Math.abs(total - 1) > 0.01 || !keys.includes(value.choice)) return null
+        if (allowed.length > 0 && (keys.length !== allowed.length || allowed.some((key) => !keys.includes(key)))) return null
+        return { choice: value.choice, confidence: value.confidence, selectedProbability: probabilities[value.choice] as number }
+      }
+      const marketChoice = readChoice(marketAnswer, ['usa', 'canada', 'uk', 'australia', 'global', 'unknown'])
+      if (!marketChoice || marketChoice.choice !== market) return { available: false, reason: 'invalid_response' }
 
-    const negotiationRaw = (answers.negotiation_posture as Record<string, unknown> | undefined)?.choice
-    const allowedActions = [...new Set(ctx.negotiationOptions || [])]
-    let negotiationPosture: JevNegotiationAction | null = null
-    if (typeof negotiationRaw === 'string') {
-      if (allowedActions.includes(negotiationRaw as JevNegotiationAction)) negotiationPosture = negotiationRaw as JevNegotiationAction
-      else ignored.push(`negotiation_posture:${negotiationRaw}`)
-    }
+      const ignored: string[] = []
+      const allowedPostures = [...new Set(ctx.postureOptions)]
+      let posture: JevPosture | null = allowedPostures.length === 1 ? allowedPostures[0] : null
+      const choiceDiagnostics: NonNullable<Extract<CompanionJevResult, { available: true }>['choiceDiagnostics']> = { market: { confidence: marketChoice.confidence, selectedProbability: marketChoice.selectedProbability } }
+      if (allowedPostures.length >= 2) {
+        const selected = readChoice(answers.posture, allowedPostures)
+        if (!selected) return { available: false, reason: 'invalid_response' }
+        choiceDiagnostics.posture = { confidence: selected.confidence, selectedProbability: selected.selectedProbability }
+        posture = selected.choice as JevPosture
+      }
 
-    const sufficientP = sufficientProbability as number
-    const handoffP = handoffProbability as number
-    return {
-      available: true,
-      posture,
-      negotiationPosture,
-      sufficient: sufficientP >= 0.75,
-      needsHandoff: handoffP >= 0.6,
-      confidence: Math.round(Math.min(1, Math.max(0, Math.abs(sufficientP - 0.5) * 2)) * 1000) / 1000,
-      market: market as JevAdvisory['market'],
-      ignored,
+      const allowedActions = [...new Set(ctx.negotiationOptions || [])].filter(Boolean)
+      let negotiationPosture: JevNegotiationAction | null = allowedActions.length === 1 ? allowedActions[0] : null
+      if (allowedActions.length >= 2) {
+        const selected = readChoice(answers.negotiation_posture, allowedActions)
+        if (!selected) return { available: false, reason: 'invalid_response' }
+        choiceDiagnostics.negotiation_posture = { confidence: selected.confidence, selectedProbability: selected.selectedProbability }
+        negotiationPosture = selected.choice as JevNegotiationAction
+      }
+
+      const sufficientP = sufficientProbability as number
+      const handoffP = handoffProbability as number
+      return {
+        available: true,
+        posture,
+        negotiationPosture,
+        sufficient: sufficientP >= 0.75,
+        needsHandoff: handoffP >= 0.6,
+        confidence: Math.round(Math.min(1, Math.max(0, Math.abs(sufficientP - 0.5) * 2)) * 1000) / 1000,
+        market: market as JevAdvisory['market'],
+        ignored,
+        choiceDiagnostics,
+      }
+    } catch (error) {
+      return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network_error' }
     }
-  } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'request_failed' }
+  })()
+  try {
+    return await Promise.race([request, timedOut])
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', abortForCaller)
+    removeTimeoutListener()
   }
 }
 

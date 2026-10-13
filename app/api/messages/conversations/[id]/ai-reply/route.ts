@@ -32,6 +32,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       conversationId: id,
       triggerMessageId: body.trigger_message_id || null,
       force: body.force === true || state.ai_mode === 'paused',
+      signal: req.signal,
     })
     return Response.json(result, {
       headers: { 'Server-Timing': `dm;dur=${Math.max(0, Date.now() - startedAt)}` },

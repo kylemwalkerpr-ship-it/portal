@@ -33,6 +33,7 @@ export type CompanionJevSummary = {
   market: string
   used: boolean
   ignored: string[]
+  choiceDiagnostics?: Partial<Record<'posture' | 'negotiation_posture' | 'market', { confidence: number; selectedProbability: number }>>
 }
 
 export type CompanionDecision = {
@@ -72,6 +73,8 @@ export type CompanionDecisionArgs = {
   /** Injectable for tests / callers that must not hit the network. */
   jevRequest?: typeof requestCompanionJev
   jevTimeoutMs?: number
+  /** Caller cancellation, such as a disconnected DM request or runtime deadline. */
+  signal?: AbortSignal
 }
 
 const ALL_POSTURES: CompanionPosture[] = [
@@ -226,7 +229,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         negotiationOptions,
       },
       fetch,
-      { timeoutMs: args.jevTimeoutMs },
+      { timeoutMs: args.jevTimeoutMs, signal: args.signal },
     )
     if (result.available) {
       jev = {
@@ -239,6 +242,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         market: result.market,
         used: false,
         ignored: result.ignored,
+        choiceDiagnostics: result.choiceDiagnostics,
       }
       if (result.ignored.length) reasons.push('jev_option_pruned')
       if (!gate && (result.needsHandoff || (args.evidenceSensitive && !result.sufficient))) {
