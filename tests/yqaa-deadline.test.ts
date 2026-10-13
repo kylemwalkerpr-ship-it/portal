@@ -1,5 +1,6 @@
 import {
   createYqaaDeadline,
+  fetchYqaaJsonWithTimeout,
   YqaaDeadlineError,
   YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS,
 } from '@/lib/yqaaDeadline'
@@ -30,6 +31,24 @@ describe('YQAA end-to-end deadline', () => {
     client.abort()
     expect(deadline.signal.aborted).toBe(true)
     deadline.close()
+  })
+
+  it('keeps cancellation active until a stalled provider response body is consumed', async () => {
+    const originalFetch = global.fetch
+    const parent = new AbortController()
+    let bodyCancelled = false
+    global.fetch = jest.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      cancel() { bodyCancelled = true },
+    }))) as typeof fetch
+    try {
+      const pending = fetchYqaaJsonWithTimeout('https://provider.invalid', {}, 1000, parent.signal)
+      await Promise.resolve()
+      parent.abort()
+      await expect(pending).rejects.toBeDefined()
+      expect(bodyCancelled).toBe(true)
+    } finally {
+      global.fetch = originalFetch
+    }
   })
 
   it('ends scheduled DM work before the Cloudflare waitUntil lifetime and aborts its upstream request', async () => {
@@ -63,8 +82,13 @@ describe('YQAA end-to-end deadline', () => {
     expect(scheduler).toContain("ai_last_run_status: 'running'")
     expect(scheduler).toContain("ai_last_run_status: 'failed'")
     expect(scheduler).toContain("ai_last_skip: timeout ? 'runtime_deadline' : 'schedule_exception'")
-    expect(scheduler).toContain('runtime deadline exceeded during ${runtime.stage}')
+    expect(scheduler).toContain('ai_last_error: timeout ? `runtime_deadline_${runtime.stage}` : failure')
     expect(scheduler).toContain('if (result?.replied) return result')
     expect(scheduler).toContain("ai_last_skip: skip || 'no_result'")
+    expect(scheduler).toContain('runTriggerMessageId')
+    expect(scheduler).toContain('AbortSignal.timeout(4_000)')
+    expect(source).toContain('remainingMs: opts.runtime?.remainingMs')
+    expect(source).toContain("db.rpc('patch_yqaa_runtime_diagnostic'")
+    expect(source).not.toContain('ai_last_error: msg.slice')
   })
 })
