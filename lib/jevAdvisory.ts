@@ -10,7 +10,7 @@ export type JevAdvisory = {
   needsHandoff: boolean
   market: 'usa' | 'canada' | 'uk' | 'australia' | 'global' | 'unknown'
 }
-export type JevResult = { available: true; advisory: JevAdvisory } | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' }
+export type JevResult = { available: true; advisory: JevAdvisory } | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' }
 
 export type JevContext = {
   query: string
@@ -158,7 +158,10 @@ function parseAdvisory(value: unknown): JevAdvisory | null {
 
 async function readBoundedResponse(response: Response, maxBytes: number, signal?: AbortSignal): Promise<string | null> {
   const declaredLength = Number(response.headers.get('content-length') || 0)
-  if (declaredLength > maxBytes) return null
+  if (declaredLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined)
+    return null
+  }
   if (!response.body) return ''
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -187,27 +190,39 @@ async function readBoundedResponse(response: Response, maxBytes: number, signal?
   return new TextDecoder().decode(bytes)
 }
 
+function readChoice(answer: unknown, allowed: string[]): { choice: string; confidence: number; selectedProbability: number } | null {
+  const isProbability = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+  if (!answer || typeof answer !== 'object' || Array.isArray(answer)) return null
+  const value = answer as Record<string, unknown>
+  if (value.type !== 'choice' || typeof value.choice !== 'string' || !isProbability(value.confidence) || !value.probabilities || typeof value.probabilities !== 'object' || Array.isArray(value.probabilities)) return null
+  const probabilities = value.probabilities as Record<string, unknown>
+  const keys = Object.keys(probabilities)
+  if (keys.length !== allowed.length || keys.some((key) => !allowed.includes(key) || !isProbability(probabilities[key]))) return null
+  const total = keys.reduce((sum, key) => sum + (probabilities[key] as number), 0)
+  if (Math.abs(total - 1) > 0.01 || !keys.includes(value.choice)) return null
+  return { choice: value.choice, confidence: value.confidence, selectedProbability: probabilities[value.choice] as number }
+}
+
 export async function requestJevAdvisory(
   ctx: JevContext,
   fetcher: typeof fetch = fetch,
   options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string }; signal?: AbortSignal } = {},
 ): Promise<JevResult> {
-  let apiKey = options.apiKey?.trim() || options.workerEnv?.TYPESAFE_API_KEY?.trim() || ''
-  if (!apiKey) {
-    try {
-      const workerEnv = getCloudflareContext().env as CloudflareEnv & { TYPESAFE_API_KEY?: string }
-      apiKey = workerEnv.TYPESAFE_API_KEY?.trim() || ''
-    } catch {
-      // Local Next.js development can provide the server-only key as an env var.
-      apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
-    }
-  }
+  const apiKey = await resolveJevApiKey(options)
   if (!apiKey) return { available: false, reason: 'not_configured' }
+  if (options.signal?.aborted) return { available: false, reason: 'timeout' }
   const controller = new AbortController()
   const abortForCaller = () => controller.abort(options.signal?.reason)
-  if (options.signal?.aborted) abortForCaller()
-  else options.signal?.addEventListener('abort', abortForCaller, { once: true })
+  options.signal?.addEventListener('abort', abortForCaller, { once: true })
   const timer = setTimeout(() => controller.abort(), JEV_TIMEOUT_MS)
+  let removeAbortListener = () => {}
+  const aborted = new Promise<JevResult>((resolve) => {
+    const onAbort = () => resolve({ available: false, reason: 'timeout' })
+    controller.signal.addEventListener('abort', onAbort, { once: true })
+    removeAbortListener = () => controller.signal.removeEventListener('abort', onAbort)
+  })
+  const request = (async (): Promise<JevResult> => {
   try {
     const response = await fetcher(JEV_ENDPOINT, {
       method: 'POST',
@@ -219,8 +234,10 @@ export async function requestJevAdvisory(
       signal: controller.signal,
       redirect: 'error',
     })
-    if (!response.ok) return { available: false, reason: 'request_failed' }
-    const responseText = await readBoundedResponse(response, 4096)
+    if (!response.ok) {
+      return { available: false, reason: knownFiniteHttpFailure(response.status) || 'request_failed' }
+    }
+    const responseText = await readBoundedResponse(response, 4096, controller.signal)
     if (responseText === null) return { available: false, reason: 'invalid_response' }
     let raw: Record<string, unknown> | null = null
     try { raw = JSON.parse(responseText) as Record<string, unknown> } catch { return { available: false, reason: 'invalid_response' } }
@@ -234,14 +251,16 @@ export async function requestJevAdvisory(
     const conflictProbability = conflict?.noul
     const handoffProbability = handoff?.noul
     const isProbability = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
-    if (!isProbability(sufficientProbability) || !isProbability(conflictProbability) || !isProbability(handoffProbability)) {
+    if (sufficient?.type !== 'noul' || conflict?.type !== 'noul' || handoff?.type !== 'noul' ||
+      !isProbability(sufficientProbability) || !isProbability(conflictProbability) || !isProbability(handoffProbability)) {
       return { available: false, reason: 'invalid_response' }
     }
     const sufficientP = sufficientProbability as number
     const conflictP = conflictProbability as number
     const handoffP = handoffProbability as number
     const parsedMarket = market?.choice
-    if (typeof parsedMarket !== 'string' || !['usa', 'canada', 'uk', 'australia', 'global', 'unknown'].includes(parsedMarket)) {
+    const marketChoice = readChoice(market, ['usa', 'canada', 'uk', 'australia', 'global', 'unknown'])
+    if (!marketChoice || market?.type !== 'choice' || marketChoice.choice !== parsedMarket) {
       return { available: false, reason: 'invalid_response' }
     }
     const advisory = parseAdvisory({
@@ -253,9 +272,14 @@ export async function requestJevAdvisory(
     })
     return advisory ? { available: true, advisory } : { available: false, reason: 'invalid_response' }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'request_failed' }
+    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network_error' }
+  }
+  })()
+  try {
+    return await Promise.race([request, aborted])
   } finally {
     clearTimeout(timer)
+    removeAbortListener()
     options.signal?.removeEventListener('abort', abortForCaller)
   }
 }
@@ -316,7 +340,14 @@ export type CompanionJevResult =
       ignored: string[]
       choiceDiagnostics?: Partial<Record<'posture' | 'negotiation_posture' | 'market', { confidence: number; selectedProbability: number }>>
     }
-  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_422' | 'http_429' | 'http_529' }
+  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' }
+
+function knownFiniteHttpFailure(status: number): 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' | null {
+  const reasons: Record<number, 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529'> = {
+    401: 'http_401', 403: 'http_403', 422: 'http_422', 429: 'http_429', 529: 'http_529',
+  }
+  return reasons[status] || null
+}
 
 export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string } } = {}) {
   let apiKey = options.apiKey?.trim() || options.workerEnv?.TYPESAFE_API_KEY?.trim() || ''
@@ -439,10 +470,7 @@ export async function requestCompanionJev(
         redirect: 'error',
       })
       if (!response.ok) {
-        const statusReasons: Record<number, Extract<CompanionJevResult, { available: false }>['reason']> = {
-          401: 'http_401', 422: 'http_422', 429: 'http_429', 529: 'http_529',
-        }
-        return { available: false, reason: statusReasons[response.status] || 'request_failed' }
+        return { available: false, reason: knownFiniteHttpFailure(response.status) || 'request_failed' }
       }
       const responseText = await readBoundedResponse(response, 4096, controller.signal)
       if (responseText === null) return { available: false, reason: 'invalid_response' }

@@ -428,7 +428,7 @@ describe('companion decision — DM path wiring', () => {
     })
   })
 
-  test.each([[401, 'http_401'], [422, 'http_422'], [429, 'http_429'], [529, 'http_529']] as const)(
+  test.each([[401, 'http_401'], [403, 'http_403'], [422, 'http_422'], [429, 'http_429'], [529, 'http_529']] as const)(
     'returns safe finite diagnostics for HTTP %i without reading the response body', async (status, reason) => {
       const { requestCompanionJev } = await import('@/lib/jevAdvisory')
       const fetcher = (async () => new Response('private provider detail and payload', { status })) as typeof fetch

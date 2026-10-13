@@ -802,11 +802,11 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
       return new Response(
         JSON.stringify({
           answers: {
-            posture: { choice: 'HANDOFF_SUPPORT' },
-            negotiation_posture: { choice: 'MEET_MIDDLE' },
-            sufficient: { noul: 0.9 },
-            needs_handoff: { noul: 0.1 },
-            market: { choice: 'canada' },
+            posture: { type: 'choice', choice: 'HANDOFF_SUPPORT', confidence: 0.9, probabilities: { EDUCATE: 0.1, NEGOTIATE: 0.9 } },
+            negotiation_posture: { type: 'choice', choice: 'MEET_MIDDLE', confidence: 0.9, probabilities: { ACCEPT: 0.1, DOWNSCOPE: 0.9 } },
+            sufficient: { type: 'noul', noul: 0.9 },
+            needs_handoff: { type: 'noul', noul: 0.1 },
+            market: { type: 'choice', choice: 'canada', confidence: 1, probabilities: { usa: 0, canada: 1, uk: 0, australia: 0, global: 0, unknown: 0 } },
           },
         }),
         { status: 200 },
