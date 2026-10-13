@@ -456,12 +456,26 @@ describe('companion decision — DM path wiring', () => {
   test('aborts an in-flight response body at the caller deadline', async () => {
     const { requestCompanionJev } = await import('@/lib/jevAdvisory')
     const controller = new AbortController()
-    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      return new Response(new ReadableStream({ pull() { return new Promise(() => {}) } }))
+    let cancelCalled = false
+    const fetcher = (async () => {
+      return new Response(new ReadableStream({
+        pull() { return new Promise(() => {}) },
+        cancel() { cancelCalled = true },
+      }))
     }) as typeof fetch
     const pending = requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test', timeoutMs: 20, signal: controller.signal })
     await expect(pending).resolves.toEqual({ available: false, reason: 'timeout' })
+    expect(cancelCalled).toBe(true)
+  })
+
+  test('a pre-aborted signal prevents fetching', async () => {
+    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
+    const controller = new AbortController()
     controller.abort()
+    const fetcher = jest.fn(async () => new Response('{}')) as unknown as typeof fetch
+    await expect(requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test', signal: controller.signal }))
+      .resolves.toEqual({ available: false, reason: 'timeout' })
+    expect(fetcher).not.toHaveBeenCalled()
   })
 })
 

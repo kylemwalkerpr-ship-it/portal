@@ -73,6 +73,8 @@ export type CompanionDecisionArgs = {
   /** Injectable for tests / callers that must not hit the network. */
   jevRequest?: typeof requestCompanionJev
   jevTimeoutMs?: number
+  /** Caller cancellation, such as a disconnected DM request or runtime deadline. */
+  signal?: AbortSignal
 }
 
 const ALL_POSTURES: CompanionPosture[] = [
@@ -227,7 +229,7 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         negotiationOptions,
       },
       fetch,
-      { timeoutMs: args.jevTimeoutMs },
+      { timeoutMs: args.jevTimeoutMs, signal: args.signal },
     )
     if (result.available) {
       jev = {

@@ -750,6 +750,7 @@ export async function buildMessengerDecisionAuthority(args: {
   highStakes?: boolean
   triggers?: JevTrigger[]
   jevRequest?: typeof requestCompanionJev
+  signal?: AbortSignal
 }): Promise<CompanionDecision> {
   const result = await runCompanionOrchestrator({
     channel: 'dm',
@@ -776,6 +777,7 @@ export async function buildMessengerDecisionAuthority(args: {
       counterCount: args.adaptive?.negotiation.counter_count ?? 0,
       triggers: args.triggers,
       jevRequest: args.jevRequest,
+      signal: args.signal,
     },
   })
   return result.decision
@@ -977,6 +979,7 @@ export async function maybeAutoReply(opts: {
   triggerMessageId?: string | null
   force?: boolean
   runtime?: DmAutoReplyRuntime
+  signal?: AbortSignal
 }): Promise<AiReplyResult> {
   const key = opts.triggerMessageId ? `${opts.conversationId}:${opts.triggerMessageId}` : opts.conversationId
   const existing = pendingLocks.get(key)
@@ -1263,6 +1266,7 @@ export async function maybeAutoReply(opts: {
         hasNewScopeOrCounter,
         highStakes,
         triggers: decisionTriggers,
+        signal: opts.runtime?.signal ?? opts.signal,
       }).catch((err) => {
         // The decision plane must never break a reply: deterministic policy remains.
         console.warn('[messengerAi] companion decision failed')

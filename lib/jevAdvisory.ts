@@ -156,14 +156,17 @@ function parseAdvisory(value: unknown): JevAdvisory | null {
   return { sufficient: v.sufficient, confidence: v.confidence, conflict: v.conflict, needsHandoff: v.needsHandoff, market: market as JevAdvisory['market'] }
 }
 
-async function readBoundedResponse(response: Response, maxBytes: number): Promise<string | null> {
+async function readBoundedResponse(response: Response, maxBytes: number, signal?: AbortSignal): Promise<string | null> {
   const declaredLength = Number(response.headers.get('content-length') || 0)
   if (declaredLength > maxBytes) return null
   if (!response.body) return ''
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
+  const cancelOnAbort = () => { void reader.cancel().catch(() => undefined) }
+  signal?.addEventListener('abort', cancelOnAbort, { once: true })
   try {
+    if (signal?.aborted) cancelOnAbort()
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -174,7 +177,10 @@ async function readBoundedResponse(response: Response, maxBytes: number): Promis
       }
       chunks.push(value)
     }
-  } finally { reader.releaseLock() }
+  } finally {
+    signal?.removeEventListener('abort', cancelOnAbort)
+    reader.releaseLock()
+  }
   const bytes = new Uint8Array(total)
   let offset = 0
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
@@ -404,6 +410,7 @@ export async function requestCompanionJev(
 ): Promise<CompanionJevResult> {
   const apiKey = await resolveJevApiKey(options)
   if (!apiKey) return { available: false, reason: 'not_configured' }
+  if (options.signal?.aborted) return { available: false, reason: 'timeout' }
   const controller = new AbortController()
   const abortForCaller = () => controller.abort(options.signal?.reason)
   if (options.signal?.aborted) abortForCaller()
@@ -412,10 +419,15 @@ export async function requestCompanionJev(
     ? Number(options.timeoutMs)
     : JEV_COMPANION_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let resolveTimedOut = () => {}
+  let removeTimeoutListener = () => {}
   const timedOut = controller.signal.aborted
     ? Promise.resolve<CompanionJevResult>({ available: false, reason: 'timeout' })
     : new Promise<CompanionJevResult>((resolve) => {
-      controller.signal.addEventListener('abort', () => resolve({ available: false, reason: 'timeout' }), { once: true })
+      resolveTimedOut = () => resolve({ available: false, reason: 'timeout' })
+      const onAbort = () => resolveTimedOut()
+      controller.signal.addEventListener('abort', onAbort, { once: true })
+      removeTimeoutListener = () => controller.signal.removeEventListener('abort', onAbort)
     })
   const request = (async (): Promise<CompanionJevResult> => {
     try {
@@ -432,7 +444,7 @@ export async function requestCompanionJev(
         }
         return { available: false, reason: statusReasons[response.status] || 'request_failed' }
       }
-      const responseText = await readBoundedResponse(response, 4096)
+      const responseText = await readBoundedResponse(response, 4096, controller.signal)
       if (responseText === null) return { available: false, reason: 'invalid_response' }
       let raw: Record<string, unknown> | null = null
       try { raw = JSON.parse(responseText) as Record<string, unknown> } catch { return { available: false, reason: 'invalid_response' } }
@@ -512,6 +524,7 @@ export async function requestCompanionJev(
   } finally {
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', abortForCaller)
+    removeTimeoutListener()
   }
 }
 
