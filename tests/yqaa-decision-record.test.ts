@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { toYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
 import { evaluateYqaaGoldSet } from '@/lib/yqaaOfflineEvaluator'
 import { adaptPublicSafetyDecision } from '@/lib/yqaaDecisionOrchestrator'
@@ -21,14 +23,14 @@ describe('versioned YQAA decision records', () => {
     expect(JSON.stringify(record)).not.toContain('private.example')
     expect(JSON.stringify(record)).not.toContain('uscis')
     expect(JSON.stringify(record)).not.toContain('provider-secret-id')
-    expect(record.provider_hash).toMatch(/^[a-f0-9]{64}$/)
-    expect(record.category_hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(record.provider_hash).toBeNull()
+    expect(record.category_hash).toBeNull()
   })
 
   it('stratifies offline metrics and holds all false-safe calibration proposals', () => {
     const cases = [
-      ...Array.from({ length: 5 }, (_, i) => ({ id: `safe-${i}`, stratum: 'public', predictedSafe: true, humanSafe: true, labelSource: 'licensed_expert' as const, rubricVersion: 'r1' })),
-      ...Array.from({ length: 5 }, (_, i) => ({ id: `unsafe-${i}`, stratum: 'high-stakes', predictedSafe: i > 0, humanSafe: false, labelSource: 'licensed_expert' as const, rubricVersion: 'r1' })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `safe-${i}`, stratum: 'public', predictedSafe: true, humanSafe: true, labelSource: 'licensed_expert' as const, expertQualification: 'licensed attorney', rubricVersion: 'r1', provenance: 'review-batch-1' })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `unsafe-${i}`, stratum: 'high-stakes', predictedSafe: i > 0, humanSafe: false, labelSource: 'licensed_expert' as const, expertQualification: 'licensed attorney', rubricVersion: 'r1', provenance: 'review-batch-1' })),
     ]
     const result = evaluateYqaaGoldSet(cases, 5, ['public', 'high-stakes'])
     expect(result.strata.public.count).toBe(5)
@@ -37,6 +39,49 @@ describe('versioned YQAA decision records', () => {
     expect(result.proposal.eligible).toBe(false)
     expect(evaluateYqaaGoldSet(cases, 5, ['public', 'high-stakes', 'missing-stratum']).promotion).toBe('HOLD_FALSE_SAFE')
     expect(evaluateYqaaGoldSet(cases, 5, ['public', 'high-stakes', 'missing-stratum']).strata['missing-stratum'].count).toBe(0)
+  })
+
+  it('holds malformed, unqualified, or provenance-free labels out of metrics', () => {
+    const malformedGold = [
+      { id: 'unqualified', stratum: 'public', predictedSafe: true, humanSafe: true, labelSource: 'trained_reviewer', rubricVersion: 'r1', expertQualification: 'licensed attorney', provenance: 'review-batch' },
+      { id: 'unversioned', stratum: 'public', predictedSafe: true, humanSafe: false, labelSource: 'licensed_expert', rubricVersion: '', expertQualification: 'licensed attorney', provenance: 'review-batch' },
+      { id: 'no-provenance', stratum: 'public', predictedSafe: true, humanSafe: false, labelSource: 'licensed_expert', rubricVersion: 'r1', expertQualification: 'licensed attorney' },
+    ]
+    const result = evaluateYqaaGoldSet(malformedGold as any, 1, ['public'])
+    expect(result.validLabelCount).toBe(0)
+    expect(result.invalidLabelCount).toBe(3)
+    expect(result.falseSafeCount).toBe(0)
+    expect(result.strata.public.count).toBe(0)
+    expect(result.promotion).toBe('HOLD_INSUFFICIENT_LABELS')
+    expect(result.proposal.eligible).toBe(false)
+  })
+
+  it('holds a calibration set that mixes rubric versions', () => {
+    const labels = ['r1', 'r2'].map((rubricVersion, i) => ({
+      id: `case-${i}`, stratum: 'public', predictedSafe: true, humanSafe: true,
+      labelSource: 'licensed_expert', expertQualification: 'licensed attorney', rubricVersion, provenance: 'review-batch',
+    }))
+    const result = evaluateYqaaGoldSet(labels, 1, ['public'])
+    expect(result.validLabelCount).toBe(2)
+    expect(result.promotion).toBe('HOLD_MIXED_RUBRIC_VERSIONS')
+    expect(result.proposal.rubricVersion).toBeNull()
+    expect(result.proposal.eligible).toBe(false)
+  })
+
+  it('CLI reports HOLD for a syntactically valid but unqualified gold label', () => {
+    const file = path.join(os.tmpdir(), `yqaa-malformed-gold-${process.pid}.json`)
+    fs.writeFileSync(file, JSON.stringify({ datasetVersion: 'test-v1', minimumPerStratum: 1, strata: ['public'], cases: [
+      { id: 'bad', stratum: 'public', predictedSafe: true, humanSafe: false, labelSource: 'unqualified', rubricVersion: 'r1', provenance: 'test' },
+    ] }))
+    try {
+      const output = execFileSync(process.execPath, ['scripts/evaluate-yqaa-goldset.mjs', file], { cwd: process.cwd(), encoding: 'utf8' })
+      const parsed = JSON.parse(output)
+      expect(parsed.result.promotion).toBe('HOLD_INSUFFICIENT_LABELS')
+      expect(parsed.result.validLabelCount).toBe(0)
+      expect(parsed.result.invalidLabelCount).toBe(1)
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
   })
 
   it('keeps decision storage private to the service role in the new migration', () => {

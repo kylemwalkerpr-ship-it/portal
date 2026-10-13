@@ -131,8 +131,32 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
+async function readJsonWithSignal(req: Request, signal: AbortSignal): Promise<unknown> {
+  if (!req.body) throw new SyntaxError('Missing request body')
+  const reader = req.body.getReader()
+  const onAbort = () => { void reader.cancel(signal.reason).catch(() => {}) }
+  if (signal.aborted) onAbort()
+  else signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    const decoder = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (signal.aborted) throw signal.reason || new YqaaDeadlineError()
+      if (done) break
+      text += decoder.decode(value, { stream: true })
+    }
+    text += decoder.decode()
+    return JSON.parse(text)
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+}
+
 export async function POST(req: Request) {
   const requestStartedAt = Date.now()
+  const deadline = createYqaaDeadline(req.signal, PUBLIC_YQAA_DEADLINE_MS)
   let body: {
     messages?: unknown
     requestAgent?: unknown
@@ -142,18 +166,23 @@ export async function POST(req: Request) {
     pageContext?: unknown
   }
   try {
-    body = await req.json()
+    body = await deadline.race(readJsonWithSignal(req, deadline.signal)) as typeof body
   } catch {
+    const expired = deadline.signal.aborted
+    deadline.close()
+    if (expired) return withCors(req, { error: 'Request body did not arrive before the time limit.', retryable: true }, { status: 504 })
     return withCors(req, { error: 'Expected JSON body', retryable: false }, { status: 400 })
   }
 
   const rawMessages = Array.isArray(body.messages) ? body.messages : []
   const cleaned: SystemAssistantTurn[] = rawMessages.filter(isValidTurn).slice(-MAX_HISTORY_TURNS)
   if (cleaned.length === 0 || cleaned[cleaned.length - 1].role !== 'user') {
+    deadline.close()
     return withCors(req, { error: 'Send at least one user message', retryable: false }, { status: 400 })
   }
   const lastUser = cleaned[cleaned.length - 1]
   if (lastUser.content.length > MAX_USER_MESSAGE_CHARS) {
+    deadline.close()
     return withCors(
       req,
       { error: `Message too long — keep it under ${MAX_USER_MESSAGE_CHARS} characters.`, retryable: false },
@@ -168,6 +197,7 @@ export async function POST(req: Request) {
   if (!wantsAgent) {
     const fastReply = getDeterministicYqaaReply(cleaned)
     if (fastReply) {
+      deadline.close()
       const total = Date.now() - requestStartedAt
       return withCors(
         req,
@@ -189,23 +219,26 @@ export async function POST(req: Request) {
   }
 
   if (wantsAgent) {
-    const viewer = await boundedViewerSnapshot()
-    const incomingVisitor = asVisitor(body.visitor)
-    const topic = typeof body.topic === 'string' && body.topic.trim()
-      ? body.topic.trim()
-      : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
-    const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
-
+    let supportPostStarted = false
     try {
-      const handoff = await escalateToSupport({
+      const viewer = await deadline.race(boundedViewerSnapshot())
+      const incomingVisitor = asVisitor(body.visitor)
+      const topic = typeof body.topic === 'string' && body.topic.trim()
+        ? body.topic.trim()
+        : (viewer.role ? `portal-${viewer.role}` : inquiryOrigin.hostname || 'portal')
+      const visitor: SupportVisitor | null = viewer.visitor || incomingVisitor || null
+      supportPostStarted = true
+      const handoff = await deadline.race(escalateToSupport({
         message: lastUser.content,
         visitor,
         topic,
-      })
+        signal: deadline.signal,
+      }))
       await persistYqaaDecisionRecord(createSupabaseAdminClient, {
         channel: 'support', interactionKey: crypto.randomUUID(),
         decision: adaptSupportHandoffDecision('explicit_human_handoff'),
       })
+      deadline.close()
       return withCors(req, {
         handoff: {
           conversationId: handoff.conversationId,
@@ -222,15 +255,21 @@ export async function POST(req: Request) {
       })
     } catch (err) {
       console.error('[system-assistant] escalation failed', err instanceof Error ? err.message.slice(0, 160) : 'unknown')
+      const expired = deadline.signal.aborted || err instanceof YqaaDeadlineError
+      deadline.close()
       return withCors(req, {
-        reply: 'I could not connect you to support just now. I will not guess about this request. Please retry the handoff or contact YouSafe Support directly.',
-        provider: 'handoff-unavailable',
-        retryable: true,
-      }, { status: 503 })
+        reply: supportPostStarted
+          ? expired
+            ? 'The support handoff did not finish before the time limit. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+            : 'The support handoff did not return a confirmation. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+          : 'I could not prepare the support handoff before the time limit. No support request was sent; please retry or contact YouSafe Support directly.',
+        provider: supportPostStarted ? 'handoff-unknown' : 'handoff-unavailable',
+        ...(supportPostStarted ? { handoffState: 'unknown' } : {}),
+        retryable: !supportPostStarted,
+      }, { status: expired ? 504 : 503 })
     }
   }
 
-  const deadline = createYqaaDeadline(req.signal, PUBLIC_YQAA_DEADLINE_MS)
   try {
     const knowledgeStartedAt = Date.now()
     const pageContext = [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings]
@@ -283,14 +322,17 @@ export async function POST(req: Request) {
       }
     }
     if (!safety.answer && safety.reason === 'high_stakes_handoff') {
-      const viewer = await boundedViewerSnapshot()
-      const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+      let supportPostStarted = false
       try {
-        const handoff = await escalateToSupport({
+        const viewer = await deadline.race(boundedViewerSnapshot())
+        const handoffVisitor = viewer.visitor || asVisitor(body.visitor) || null
+        supportPostStarted = true
+        const handoff = await deadline.race(escalateToSupport({
           message: lastUser.content,
           visitor: handoffVisitor,
           topic: 'yqaa-safety-handoff',
-        })
+          signal: deadline.signal,
+        }))
         await persistYqaaDecisionRecord(createSupabaseAdminClient, {
           channel: 'support', interactionKey: crypto.randomUUID(),
           decision: adaptSupportHandoffDecision(safety.reason),
@@ -306,11 +348,18 @@ export async function POST(req: Request) {
           retryable: false,
         })
       } catch {
+        const expired = deadline.signal.aborted
+        deadline.close()
         return withCors(req, {
-          reply: 'I could not verify enough public evidence or connect to support right now. Please retry the handoff or contact YouSafe Support directly.',
-          provider: 'safety-handoff-unavailable',
-          retryable: true,
-        }, { status: 503 })
+          reply: supportPostStarted
+            ? expired
+              ? 'The support handoff did not finish before the time limit. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+              : 'The support handoff did not return a confirmation. Its outcome is unknown; check the support chat before trying again, or contact YouSafe Support directly.'
+            : 'I could not prepare the support handoff before the time limit. No support request was sent; please retry or contact YouSafe Support directly.',
+          provider: supportPostStarted ? 'handoff-unknown' : 'handoff-unavailable',
+          ...(supportPostStarted ? { handoffState: 'unknown' } : {}),
+          retryable: !supportPostStarted,
+        }, { status: expired ? 504 : 503 })
       }
     }
 

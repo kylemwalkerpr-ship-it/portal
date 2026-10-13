@@ -31,9 +31,10 @@ export async function toYqaaDecisionRecord(input: YqaaDecisionRecordInput) {
     rubric_version: YQAA_RUBRIC_VERSION,
     channel: input.channel,
     interaction_hash: await sha256(input.interactionKey),
-    provider_hash: input.providerKey ? await sha256(input.providerKey) : null,
-    category_hash: input.categoryKey && /^[a-zA-Z0-9_-]{1,100}$/.test(input.categoryKey)
-      ? await sha256(input.categoryKey.toLowerCase()) : null,
+    // Stable, unkeyed hashes of low-entropy provider/category identifiers are
+    // dictionary-linkable. Keep these optional identifiers out of telemetry.
+    provider_hash: null,
+    category_hash: null,
     posture: input.decision.posture,
     negotiation_action: input.decision.negotiationAction,
     escalated: input.decision.escalate,
