@@ -70,14 +70,14 @@
 
 ## Phase 3 — Recursive learning
 
-- `DecisionRecord` table / logging  
-- Incident + stratified gold set across providers/categories (expert dual-label on critical)  
-- Negotiation outcome stream → offline band tuning proposals (human promote only)  
-- Shadow mode for new rubrics  
-- Calibration dashboards; demote on false-safe  
-- **No** online auto policy rewrite  
+- [x] `DecisionRecord` table / logging (versioned, privacy-minimized, service-only)
+- [ ] Incident + stratified gold set across providers/categories (expert dual-label on critical; intake is queued and unverified)
+- [x] Negotiation outcome stream from authoritative YQAA offer and provider approval status changes; offline metrics only
+- [x] Shadow evaluation with explicit HOLD states and false-safe demotion recommendation
+- [x] Authenticated calibration dashboard/API and structured human-review intake/export
+- [x] **No** online auto policy rewrite or rubric promotion
 
-**Bounded packet status (2026-10-13):** versioned privacy-minimized decision records, an empty stratified gold-set manifest, and a reproducible false-safe-hold offline evaluator are implemented in [`PHASE3-4-PACKET.md`](./PHASE3-4-PACKET.md). Qualified labeling and negotiation acceptance data remain external prerequisites.
+**Bounded packet status (2026-10-13):** versioned privacy-minimized decision records, an idempotent service-only outcome stream, an authenticated aggregate calibration dashboard/API, and structured review intake/export are implemented in [`PHASE3-4-PACKET.md`](./PHASE3-4-PACKET.md). Review submissions store only admin-attributed labels, qualification claims, and opaque provenance references. Claims are not verified and do not enter gold metrics. Critical cases require two distinct, agreeing admin submissions before they are marked dual-reviewed. Qualified expert labels, external credential verification, and counsel review remain external prerequisites. The new migration is additive and has not been applied.
 
 ---
 

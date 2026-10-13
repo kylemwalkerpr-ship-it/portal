@@ -5,6 +5,10 @@ export type YqaaGoldCase = {
   humanSafe: boolean
   labelSource: 'licensed_expert'
   expertQualification: string
+  /** Critical YMYL cases require two independently identified expert labels. */
+  critical?: boolean
+  reviewerIds?: string[]
+  reviewerQualifications?: string[]
   rubricVersion: string
   provenance: string
   providerHash?: string | null
@@ -35,12 +39,21 @@ function nonEmpty(value: unknown, maxLength = 240): value is string {
 export function isQualifiedYqaaGoldCase(value: unknown): value is YqaaGoldCase {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const item = value as Record<string, unknown>
-  return nonEmpty(item.id, 120) && nonEmpty(item.stratum, 120) &&
+  const basic = nonEmpty(item.id, 120) && nonEmpty(item.stratum, 120) &&
     typeof item.predictedSafe === 'boolean' && typeof item.humanSafe === 'boolean' &&
     item.labelSource === 'licensed_expert' && nonEmpty(item.expertQualification, 240) &&
     nonEmpty(item.rubricVersion, 80) && nonEmpty(item.provenance, 500) &&
     (item.providerHash == null || nonEmpty(item.providerHash, 128)) &&
     (item.categoryHash == null || nonEmpty(item.categoryHash, 128))
+  if (!basic) return false
+  const critical = item.critical === true || (typeof item.stratum === 'string' && /high.?stakes|critical/i.test(item.stratum))
+  if (!critical) return item.critical == null || typeof item.critical === 'boolean'
+  if (item.critical != null && typeof item.critical !== 'boolean') return false
+  const ids = item.reviewerIds
+  const qualifications = item.reviewerQualifications
+  return Array.isArray(ids) && ids.length >= 2 && ids.every((id) => nonEmpty(id, 120)) &&
+    new Set(ids.map((id) => String(id).trim())).size >= 2 &&
+    Array.isArray(qualifications) && qualifications.length >= 2 && qualifications.every((qualification) => nonEmpty(qualification, 240))
 }
 
 /** Reproducible metrics only. This never writes policy or authorizes promotion. */
