@@ -79,6 +79,7 @@ describe('YQAA end-to-end deadline', () => {
     const scheduler = source.slice(source.indexOf('export function scheduleAutoReply('))
 
     expect(scheduler).toContain('deadline.race(')
+    expect(source).toContain('signal: opts.runtime?.signal ?? opts.signal')
     expect(scheduler).toContain("ai_last_run_status: 'running'")
     expect(scheduler).toContain("ai_last_run_status: 'failed'")
     expect(scheduler).toContain("ai_last_skip: timeout ? 'runtime_deadline' : 'schedule_exception'")
