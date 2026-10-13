@@ -12,7 +12,7 @@ create table if not exists public.yqaa_negotiation_outcomes (
   occurred_at timestamptz not null default clock_timestamp(),
   source_kind text not null check (source_kind in ('offer','provider_approval')),
   source_id uuid not null,
-  state text not null check (state in ('pending','accepted','paid','declined','expired','cancelled','approved','invalidated')),
+  state text not null check (state in ('pending','processing','accepted','paid','declined','expired','cancelled','approved','invalidated')),
   event_key text not null unique,
   constraint yqaa_negotiation_outcomes_key_len check (length(event_key) between 1 and 180)
 );

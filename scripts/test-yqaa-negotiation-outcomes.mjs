@@ -48,8 +48,10 @@ insert into public.offers (id,chat_id,sender_id,sender_type,recipient_id,title,d
 values ('${ids.revertedOffer}','${ids.conversation}','${ids.provider}','consultant','${ids.client}','YQAA reverted offer fixture','YQAA reverted offer test description with enough characters.',12500,'usd',3,1,'${expires}','yqaa:${ids.conversation}:${ids.revertedOffer}');
 insert into public.offers (id,chat_id,sender_id,sender_type,recipient_id,title,description,price,currency,delivery_days,revisions,expires_at)
 values ('${ids.nonYqaaOffer}','${ids.conversation}','${ids.provider}','consultant','${ids.client}','Regular offer fixture','Regular offer test description with enough characters.',12500,'usd',3,1,'${expires}');
+update public.offers set status='processing' where id='${ids.offer}';
 update public.offers set status='accepted' where id='${ids.offer}';
 update public.offers set status='pending' where id='${ids.offer}';
+update public.offers set status='processing' where id='${ids.offer}';
 update public.offers set status='accepted' where id='${ids.offer}';
 update public.offers set status='paid' where id='${ids.offer}';
 update public.offers set status='paid' where id='${ids.offer}';
@@ -79,9 +81,10 @@ do $$ begin
   exception when unique_violation then
     null;
   end;
-  if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.offer}') <> 5 then raise exception 'offer transitions were deduplicated by revisited state or duplicate no-op was captured'; end if;
+  if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.offer}') <> 7 then raise exception 'offer transitions were deduplicated by revisited state or duplicate no-op was captured'; end if;
+  if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.offer}' and state='processing') <> 2 then raise exception 'payment processing transitions were omitted'; end if;
   if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.revertedOffer}') <> 3 then raise exception 'reverted offer transitions were not all captured'; end if;
-  if (select count(distinct event_order) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id in ('${ids.offer}','${ids.revertedOffer}')) <> 8 then raise exception 'offer transition order is not unique'; end if;
+  if (select count(distinct event_order) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id in ('${ids.offer}','${ids.revertedOffer}')) <> 10 then raise exception 'offer transition order is not unique'; end if;
   if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.offer}' and state in ('pending','accepted','paid')) <> 5 then raise exception 'accepted-pending-accepted-paid transition history is incomplete'; end if;
   if exists (select 1 from public.yqaa_negotiation_outcomes where source_kind='offer' and source_id='${ids.nonYqaaOffer}') then raise exception 'non-YQAA offer was captured'; end if;
   if (select count(*) from public.yqaa_negotiation_outcomes where source_kind='provider_approval' and event_key like 'approval:${ids.conversation}:${ids.request}:1:%') <> 3 then raise exception 'approval invalidation was not captured'; end if;
