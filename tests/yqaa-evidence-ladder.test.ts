@@ -20,6 +20,7 @@ async function setup(opts: {
   generationHang?: boolean
   evidenceHang?: boolean
   supportHang?: boolean
+  decisionRecordHang?: boolean
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
@@ -43,11 +44,19 @@ async function setup(opts: {
     if (opts.supportHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
     return { conversationId: 'support-1', status: 'queued', queue: null, apiUrl: 'https://support.yousafeconsultancy.com/api/chat/widget' }
   })
+  const persistYqaaDecisionRecord = jest.fn(async (_db: unknown, _input: unknown, options?: { signal?: AbortSignal }) => {
+    if (opts.decisionRecordHang) return await new Promise<void>((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true })
+    })
+  })
   jest.doMock('@/lib/yqaaKnowledgeDb', () => ({ ...jest.requireActual('@/lib/yqaaKnowledgeDb'), loadYqaaEvidence }))
   jest.doMock('@/lib/jevAdvisory', () => ({ ...jest.requireActual('@/lib/jevAdvisory'), requestJevAdvisory }))
   jest.doMock('@/lib/yqaaWebResearch', () => ({ ...jest.requireActual('@/lib/yqaaWebResearch'), researchYqaaPublicWeb }))
   jest.doMock('@/lib/yqaaGeneration', () => ({ generateYqaaAnswer, publicYqaaProviderLabel: () => 'system-ai' }))
   jest.doMock('@/lib/chatEscalation', () => ({ ...jest.requireActual('@/lib/chatEscalation'), escalateToSupport }))
+  jest.doMock('@/lib/yqaaDecisionRecord', () => ({
+    ...jest.requireActual('@/lib/yqaaDecisionRecord'), persistYqaaDecisionRecord,
+  }))
   if (opts.useRealFastReplies) {
     jest.dontMock('@/lib/assistantFastReplies')
   } else {
@@ -66,7 +75,7 @@ async function setup(opts: {
     }))
     return { status: response.status, body: await response.json() as Record<string, any> }
   }
-  return { ask, loadYqaaEvidence, requestJevAdvisory, researchYqaaPublicWeb, generateYqaaAnswer, escalateToSupport }
+  return { ask, loadYqaaEvidence, requestJevAdvisory, researchYqaaPublicWeb, generateYqaaAnswer, escalateToSupport, persistYqaaDecisionRecord }
 }
 
 describe('YQAA final evidence ladder', () => {
@@ -192,6 +201,20 @@ describe('YQAA final evidence ladder', () => {
     expect(result.body.handoffState).toBe('unknown')
     expect(result.body.retryable).toBe(false)
     expect(result.body.reply).toMatch(/outcome is unknown.*check the support chat/i)
+  })
+
+  test('a stalled decision record does not change a successful support handoff or its answer', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ decisionRecordHang: true })
+    const pending = flow.ask('Please connect me to a human support agent', { requestAgent: true })
+    await jest.advanceTimersByTimeAsync(801)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(result.body.provider).toBe('handoff')
+    expect(result.body.handoff.conversationId).toBe('support-1')
+    expect(result.body.reply).toMatch(/connecting you to a live support agent/i)
+    expect(flow.persistYqaaDecisionRecord).toHaveBeenCalledTimes(1)
   })
 
   test('high-confidence fresh KB answers a simple question when Jev is unavailable', async () => {

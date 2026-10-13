@@ -45,12 +45,17 @@ export async function toYqaaDecisionRecord(input: YqaaDecisionRecordInput) {
 }
 
 /** Best effort only: logging failure must never block or alter a user response. */
-export async function persistYqaaDecisionRecord(dbOrFactory: any, input: YqaaDecisionRecordInput): Promise<void> {
+export async function persistYqaaDecisionRecord(
+  dbOrFactory: any,
+  input: YqaaDecisionRecordInput,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<void> {
   try {
     const db = typeof dbOrFactory === 'function' ? dbOrFactory() : dbOrFactory
     const record = await toYqaaDecisionRecord(input)
     let insert = db.from('yqaa_decision_records').insert(record)
-    if (typeof insert.abortSignal === 'function') insert = insert.abortSignal(AbortSignal.timeout(800))
+    const signal = options.signal || AbortSignal.timeout(options.timeoutMs ?? 800)
+    if (typeof insert.abortSignal === 'function') insert = insert.abortSignal(signal)
     const { error } = await insert
     if (error) console.warn('[yqaa-decision-record] insert failed', String(error.message || 'database error').slice(0, 120))
   } catch (error) {

@@ -7,6 +7,7 @@ export class YqaaDeadlineError extends Error {
 
 /** Combines client disconnect with a bounded route deadline and rejects work at the deadline. */
 export function createYqaaDeadline(parent: AbortSignal | null, timeoutMs: number) {
+  const deadlineAt = Date.now() + Math.max(1, timeoutMs)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | null = null
   let rejectDeadline: ((error: Error) => void) | null = null
@@ -26,6 +27,7 @@ export function createYqaaDeadline(parent: AbortSignal | null, timeoutMs: number
   }, Math.max(1, timeoutMs))
   return {
     signal: controller.signal,
+    remainingMs() { return Math.max(0, deadlineAt - Date.now()) },
     race<T>(work: Promise<T>): Promise<T> { return Promise.race([work, deadline]) },
     close() {
       if (timer) clearTimeout(timer)

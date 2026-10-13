@@ -131,6 +131,35 @@ function timingHeader(parts: Array<[string, number]>): string {
   return parts.map(([name, ms]) => `${name};dur=${Math.max(0, Math.round(ms))}`).join(', ')
 }
 
+async function persistDecisionBestEffort(
+  deadline: ReturnType<typeof createYqaaDeadline>,
+  input: Parameters<typeof persistYqaaDecisionRecord>[1],
+): Promise<void> {
+  const timeoutMs = Math.min(800, deadline.remainingMs())
+  if (timeoutMs <= 0 || deadline.signal.aborted) return
+  const controller = new AbortController()
+  const abortForDeadline = () => controller.abort(deadline.signal.reason)
+  deadline.signal.addEventListener('abort', abortForDeadline, { once: true })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      persistYqaaDecisionRecord(createSupabaseAdminClient, input, { signal: controller.signal, timeoutMs }),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          controller.abort(new YqaaDeadlineError())
+          resolve()
+        }, timeoutMs)
+      }),
+    ])
+  } catch (error) {
+    console.warn('[yqaa-decision-record] persistence unavailable', error instanceof Error ? error.message.slice(0, 120) : 'unknown')
+  } finally {
+    if (timer) clearTimeout(timer)
+    deadline.signal.removeEventListener('abort', abortForDeadline)
+    controller.abort()
+  }
+}
+
 async function readJsonWithSignal(req: Request, signal: AbortSignal): Promise<unknown> {
   if (!req.body) throw new SyntaxError('Missing request body')
   const reader = req.body.getReader()
@@ -234,7 +263,7 @@ export async function POST(req: Request) {
         topic,
         signal: deadline.signal,
       }))
-      await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+      await persistDecisionBestEffort(deadline, {
         channel: 'support', interactionKey: crypto.randomUUID(),
         decision: adaptSupportHandoffDecision('explicit_human_handoff'),
       })
@@ -333,7 +362,7 @@ export async function POST(req: Request) {
           topic: 'yqaa-safety-handoff',
           signal: deadline.signal,
         }))
-        await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+        await persistDecisionBestEffort(deadline, {
           channel: 'support', interactionKey: crypto.randomUUID(),
           decision: adaptSupportHandoffDecision(safety.reason),
           evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
@@ -395,7 +424,7 @@ export async function POST(req: Request) {
         webEvidenceCount,
         totalMs,
       })
-      await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+      await persistDecisionBestEffort(deadline, {
         channel: 'public', interactionKey: crypto.randomUUID(),
         decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
         evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
@@ -470,7 +499,7 @@ export async function POST(req: Request) {
       webResearchStatus,
     })
 
-    await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+    await persistDecisionBestEffort(deadline, {
       channel: 'public', interactionKey: crypto.randomUUID(),
       decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
       evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
