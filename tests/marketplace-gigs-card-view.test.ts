@@ -51,6 +51,7 @@ const FULL_ROW = {
   cover_image_url: 'https://cdn.example/cover.jpg',
   gallery_images: [{ url: 'https://cdn.example/cover.jpg' }],
   tiers: [{ price: 49000, delivery_days: 5, is_active: true }],
+  hourly_rate_cents: 27500,
   provider: { id: 'p1', full_name: 'Jane Doe', email: 'jane@example.com', username: 'jane', country: 'US' },
 }
 
@@ -194,19 +195,21 @@ describe('GET /api/marketplace/gigs — view=card', () => {
     expect(gigSelect).toContain('tiers:gig_tiers(price, delivery_days, is_active)')
   })
 
-  it('keeps the default response unchanged (full rows + provider contact)', async () => {
+  it('keeps the default response full while redacting provider-only hourly pricing', async () => {
     const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?limit=20&page=1')
     expect(res.status).toBe(200)
     const gig = res.body.data.gigs[0]
     expect(gig.pitch).toContain('must not reach the landing grid')
     expect(gig.description).toBeDefined()
     expect(gig.provider.email).toBe('jane@example.com')
+    expect(gig.hourly_rate_cents).toBeUndefined()
     expect(selects.some((s) => s.startsWith('*, tiers:gig_tiers(*)')))
   })
 
   it('treats any other view value as the default response', async () => {
     const res = await request(jsonServer(GET)).get('/api/marketplace/gigs?view=full&limit=20&page=1')
     expect(res.body.data.gigs[0].provider.email).toBe('jane@example.com')
+    expect(res.body.data.gigs[0].hourly_rate_cents).toBeUndefined()
   })
 
   it('returns an empty window (not 500) when PostgREST rejects an out-of-range page', async () => {

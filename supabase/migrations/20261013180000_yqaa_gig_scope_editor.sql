@@ -73,7 +73,9 @@ set search_path = ''
 as $$
 begin
   if new.unit_pricing is distinct from old.unit_pricing
-     or new.hourly_rate_cents is distinct from old.hourly_rate_cents then
+     or new.hourly_rate_cents is distinct from old.hourly_rate_cents
+     or new.category is distinct from old.category
+     or new.subcategory is distinct from old.subcategory then
     update public.yqaa_pricing_approvals
        set status = 'invalidated', resolved_at = clock_timestamp()
      where gig_id = new.id and status in ('pending','approved');
@@ -84,7 +86,7 @@ $$;
 revoke all on function public.invalidate_yqaa_pricing_approvals_on_gig_scope_change() from public, anon, authenticated;
 drop trigger if exists gigs_invalidate_yqaa_approvals_on_scope_change on public.gigs;
 create trigger gigs_invalidate_yqaa_approvals_on_scope_change
-  after update of unit_pricing, hourly_rate_cents on public.gigs
+  after update of unit_pricing, hourly_rate_cents, category, subcategory on public.gigs
   for each row execute function public.invalidate_yqaa_pricing_approvals_on_gig_scope_change();
 
 create or replace function public.invalidate_yqaa_pricing_approvals_on_tier_scope_change()
@@ -106,6 +108,7 @@ begin
       or new.is_active is distinct from old.is_active
       or new.scope_depth is distinct from old.scope_depth
       or new.scope_units is distinct from old.scope_units
+      or new.tier is distinct from old.tier
       or new.title is distinct from old.title
       or new.description is distinct from old.description
       or new.features is distinct from old.features;
@@ -122,5 +125,5 @@ $$;
 revoke all on function public.invalidate_yqaa_pricing_approvals_on_tier_scope_change() from public, anon, authenticated;
 drop trigger if exists gig_tiers_invalidate_yqaa_approvals_on_scope_change on public.gig_tiers;
 create trigger gig_tiers_invalidate_yqaa_approvals_on_scope_change
-  after update or delete on public.gig_tiers
+  after update of tier, price, is_active, scope_depth, scope_units, title, description, features or delete on public.gig_tiers
   for each row execute function public.invalidate_yqaa_pricing_approvals_on_tier_scope_change();

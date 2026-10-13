@@ -9,6 +9,7 @@ import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { marketplaceGigSortOrder } from '@/lib/marketplaceGigSort'
 import { isPostgrestRangeNotSatisfiable } from '@/lib/marketplaceDeliveryImage'
+import { stripInternalGigPricing } from '@/lib/yqaaGigScope'
 
 const CACHE_TTL_SECONDS = 60
 const NO_MATCH_GIG_ID = '00000000-0000-0000-0000-000000000000'
@@ -279,7 +280,7 @@ export async function GET(req: Request) {
         return card
       }
       return {
-        ...gig,
+        ...stripInternalGigPricing(gig),
         // Coerce gallery_images so consumers can safely read [0]?.url
         // regardless of whether the row was written as strings (old
         // builder bug) or {url} objects (current shape). Also surface a

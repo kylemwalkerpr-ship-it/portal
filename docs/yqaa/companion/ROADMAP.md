@@ -64,7 +64,7 @@
 - Richer immigrant-journey KB slices (US F-1/OPT/H-1B/marriage/asylum *orientation* cards — curated, cited)  
 - Provider attention UX when escalate + inactive account  
 - Provider pricing-preferences UI; one-tap approve/decline for below-band requests  
-- Gig editor: optional unit pricing + tier scope_depth/scope_units  
+- [x] Gig editor: optional unit pricing + tier scope_depth/scope_units (implemented on `feat/yqaa-gig-scope-controls-20261013`; merge/deploy pending)
 
 ---
 

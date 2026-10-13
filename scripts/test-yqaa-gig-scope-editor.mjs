@@ -86,6 +86,29 @@ try {
   if (afterTierChange !== 'invalidated') throw new Error(`Tier scope change left approval status ${afterTierChange}.`)
   console.log('PASS: tier scope changes invalidate approvals for the gig.')
 
+  const tierNameRequest = randomUUID()
+  psql(`insert into public.yqaa_pricing_approvals (conversation_id,request_id,version,provider_id,price_cents,scope_hash,gig_id,status)
+    values ('${conversationId}','${tierNameRequest}',1,'${providerId}',4600,'scope-tier-name','${gigId}','pending');
+    update public.gig_tiers set tier='standard' where id='${tierId}';`)
+  const afterTierNameChange = psql(`select status from public.yqaa_pricing_approvals where conversation_id='${conversationId}' and request_id='${tierNameRequest}';`)
+  if (afterTierNameChange !== 'invalidated') throw new Error(`Tier name change left approval status ${afterTierNameChange}.`)
+  console.log('PASS: tier-name changes invalidate approvals when inferred scope depth may change.')
+
+  const categoryRequest = randomUUID()
+  psql(`insert into public.yqaa_pricing_approvals (conversation_id,request_id,version,provider_id,price_cents,scope_hash,gig_id,status)
+    values ('${conversationId}','${categoryRequest}',1,'${providerId}',4700,'scope-category','${gigId}','pending');
+    update public.gigs set category='immigration' where id='${gigId}';`)
+  const afterCategoryChange = psql(`select status from public.yqaa_pricing_approvals where conversation_id='${conversationId}' and request_id='${categoryRequest}';`)
+  if (afterCategoryChange !== 'invalidated') throw new Error(`Category change left approval status ${afterCategoryChange}.`)
+
+  const subcategoryRequest = randomUUID()
+  psql(`insert into public.yqaa_pricing_approvals (conversation_id,request_id,version,provider_id,price_cents,scope_hash,gig_id,status)
+    values ('${conversationId}','${subcategoryRequest}',1,'${providerId}',4800,'scope-subcategory','${gigId}','pending');
+    update public.gigs set subcategory='study-permits' where id='${gigId}';`)
+  const afterSubcategoryChange = psql(`select status from public.yqaa_pricing_approvals where conversation_id='${conversationId}' and request_id='${subcategoryRequest}';`)
+  if (afterSubcategoryChange !== 'invalidated') throw new Error(`Subcategory change left approval status ${afterSubcategoryChange}.`)
+  console.log('PASS: category and subcategory changes invalidate approvals when gig selection scope changes.')
+
   for (const sql of [
     `update public.gigs set unit_pricing='{"unit":"mile","unit_price_cents":800}'::jsonb where id='${gigId}';`,
     `update public.gigs set unit_pricing='{"unit":"page","unit_price_cents":0}'::jsonb where id='${gigId}';`,
