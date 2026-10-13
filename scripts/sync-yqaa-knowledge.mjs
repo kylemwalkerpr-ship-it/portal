@@ -50,8 +50,9 @@ async function rest(resource, { method = 'GET', body, prefer } = {}) {
 // Replacing ~25k chunks (search-vector trigger + indexes) takes longer than the
 // 8s statement_timeout PostgREST's `authenticator` role enforces (SQLSTATE
 // 57014). When the Supabase Management API credentials are present (CI), run
-// the same finalizer once over the Management SQL endpoint as `postgres`,
-// which has no role-level timeout. Without them, fall back to the RPC.
+// the same finalizer once over the Management SQL endpoint in an explicit
+// transaction with a 120s local statement timeout. Without management
+// credentials, fall back to the RPC.
 const MGMT_TOKEN = String(process.env.SUPABASE_ACCESS_TOKEN || '').trim()
 const MGMT_REF = String(process.env.SUPABASE_PROJECT_REF || '').trim()
 const RUN_ID_RE = /^yqaa_kb_\d{8}T\d{6}Z$/
@@ -61,9 +62,71 @@ async function finalizeRun(runId) {
     if (!RUN_ID_RE.test(String(runId))) throw new Error(`refusing to finalize unexpected run id ${JSON.stringify(runId)}`)
     const { createManagementSqlClient } = await import('./supabase-management-sql.mjs')
     // maxAttempts: 1 — never blindly re-run a finalizer whose outcome is unknown.
-    const client = createManagementSqlClient({ projectRef: MGMT_REF, accessToken: MGMT_TOKEN, maxAttempts: 1 })
-    const rows = await client.query(`select public.finalize_yqaa_knowledge_ingestion('${runId}') as result`)
-    return rows?.[0]?.result ?? null
+    const client = createManagementSqlClient({
+      projectRef: MGMT_REF,
+      accessToken: MGMT_TOKEN,
+      maxAttempts: 1,
+      timeoutMs: 125_000,
+    })
+    const sql = `
+      BEGIN;
+      SET LOCAL statement_timeout = '120s';
+      SELECT public.finalize_yqaa_knowledge_ingestion('${runId}') AS result;
+      COMMIT;
+    `
+    const findResult = (value) => {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const result = findResult(item)
+          if (result !== undefined) return result
+        }
+      } else if (value && typeof value === 'object') {
+        if (Object.hasOwn(value, 'result')) return value.result
+      }
+      return undefined
+    }
+    const readRunOutcome = async () => {
+      const rows = await client.query(`
+        SELECT status, source_count, chunk_count, site_counts, problems
+          FROM public.yqaa_knowledge_ingestion_runs
+         WHERE run_id = '${runId}'
+      `)
+      const row = rows?.[0]
+      if (row?.status === 'completed') {
+        return {
+          run_id: runId,
+          source_count: row.source_count,
+          chunk_count: row.chunk_count,
+          site_counts: row.site_counts,
+        }
+      }
+      if (row?.status === 'rejected') {
+        return { status: 'rejected', problem: row.problems?.[0] ?? null }
+      }
+      return null
+    }
+
+    try {
+      const response = await client.query(sql)
+      const result = findResult(response)
+      if (result !== undefined) return result
+    } catch (error) {
+      // A bounded transport failure can leave the commit outcome unknown. Read
+      // the run row once; never retry the finalizer blindly.
+      try {
+        const outcome = await readRunOutcome()
+        if (outcome) return outcome
+      } catch {
+        // Preserve the original transaction error when status cannot be read.
+      }
+      throw error
+    }
+
+    // Some multi-statement API responses contain only the final COMMIT result.
+    // The run row is the durable outcome record for that response shape.
+    const outcome = await readRunOutcome()
+    if (!outcome) throw new Error(`YQAA ingestion run ${runId} has no finalizer result or completed/rejected status`)
+    return outcome
   }
   return rest('rpc/finalize_yqaa_knowledge_ingestion', {
     method: 'POST',
@@ -156,7 +219,7 @@ try {
   const finalized = await finalizeRun(manifest.run_id)
 
   if (finalized?.status === 'rejected') {
-    throw new Error(`YQAA ingestion run ${manifest.run_id} was superseded by ${finalized.problem?.run_id || 'a newer run'}`)
+    throw new Error(`YQAA ingestion run ${manifest.run_id} was superseded by ${finalized.problem?.run_id || finalized.problem?.runId || 'a newer run'}`)
   }
 
   console.log(JSON.stringify({
