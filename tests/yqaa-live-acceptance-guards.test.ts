@@ -7,6 +7,13 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('quiet cleanup fetches every ownership field before validating the current-run thread', () => {
+    const quiet = harness.slice(harness.indexOf('const quietOutcome ='))
+    expect(quiet).toContain('conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${thread.id}')
+    expect(quiet).not.toContain('conversations?select=metadata&id=eq.${thread.id}')
+    expect(quiet).toContain('verifyOwnedConversation(conversations?.[0], thread, CURRENT_RUN_MARKER)')
+  })
+
   test('receipt path matches workflow upload and success rechecks deployment identity', () => {
     expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
     expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')
@@ -148,8 +155,10 @@ describe('manual YQAA live acceptance safety guards', () => {
   })
 
   test('optional designated client stays read-only and gets six distinct participant pairs', () => {
-    expect(workflow).toContain('client_email:')
-    expect(workflow).toContain('YQAA_CLIENT_EMAIL: ${{ inputs.client_email }}')
+    expect(workflow).toContain('client_profile_id:')
+    expect(workflow).toContain('YQAA_CLIENT_PROFILE_ID: ${{ inputs.client_profile_id }}')
+    expect(workflow).not.toContain('client_email')
+    expect(workflow).not.toContain('YQAA_CLIENT_EMAIL')
     expect(harness).toContain("const DESIGNATED_CLIENT_ID = '35c89030-b9bd-4a51-877f-739e97fe2d04'")
     expect(harness).toContain("matches[0].role !== 'client' || matches[0].status !== 'active'")
     expect(harness).toContain('item.verification?.status === \'verified\'')
@@ -169,6 +178,21 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(() => assertFreshParticipantPair([])).not.toThrow()
     expect(() => assertFreshParticipantPair([{ id: 'existing' }])).toThrow('refusing reuse or reset')
     expect(providerForThread(providers, 'education', 'negotiation', false)?.profileId).toBe('education-negotiation-provider')
+  })
+
+  test('designated Clerk ticket is consumed once from plain sign-in and exact identity is enforced', () => {
+    const auth = harness.slice(harness.indexOf('async function authenticatedPage'), harness.indexOf('async function api('))
+    expect(auth).toContain('await page.goto(`${BASE}/sign-in`')
+    expect(auth).not.toContain('__clerk_ticket=')
+    expect(auth.match(/client\.signIn\.create\(/g)).toHaveLength(1)
+    expect(auth).toContain("strategy: 'ticket', ticket")
+    expect(auth).toContain('await root.setActive({ session: attempt.createdSessionId })')
+    expect(auth).toContain('userId !== expectedUserId')
+    expect(auth).toContain('clerk_identity_mismatch')
+    expect(auth).toContain('clerk_http_4xx')
+    expect(auth).toContain('clerk_http_5xx')
+    expect(auth).toContain('clerk_sdk_rejected')
+    expect(auth).not.toMatch(/failure\.(message|toString)|JSON\.stringify\(failure/)
   })
 
   test('designated cleanup verifies the known profile and never mutates its profile or Clerk identity', () => {

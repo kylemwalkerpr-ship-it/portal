@@ -11,8 +11,8 @@ on:
         description: Next.js build ID shown by that official production deployment
         required: true
         type: string
-      client_email:
-        description: Optional authorized active client email for designated-client acceptance
+      client_profile_id:
+        description: Optional authorized designated client profile ID for acceptance
         required: false
         type: string
 
@@ -73,7 +73,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_JWT: ${{ secrets.SUPABASE_SERVICE_ROLE_JWT }}
           YQAA_EXPECTED_SHA: ${{ inputs.expected_sha }}
           YQAA_EXPECTED_BUILD_ID: ${{ inputs.expected_build_id }}
-          YQAA_CLIENT_EMAIL: ${{ inputs.client_email }}
+          YQAA_CLIENT_PROFILE_ID: ${{ inputs.client_profile_id }}
         run: node scripts/yqaa-live-acceptance.mjs
 
       - name: Upload sanitized acceptance receipt
