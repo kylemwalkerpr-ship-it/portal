@@ -1,5 +1,9 @@
 -- Keep the existing scoring contract, but express candidate lookup as indexed
 -- searches so trigram matches do not force a scan of every knowledge chunk.
+-- Register pg_trgm's USERSET GUCs in this backend before CREATE FUNCTION
+-- validates the function-level similarity_threshold setting below.
+select similarity('yqaa', 'yqaa');
+
 create or replace function public.search_yqaa_knowledge(
   p_query text,
   p_origin_site text default null,
