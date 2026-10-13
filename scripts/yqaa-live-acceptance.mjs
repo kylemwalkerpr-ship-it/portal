@@ -143,8 +143,8 @@ async function loadAndVerifyFixtures() {
       gig = rows?.[0]
       if (!gig?.id || gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== category.id || gig.subcategory !== category.subcategoryId) throw new Error('Could not confirm hidden paused taxonomy gig fixture.')
       await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: [
-        { gig_id: gig.id, tier: 'basic', title: 'Checklist only', description: 'Synthetic fixture tier; organizational support only.', price: 2500, delivery_days: 5, revisions: 1, features: ['Synthetic test fixture'] },
-        { gig_id: gig.id, tier: 'standard', title: 'Checklist plus review', description: 'Synthetic fixture tier; no actual client records.', price: 5000, delivery_days: 7, revisions: 1, features: ['Synthetic test fixture'] },
+        { gig_id: gig.id, tier: 'basic', title: 'Three document checklist', description: 'Organize a checklist for up to 3 application documents; no advice or form completion.', price: 2500, delivery_days: 5, revisions: 1, scope_depth: 'partial', scope_units: 3, features: ['Synthetic test fixture'] },
+        { gig_id: gig.id, tier: 'standard', title: 'Twelve document checklist', description: 'Organize a checklist for up to 12 application documents; no advice or form completion.', price: 5000, delivery_days: 7, revisions: 1, scope_depth: 'full', scope_units: 12, features: ['Synthetic test fixture'] },
       ] })
     }
     fixtureProviders.push({ category: category.id, profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username: providerUsername })
@@ -261,18 +261,18 @@ async function providerUiChecks() {
 }
 
 const categories = [
-  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist' },
-  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist' },
-  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist' },
+  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist', fullRequest: 'organizing the full application for university admissions across 12 documents', narrowRequest: 'organizing only a portion: 3 university application documents' },
+  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist', fullRequest: 'organizing the full application essay packet across 12 documents', narrowRequest: 'organizing only a portion: 3 essay application documents' },
+  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist', fullRequest: 'organizing the full application for student planning across 12 documents', narrowRequest: 'organizing only a portion: 3 study planning documents' },
 ]
 
 const scenarios = [
-  { name: 'orientation', text: 'Hi. I am planning to get help organizing %REQUEST%. What can this service help me understand, what should I clarify first, and are you an AI or a human?' },
+  { name: 'orientation', text: 'Hi. I am planning to get help with %FULL_REQUEST%. What can this service help me understand, what should I clarify first, and are you an AI or a human?' },
   { name: 'budget', text: 'My budget is CAD 450 for help organizing %REQUEST%. What can fit that budget? Please clarify the proposed scope and price.' },
-  { name: 'scope_narrowing', text: 'I first considered the full request, but let us narrow this to organizing %REQUEST% only. Leave form completion and advice out of scope.' },
+  { name: 'scope_narrowing', text: 'I first considered %FULL_REQUEST%, but let us narrow this to %NARROW_REQUEST%. Leave form completion and advice out of scope.' },
   { name: 'counter', text: null },
   { name: 'lowball', text: 'My maximum is CAD 1 for organizing %REQUEST%. Please say what, if anything, could realistically fit that amount without promising the full request.' },
-  { name: 'frustration', text: 'This is frustrating; I still do not understand what is included or what happens next. Can you explain it plainly?' },
+  { name: 'frustration', text: 'This is not helpful and feels like a waste of my time; I still do not understand what is included or what happens next. Can you explain it plainly?' },
   { name: 'provider_attention', text: 'Please ask the provider to review this request personally and pause automated negotiation until they respond.' },
 ]
 
@@ -286,11 +286,13 @@ async function messengerSmoke() {
     let quoteCents = null
     for (let index = 0; index < MAX_TURNS; index++) {
       const baseScenario = scenarios[index]
-      const scenario = { ...baseScenario, text: baseScenario.text?.replaceAll('%REQUEST%', category.request) }
+      const scenario = { ...baseScenario, text: baseScenario.text?.replaceAll('%REQUEST%', category.request).replaceAll('%FULL_REQUEST%', category.fullRequest).replaceAll('%NARROW_REQUEST%', category.narrowRequest) }
       const label = `${category.id}/${scenario.name}`
+    let priorScopeHash = null
     if (index > 0) {
       const beforeTurn = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata || {}
       if (beforeTurn.ai_mode === 'paused') throw new Error(`${label}: AI paused before this required scenario; refusing to send a message with no expected AI response.`)
+      priorScopeHash = beforeTurn.ai_last_scope_hash || beforeTurn.ai_memory?.negotiation?.scope_current?.scope_hash || null
     }
     if (categoryIndex === 0 && index === 0) {
       const unauth = await fetch(`${BASE}/api/messages/conversations/${conversationId}`, { headers: { Accept: 'application/json' } })
@@ -306,7 +308,9 @@ async function messengerSmoke() {
       if (!quote) throw new Error(`${label}: no quote produced in server conversation memory; refusing to invent one.`)
       quoteCents = Number(quote.cents)
       const counterCents = Math.max(1, Math.round(quoteCents * 0.9))
-      scenario.text = `The server quote record for this scope is ${quoteCents} cents. I counter with ${counterCents} cents for the same narrowed scope. Can the provider consider that?`
+      const quoteDollars = (quoteCents / 100).toFixed(2)
+      const counterDollars = (counterCents / 100).toFixed(2)
+      scenario.text = `The server quote record for this scope is CAD $${quoteDollars}. Would you accept $${counterDollars} CAD for the same narrowed scope?`
     }
     const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: scenario.text } })
     check(`${label}: authenticated DM message accepted`, sent.status === 200 && sent.data.message?.sender_id === fixture.profileId && typeof sent.data.message?.id === 'string')
@@ -343,14 +347,26 @@ async function messengerSmoke() {
     const currentRows = await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`)
     const current = currentRows?.[0]?.metadata || {}
     const memory = current.ai_memory || {}
-    if (scenario.name === 'scope_narrowing' && (memory.marketplace_scope?.category_id !== category.id || memory.marketplace_scope?.subcategory_id !== category.subcategoryId || !(memory.document_highlights || []).some((value) => /checklist/i.test(value)))) throw new Error(`${label}: server memory did not retain taxonomy and narrowed checklist scope.`)
+    if (scenario.name === 'scope_narrowing') {
+      const scope = memory.negotiation?.scope_current
+      const scopeHash = current.ai_last_scope_hash || scope?.scope_hash
+      const scopeValue = scope?.units?.qty
+      if (memory.marketplace_scope?.category_id !== category.id || memory.marketplace_scope?.subcategory_id !== category.subcategoryId || !(memory.document_highlights || []).some((value) => /checklist/i.test(value))) throw new Error(`${label}: server memory did not retain taxonomy and narrowed checklist scope.`)
+      if (!scopeHash || scopeHash !== scope?.scope_hash || scopeHash === priorScopeHash || !(memory.negotiation?.quotes_made || []).some((item) => item.scope_hash === scopeHash && Number(item.cents) > 0) || !Number.isFinite(Number(scopeValue)) || Number(scopeValue) !== 3 || scope?.units?.unit !== 'document' || scope?.depth !== 'partial') throw new Error(`${label}: actual new quote scope hash/value did not reflect the three-document narrowed scope.`)
+      if (!current.ai_last_pricing_status) throw new Error(`${label}: narrowed scope did not produce a pricing decision.`)
+    }
     if (scenario.name === 'budget' && (Number(memory.budget?.maxCents || memory.negotiation?.budget_latest?.maxCents || 0) < 1 || !current.ai_last_pricing_status)) throw new Error(`${label}: server memory did not retain client budget and pricing state.`)
     if (scenario.name === 'counter') {
       if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
       if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
     }
-    if (scenario.name === 'frustration' && current.ai_mode === 'paused') {
-      check(`${label}: frustration pause verified; later AI-required scenarios skipped`, true)
+    if (scenario.name === 'frustration') {
+      const attention = memory.provider_attention
+      const pausedForProvider = current.ai_mode === 'paused' && current.ai_provider_attention_requested === true && (attention?.pending === true || attention?.status === 'pending')
+      check(`${label}: frustration escalated and paused for provider within one turn`, pausedForProvider)
+      const latency = Date.now() - started
+      receipt.scenarios.push({ category: category.id, name: scenario.name, status: 'passed', provider_attention: true, ai_paused: true, latency_ms: latency, http_status: sent.status, reply_length_bucket: reply.body.length < 160 ? 'short' : reply.body.length < 600 ? 'medium' : 'long' })
+      console.log(`PASS ${label}: provider attention and pause recorded (${latency} ms)`)
       break
     }
     const latency = Date.now() - started
