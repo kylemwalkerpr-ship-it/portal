@@ -10,7 +10,9 @@ export type JevAdvisory = {
   needsHandoff: boolean
   market: 'usa' | 'canada' | 'uk' | 'australia' | 'global' | 'unknown'
 }
-export type JevResult = { available: true; advisory: JevAdvisory } | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' }
+export type JevNetworkFailure = 'network_headers' | 'network_redirect' | 'network_tls' | 'network_dns' | 'network_io_context' | 'network_subrequest_limit' | 'network_connection' | 'network_unknown'
+type JevUnavailableReason = 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | JevNetworkFailure | 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529'
+export type JevResult = { available: true; advisory: JevAdvisory } | { available: false; reason: JevUnavailableReason }
 
 export type JevContext = {
   query: string
@@ -272,7 +274,7 @@ export async function requestJevAdvisory(
     })
     return advisory ? { available: true, advisory } : { available: false, reason: 'invalid_response' }
   } catch (error) {
-    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network_error' }
+    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : classifyJevNetworkError(error) }
   }
   })()
   try {
@@ -340,13 +342,36 @@ export type CompanionJevResult =
       ignored: string[]
       choiceDiagnostics?: Partial<Record<'posture' | 'negotiation_posture' | 'market', { confidence: number; selectedProbability: number }>>
     }
-  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' | 'network_error' | 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' }
+  | { available: false; reason: JevUnavailableReason }
 
 function knownFiniteHttpFailure(status: number): 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529' | null {
   const reasons: Record<number, 'http_401' | 'http_403' | 'http_422' | 'http_429' | 'http_529'> = {
     401: 'http_401', 403: 'http_403', 422: 'http_422', 429: 'http_429', 529: 'http_529',
   }
   return reasons[status] || null
+}
+
+/** Extract only bounded diagnostic fields; never return or persist provider text. */
+export function classifyJevNetworkError(error: unknown): JevNetworkFailure {
+  const fields: string[] = []
+  if (error && typeof error === 'object') {
+    const value = error as { name?: unknown; message?: unknown; cause?: unknown }
+    if (typeof value.name === 'string') fields.push(value.name)
+    if (typeof value.message === 'string') fields.push(value.message)
+    if (value.cause && typeof value.cause === 'object') {
+      const code = (value.cause as { code?: unknown }).code
+      if (typeof code === 'string') fields.push(code)
+    }
+  }
+  const diagnostic = fields.join(' ').toLowerCase()
+  if (/subrequest|too many.*request|limit.*request/.test(diagnostic)) return 'network_subrequest_limit'
+  if (/redirect|redirection|3xx/.test(diagnostic)) return 'network_redirect'
+  if (/header/.test(diagnostic)) return 'network_headers'
+  if (/tls|ssl|certificate|cert_|secure connection/.test(diagnostic)) return 'network_tls'
+  if (/dns|enotfound|eai_again|eai_fail|name not resolved/.test(diagnostic)) return 'network_dns'
+  if (/context|execution context|io[_ -]?context/.test(diagnostic)) return 'network_io_context'
+  if (/econn|connection|socket|reset|refused|closed|pipe/.test(diagnostic)) return 'network_connection'
+  return 'network_unknown'
 }
 
 export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string } } = {}) {
@@ -544,7 +569,7 @@ export async function requestCompanionJev(
         choiceDiagnostics,
       }
     } catch (error) {
-      return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network_error' }
+      return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : classifyJevNetworkError(error) }
     }
   })()
   try {

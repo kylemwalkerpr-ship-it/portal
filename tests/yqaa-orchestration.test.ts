@@ -268,6 +268,14 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
     await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, (async () => new Response('provider private detail', { status })) as typeof fetch, { apiKey: 'test' })).resolves.toEqual({ available: false, reason })
   })
+
+  it('returns a finite safe transport category from the public adapter', async () => {
+    const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
+    const error = Object.assign(new TypeError('fetch failed; private response body TOKEN=secret'), { cause: { code: 'ENOTFOUND' } })
+    const fetcher = (async () => { throw error }) as typeof fetch
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, fetcher, { apiKey: 'test' }))
+      .resolves.toEqual({ available: false, reason: 'network_dns' })
+  })
 })
 
 describe('YQAA provider pin and fallback policy', () => {

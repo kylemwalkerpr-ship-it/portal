@@ -436,10 +436,21 @@ describe('companion decision — DM path wiring', () => {
     },
   )
 
-  test('classifies transport failures without retaining exception text', async () => {
-    const { requestCompanionJev } = await import('@/lib/jevAdvisory')
-    const fetcher = (async () => { throw new Error('socket failed while sending private payload') }) as typeof fetch
-    await expect(requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'network_error' })
+  test.each([
+    [{ name: 'TypeError', message: 'headers failed private body TOKEN=private', cause: { code: 'ERR_HTTP_HEADERS' } }, 'network_headers'],
+    [{ name: 'TypeError', message: 'redirect mode error secret=private' }, 'network_redirect'],
+    [{ name: 'Error', message: 'TLS certificate private payload' }, 'network_tls'],
+    [{ name: 'Error', message: 'lookup failed', cause: { code: 'ENOTFOUND' } }, 'network_dns'],
+    [{ name: 'Error', message: 'execution context unavailable; private body' }, 'network_io_context'],
+    [{ name: 'Error', message: 'too many subrequests secret' }, 'network_subrequest_limit'],
+    [{ name: 'TypeError', message: 'socket failed while sending private payload' }, 'network_connection'],
+    [{ name: 'TypeError', message: 'fetch failed; private body TOKEN=private' }, 'network_unknown'],
+  ] as const)('returns a finite safe transport category for %s', async (error, reason) => {
+    const { requestCompanionJev, classifyJevNetworkError } = await import('@/lib/jevAdvisory')
+    expect(classifyJevNetworkError(error)).toBe(reason)
+    expect(reason).toMatch(/^network_(headers|redirect|tls|dns|io_context|subrequest_limit|connection|unknown)$/)
+    const fetcher = (async () => { throw error }) as typeof fetch
+    await expect(requestCompanionJev({ query: 'hello', postureOptions: [] }, fetcher, { apiKey: 'test' })).resolves.toEqual({ available: false, reason })
   })
 
   test('rejects oversized response bodies and an already-aborted caller deadline', async () => {
