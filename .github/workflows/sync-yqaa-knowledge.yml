@@ -25,7 +25,9 @@ jobs:
               });
               const data=await response.json().catch(()=>null);
               const content=!!(data?.output_text || data?.output?.some(x=>x.type==='message' && x.content?.some(c=>c.text)));
-              console.log(JSON.stringify({status:response.status,ms:Date.now()-start,content}));
+              const errorText=JSON.stringify(data?.error || data || {});
+              const category=/credit|balance|billing|payment|fund/i.test(errorText)?'billing':/key|token|credential|authentication|unauthorized/i.test(errorText)?'credential':/model|permission|access|forbidden/i.test(errorText)?'access':'other';
+              console.log(JSON.stringify({status:response.status,ms:Date.now()-start,content,category}));
               if (!response.ok || !content) process.exitCode=1;
             } catch { console.log(JSON.stringify({status:'network_or_timeout',ms:Date.now()-start}));process.exitCode=1; }
           })();
