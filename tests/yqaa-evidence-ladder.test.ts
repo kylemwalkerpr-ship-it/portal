@@ -19,6 +19,7 @@ async function setup(opts: {
   generationError?: boolean
   generationHang?: boolean
   evidenceHang?: boolean
+  evidenceDelayMs?: number
   webHang?: boolean
   supportHang?: boolean
   decisionRecordHang?: boolean
@@ -27,6 +28,7 @@ async function setup(opts: {
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
   const loadYqaaEvidence = jest.fn(async (input?: { signal?: AbortSignal }) => {
     if (opts.evidenceHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
+    if (opts.evidenceDelayMs) await new Promise<void>((resolve) => setTimeout(resolve, opts.evidenceDelayMs))
     return ({ chunks, source: 'database',
     retrievalConfidence: opts.confidence ?? 0.9, freshEnough: opts.fresh ?? true,
     jurisdictions: ['United States'], sites: [...new Set(chunks.map((c) => c.site))] })
@@ -165,9 +167,42 @@ describe('YQAA final evidence ladder', () => {
     expect(result.status).toBe(504)
     expect(result.body.retryable).toBe(true)
     expect(result.body.error).toMatch(/time limit|retry/i)
-    expect(result.headers.get('Server-Timing')).toMatch(stage === 'database' ? /knowledge;dur=6000;desc="timeout"/ : /model;dur=26000;desc="timeout"/)
+    expect(result.headers.get('Server-Timing')).toMatch(stage === 'database' ? /knowledge;dur=12000;desc="timeout"/ : /model;dur=26000;desc="timeout"/)
     if (stage === 'database') expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
     if (stage === 'model') expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
+  })
+
+  test('7.5-second database retrieval succeeds and continues to model synthesis', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ evidenceDelayMs: 7_500 })
+    const pending = flow.ask('Explain general housing rules in the United States')
+    await jest.advanceTimersByTimeAsync(7_500)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect(result.headers.get('Server-Timing')).toMatch(/knowledge;dur=7500;desc="ok"/)
+  })
+
+  test('knowledge uses only the true remaining overall deadline reserve', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ evidenceHang: true })
+    const { POST } = await import('@/app/api/chat/route')
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    const pending = POST(new Request('https://usa.yousafeconsultancy.com/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body, duplex: 'half',
+    } as RequestInit & { duplex: 'half' }))
+    await jest.advanceTimersByTimeAsync(35_000)
+    controller.enqueue(new TextEncoder().encode(JSON.stringify({ messages: [{ role: 'user', content: 'Explain general housing rules in the United States' }] })))
+    controller.close()
+    await jest.advanceTimersByTimeAsync(7_001)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(504)
+    expect(result.headers.get('Server-Timing')).toMatch(/knowledge;dur=7000;desc="failed"/)
+    expect(result.headers.get('Server-Timing')).toMatch(/total;dur=42000/)
+    expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
   })
 
   test('optional web research is cancelled at its stage budget and synthesis still runs', async () => {
@@ -190,12 +225,12 @@ describe('YQAA final evidence ladder', () => {
     jest.useFakeTimers()
     const flow = await setup({ evidenceHang: true })
     const pending = flow.ask('private wording must never enter timing diagnostics')
-    await jest.advanceTimersByTimeAsync(6_001)
+    await jest.advanceTimersByTimeAsync(12_001)
     const result = await pending
     jest.useRealTimers()
     const timing = result.headers.get('Server-Timing') || ''
     expect(result.status).toBe(504)
-    expect(timing).toMatch(/knowledge;dur=6000;desc="timeout"/)
+    expect(timing).toMatch(/knowledge;dur=12000;desc="timeout"/)
     expect(timing).toMatch(/total;dur=\d+/)
     expect(timing).not.toContain('private wording')
   })

@@ -7,6 +7,12 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('receipt path matches workflow upload and success rechecks deployment identity', () => {
+    expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
+    expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')
+    expect(harness).toMatch(/await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+receipt.status = 'passed'/)
+  })
+
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
     const cleanupRegistry: Array<{ gigId: string; profileId: string; clerkUserId: string }> = []
     const verifiedGig = { gigId: 'owned-gig-1', profileId: 'owned-profile-1', clerkUserId: 'owned-user-1' }
@@ -99,6 +105,7 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).not.toContain('c2a46c19-abd0-4404-91e2-f4139938428d')
     expect(harness).toContain('/api/messages/conversations/')
     expect(harness).toContain('MAX_TURNS = 6')
+    expect(harness).toContain("getByTitle('Jump to: Pricing', { exact: true })")
     expect(harness).toContain('MAX_WAIT_MS = 45_000')
     expect(harness).toContain('AbortSignal.timeout(10_000)')
     for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {

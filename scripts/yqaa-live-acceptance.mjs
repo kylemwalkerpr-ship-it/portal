@@ -17,7 +17,7 @@ const MAX_WAIT_MS = 45_000
 const RUN_ID = process.env.GITHUB_RUN_ID || `manual-${Date.now()}`
 const RUN_ATTEMPT = process.env.GITHUB_RUN_ATTEMPT || '1'
 const PROVIDER_USERNAME = `yqaa_live_acceptance_${RUN_ID}_${RUN_ATTEMPT}`.slice(0, 64)
-const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? (process.env.RUNNER_TEMP || path.resolve('artifacts/yqaa-live-acceptance')) : path.resolve('artifacts/yqaa-live-acceptance')
+const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance') : path.resolve('artifacts/yqaa-live-acceptance')
 const receipt = { version: 1, started_at: new Date().toISOString(), checks: [], scenarios: [], cleanup: 'pending' }
 let browser
 let clientPage
@@ -255,7 +255,7 @@ async function providerUiChecks() {
   const gigApi = await api(providerPage, `/api/gigs/${fixture.gigId}`)
   const payload = gigApi.data?.data?.gig || gigApi.data?.gig
   check('gig scope fixture loaded through provider API', gigApi.status === 200 && payload?.id === fixture.gigId && payload?.status === 'paused' && payload?.is_hidden === true && Array.isArray(payload?.tiers) && payload.tiers.length >= 2)
-  await providerPage.getByRole('button', { name: /^pricing$/i }).first().click()
+  await providerPage.getByTitle('Jump to: Pricing', { exact: true }).click()
   const pricingText = (await providerPage.locator('body').innerText()).toLowerCase()
   check('gig pricing and scope editor UI', pricingText.includes('scope units') && pricingText.includes('scope depth') && pricingText.includes('tier description'))
   await auth.context.close()
@@ -263,15 +263,15 @@ async function providerUiChecks() {
 }
 
 const categories = [
-  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist', fullRequest: 'organizing the full application for university admissions across 12 documents', narrowRequest: 'organizing only a portion: 3 university application documents' },
-  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist', fullRequest: 'organizing the full application essay packet across 12 documents', narrowRequest: 'organizing only a portion: 3 essay application documents' },
-  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist', fullRequest: 'organizing the full application for student planning across 12 documents', narrowRequest: 'organizing only a portion: 3 study planning documents' },
+  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist', fullRequest: 'organizing the full application for university admissions across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for a university application' },
+  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist', fullRequest: 'organizing the full application essay packet across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for an application essay' },
+  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist', fullRequest: 'organizing the full application for student planning across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for study planning' },
 ]
 
 const scenarios = [
   { name: 'orientation', text: 'Hi. I am planning to get help with %FULL_REQUEST%. What can this service help me understand, what should I clarify first, and are you an AI or a human?' },
   { name: 'budget', text: 'My budget is CAD 450 for help organizing %REQUEST%. What can fit that budget? Please clarify the proposed scope and price.' },
-  { name: 'scope_narrowing', text: 'I first considered %FULL_REQUEST%, but let us narrow this to %NARROW_REQUEST%. Leave form completion and advice out of scope.' },
+  { name: 'scope_narrowing', text: 'Let us narrow the previous full request to %NARROW_REQUEST%. Leave form completion and advice out of scope.' },
   { name: 'counter', text: null },
   { name: 'lowball', text: 'My maximum is CAD 1 for organizing %REQUEST%. Please say what, if anything, could realistically fit that amount without promising the full request.' },
   { name: 'frustration', text: 'This is not helpful and feels like a waste of my time; I still do not understand what is included or what happens next. Can you explain it plainly?' },
@@ -518,6 +518,7 @@ try {
   await loadAndVerifyFixtures()
   await providerUiChecks()
   await messengerSmoke()
+  await assertLiveIdentity()
   receipt.status = 'passed'
 } catch (caught) {
   error = safeFailure(caught)

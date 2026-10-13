@@ -194,6 +194,12 @@ function approved(decision: AdaptivePricingDecision): number {
 }
 
 describe('adaptive pricing — scope signal', () => {
+  test('live acceptance narrowed wording parses three documents as partial scope', () => {
+    const scope = extractScopeSignal([clientMessage('narrow-live', 'Let us narrow the previous full request to organizing only a portion: 3 documents for a university application. Leave form completion and advice out of scope.')], { clientId: CLIENT })
+    expect(scope.depth).toBe('partial')
+    expect(scope.units).toEqual({ unit: 'document', qty: 3 })
+  })
+
   test('parses the live harness supported Would you accept dollar counter as CAD cents', () => {
     const counterCents = extractNegotiationSignal([
       clientMessage('counter-1', 'The server quote record for this scope is CAD $45.00. Would you accept $40.50 CAD for the same narrowed scope?'),

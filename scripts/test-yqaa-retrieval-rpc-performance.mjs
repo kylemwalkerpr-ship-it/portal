@@ -14,13 +14,14 @@ if (!/^\/(?:yqaa_test|postgres|template1)$/.test(base.pathname)) {
   throw new Error('YQAA_TEST_DATABASE_URL must target yqaa_test, postgres, or template1; scratch database names are fixed and guarded.')
 }
 
-const scratchNames = ['yqaa_retrieval_old_test', 'yqaa_retrieval_new_test']
+const scratchNames = ['yqaa_retrieval_previous_test', 'yqaa_retrieval_successor_test']
 const migrationPaths = [
   'supabase/migrations/20260930070000_create_yqaa_public_knowledge_index.sql',
   'supabase/migrations/20260930071500_tune_yqaa_knowledge_ranking.sql',
   'supabase/migrations/20260930180000_yqaa_intent_ranking.sql',
 ]
-const newMigration = 'supabase/migrations/20261013210000_yqaa_retrieval_performance.sql'
+const activeMigration = 'supabase/migrations/20261013210000_yqaa_retrieval_performance.sql'
+const successorMigration = 'supabase/migrations/20261013220000_yqaa_retrieval_late_body.sql'
 
 function run(args, input, databaseUrl = baseUrl) {
   const result = spawnSync('psql', ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1', databaseUrl, ...args], {
@@ -84,7 +85,9 @@ select 'chunk-'||n, 'src-'||n,
  case when n%31=0 then 'Canada immigration study permit rules and application guidance. '
       when n%11=0 then 'Contact customer support for account assistance. '
       else 'General publicly available knowledge content for benchmark row '||n||'. ' end
-      || repeat('This public guidance explains eligibility, required documents, application steps, review timelines, and where to request help. ', 25),
+      || repeat('Applicants preparing immigration applications should confirm the permit category, eligibility rules, and filing location before collecting records. ', 10)
+      || repeat('A complete application includes supporting documents, accurate dates, translated records when required, and a clear explanation of the request. ', 10)
+      || repeat('Review timelines vary by case and jurisdiction. Contact the support team for account access, document upload, case status, and next steps. ', 10),
  md5(n::text), (n%5+1)::smallint, timestamptz '2026-10-13 00:00:00+00'-((n%90)||' hours')::interval
 from generate_series(1,25000) n;
 analyze public.yqaa_knowledge_sources;
@@ -97,12 +100,14 @@ analyze public.yqaa_knowledge_chunks;
     for (const migration of migrationPaths) {
       run(['-f', path.join(root, migration)], '', target)
     }
-    if (i === 1) run(['-f', path.join(root, newMigration)], '', target)
+    run(['-f', path.join(root, activeMigration)], '', target)
+    if (i === 1) run(['-f', path.join(root, successorMigration)], '', target)
     run([], insertData, target)
   }
 
   const queries = [
     ['Canada immigration study permit support', 'support', 'Canada'],
+    ['immigration application permit support documents timeline', null, null],
     ['Canadien immigraiton study permitt', null, 'Canada'],
     ['customer support contact account help', 'support', null],
     ['find an immigration service provider', 'market', 'United States'],
@@ -111,6 +116,7 @@ analyze public.yqaa_knowledge_chunks;
     ['   ', null, null],
   ]
   const results = []
+  const explainPlans = []
   for (const [query, site, jurisdiction] of queries) {
     const args = [query, site, jurisdiction, 24].map((value) => value === null ? 'null' : typeof value === 'number' ? String(value) : `'${value.replaceAll("'", "''")}'`).join(',')
     const call = `set role service_role; select coalesce(jsonb_agg(to_jsonb(r) order by r.score desc, r.authority_tier desc, r.fetched_at desc), '[]'::jsonb)::text from public.search_yqaa_knowledge(${args}) r; reset role;`
@@ -122,7 +128,14 @@ analyze public.yqaa_knowledge_chunks;
       return output
     })
     if (pair[0] !== pair[1]) throw new Error(`RPC output mismatch for query ${JSON.stringify(query)}.`)
-    results.push({ query, count: JSON.parse(pair[0]).length, old_ms: timings[0], new_ms: timings[1] })
+    results.push({ query, count: JSON.parse(pair[0]).length, previous_ms: timings[0], successor_ms: timings[1] })
+    if (query === 'immigration application permit support documents timeline') {
+      const planSql = `set role service_role; explain (analyze, buffers, format json) select * from public.search_yqaa_knowledge(${args}); reset role;`
+      explainPlans.push(...scratchNames.map((name) => ({
+        database: name,
+        plan: JSON.parse(run([], planSql, dbUrl(name)))[0],
+      })))
+    }
   }
 
   for (const name of scratchNames) {
@@ -130,7 +143,7 @@ analyze public.yqaa_knowledge_chunks;
     const privileges = run([], `select has_function_privilege('service_role','public.search_yqaa_knowledge(text,text,text,integer)','execute') || ':' || (not has_function_privilege('anon','public.search_yqaa_knowledge(text,text,text,integer)','execute')) || ':' || (not has_function_privilege('authenticated','public.search_yqaa_knowledge(text,text,text,integer)','execute'))`, target)
     if (privileges !== 'true:true:true') throw new Error(`Unexpected RPC grants in ${name}: ${privileges}`)
   }
-  console.log(JSON.stringify({ pass: true, rows: 25000, body: 'roughly 3 KB each', equivalentQueries: results }, null, 2))
+  console.log(JSON.stringify({ pass: true, rows: 25000, body: 'roughly 4 KB each with repeated common terms', compared: '20261013210000 vs 20261013220000', equivalentQueries: results, functionExplainPlans: explainPlans }, null, 2))
 } finally {
   for (const name of created.reverse()) run([], `drop database ${name} with (force)`)
 }
