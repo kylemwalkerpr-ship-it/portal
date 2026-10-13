@@ -5,6 +5,8 @@
 begin;
 \ir ../../supabase/migrations/20261013150000_yqaa_provider_controls.sql
 \ir ../../supabase/migrations/20261013150000_yqaa_provider_controls.sql
+\ir ../../supabase/migrations/20261013170000_yqaa_provider_controls_offer_authority.sql
+\ir ../../supabase/migrations/20261013170000_yqaa_provider_controls_offer_authority.sql
 
 do $test$
 declare
@@ -12,6 +14,8 @@ declare
   rls_enabled boolean;
   service_execute boolean;
   authenticated_execute boolean;
+  preferences_authenticated_select boolean;
+  preferences_service_select boolean;
   invalidation_authenticated_execute boolean;
   consumption_trigger_before_insert boolean;
   consumption_function text;
@@ -50,23 +54,31 @@ begin
     into authenticated_execute;
   select has_function_privilege('authenticated', 'public.invalidate_yqaa_pricing_approval(uuid,uuid,integer)', 'EXECUTE')
     into invalidation_authenticated_execute;
+  select has_table_privilege('authenticated', 'public.provider_pricing_preferences', 'SELECT')
+    into preferences_authenticated_select;
+  select has_table_privilege('service_role', 'public.provider_pricing_preferences', 'SELECT')
+    into preferences_service_select;
   if service_execute is distinct from true or authenticated_execute is distinct from false
-     or invalidation_authenticated_execute is distinct from false then
+     or invalidation_authenticated_execute is distinct from false
+     or preferences_authenticated_select is distinct from false
+     or preferences_service_select is distinct from true then
     raise exception 'approval mutation RPCs must be executable by service_role only';
   end if;
 
-  select (t.tgtype & 2) = 2 and (t.tgtype & 4) = 4
-    into consumption_trigger_before_insert
-    from pg_trigger t
-   where t.tgrelid = 'public.offers'::regclass
-     and t.tgname = 'offers_consume_yqaa_pricing_approval'
-     and not t.tgisinternal;
-  select pg_get_functiondef('public.consume_yqaa_pricing_approval_for_offer()'::regprocedure)
+  if has_function_privilege('authenticated', 'public.commit_yqaa_reply_with_pricing_approval(uuid,uuid,jsonb,jsonb,jsonb)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.commit_yqaa_reply_with_pricing_approval(uuid,uuid,jsonb,jsonb,jsonb)', 'EXECUTE') then
+    raise exception 'approval-backed commit RPC must be service_role only';
+  end if;
+
+  if exists (select 1 from pg_trigger where tgrelid = 'public.offers'::regclass and tgname = 'offers_consume_yqaa_pricing_approval' and not tgisinternal) then
+    raise exception 'metadata-inferred offer approval trigger must be removed';
+  end if;
+  select pg_get_functiondef('public.commit_yqaa_reply_with_pricing_approval(uuid,uuid,jsonb,jsonb,jsonb)'::regprocedure)
     into consumption_function;
-  if consumption_trigger_before_insert is distinct from true
-     or position('does not match the approved quote' in consumption_function) = 0
-     or position('consumed_at is not null then return new' in consumption_function) = 0 then
-    raise exception 'offer insert must atomically consume only a matching, unused approval';
+  if position('durable pricing approval is missing, changed, or already consumed' in consumption_function) = 0
+     or position('consumed_at = clock_timestamp()' in consumption_function) = 0
+     or position('return public.commit_yqaa_reply(' in consumption_function) = 0 then
+    raise exception 'approval-backed offer RPC must validate and consume durably in the same transaction';
   end if;
 end
 $test$;

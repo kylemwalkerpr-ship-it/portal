@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { approvalMatchesDecision, approvalQuoteMatchesDecision, validateProviderPricingPreferences } from '@/lib/yqaaProviderControls'
 
 describe('YQAA provider controls', () => {
@@ -35,5 +37,16 @@ describe('YQAA provider controls', () => {
     expect(validateProviderPricingPreferences({ flex_pct: 40, approval_band_pct: 35 }).ok).toBe(false)
     expect(validateProviderPricingPreferences({ max_auto_concessions: 11 }).ok).toBe(false)
     expect(validateProviderPricingPreferences({ flex_pct: null }).ok).toBe(true)
+  })
+
+  it('sends only an exact provider approval through the approval-backed atomic commit', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
+    expect(source).toContain('approvedPricingAuthority = {')
+    expect(source).toContain('if (offerPersistence && approvedPricingAuthority)')
+    expect(source).toContain('offerPersistence.approval = approvedPricingAuthority')
+    expect(source).toContain('offerPersistence.audit.approval_authority = approvedPricingAuthority')
+    expect(source).toContain("db.rpc('invalidate_yqaa_pricing_approval'")
+    expect(source).toContain("? 'commit_yqaa_reply_with_pricing_approval'")
+    expect(source).toContain(": 'commit_yqaa_reply'")
   })
 })
