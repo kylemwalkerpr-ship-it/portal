@@ -4,8 +4,24 @@ import path from 'node:path'
 const root = path.resolve(__dirname, '..')
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/yqaa-live-acceptance.yml'), 'utf8')
 const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mjs'), 'utf8')
+const { registerOwnedGig } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('a verified gig is registered for cleanup before tier setup can fail', async () => {
+    const cleanupRegistry: Array<{ gigId: string; profileId: string; clerkUserId: string }> = []
+    const verifiedGig = { gigId: 'owned-gig-1', profileId: 'owned-profile-1', clerkUserId: 'owned-user-1' }
+    const setup = async () => {
+      registerOwnedGig(cleanupRegistry, verifiedGig)
+      throw new Error('simulated tier write failure')
+    }
+    const cleanupSpy = jest.fn(async (registered: typeof cleanupRegistry) => registered.map((fixture) => fixture.gigId))
+
+    await expect(setup()).rejects.toThrow('simulated tier write failure')
+    await expect(cleanupSpy(cleanupRegistry)).resolves.toEqual(['owned-gig-1'])
+    expect(cleanupSpy).toHaveBeenCalledWith([verifiedGig])
+    expect(harness.indexOf('registerOwnedGig(fixtureProviders, { category: category.id')).toBeLessThan(harness.indexOf("await dbRequest('gig_tiers'"))
+  })
+
   test('workflow is manual only, exact-main scoped, and contents-read only', () => {
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m)

@@ -7,6 +7,9 @@ import { randomBytes, createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
+import registryModule from './yqaa-fixture-registry.cjs'
+
+const { registerOwnedGig } = registryModule
 
 const BASE = 'https://portal.yousafeconsultancy.com'
 const MAX_TURNS = 6
@@ -132,22 +135,23 @@ async function loadAndVerifyFixtures() {
     const slug = `yqaa-live-${RUN_ID}-${RUN_ATTEMPT}-${category.id}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80)
     const priorGigs = await dbRequest(`gigs?select=id,provider_id,status,is_hidden,slug,title,category,subcategory,tags&slug=eq.${encodeURIComponent(slug)}`)
     let gig
-    if (priorGigs?.length) {
-      gig = priorGigs[0]
-      if (gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== category.id || gig.subcategory !== category.subcategoryId || gig.title !== category.gigTitle || !gig.tags?.includes('acceptance-fixture')) throw new Error('Existing gig fixture ownership, taxonomy, or hidden paused state could not be confirmed.')
-    } else {
+      if (priorGigs?.length) {
+        gig = priorGigs[0]
+        if (gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== category.id || gig.subcategory !== category.subcategoryId || gig.title !== category.gigTitle || !gig.tags?.includes('acceptance-fixture')) throw new Error('Existing gig fixture ownership, taxonomy, or hidden paused state could not be confirmed.')
+        registerOwnedGig(fixtureProviders, { category: category.id, profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username: providerUsername })
+      } else {
       const rows = await dbRequest('gigs?select=id,provider_id,status,is_hidden,slug,category,subcategory', {
         method: 'POST', prefer: 'return=representation',
         body: [{ provider_id: provider.id, provider_type: 'consultant', title: category.gigTitle, category: category.id, subcategory: category.subcategoryId, slug, pitch: 'Synthetic acceptance fixture only.', description: 'Paused, hidden test fixture for general organizational support. No actual clients, licensed credentials, advice, or paid services are represented.', requirements: 'No actual client materials. Test fixture only.', status: 'paused', is_hidden: true, tags: ['synthetic', 'acceptance-fixture'] }],
       })
-      gig = rows?.[0]
-      if (!gig?.id || gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== category.id || gig.subcategory !== category.subcategoryId) throw new Error('Could not confirm hidden paused taxonomy gig fixture.')
-      await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: [
+        gig = rows?.[0]
+        if (!gig?.id || gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== category.id || gig.subcategory !== category.subcategoryId) throw new Error('Could not confirm hidden paused taxonomy gig fixture.')
+        registerOwnedGig(fixtureProviders, { category: category.id, profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username: providerUsername })
+        await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: [
         { gig_id: gig.id, tier: 'basic', title: 'Three document checklist', description: 'Organize a checklist for up to 3 application documents; no advice or form completion.', price: 2500, delivery_days: 5, revisions: 1, scope_depth: 'partial', scope_units: 3, features: ['Synthetic test fixture'] },
         { gig_id: gig.id, tier: 'standard', title: 'Twelve document checklist', description: 'Organize a checklist for up to 12 application documents; no advice or form completion.', price: 5000, delivery_days: 7, revisions: 1, scope_depth: 'full', scope_units: 12, features: ['Synthetic test fixture'] },
       ] })
     }
-    fixtureProviders.push({ category: category.id, profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username: providerUsername })
   }
 
   for (const provider of fixtureProviders) {
