@@ -24,6 +24,7 @@ export function createManagementSqlClient({
   sleepFn = DEFAULT_SLEEP,
   maxAttempts = 3,
   backoffMs = 1000,
+  timeoutMs,
 }) {
   if (!projectRef || !accessToken) throw new Error('management-sql: projectRef and accessToken are required')
 
@@ -33,6 +34,9 @@ export function createManagementSqlClient({
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: sql }),
+        ...(Number.isFinite(timeoutMs) && timeoutMs > 0
+          ? { signal: AbortSignal.timeout(timeoutMs) }
+          : {}),
       })
       return { ok: res.ok, status: res.status, body: await res.text() }
     } catch (err) {

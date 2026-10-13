@@ -27,10 +27,17 @@ describe('YQAA atomic ingestion contract', () => {
   })
 
   test('finalizes over the Management SQL endpoint when CI credentials exist (8s PostgREST timeout)', () => {
-    expect(sync).toContain("createManagementSqlClient({ projectRef: MGMT_REF, accessToken: MGMT_TOKEN, maxAttempts: 1 })")
+    expect(sync).toMatch(/createManagementSqlClient\(\{\s*projectRef: MGMT_REF,\s*accessToken: MGMT_TOKEN,\s*maxAttempts: 1,/)
     expect(sync).toContain('const RUN_ID_RE = /^yqaa_kb_\\d{8}T\\d{6}Z$/')
     expect(sync).toMatch(/if \(!RUN_ID_RE\.test\(String\(runId\)\)\) throw/)
-    expect(sync).toContain('select public.finalize_yqaa_knowledge_ingestion(')
+    expect(sync).toContain("SET LOCAL statement_timeout = '120s';")
+    expect(sync).toContain('timeoutMs: 125_000')
+    expect(sync).toMatch(/BEGIN;[\s\S]*SET LOCAL statement_timeout = '120s';[\s\S]*SELECT public\.finalize_yqaa_knowledge_ingestion\([\s\S]*COMMIT;/)
+    expect(sync).toContain('readRunOutcome')
+    expect(sync).toContain('WHERE run_id =')
+    expect(sync).toContain('SELECT public.finalize_yqaa_knowledge_ingestion(')
+    expect(sync).not.toContain('with local_timeout as materialized')
+    expect(sync).not.toMatch(/statement_timeout\s*=\s*0|set_config\([^)]*statement_timeout[^)]*,\s*'0'/i)
   })
 
   test('finalizer counts, replaces, and cleans up the same run in one transaction', () => {
