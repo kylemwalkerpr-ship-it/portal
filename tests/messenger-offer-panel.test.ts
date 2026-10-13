@@ -10,13 +10,27 @@ describe('Messenger offer message contract', () => {
   const offerApi = read('app/api/offers/[id]/route.ts')
   const manualOffers = read('app/api/offers/route.ts')
   const aiOffers = read('lib/messengerAi.ts')
+  const aiOfferMigration = read('supabase/migrations/20261013120000_yqaa_offer_idempotency.sql')
   const orderLinks = read('lib/orderLinks.ts')
 
-  test('manual and AI offers preserve the authoritative provider as sender', () => {
+  test('manual offers and atomic AI offer commits preserve the authoritative provider as sender', () => {
     expect(manualOffers).toContain('sender_id: auth.profileId')
     expect(aiOffers).toContain('sender_id: args.provider.id')
-    expect(aiOffers).toContain("type: 'offer'")
-    expect(aiOffers).toContain('ref_offer_id: offer.id')
+    expect(aiOffers).toContain("db.rpc('commit_yqaa_reply'")
+    expect(aiOfferMigration).toContain("p_conversation_id, v_provider_id, 'offer'")
+    expect(aiOfferMigration).toContain('ref_offer_id, ref_inquiry_id, metadata')
+  })
+
+  test('AI offer titles satisfy the live offers 10–120 character constraint', () => {
+    expect(manualOffers).toContain('title.length < 10')
+    expect(aiOffers).toContain('if (title.length < 10 || description.length < 30) return null')
+    expect(aiOffers).toContain(".slice(0, 120)")
+  })
+
+  test('paused and off conversations reject all new atomic commits after retry lookup', () => {
+    expect(aiOfferMigration).toContain("if coalesce(v_conversation.metadata->>'ai_mode', 'auto') in ('paused', 'off') then")
+    expect(aiOfferMigration.indexOf('if found then\n    return jsonb_build_object'))
+      .toBeLessThan(aiOfferMigration.indexOf("if coalesce(v_conversation.metadata->>'ai_mode'"))
   })
 
   test('offer cards reserve the sender avatar gutter and lower tail instead of floating', () => {

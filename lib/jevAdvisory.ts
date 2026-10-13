@@ -248,6 +248,224 @@ export async function requestJevAdvisory(
   } finally { clearTimeout(timer) }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Companion (DM) advisory: posture + negotiation posture.
+//
+// Jev recommends, policy authorizes: the caller prunes both choice sets to the
+// options it is willing to honour BEFORE the call, and any answer outside the
+// pruned set is ignored. Jev never sees or sets a price — the payload carries
+// only enums, buckets and counts (no cents, no rates, no floors).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const JEV_COMPANION_TIMEOUT_MS = JEV_TIMEOUT_MS
+export const JEV_COMPANION_MODEL = JEV_MODEL
+
+export type JevPosture =
+  | 'EDUCATE'
+  | 'DISCOVER'
+  | 'EMPATHIZE'
+  | 'COMMERCE'
+  | 'NEGOTIATE'
+  | 'ESCALATE_PROVIDER'
+  | 'HANDOFF_SUPPORT'
+  | 'ABSTAIN'
+
+export type JevNegotiationAction = 'ACCEPT' | 'MEET_MIDDLE' | 'DOWNSCOPE' | 'HOLD_VALUE' | 'ESCALATE_PROVIDER'
+
+export type CompanionJevContext = {
+  query: string
+  hostname?: string | null
+  evidence?: KnowledgeChunk[]
+  channel?: 'dm' | 'public' | 'support'
+  journeyStage?: string | null
+  emotionBand?: string | null
+  scopeDepth?: string | null
+  counterBucket?: string | null
+  counterCount?: number | null
+  frustration?: boolean
+  duplicateRisk?: boolean
+  budgetStatus?: string | null
+  triggers?: JevTrigger[]
+  /** Pruned server-side before the call: forbidden postures are removed, not down-weighted. */
+  postureOptions: JevPosture[]
+  /** Pruned server-side; empty = pricing not in play, so no negotiation question is asked. */
+  negotiationOptions?: JevNegotiationAction[]
+}
+
+export type CompanionJevResult =
+  | {
+      available: true
+      posture: JevPosture | null
+      negotiationPosture: JevNegotiationAction | null
+      sufficient: boolean
+      confidence: number
+      needsHandoff: boolean
+      market: JevAdvisory['market']
+      ignored: string[]
+    }
+  | { available: false; reason: 'not_configured' | 'timeout' | 'invalid_response' | 'request_failed' }
+
+export async function resolveJevApiKey(options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string } } = {}) {
+  let apiKey = options.apiKey?.trim() || options.workerEnv?.TYPESAFE_API_KEY?.trim() || ''
+  if (!apiKey) {
+    try {
+      const workerEnv = getCloudflareContext().env as CloudflareEnv & { TYPESAFE_API_KEY?: string }
+      apiKey = workerEnv.TYPESAFE_API_KEY?.trim() || ''
+    } catch {
+      // Cloudflare context is absent outside the Worker.
+    }
+  }
+  // An empty Worker binding (Jest's cloudflare stub returns `{ env: {} }` without
+  // throwing; local Next can do the same) must still honor TYPESAFE_API_KEY.
+  // A key present on the binding above wins.
+  if (!apiKey) apiKey = process.env.TYPESAFE_API_KEY?.trim() || ''
+  return apiKey
+}
+
+export async function readJevBoundedResponse(response: Response, maxBytes: number) {
+  return readBoundedResponse(response, maxBytes)
+}
+
+export function companionJevPayload(ctx: CompanionJevContext) {
+  const postureOptions = [...new Set(ctx.postureOptions)].filter(Boolean)
+  const negotiationOptions = [...new Set(ctx.negotiationOptions || [])].filter(Boolean)
+  // Jev never sees a number: strip currency amounts from the redacted state.
+  const redactMoney = (value: string) =>
+    String(value || '')
+      .replace(/(?:\b(?:usd|cad)\b\s*|\$)\s*\d[\d,]*(?:\.\d{1,2})?/gi, '[amount]')
+      .replace(/\b\d[\d,]*(?:\.\d{1,2})?\s*(?:usd|cad|dollars?|bucks?)\b/gi, '[amount]')
+  const evidence = (ctx.evidence || []).slice(0, JEV_MAX_EVIDENCE).map((item) => ({
+    id: String(item.id).slice(0, 120),
+    site: String(item.site || 'network').slice(0, 24),
+    title: String(item.title).slice(0, 120),
+    sourceUrl: String(item.sourceUrl || item.source).slice(0, 500),
+    excerpt: redactMoney(String(item.body).replace(/\s+/g, ' ')).slice(0, JEV_MAX_EXCERPT_CHARS),
+  }))
+  const questions: Record<string, unknown> = {
+    posture: {
+      type: 'choice',
+      instructions: `${JEV_INSTRUCTIONS} Pick the single best conversational posture for the next YQAA reply, from the allowed list only.`,
+      criteria: Object.fromEntries(postureOptions.map((option) => [option, option])),
+    },
+    sufficient: {
+      type: 'noul',
+      instructions: `${JEV_INSTRUCTIONS} Is the supplied public evidence sufficient for a cautious general informational answer to the question?`,
+      criteria: { true: 'Enough relevant, consistent public evidence exists.', false: 'Evidence is insufficient, irrelevant, or conflicting.' },
+    },
+    needs_handoff: {
+      type: 'noul',
+      instructions: 'Should this request be handed to a qualified human because the supplied evidence and conversation state cannot support a safe answer?',
+    },
+    market: {
+      type: 'choice',
+      instructions: 'Which jurisdiction is most relevant to the question and supplied evidence? An explicit jurisdiction in the question outranks the trusted site.',
+      criteria: { usa: 'United States', canada: 'Canada', uk: 'United Kingdom', australia: 'Australia', global: 'Multiple or network-wide jurisdictions', unknown: 'Cannot determine' },
+    },
+  }
+  if (negotiationOptions.length) {
+    questions.negotiation_posture = {
+      type: 'choice',
+      instructions: `${JEV_INSTRUCTIONS} Choose the negotiation posture for this turn from the allowed list only. The server computes every number; never state or imply a price.`,
+      criteria: Object.fromEntries(negotiationOptions.map((option) => [option, option])),
+    }
+  }
+  return {
+    state: {
+      question: redactMoney(sanitizeYqaaPublicQuestion(ctx.query)),
+      channel: ctx.channel || 'dm',
+      trustedSite: knowledgeSiteForHost(ctx.hostname),
+      triggers: ctx.triggers || [],
+      journeyStage: ctx.journeyStage || null,
+      emotionBand: ctx.emotionBand || null,
+      scopeDepth: ctx.scopeDepth || 'unknown',
+      counterBucket: ctx.counterBucket || 'none',
+      counterCount: Math.max(0, Math.min(99, Number(ctx.counterCount) || 0)),
+      frustration: Boolean(ctx.frustration),
+      duplicateRisk: Boolean(ctx.duplicateRisk),
+      budgetStatus: ctx.budgetStatus || 'unknown',
+      publicEvidence: evidence,
+    },
+    model: JEV_MODEL,
+    questions,
+  }
+}
+
+export async function requestCompanionJev(
+  ctx: CompanionJevContext,
+  fetcher: typeof fetch = fetch,
+  options: { apiKey?: string; workerEnv?: { TYPESAFE_API_KEY?: string }; timeoutMs?: number } = {},
+): Promise<CompanionJevResult> {
+  const apiKey = await resolveJevApiKey(options)
+  if (!apiKey) return { available: false, reason: 'not_configured' }
+  const controller = new AbortController()
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0
+    ? Number(options.timeoutMs)
+    : JEV_COMPANION_TIMEOUT_MS
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetcher(JEV_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(companionJevPayload(ctx)),
+      signal: controller.signal,
+      redirect: 'error',
+    })
+    if (!response.ok) return { available: false, reason: 'request_failed' }
+    const responseText = await readBoundedResponse(response, 4096)
+    if (responseText === null) return { available: false, reason: 'invalid_response' }
+    let raw: Record<string, unknown> | null = null
+    try { raw = JSON.parse(responseText) as Record<string, unknown> } catch { return { available: false, reason: 'invalid_response' } }
+    const answers = raw?.answers && typeof raw.answers === 'object' ? raw.answers as Record<string, unknown> : null
+    if (!answers) return { available: false, reason: 'invalid_response' }
+
+    const isProbability = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    const sufficientProbability = (answers.sufficient as Record<string, unknown> | undefined)?.noul
+    const handoffProbability = (answers.needs_handoff as Record<string, unknown> | undefined)?.noul
+    const market = (answers.market as Record<string, unknown> | undefined)?.choice
+    if (!isProbability(sufficientProbability) || !isProbability(handoffProbability)) {
+      return { available: false, reason: 'invalid_response' }
+    }
+    if (typeof market !== 'string' || !['usa', 'canada', 'uk', 'australia', 'global', 'unknown'].includes(market)) {
+      return { available: false, reason: 'invalid_response' }
+    }
+
+    const ignored: string[] = []
+    const postureRaw = (answers.posture as Record<string, unknown> | undefined)?.choice
+    const allowedPostures = [...new Set(ctx.postureOptions)]
+    let posture: JevPosture | null = null
+    if (typeof postureRaw === 'string') {
+      if (allowedPostures.includes(postureRaw as JevPosture)) posture = postureRaw as JevPosture
+      else ignored.push(`posture:${postureRaw}`)
+    }
+
+    const negotiationRaw = (answers.negotiation_posture as Record<string, unknown> | undefined)?.choice
+    const allowedActions = [...new Set(ctx.negotiationOptions || [])]
+    let negotiationPosture: JevNegotiationAction | null = null
+    if (typeof negotiationRaw === 'string') {
+      if (allowedActions.includes(negotiationRaw as JevNegotiationAction)) negotiationPosture = negotiationRaw as JevNegotiationAction
+      else ignored.push(`negotiation_posture:${negotiationRaw}`)
+    }
+
+    const sufficientP = sufficientProbability as number
+    const handoffP = handoffProbability as number
+    return {
+      available: true,
+      posture,
+      negotiationPosture,
+      sufficient: sufficientP >= 0.75,
+      needsHandoff: handoffP >= 0.6,
+      confidence: Math.round(Math.min(1, Math.max(0, Math.abs(sufficientP - 0.5) * 2)) * 1000) / 1000,
+      market: market as JevAdvisory['market'],
+      ignored,
+    }
+  } catch (error) {
+    return { available: false, reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'request_failed' }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export function applyYqaaSafetyPolicy(ctx: JevContext, result: JevResult): { answer: boolean; reason: string } {
   const triggers = yqaaJevTriggers(ctx)
   if (triggers.includes('high_stakes')) return { answer: false, reason: 'high_stakes_handoff' }
