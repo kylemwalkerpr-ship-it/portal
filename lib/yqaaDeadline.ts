@@ -5,6 +5,46 @@ export class YqaaDeadlineError extends Error {
   }
 }
 
+export const YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS = 24_000
+
+/** Keeps the request abort listener and timer alive through response body consumption. */
+export async function fetchYqaaJsonWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  parentSignal?: AbortSignal,
+): Promise<{ response: Response; text: string }> {
+  const controller = new AbortController()
+  const abortFromParent = () => controller.abort(parentSignal?.reason)
+  if (parentSignal?.aborted) abortFromParent()
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true })
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  const abortBody = () => { void reader?.cancel(controller.signal.reason).catch(() => {}) }
+  controller.signal.addEventListener('abort', abortBody, { once: true })
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    let text = ''
+    if (response.body) {
+      reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (controller.signal.aborted) throw controller.signal.reason || new DOMException('Aborted', 'AbortError')
+        if (done) break
+        text += decoder.decode(value, { stream: true })
+      }
+      text += decoder.decode()
+    }
+    return { response, text }
+  } finally {
+    clearTimeout(timer)
+    controller.signal.removeEventListener('abort', abortBody)
+    parentSignal?.removeEventListener('abort', abortFromParent)
+    try { reader?.releaseLock() } catch { /* the stream may have errored */ }
+  }
+}
+
 /** Combines client disconnect with a bounded route deadline and rejects work at the deadline. */
 export function createYqaaDeadline(parent: AbortSignal | null, timeoutMs: number) {
   const deadlineAt = Date.now() + Math.max(1, timeoutMs)
