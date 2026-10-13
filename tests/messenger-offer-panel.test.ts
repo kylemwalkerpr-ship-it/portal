@@ -16,7 +16,9 @@ describe('Messenger offer message contract', () => {
   test('manual offers and atomic AI offer commits preserve the authoritative provider as sender', () => {
     expect(manualOffers).toContain('sender_id: auth.profileId')
     expect(aiOffers).toContain('sender_id: args.provider.id')
-    expect(aiOffers).toContain("db.rpc('commit_yqaa_reply'")
+    expect(aiOffers).toContain('db.rpc(commitRpc')
+    expect(aiOffers).toContain("? 'commit_yqaa_reply_with_pricing_approval'")
+    expect(aiOffers).toContain(": 'commit_yqaa_reply'")
     expect(aiOfferMigration).toContain("p_conversation_id, v_provider_id, 'offer'")
     expect(aiOfferMigration).toContain('ref_offer_id, ref_inquiry_id, metadata')
   })
