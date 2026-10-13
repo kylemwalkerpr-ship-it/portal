@@ -8,4 +8,14 @@ function registerOwnedGig(registry, fixture) {
   return fixture
 }
 
-module.exports = { registerOwnedGig }
+function registerOwnedConversation(registry, fixture) {
+  if (!fixture?.id || !fixture?.profileId || !fixture?.clerkUserId || !fixture?.providerProfileId || !fixture?.gigId) {
+    throw new Error('Cannot register an unverified conversation fixture for cleanup.')
+  }
+  const existing = registry.find((item) => item.id === fixture.id)
+  if (existing) return existing
+  registry.push(fixture)
+  return fixture
+}
+
+module.exports = { registerOwnedGig, registerOwnedConversation }

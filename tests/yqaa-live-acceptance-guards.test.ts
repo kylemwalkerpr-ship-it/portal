@@ -4,7 +4,7 @@ import path from 'node:path'
 const root = path.resolve(__dirname, '..')
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/yqaa-live-acceptance.yml'), 'utf8')
 const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mjs'), 'utf8')
-const { registerOwnedGig } = require('../scripts/yqaa-fixture-registry.cjs')
+const { registerOwnedGig, registerOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
@@ -20,6 +20,35 @@ describe('manual YQAA live acceptance safety guards', () => {
     await expect(cleanupSpy(cleanupRegistry)).resolves.toEqual(['owned-gig-1'])
     expect(cleanupSpy).toHaveBeenCalledWith([verifiedGig])
     expect(harness.indexOf('registerOwnedGig(fixtureProviders, { category: category.id')).toBeLessThan(harness.indexOf("await dbRequest('gig_tiers'"))
+  })
+
+  test('conversation registry deduplicates seven scenarios into two fixtures per category', () => {
+    const registry: Array<{ id: string; profileId: string; clerkUserId: string; providerProfileId: string; gigId: string }> = []
+    for (const category of ['education', 'academic-writing', 'mentorship']) {
+      for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {
+        registerOwnedConversation(registry, { id: `${category}-${scenario === 'provider_attention' ? 'attention' : 'negotiation'}`, profileId: `client-${category}`, clerkUserId: `user-${category}`, providerProfileId: `provider-${category}`, gigId: `gig-${category}` })
+      }
+    }
+    expect(registry).toHaveLength(6)
+    expect(new Set(registry.map((fixture) => fixture.id)).size).toBe(6)
+  })
+
+  test('verified conversation is registered before a failed setup marker write and remains safely pausable', async () => {
+    const registry: Array<{ id: string; profileId: string; clerkUserId: string; providerProfileId: string; providerClerkUserId: string; gigId: string }> = []
+    const fixture = { id: 'conversation-1', profileId: 'client-profile', clerkUserId: 'client-user', providerProfileId: 'provider-profile', providerClerkUserId: 'provider-user', gigId: 'gig-1' }
+    const setup = async () => {
+      const verified = { participants: [fixture.profileId, fixture.providerProfileId], context: fixture.gigId }
+      if (!verified.participants.includes(fixture.profileId) || !verified.participants.includes(fixture.providerProfileId) || verified.context !== fixture.gigId) throw new Error('ownership')
+      registerOwnedConversation(registry, fixture)
+      throw new Error('metadata marker PATCH failed')
+    }
+    await expect(setup()).rejects.toThrow('metadata marker PATCH failed')
+    const pause = jest.fn(async (registered: typeof registry) => registered.map((item) => item.id))
+    await expect(pause(registry)).resolves.toEqual(['conversation-1'])
+    expect(harness.indexOf('registerOwnedConversation(fixtureThreads')).toBeLessThan(harness.indexOf('yqaa_live_acceptance_run:'))
+    expect(harness).toContain("verifyOwnedFixtureProfile(thread.profileId, thread.clerkUserId, 'client')")
+    expect(harness).toContain("verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, 'consultant')")
+    expect(harness).not.toContain("rows[0].metadata?.yqaa_live_acceptance !== true) throw new Error('fixture ownership")
   })
 
   test('workflow is manual only, exact-main scoped, and contents-read only', () => {

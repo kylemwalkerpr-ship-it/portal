@@ -9,7 +9,7 @@ import path from 'node:path'
 import { chromium } from '@playwright/test'
 import registryModule from './yqaa-fixture-registry.cjs'
 
-const { registerOwnedGig } = registryModule
+const { registerOwnedGig, registerOwnedConversation } = registryModule
 
 const BASE = 'https://portal.yousafeconsultancy.com'
 const MAX_TURNS = 6
@@ -155,8 +155,7 @@ async function loadAndVerifyFixtures() {
   }
 
   for (const provider of fixtureProviders) {
-    for (const scenario of scenarios) {
-      const threadKey = scenario.name === 'provider_attention' ? 'attention' : 'negotiation'
+    for (const threadKey of ['negotiation', 'attention']) {
       const username = `yqaa_live_${RUN_ID}_${RUN_ATTEMPT}_${provider.category}_${threadKey}`.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 64)
       const clientUser = await fixtureClerkUser(username, 'yqaa_live_acceptance_client', 'Client')
       const client = await fixtureProfile(clientUser.id, `${username}@example.invalid`, 'client', 'YQAA Acceptance Client')
@@ -166,11 +165,10 @@ async function loadAndVerifyFixtures() {
       const result = await dbRequest('rpc/get_or_create_conversation', { method: 'POST', prefer: 'return=representation', body: { p_a: client.id, p_b: provider.profileId, p_context_kind: 'gig', p_context_id: provider.gigId } })
       const id = typeof result === 'string' ? result.replaceAll('"', '') : result
       if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Conversation fixture RPC did not return an id.')
-      const thread = { id, profileId: client.id, clerkUserId: clientUser.id, scenario: threadKey, category: provider.category, providerProfileId: provider.profileId, gigId: provider.gigId }
-      fixtureThreads.push(thread)
       const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${id}`)
       const row = rows?.[0]
       if (!row || ![row.participant_a, row.participant_b].includes(client.id) || ![row.participant_a, row.participant_b].includes(provider.profileId) || row.context_kind !== 'gig' || row.context_id !== provider.gigId) throw new Error('Conversation fixture ownership is ambiguous.')
+      const thread = registerOwnedConversation(fixtureThreads, { id, profileId: client.id, clerkUserId: clientUser.id, scenario: threadKey, category: provider.category, providerProfileId: provider.profileId, providerClerkUserId: provider.clerkUserId, gigId: provider.gigId })
       const ownMessages = await dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${id}&limit=1`)
       if (ownMessages?.length) throw new Error('This isolated run already has conversation messages; refusing a duplicate live run.')
       await dbRequest(`conversations?id=eq.${id}`, { method: 'PATCH', prefer: 'return=minimal', body: { status: 'active', metadata: { ...(row.metadata || {}), ai_mode: 'auto', ai_disclosed: false, yqaa_live_acceptance: true, yqaa_live_acceptance_run: safeHash(`${RUN_ID}:${RUN_ATTEMPT}`) } } })
@@ -421,10 +419,17 @@ async function cleanup() {
   clientPage = null
   // Pause every owned thread first, then allow any already queued model work to settle.
   const quietSnapshots = new Map()
+  async function verifyOwnedFixtureProfile(profileId, clerkUserId, role) {
+    const rows = await dbRequest(`profiles?select=id,clerk_user_id,role,is_test_account,is_hidden&id=eq.${encodeURIComponent(profileId)}`)
+    const profile = rows?.[0]
+    if (rows?.length !== 1 || profile.id !== profileId || profile.clerk_user_id !== clerkUserId || profile.role !== role || profile.is_test_account !== true || profile.is_hidden !== true) throw new Error('synthetic fixture profile ownership could not be revalidated')
+  }
   for (const thread of fixtureThreads) {
     try {
+      await verifyOwnedFixtureProfile(thread.profileId, thread.clerkUserId, 'client')
+      await verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, 'consultant')
       const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,status,metadata&id=eq.${thread.id}`)
-      if (rows?.length !== 1 || ![rows[0].participant_a, rows[0].participant_b].includes(thread.profileId) || ![rows[0].participant_a, rows[0].participant_b].includes(thread.providerProfileId) || rows[0].metadata?.yqaa_live_acceptance !== true) throw new Error('fixture ownership could not be revalidated')
+      if (rows?.length !== 1 || new Set([rows[0].participant_a, rows[0].participant_b]).size !== 2 || ![rows[0].participant_a, rows[0].participant_b].includes(thread.profileId) || ![rows[0].participant_a, rows[0].participant_b].includes(thread.providerProfileId)) throw new Error('fixture ownership could not be revalidated')
       await dbRequest(`conversations?id=eq.${thread.id}&participant_a=eq.${rows[0].participant_a}&participant_b=eq.${rows[0].participant_b}`, { method: 'PATCH', prefer: 'return=minimal', body: { metadata: { ...(rows[0].metadata || {}), ai_mode: 'paused', ai_mode_set_by: 'yqaa_live_acceptance_cleanup', ai_paused_reason: 'acceptance_cleanup' } } })
       const paused = await dbRequest(`conversations?select=id,metadata&id=eq.${thread.id}`)
       if (paused?.[0]?.metadata?.ai_mode !== 'paused') throw new Error('AI pause could not be verified')
@@ -457,8 +462,10 @@ async function cleanup() {
     const [archiveOutcome, offerOutcome] = await Promise.all([
       (async () => {
         try {
+          await verifyOwnedFixtureProfile(thread.profileId, thread.clerkUserId, 'client')
+          await verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, 'consultant')
           const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,status&id=eq.${thread.id}`)
-          if (rows?.length !== 1 || ![rows[0].participant_a, rows[0].participant_b].includes(thread.profileId) || ![rows[0].participant_a, rows[0].participant_b].includes(thread.providerProfileId)) throw new Error('fixture ownership could not be revalidated')
+          if (rows?.length !== 1 || new Set([rows[0].participant_a, rows[0].participant_b]).size !== 2 || ![rows[0].participant_a, rows[0].participant_b].includes(thread.profileId) || ![rows[0].participant_a, rows[0].participant_b].includes(thread.providerProfileId)) throw new Error('fixture ownership could not be revalidated')
           await dbRequest(`conversations?id=eq.${thread.id}&participant_a=eq.${rows[0].participant_a}&participant_b=eq.${rows[0].participant_b}`, { method: 'PATCH', prefer: 'return=minimal', body: { status: 'archived', updated_at: new Date().toISOString() } })
           const archivedRows = await dbRequest(`conversations?select=id,status&id=eq.${thread.id}`)
           return { category: thread.category, scenario: thread.scenario, conversation_status: archivedRows?.[0]?.status || 'missing', archive_action: 'guarded_owner_scoped_database_update' }
