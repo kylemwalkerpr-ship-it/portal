@@ -18,4 +18,26 @@ function registerOwnedConversation(registry, fixture) {
   return fixture
 }
 
-module.exports = { registerOwnedGig, registerOwnedConversation }
+function providerForThread(providers, category, scenario, designatedMode) {
+  return providers.find((item) => item.category === category && (!designatedMode || item.scenario === scenario)) || null
+}
+
+function assertFreshParticipantPair(existingRows) {
+  if (Array.isArray(existingRows) && existingRows.length > 0) {
+    throw new Error('Conversation already exists for this participant pair; refusing reuse or reset.')
+  }
+  return true
+}
+
+function verifyOwnedConversation(row, fixture, runMarker) {
+  if (!row || row.id !== fixture.id || !runMarker ||
+      row.participant_a !== fixture.participantA || row.participant_b !== fixture.participantB ||
+      row.context_kind !== 'gig' || row.context_id !== fixture.gigId ||
+      row.metadata?.yqaa_live_acceptance !== true ||
+      row.metadata?.yqaa_live_acceptance_run !== runMarker) {
+    throw new Error('Conversation fixture ownership or current-run marker could not be revalidated.')
+  }
+  return true
+}
+
+module.exports = { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation }
