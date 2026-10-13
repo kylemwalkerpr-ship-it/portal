@@ -1,6 +1,6 @@
 import { selectYqaaKnowledge, shouldUseDeepNetworkKnowledge, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import { getSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
-import { searchModalYqaaKnowledge } from '@/lib/yqaaTypesense'
+import { searchModalYqaaKnowledge, type TypesenseSearchStatus } from '@/lib/yqaaTypesense'
 
 export type YqaaIndexedChunk = KnowledgeChunk & {
   chunkKey: string
@@ -229,6 +229,7 @@ export async function loadYqaaEvidence(opts: {
   pageContext?: string | null
   limit?: number
   db?: any
+  onSearchStatus?: (status: TypesenseSearchStatus) => void
   signal?: AbortSignal
 }): Promise<YqaaEvidencePack> {
   const limit = Math.max(1, Math.min(24, opts.limit || 12))
@@ -245,7 +246,7 @@ export async function loadYqaaEvidence(opts: {
   try {
     const rows = await searchModalYqaaKnowledge({ query: opts.query,
       site: yqaaOriginSite(opts.hostname), jurisdiction: explicitYqaaJurisdiction(opts.query), limit,
-      signal: opts.signal })
+      signal: opts.signal, onStatus: opts.onSearchStatus })
     if (rows?.length) {
       const chunks = rows.map(rowToChunk).filter(Boolean) as YqaaIndexedChunk[]
       if (chunks.length) indexed = { chunks, source: 'typesense', retrievalConfidence: evidenceConfidence(chunks),

@@ -356,8 +356,12 @@ export function enforceCompanionEscalation(
   return { ...modelDecision, escalate: true, offer: null }
 }
 
-export function insufficientEvidenceHandoffReply(providerLabel: string) {
+export function insufficientEvidenceHandoffReply(providerLabel: string, budget?: PricingAuthority['budget']) {
   const provider = String(providerLabel || 'the provider').trim().slice(0, 120) || 'the provider'
+  if (budget && Number.isFinite(budget.maxCents) && budget.maxCents > 0 && /^[a-z]{3}$/i.test(budget.currency)) {
+    const amount = (budget.maxCents / 100).toFixed(2)
+    return `I’ve noted your budget of ${budget.currency.toUpperCase()} ${amount}. I don’t have enough reliable information here to confirm which scope fits that budget or approve a price. I’m bringing ${provider} into the conversation to review the scope and pricing with you.`
+  }
   return `I don’t have enough reliable information here to answer that safely. I’m bringing ${provider} into the conversation to review it with you.`
 }
 
@@ -1369,7 +1373,7 @@ export async function maybeAutoReply(opts: {
       ))
       decision = enforceCompanionEscalation(decision, companion || (legalEvidenceMissing ? { escalate: true } : null))
       if (insufficientEvidenceHandoff) {
-        replyText = insufficientEvidenceHandoffReply(providerLabel)
+        replyText = insufficientEvidenceHandoffReply(providerLabel, pricing.budget)
       }
 
       // Never let the model bypass budget-first pricing merely by placing a

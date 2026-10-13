@@ -369,6 +369,7 @@ export async function POST(req: Request) {
 
   const stageTimings: StageTiming[] = []
   let knowledgeSource = 'unknown'
+  let searchStatus = 'unknown'
   const startStage = (name: string): StageTiming => {
     const stage = { name, startedAt: Date.now() }
     stageTimings.push(stage)
@@ -388,6 +389,7 @@ export async function POST(req: Request) {
     try {
       evidencePack = await runBoundedStage(deadline, 'knowledge', KNOWLEDGE_STAGE_BUDGET_MS, (signal) =>
         loadYqaaEvidence({
+          onSearchStatus: (status) => { searchStatus = status },
           query: lastUser.content,
           hostname: inquiryOrigin.hostname,
           pageContext,
@@ -670,6 +672,7 @@ export async function POST(req: Request) {
       {
         headers: {
           'Server-Timing': stageTimingHeader(stageTimings, totalMs),
+          'X-YQAA-Search-Status': searchStatus,
           'X-YQAA-Knowledge-Source': knowledgeSource,
         },
       },
@@ -700,6 +703,7 @@ export async function POST(req: Request) {
       {
         status: timedOut ? 504 : 502,
         headers: { 'Server-Timing': stageTimingHeader(stageTimings, totalMs),
+          'X-YQAA-Search-Status': searchStatus,
           'X-YQAA-Knowledge-Source': knowledgeSource },
       },
     )

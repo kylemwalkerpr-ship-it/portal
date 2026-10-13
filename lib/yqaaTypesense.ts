@@ -1,5 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
+export type TypesenseSearchStatus = 'disabled' | 'configuration' | 'cancelled' | 'timeout' | 'http' | 'invalid' | 'empty' | 'ok' | 'network'
+
 export type TypesenseKnowledgeRow = {
   chunk_key: string; source_key: string; title: string; body: string; source_url: string;
   site: string; jurisdiction: string; repository: string; topic_tags: string[];
@@ -7,19 +9,21 @@ export type TypesenseKnowledgeRow = {
 }
 
 export async function searchModalYqaaKnowledge(options: {
-  query: string; site: string | null; jurisdiction: string | null; limit: number; signal?: AbortSignal;
+  query: string; site: string | null; jurisdiction: string | null; limit: number; signal?: AbortSignal; onStatus?: (status: TypesenseSearchStatus) => void;
 }): Promise<TypesenseKnowledgeRow[] | null> {
+  let settled = false
+  const report = (status: TypesenseSearchStatus) => { if (!settled) options.onStatus?.(status) }
   let bindings: Record<string, string | undefined> = {}
   try { bindings = getCloudflareContext().env as unknown as typeof bindings } catch { /* local execution */ }
   const value = (name: string) => bindings[name] || process.env[name] || ''
-  if (value('YQAA_TYPESENSE_ENABLED') !== 'true') return null
+  if (value('YQAA_TYPESENSE_ENABLED') !== 'true') { report('disabled'); return null }
   const url = value('YQAA_TYPESENSE_URL'), token = value('YQAA_TYPESENSE_TOKEN')
-  if (!token || !/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)?\.modal\.run\/?$/i.test(url)) return null
+  if (!token || !/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)?\.modal\.run\/?$/i.test(url)) { report('configuration'); return null }
   const controller = new AbortController()
-  const abort = () => controller.abort()
-  if (options.signal?.aborted) return null
+  const abort = () => { report('cancelled'); controller.abort() }
+  if (options.signal?.aborted) { report('cancelled'); return null }
   options.signal?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(abort, 2000)
+  const timer = setTimeout(() => { report('timeout'); controller.abort() }, 2000)
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   try {
     const work = (async () => {
@@ -29,7 +33,8 @@ export async function searchModalYqaaKnowledge(options: {
         body: JSON.stringify({ query: options.query.slice(0, 2000), site: options.site,
           jurisdiction: options.jurisdiction, limit: Math.max(1, Math.min(24, options.limit)) }),
       })
-      if (!response.ok || !response.body) return null
+      if (!response.ok || !response.body) { report('http'); return null }
+      report('invalid')
       reader = response.body.getReader()
       let bytes = 0, text = '', decoder = new TextDecoder()
       while (true) {
@@ -54,11 +59,13 @@ export async function searchModalYqaaKnowledge(options: {
         if (options.jurisdiction && r.jurisdiction && r.jurisdiction !== 'Global' && r.jurisdiction !== options.jurisdiction) return null
         rows.push(r)
       }
+      report(rows.length ? 'ok' : 'empty')
       return rows
     })()
     const stopped = new Promise<null>((resolve) => controller.signal.addEventListener('abort', () => resolve(null), { once: true }))
     return await Promise.race([work, stopped])
-  } catch { return null } finally {
+  } catch (error) { if (!controller.signal.aborted) report(error instanceof SyntaxError ? 'invalid' : 'network'); return null } finally {
+    settled = true
     clearTimeout(timer); options.signal?.removeEventListener('abort', abort)
     void reader?.cancel().catch(() => {})
   }
