@@ -23,7 +23,7 @@ jobs:
   live-acceptance:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout exact requested main commit
         uses: actions/checkout@v5

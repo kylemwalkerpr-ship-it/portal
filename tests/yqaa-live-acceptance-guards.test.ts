@@ -23,16 +23,26 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('ids.includes(expectedBuild)')
   })
 
-  test('fixtures fail closed on test ownership, use real authenticated APIs, and remain bounded', () => {
-    expect(harness).toContain("student?.is_test_account === true")
-    expect(harness).toContain("provider.is_test_account !== true")
+  test('fixtures use supported username-only identities, hidden test data, three real categories, and bounded isolated chains', () => {
+    expect(harness).toContain('Clerk username-only capability')
+    expect(harness).toContain('userSettings.email_address?.required')
+    expect(harness).toContain('is_test_account: true, is_hidden: true')
+    expect(harness).toContain('gig.is_hidden !== true')
     expect(harness).toContain("status: 'paused'")
-    expect(harness).toContain("strategy: 'sign_in_token'")
+    expect(harness).toContain("strategy: 'ticket', ticket")
+    expect(harness).not.toContain("strategy: 'sign_in_token'")
+    expect(harness).toContain("id: 'education', subcategoryId: 'university-admissions'")
+    expect(harness).toContain("id: 'academic-writing', subcategoryId: 'application-essays'")
+    expect(harness).toContain("id: 'mentorship', subcategoryId: 'student-mentorship'")
+    expect(harness).toContain('for (const provider of fixtureProviders)')
+    expect(harness).toContain('for (let index = 0; index < Math.min(scenarios.length, MAX_TURNS); index++)')
+    expect(harness).not.toContain('c2a46c19-abd0-4404-91e2-f4139938428d')
     expect(harness).toContain('/api/messages/conversations/')
     expect(harness).toContain('MAX_TURNS = 9')
-    expect(harness).toContain('MAX_WAIT_MS = 60_000')
-    for (const category of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'disclosure', 'no_stale_floors', 'provider_attention']) {
-      expect(harness).toContain(`name: '${category}'`)
+    expect(harness).toContain('MAX_WAIT_MS = 45_000')
+    expect(harness).toContain('AbortSignal.timeout(10_000)')
+    for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'disclosure', 'no_stale_floors', 'provider_attention']) {
+      expect(harness).toContain(`name: '${scenario}'`)
     }
   })
 
@@ -42,9 +52,13 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('diagnostic.ai_last_error || diagnostic.ai_last_skip')
     expect(harness).toContain('function safeFailure')
     expect(harness).toContain("replace(/(__clerk_ticket=)")
-    expect(harness).toContain("{ archived: true }")
+    expect(harness).toContain("body: { status: 'archived'")
     expect(harness).toContain("status: 'cancelled'")
     expect(harness).toContain("status: 'paused'")
+    expect(workflow).toContain('timeout-minutes: 45')
+    expect(harness).toContain("archive_action: 'guarded_owner_scoped_database_update'")
+    expect(harness).toContain('conversation_status: archivedRows?.[0]?.status || \'missing\'')
+    expect(harness).toContain('pending_offers_remaining: Array.isArray(pending) ? pending.length : null')
     expect(harness).not.toMatch(/\.delete\(/)
     expect(harness).not.toMatch(/console\.(log|error)\([^\n]*(token|secret|reply\.body)/i)
   })
