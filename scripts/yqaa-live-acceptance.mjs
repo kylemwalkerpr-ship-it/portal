@@ -255,7 +255,7 @@ async function providerUiChecks() {
   const gigApi = await api(providerPage, `/api/gigs/${fixture.gigId}`)
   const payload = gigApi.data?.data?.gig || gigApi.data?.gig
   check('gig scope fixture loaded through provider API', gigApi.status === 200 && payload?.id === fixture.gigId && payload?.status === 'paused' && payload?.is_hidden === true && Array.isArray(payload?.tiers) && payload.tiers.length >= 2)
-  await providerPage.getByRole('button', { name: /^pricing$/i }).first().click()
+  await providerPage.getByTitle('Jump to: Pricing', { exact: true }).click()
   const pricingText = (await providerPage.locator('body').innerText()).toLowerCase()
   check('gig pricing and scope editor UI', pricingText.includes('scope units') && pricingText.includes('scope depth') && pricingText.includes('tier description'))
   await auth.context.close()

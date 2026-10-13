@@ -105,6 +105,7 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).not.toContain('c2a46c19-abd0-4404-91e2-f4139938428d')
     expect(harness).toContain('/api/messages/conversations/')
     expect(harness).toContain('MAX_TURNS = 6')
+    expect(harness).toContain("getByTitle('Jump to: Pricing', { exact: true })")
     expect(harness).toContain('MAX_WAIT_MS = 45_000')
     expect(harness).toContain('AbortSignal.timeout(10_000)')
     for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {
