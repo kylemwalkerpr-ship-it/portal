@@ -1,0 +1,15 @@
+{
+  "datasetVersion": "yqaa-goldset-v1",
+  "minimumPerStratum": 5,
+  "labelingStatus": "awaiting external qualified review; no labels are fabricated",
+  "stratifyBy": ["channel", "risk", "evidence", "commerce", "provider_hash", "category_hash"],
+  "strata": [
+    "channel:dm",
+    "channel:public",
+    "channel:support",
+    "risk:high-stakes",
+    "evidence:thin-or-conflicting",
+    "commerce:pricing-and-scope"
+  ],
+  "cases": []
+}

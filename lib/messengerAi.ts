@@ -62,6 +62,7 @@ import {
   renderDecisionAuthority,
   type CompanionDecision,
 } from '@/lib/yqaaCompanionDecision'
+import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
 import { polishWithRegeneration } from '@/lib/yqaaCompanionPolish'
 import {
   requestCompanionJev,
@@ -1242,6 +1243,16 @@ export async function maybeAutoReply(opts: {
         // The decision plane must never break a reply: deterministic policy remains.
         console.warn('[messengerAi] companion decision failed', err instanceof Error ? err.message : err)
         return null as CompanionDecision | null
+      })
+
+      if (companion) await persistYqaaDecisionRecord(db, {
+        channel: 'dm',
+        interactionKey: `${opts.conversationId}:${triggerMessageId}`,
+        decision: companion,
+        evidenceIds: legalEvidenceBundle.evidence.map((item) => item.id),
+        providerKey: provider.id,
+        categoryKey: adaptive?.evidence.intent?.categoryId ?? null,
+        shadowRubric: 'dm-rubric-shadow-v1',
       })
 
       const journeyStage = inferJourneyStage({

@@ -17,18 +17,24 @@ async function setup(opts: {
   chunks?: ReturnType<typeof kbChunk>[]; confidence?: number; fresh?: boolean;
   jev?: unknown[]; web?: unknown[]; webError?: boolean; useRealFastReplies?: boolean;
   generationError?: boolean
+  generationHang?: boolean
+  evidenceHang?: boolean
 } = {}) {
   jest.resetModules()
   const chunks = opts.chunks ?? [kbChunk(), { ...kbChunk('usa'), id: 'usa-2' }]
-  const loadYqaaEvidence = jest.fn(async () => ({ chunks, source: 'database',
+  const loadYqaaEvidence = jest.fn(async (input?: { signal?: AbortSignal }) => {
+    if (opts.evidenceHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
+    return ({ chunks, source: 'database',
     retrievalConfidence: opts.confidence ?? 0.9, freshEnough: opts.fresh ?? true,
-    jurisdictions: ['United States'], sites: [...new Set(chunks.map((c) => c.site))] }))
+    jurisdictions: ['United States'], sites: [...new Set(chunks.map((c) => c.site))] })
+  })
   const requestJevAdvisory = jest.fn()
   for (const value of opts.jev ?? [clearJev()]) requestJevAdvisory.mockResolvedValueOnce(value)
   const researchYqaaPublicWeb = jest.fn(opts.webError
     ? async () => { throw new Error('web unavailable') }
     : async () => opts.web ?? [])
-  const generateYqaaAnswer = jest.fn(async () => {
+  const generateYqaaAnswer = jest.fn(async (_system?: string, _turns?: unknown, input?: { signal?: AbortSignal }) => {
+    if (opts.generationHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
     if (opts.generationError) throw new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')
     return { text: 'General answer from evidence.', provider: 'grok', model: 'grok-4.6', fallback: false }
   })
@@ -129,6 +135,20 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.researchYqaaPublicWeb).not.toHaveBeenCalled()
     expect(flow.requestJevAdvisory).toHaveBeenCalledTimes(1)
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  test.each(['database', 'model'] as const)('non-fast public chat cancels slow %s work and returns a bounded honest timeout', async (stage) => {
+    jest.useFakeTimers()
+    const flow = await setup({ ...(stage === 'database' ? { evidenceHang: true } : { generationHang: true }) })
+    const pending = flow.ask('How can I understand my immigration options?')
+    await jest.advanceTimersByTimeAsync(42_000)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(504)
+    expect(result.body.retryable).toBe(true)
+    expect(result.body.error).toMatch(/time limit|retry/i)
+    if (stage === 'database') expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
+    if (stage === 'model') expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
   })
 
   test('high-confidence fresh KB answers a simple question when Jev is unavailable', async () => {

@@ -77,6 +77,8 @@
 - Calibration dashboards; demote on false-safe  
 - **No** online auto policy rewrite  
 
+**Bounded packet status (2026-10-13):** versioned privacy-minimized decision records, an empty stratified gold-set manifest, and a reproducible false-safe-hold offline evaluator are implemented in [`PHASE3-4-PACKET.md`](./PHASE3-4-PACKET.md). Qualified labeling and negotiation acceptance data remain external prerequisites.
+
 ---
 
 ## Phase 4 — Unification & polish SOTA
@@ -85,6 +87,8 @@
 - Optional dedicated grammar polish model (content-safe)  
 - Latency observability (`Server-Timing` for DM)  
 - US YMYL counsel review of disclosure + escalate copy  
+
+**Bounded packet status (2026-10-13):** public, DM, and support paths now share a small deterministic decision-record contract; the existing DM authority remains authoritative. DM `Server-Timing` visibility and a 42-second cancellable public `/api/chat` deadline are implemented. This is not a broad orchestrator rewrite; optional polish model and counsel review remain open.
 
 ---
 

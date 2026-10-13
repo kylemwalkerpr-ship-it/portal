@@ -9,6 +9,8 @@ Written 2026-10-06 ET by CoS research/planning executor. **Docs only** — imple
 | `ROADMAP.md` | Phases after PR #391; Freebuff priority; test plan |
 | `BRIEF-FOR-BRIDGE.md` | Self-contained Freebuff Phase 1 task brief (now includes adaptive pricing) |
 | `PRICING-ADAPTIVE.md` | System-wide adaptive pricing / negotiation design, DB additions, tests, defaults to confirm |
+| `PHASE3-4-PACKET.md` | Implemented bounded decision-record, shadow-evaluation, deadline, and channel-adapter packet; external review gates |
+| `gold-set.json` | Empty, stratified gold-set manifest awaiting qualified human labels |
 
 Scope: **system-wide** (all providers, gigs, categories, surfaces). Revised 2026-10-06 ET: adaptive pricing added; the "no pricing-math changes" rule is reversed.
 

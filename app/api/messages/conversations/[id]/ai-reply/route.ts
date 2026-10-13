@@ -12,6 +12,7 @@ import {
 } from '@/lib/messengerAi'
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const startedAt = Date.now()
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { id } = await context.params
@@ -32,8 +33,13 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       triggerMessageId: body.trigger_message_id || null,
       force: body.force === true || state.ai_mode === 'paused',
     })
-    return Response.json(result)
+    return Response.json(result, {
+      headers: { 'Server-Timing': `dm;dur=${Math.max(0, Date.now() - startedAt)}` },
+    })
   } catch (e: any) {
-    return Response.json({ error: e?.message || 'AI reply failed' }, { status: 500 })
+    return Response.json({ error: e?.message || 'AI reply failed' }, {
+      status: 500,
+      headers: { 'Server-Timing': `dm;dur=${Math.max(0, Date.now() - startedAt)}` },
+    })
   }
 }

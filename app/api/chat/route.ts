@@ -18,6 +18,9 @@ import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
 import { applyYqaaSafetyPolicy, requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
 import { generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
+import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
+import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
+import { adaptPublicSafetyDecision, adaptSupportHandoffDecision } from '@/lib/yqaaDecisionOrchestrator'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import {
@@ -30,6 +33,7 @@ import {
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
 const VIEWER_CONTEXT_BUDGET_MS = 1_500
+const PUBLIC_YQAA_DEADLINE_MS = 42_000
 
 type ViewerSnapshot = {
   visitor: SupportVisitor | null
@@ -198,6 +202,10 @@ export async function POST(req: Request) {
         visitor,
         topic,
       })
+      await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+        channel: 'support', interactionKey: crypto.randomUUID(),
+        decision: adaptSupportHandoffDecision('explicit_human_handoff'),
+      })
       return withCors(req, {
         handoff: {
           conversationId: handoff.conversationId,
@@ -222,17 +230,19 @@ export async function POST(req: Request) {
     }
   }
 
+  const deadline = createYqaaDeadline(req.signal, PUBLIC_YQAA_DEADLINE_MS)
   try {
     const knowledgeStartedAt = Date.now()
     const pageContext = [inquiryOrigin.pathname, inquiryOrigin.title, inquiryOrigin.headings]
       .filter(Boolean)
       .join(' ')
-    const evidencePack = await loadYqaaEvidence({
+    const evidencePack = await deadline.race(loadYqaaEvidence({
       query: lastUser.content,
       hostname: inquiryOrigin.hostname,
       pageContext,
       limit: 12,
-    })
+      signal: deadline.signal,
+    }))
     let publicEvidence = evidencePack.chunks
     const knowledgeMs = Date.now() - knowledgeStartedAt
 
@@ -243,7 +253,7 @@ export async function POST(req: Request) {
     }
     const triggers = yqaaJevTriggers(advisoryContext)
     const jevStartedAt = Date.now()
-    const jev = await requestJevAdvisory(advisoryContext)
+    const jev = await deadline.race(requestJevAdvisory(advisoryContext))
     let jevMs = Date.now() - jevStartedAt
     let safety = applyYqaaSafetyPolicy(advisoryContext, jev)
     let webEvidenceCount = 0
@@ -252,13 +262,13 @@ export async function POST(req: Request) {
     if (safety.reason !== 'high_stakes_handoff' &&
         (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
       try {
-        const webChunks = await researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname)
+        const webChunks = await deadline.race(researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname, { signal: deadline.signal }))
         webEvidenceCount = webChunks.length
         if (webChunks.length) {
           publicEvidence = [...webChunks, ...evidencePack.chunks].slice(0, 12)
           advisoryContext = { ...advisoryContext, evidence: publicEvidence }
           const secondJevStartedAt = Date.now()
-          const secondJev = await requestJevAdvisory(advisoryContext)
+          const secondJev = await deadline.race(requestJevAdvisory(advisoryContext))
           jevMs += Date.now() - secondJevStartedAt
           safety = applyYqaaSafetyPolicy(advisoryContext, secondJev)
           webResearchStatus = safety.answer ? 'verified' : 'retrieved'
@@ -281,6 +291,12 @@ export async function POST(req: Request) {
           visitor: handoffVisitor,
           topic: 'yqaa-safety-handoff',
         })
+        await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+          channel: 'support', interactionKey: crypto.randomUUID(),
+          decision: adaptSupportHandoffDecision(safety.reason),
+          evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
+        })
+        deadline.close()
         return withCors(req, {
           reply: safety.reason === 'high_stakes_handoff'
             ? 'This request needs individualized professional advice. I am connecting you to support for a qualified person to review it.'
@@ -298,11 +314,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const baseSystemKnowledge = await buildCentralAssistantKnowledge({
+    const baseSystemKnowledge = await deadline.race(buildCentralAssistantKnowledge({
       latestUserMessage: lastUser.content,
       origin: inquiryOrigin,
       curatedChunks: publicEvidence,
-    })
+    }))
     const liveResearchContext = buildYqaaLiveResearchContext(publicEvidence, webResearchStatus)
     const evidenceLimit = safety.answer ? '' : [
       '# CURRENT TURN EVIDENCE LIMIT',
@@ -318,9 +334,9 @@ export async function POST(req: Request) {
     try {
       // generateYqaaAnswer already performs the commissioned compact Grok
       // recovery and only crosses to DeepSeek when a real credential exists.
-      result = await generateYqaaAnswer(systemKnowledge, cleaned)
+      result = await deadline.race(generateYqaaAnswer(systemKnowledge, cleaned, { signal: deadline.signal }))
     } catch (generationError) {
-      if (!verifiedLiveResearch) throw generationError
+      if (deadline.signal.aborted || generationError instanceof YqaaDeadlineError || !verifiedLiveResearch) throw generationError
       const digest = buildYqaaVerifiedWebDigest(publicEvidence)
       if (!digest) throw generationError
       const modelMs = Date.now() - modelStartedAt
@@ -330,6 +346,12 @@ export async function POST(req: Request) {
         webEvidenceCount,
         totalMs,
       })
+      await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+        channel: 'public', interactionKey: crypto.randomUUID(),
+        decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+        evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
+      })
+      deadline.close()
       return withCors(
         req,
         {
@@ -399,6 +421,13 @@ export async function POST(req: Request) {
       webResearchStatus,
     })
 
+    await persistYqaaDecisionRecord(createSupabaseAdminClient, {
+      channel: 'public', interactionKey: crypto.randomUUID(),
+      decision: adaptPublicSafetyDecision({ answerAllowed: safety.answer, reason: safety.reason, triggers }),
+      evidenceIds: publicEvidence.map((chunk) => chunk.id), shadowRubric: 'public-rubric-shadow-v1',
+    })
+
+    deadline.close()
     return withCors(
       req,
       {
@@ -425,19 +454,21 @@ export async function POST(req: Request) {
       },
     )
   } catch (err) {
+    deadline.close()
     const message = err instanceof Error ? err.message : 'Unknown error'
     const totalMs = Date.now() - requestStartedAt
     console.error('[system-assistant] model error', message, { totalMs })
     return withCors(
       req,
       {
-        error:
-          "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
+        error: err instanceof YqaaDeadlineError || deadline.signal.aborted
+          ? "I couldn't verify enough evidence to complete that response before the time limit. Your message is still here — please retry or ask for a human."
+          : "I couldn't complete that response just now. Your message is still here — you can retry it, or ask for a human if you need immediate help.",
         retryable: true,
         marketplaceRecommendation,
       },
       {
-        status: 502,
+        status: err instanceof YqaaDeadlineError || deadline.signal.aborted ? 504 : 502,
         headers: { 'Server-Timing': timingHeader([['total', totalMs]]) },
       },
     )

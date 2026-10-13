@@ -81,4 +81,15 @@ describe('YQAA indexed knowledge retrieval', () => {
       p_limit: 8,
     })
   })
+
+  test('binds the request deadline signal to the Supabase retrieval RPC', async () => {
+    const controller = new AbortController()
+    const query: any = Promise.resolve({ data: [], error: null })
+    query.abortSignal = jest.fn(() => query)
+    const rpc = jest.fn(() => query)
+    await searchYqaaKnowledgeIndex({ rpc }, {
+      query: 'general public information', signal: controller.signal,
+    })
+    expect(query.abortSignal).toHaveBeenCalledWith(controller.signal)
+  })
 })
