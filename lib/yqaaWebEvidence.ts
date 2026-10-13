@@ -1,5 +1,6 @@
 export const YQAA_LIVE_WEB_SOURCE_KEYS = new Set([
   'xai:web_search',
+  'typesearch:web_search',
   'cloudflare:browser_search',
 ])
 
