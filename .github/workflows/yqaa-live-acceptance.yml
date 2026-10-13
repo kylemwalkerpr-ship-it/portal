@@ -15,6 +15,14 @@ on:
         description: Optional authorized designated client profile ID for acceptance
         required: false
         type: string
+      replay_incident:
+        description: Run the separate bounded incident replay mode
+        required: false
+        type: choice
+        options:
+          - none
+          - foley_taylor_20261005
+        default: none
 
 permissions:
   contents: read
@@ -74,6 +82,10 @@ jobs:
           YQAA_EXPECTED_SHA: ${{ inputs.expected_sha }}
           YQAA_EXPECTED_BUILD_ID: ${{ inputs.expected_build_id }}
           YQAA_CLIENT_PROFILE_ID: ${{ inputs.client_profile_id }}
+          YQAA_REPLAY_INCIDENT: ${{ inputs.replay_incident || 'none' }}
+          YQAA_FT_SOURCE_CONVERSATION_ID: ${{ secrets.YQAA_FT_SOURCE_CONVERSATION_ID }}
+          YQAA_FT_SOURCE_CLIENT_ID: ${{ secrets.YQAA_FT_SOURCE_CLIENT_ID }}
+          YQAA_FT_SOURCE_PROVIDER_ID: ${{ secrets.YQAA_FT_SOURCE_PROVIDER_ID }}
         run: node scripts/yqaa-live-acceptance.mjs
 
       - name: Upload sanitized acceptance receipt

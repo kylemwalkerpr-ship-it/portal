@@ -100,6 +100,44 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(workflow).not.toContain('deployments: write')
   })
 
+  test('Foley/Taylor replay is a separate bounded incident mode with secret source IDs', () => {
+    expect(workflow).toContain('replay_incident:')
+    expect(workflow).toContain('- none')
+    expect(workflow).toContain('- foley_taylor_20261005')
+    expect(workflow).toContain('YQAA_FT_SOURCE_CONVERSATION_ID: ${{ secrets.YQAA_FT_SOURCE_CONVERSATION_ID }}')
+    expect(workflow).toContain('YQAA_FT_SOURCE_CLIENT_ID: ${{ secrets.YQAA_FT_SOURCE_CLIENT_ID }}')
+    expect(workflow).toContain('YQAA_FT_SOURCE_PROVIDER_ID: ${{ secrets.YQAA_FT_SOURCE_PROVIDER_ID }}')
+    expect(harness).toContain('const MAX_INCIDENT_TURNS = 12')
+    expect(harness).toContain("const INCIDENT_MODE = 'foley_taylor_20261005'")
+    expect(harness).toContain("receipt.status = 'incident_completed'")
+    expect(harness).toContain("receipt.mode = 'full_acceptance'")
+    expect(harness).toContain("const replayIncident = String(process.env.YQAA_REPLAY_INCIDENT || 'none')")
+    expect(harness).toMatch(/if \(replayIncident === INCIDENT_MODE\)[\s\S]*?await runIncidentReplay\(sourceData, fixtureData\)[\s\S]*?\} else \{[\s\S]*?await messengerSmoke\(\)/)
+    expect(harness).toContain('metrics.posture = \'stopped_on_pause\'')
+    expect(harness).toContain("ai_paused_reason: 'incident_replay_hold'")
+    expect(harness).toContain('turns.fill(\'\')')
+    expect(harness).not.toContain('c8d71ea4-8129-415f-9890-7f674e68c83c')
+    expect(harness).not.toContain('6c82f2a2-5e47-4ae1-a1ab-7958922860a3')
+    expect(harness).not.toContain('0921bc5f-9686-4505-8648-9c55bbda72df')
+  })
+
+  test('incident replay reads source without writes and emits finite metrics only', () => {
+    const source = harness.slice(harness.indexOf('async function loadIncidentSource()'), harness.indexOf('async function createIncidentFixtures'))
+    const replay = harness.slice(harness.indexOf('async function runIncidentReplay'), harness.indexOf('async function fixtureClerkUser'))
+    expect(source).toContain('conversation_messages?select=sender_id,body,created_at')
+    expect(source).not.toContain("method: 'PATCH'")
+    expect(source).not.toContain("method: 'POST'")
+    expect(replay).toContain('MAX_INCIDENT_TURNS')
+    expect(replay).toContain('state.ai_mode === \'paused\'')
+    expect(replay).toContain('metrics.orientation_present')
+    expect(replay).toContain('budget_range: incidentBudgetRange(turns)')
+    expect(replay).toContain('metrics.duplicate_reply_count')
+    expect(replay).toContain('metrics.evidence_count')
+    expect(replay).not.toContain('receipt.incident = { ...metrics, reply')
+    expect(replay).not.toContain('reply.body,')
+    expect(replay).not.toMatch(/console\.(log|error).*turns|console\.(log|error).*reply/i)
+  })
+
   test('workflow requires the exact deployed SHA and build identity before the live harness', () => {
     expect(workflow).toContain('inputs.expected_sha')
     expect(workflow).toContain('inputs.expected_build_id')
@@ -110,7 +148,7 @@ describe('manual YQAA live acceptance safety guards', () => {
   })
 
   test('public generation health probe runs after deployed identity and stores only bounded diagnostics', () => {
-    expect(harness).toMatch(/await assertLiveIdentity\(\);?\s+const publicGenerationOk = await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
+    expect(harness).toMatch(/\} else \{\s+const publicGenerationOk = await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
     expect(harness).toContain("'For a public service listing, what questions should someone ask before choosing a provider?'")
     expect(harness).toContain('model_category: modelCategory')
     expect(harness).toContain('await response.json().catch(() => null)')

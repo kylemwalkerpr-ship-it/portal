@@ -13,12 +13,14 @@ const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFr
 
 const BASE = 'https://portal.yousafeconsultancy.com'
 const MAX_TURNS = 6
+const MAX_INCIDENT_TURNS = 12
 const MAX_WAIT_MS = 45_000
 const RUN_ID = process.env.GITHUB_RUN_ID || `manual-${Date.now()}`
 const RUN_ATTEMPT = process.env.GITHUB_RUN_ATTEMPT || '1'
 const CURRENT_RUN_MARKER = safeHash(`${RUN_ID}:${RUN_ATTEMPT}`)
 const PROVIDER_USERNAME = `yqaa_live_acceptance_${RUN_ID}_${RUN_ATTEMPT}`.slice(0, 64)
 const DESIGNATED_CLIENT_ID = '35c89030-b9bd-4a51-877f-739e97fe2d04'
+const INCIDENT_MODE = 'foley_taylor_20261005'
 const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance') : path.resolve('artifacts/yqaa-live-acceptance')
 const receipt = { version: 1, started_at: new Date().toISOString(), checks: [], scenarios: [], cleanup: 'pending' }
 let browser
@@ -249,6 +251,213 @@ async function loadAndVerifyFixtures() {
     }
   }
   receipt.fixtures = { categories: [...new Set(fixtureProviders.map((p) => p.category))], provider_count: fixtureProviders.length, conversation_count: fixtureThreads.length, synthetic_client_count: designatedClient ? 0 : fixtureThreads.length, designated_client_mode: Boolean(designatedClient), hidden_test_profiles: true, provider_username_hashes: fixtureProviders.map((p) => safeHash(p.username)) }
+}
+
+function incidentUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
+}
+
+function incidentBudgetRange(turns) {
+  const amounts = turns.flatMap((turn) => [...turn.matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.')))).filter(Number.isFinite)
+  if (!amounts.length) return 'unknown'
+  const max = Math.max(...amounts)
+  return max < 100 ? 'under_100' : max < 500 ? '100_499' : max < 1000 ? '500_999' : '1000_plus'
+}
+
+function incidentSignals(text) {
+  const body = String(text || '')
+  return {
+    orientation: /(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai|automated assistant)/i.test(body),
+    internalLeak: /(internal floor|reference mean|pricing floor|minimum price is|revenue-safe floor)/i.test(body),
+    amounts: [...body.matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.'))).filter(Number.isFinite),
+  }
+}
+
+async function loadIncidentSource() {
+  const sourceConversationId = process.env.YQAA_FT_SOURCE_CONVERSATION_ID
+  const sourceClientId = process.env.YQAA_FT_SOURCE_CLIENT_ID
+  const sourceProviderId = process.env.YQAA_FT_SOURCE_PROVIDER_ID
+  if (![sourceConversationId, sourceClientId, sourceProviderId].every(incidentUuid)) throw new Error('Incident source identifiers are not configured as valid UUIDs.')
+  const conversations = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id&id=eq.${encodeURIComponent(sourceConversationId)}`)
+  const source = conversations?.[0]
+  const participants = [source?.participant_a, source?.participant_b]
+  if (conversations?.length !== 1 || source.id !== sourceConversationId || !participants.includes(sourceClientId) || !participants.includes(sourceProviderId) || sourceClientId === sourceProviderId || source.context_kind !== 'gig') throw new Error('Incident source conversation ownership could not be verified.')
+  const [clientRows, providerRows, messages] = await Promise.all([
+    dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceClientId)}`),
+    dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceProviderId)}`),
+    dbRequest(`conversation_messages?select=sender_id,body,created_at&conversation_id=eq.${encodeURIComponent(sourceConversationId)}&order=created_at.asc&limit=201`),
+  ])
+  if (clientRows?.length !== 1 || clientRows[0].role !== 'client' || providerRows?.length !== 1 || !['consultant', 'attorney'].includes(String(providerRows[0].role).toLowerCase())) throw new Error('Incident source participant roles could not be verified.')
+  if (!Array.isArray(messages) || messages.length > 200) throw new Error('Incident source message count is outside the read bound.')
+  const turns = []
+  for (const message of messages) {
+    if (message.sender_id === sourceClientId && typeof message.body === 'string' && message.body.trim()) turns.push(message.body)
+  }
+  const totalChars = turns.reduce((total, turn) => total + turn.length, 0)
+  if (!turns.length || turns.length > MAX_INCIDENT_TURNS || turns.some((turn) => turn.length > 8_000) || totalChars > 48_000) throw new Error('Incident source client turn count or text size is outside the replay bound.')
+  return { sourceConversationId, sourceClientId, sourceProviderId, source, turns }
+}
+
+async function createIncidentFixtures(sourceData) {
+  const designatedProfileId = String(process.env.YQAA_CLIENT_PROFILE_ID || '').trim()
+  if (designatedProfileId !== DESIGNATED_CLIENT_ID) throw new Error('Foley/Taylor replay requires the authorized designated client profile.')
+  const targets = await dbRequest(`profiles?select=id,email,role,status,is_test_account,is_hidden,clerk_user_id&id=eq.${encodeURIComponent(DESIGNATED_CLIENT_ID)}`)
+  const target = targets?.[0]
+  if (targets?.length !== 1 || target.id !== DESIGNATED_CLIENT_ID || target.role !== 'client' || target.status !== 'active' || target.is_test_account !== false || target.is_hidden !== false || !target.clerk_user_id) throw new Error('Authorized replay client profile could not be verified.')
+  const identity = await clerkApi(`/users/${encodeURIComponent(target.clerk_user_id)}`)
+  const verifiedEmail = (identity.email_addresses || []).find((item) => item.id === identity.primary_email_address_id && item.email_address?.toLowerCase() === target.email?.toLowerCase() && item.verification?.status === 'verified')
+  if (identity.id !== target.clerk_user_id || !verifiedEmail) throw new Error('Authorized replay client Clerk identity could not be verified.')
+
+  const publicGigs = await dbRequest(`gigs?select=id,title,category,subcategory,status,is_hidden,unit_pricing,hourly_rate_cents,negotiation_enabled,negotiation_flex_pct,min_floor_cents&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}&status=eq.active&is_hidden=eq.false&order=created_at.asc&limit=10`)
+  if (!Array.isArray(publicGigs) || !publicGigs.length || publicGigs.length > 10) throw new Error('No bounded set of public source gigs was available to mirror.')
+  const [sourceTiers, sourcePrefs] = await Promise.all([
+    dbRequest(`gig_tiers?select=gig_id,tier,title,description,price,delivery_days,revisions,is_active,features,scope_depth,scope_units&gig_id=in.(${publicGigs.map((gig) => gig.id).join(',')})&is_active=eq.true&order=tier.asc`),
+    dbRequest(`provider_pricing_preferences?select=negotiation_enabled,auto_accept_pct,flex_pct,approval_band_pct,max_auto_concessions,prefer_accept,hourly_rate_cents,min_effective_rate_cents,min_floor_cents&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}`),
+  ])
+  if (!Array.isArray(sourceTiers) || sourceTiers.length > 30) throw new Error('Source gig scope and pricing count is outside the mirror bound.')
+  const username = `${PROVIDER_USERNAME}_foley_taylor`.slice(0, 64)
+  const providerUser = await fixtureClerkUser(username, 'yqaa_live_acceptance', 'Provider')
+  const provider = await fixtureProfile(providerUser.id, `yqaa-foley-taylor-${RUN_ID}-${RUN_ATTEMPT}@example.invalid`, 'consultant', 'Synthetic Replay Provider')
+  const ownedGigs = new Map()
+  for (const [index, sourceGig] of publicGigs.entries()) {
+    if (!/^[a-z0-9-]{2,80}$/i.test(String(sourceGig.category || '')) || !/^[a-z0-9-]{2,80}$/i.test(String(sourceGig.subcategory || ''))) throw new Error('Source public gig taxonomy is not safe to mirror.')
+    const slug = `yqaa-ft-${RUN_ID}-${RUN_ATTEMPT}-${index}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80)
+    const prior = await dbRequest(`gigs?select=id,provider_id,status,is_hidden,category,subcategory,slug&slug=eq.${encodeURIComponent(slug)}`)
+    let gig = prior?.[0]
+    if (gig && (gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== sourceGig.category || gig.subcategory !== sourceGig.subcategory)) throw new Error('Existing replay listing ownership could not be verified.')
+    if (!gig) {
+      try {
+        const inserted = await dbRequest('gigs?select=id,provider_id,status,is_hidden,category,subcategory', { method: 'POST', prefer: 'return=representation', body: [{
+          provider_id: provider.id, provider_type: 'consultant', title: `Synthetic replay listing ${index + 1}`, category: sourceGig.category, subcategory: sourceGig.subcategory, slug,
+          pitch: 'Hidden synthetic test listing for bounded replay only.', description: 'Synthetic hidden fixture. No real provider, credentials, licensure, advice, or professional service is represented.', requirements: 'Replay fixture only.',
+          status: 'paused', is_hidden: true, tags: ['synthetic', 'acceptance-fixture', 'foley-taylor-replay'], unit_pricing: sourceGig.unit_pricing, hourly_rate_cents: sourceGig.hourly_rate_cents,
+          negotiation_enabled: sourceGig.negotiation_enabled, negotiation_flex_pct: sourceGig.negotiation_flex_pct, min_floor_cents: sourceGig.min_floor_cents,
+        }] })
+        gig = inserted?.[0]
+      } catch (error) {
+        const recovered = await dbRequest(`gigs?select=id,provider_id,status,is_hidden,category,subcategory,slug&slug=eq.${encodeURIComponent(slug)}`)
+        gig = recovered?.length === 1 ? recovered[0] : null
+        if (!gig) throw error
+      }
+    }
+    if (!gig?.id || gig.provider_id !== provider.id || gig.status !== 'paused' || gig.is_hidden !== true || gig.category !== sourceGig.category || gig.subcategory !== sourceGig.subcategory) throw new Error('Hidden replay gig ownership could not be verified.')
+    const registered = { category: sourceGig.category, scenario: 'foley_taylor', profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username }
+    registerOwnedGig(fixtureProviders, registered)
+    ownedGigs.set(sourceGig.id, gig)
+    const tiers = sourceTiers.filter((tier) => tier.gig_id === sourceGig.id)
+    const priorTiers = await dbRequest(`gig_tiers?select=id,tier,price,scope_depth,scope_units&gig_id=eq.${encodeURIComponent(gig.id)}`)
+    if (!priorTiers?.length && tiers.length) await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: tiers.map((tier) => ({ gig_id: gig.id, tier: tier.tier, title: `Synthetic ${tier.tier} scope`, description: 'Synthetic replay pricing and scope mirror.', price: tier.price, delivery_days: tier.delivery_days, revisions: tier.revisions, is_active: true, features: ['Synthetic replay fixture'], scope_depth: tier.scope_depth, scope_units: tier.scope_units })) })
+  }
+  if (sourcePrefs?.length) {
+    const preference = sourcePrefs[0]
+    await dbRequest('provider_pricing_preferences?on_conflict=provider_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: [{ provider_id: provider.id, ...preference }] })
+  }
+  const sourceContextGig = publicGigs.find((gig) => gig.id === sourceData.source.context_id)
+  const contextGig = sourceContextGig ? ownedGigs.get(sourceContextGig.id) : publicGigs[0] && ownedGigs.get(publicGigs[0].id)
+  if (!contextGig) throw new Error('Source conversation gig is not among the public gigs mirrored for replay.')
+  const participantA = [DESIGNATED_CLIENT_ID, provider.id].sort()[0]
+  const participantB = [DESIGNATED_CLIENT_ID, provider.id].sort()[1]
+  assertFreshParticipantPair(await dbRequest(`conversations?select=id&participant_a=eq.${participantA}&participant_b=eq.${participantB}`))
+  const runMarker = CURRENT_RUN_MARKER
+  const metadata = { ai_mode: 'auto', ai_disclosed: false, yqaa_live_acceptance: true, yqaa_live_acceptance_run: runMarker, yqaa_foley_taylor_replay: true }
+  let row
+  try {
+    const created = await dbRequest('conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata', { method: 'POST', prefer: 'return=representation', body: [{ participant_a: participantA, participant_b: participantB, context_kind: 'gig', context_id: contextGig.id, status: 'active', metadata }] })
+    row = created?.[0]
+  } catch (error) {
+    if (/database 409/.test(String(error?.message))) throw error
+    const recovered = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&participant_a=eq.${participantA}&participant_b=eq.${participantB}`)
+    if (recovered?.length === 1 && recovered[0].metadata?.yqaa_foley_taylor_replay === true && recovered[0].metadata?.yqaa_live_acceptance_run === runMarker) row = recovered[0]
+    else throw error
+  }
+  if (!row) {
+    const recovered = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&participant_a=eq.${participantA}&participant_b=eq.${participantB}`)
+    if (recovered?.length === 1 && recovered[0].metadata?.yqaa_foley_taylor_replay === true && recovered[0].metadata?.yqaa_live_acceptance_run === runMarker) row = recovered[0]
+  }
+  if (!row?.id) throw new Error('Replay conversation insert did not return a row.')
+  const fixture = { id: row.id, participantA, participantB, profileId: DESIGNATED_CLIENT_ID, clerkUserId: target.clerk_user_id, clientKind: 'designated', scenario: 'foley_taylor', category: contextGig.category, providerProfileId: provider.id, providerClerkUserId: providerUser.id, gigId: contextGig.id, incident: true, runMarker }
+  verifyOwnedConversation(row, fixture, runMarker)
+  registerOwnedConversation(fixtureThreads, fixture)
+  if ((await dbRequest(`conversation_messages?select=id&conversation_id=eq.${encodeURIComponent(row.id)}&limit=1`))?.length) throw new Error('New replay conversation unexpectedly contains messages.')
+  return { fixture, clientUserId: target.clerk_user_id, runMarker, providerCount: 1, gigCount: ownedGigs.size, sourcePreferenceMirrored: Boolean(sourcePrefs?.length) }
+}
+
+async function runIncidentReplay(sourceData, fixtureData) {
+  const { fixture } = fixtureData
+  const auth = await authenticatedPage(fixtureData.clientUserId, '/messenger')
+  clientPage = auth.page
+  const turns = [...sourceData.turns]
+  const metrics = { orientation_present: false, budget_first: false, internal_leak_count: 0, stale_number_count: 0, budget_range: incidentBudgetRange(turns), duplicate_reply_count: 0, attention_state: 'not_observed', latency_ms: [], evidence_count: 0, posture: 'held_at_turn_bound' }
+  const replyFingerprints = new Set()
+  const seenBudget = turns.some((turn) => /\b(budget|maximum|max|afford)\b/i.test(turn) && /\$|\bcad\b/i.test(turn))
+  const priorNumbers = []
+  let firstQuoteTurn = null
+  const conversationId = fixture.id
+  try {
+    for (let index = 0; index < turns.length && index < MAX_INCIDENT_TURNS; index++) {
+      const currentNumbers = [...turns[index].matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.'))).filter(Number.isFinite)
+      const before = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`)
+      verifyOwnedConversation(before?.[0], fixture, fixtureData.runMarker)
+      if (before[0].metadata?.ai_mode === 'paused') { metrics.attention_state = before[0].metadata?.ai_provider_attention_requested ? 'paused_for_provider' : 'paused'; metrics.posture = 'stopped_on_pause'; break }
+      const started = Date.now()
+      const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: turns[index] } })
+      if (sent.status !== 200 || typeof sent.data.message?.id !== 'string' || sent.data.message?.sender_id !== fixture.profileId) throw new Error('Incident replay client turn was not accepted by the owned conversation.')
+      metrics.evidence_count++
+      const triggerId = sent.data.message.id
+      const deadline = Date.now() + MAX_WAIT_MS
+      let reply = null
+      let state = null
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        const [threadResult, stateRows] = await Promise.all([
+          api(clientPage, `/api/messages/conversations/${conversationId}`),
+          dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`),
+        ])
+        if (threadResult.status !== 200) throw new Error('Incident replay conversation could not be read through its owner session.')
+        verifyOwnedConversation(stateRows?.[0], fixture, fixtureData.runMarker)
+        state = stateRows?.[0]?.metadata || {}
+        reply = (threadResult.data.messages || []).find((message) => message.metadata?.ai_generated && !message.metadata?.ai_typing && message.metadata?.yqaa_trigger_message_id === triggerId)
+        if (reply || state.ai_mode === 'paused') break
+      }
+      metrics.latency_ms.push(Date.now() - started)
+      if (reply && typeof reply.body === 'string') {
+        metrics.evidence_count++
+        const signals = incidentSignals(reply.body)
+        if (index === 0) metrics.orientation_present = signals.orientation
+        if (signals.internalLeak) metrics.internal_leak_count++
+        if (signals.amounts.some((amount) => priorNumbers.includes(amount) && !currentNumbers.includes(amount))) metrics.stale_number_count++
+        const fingerprint = createHash('sha256').update(reply.body).digest('hex')
+        if (replyFingerprints.has(fingerprint)) metrics.duplicate_reply_count++
+        replyFingerprints.add(fingerprint)
+        if (signals.amounts.length && firstQuoteTurn === null) firstQuoteTurn = index
+      }
+      if (state?.ai_mode === 'paused' || state?.ai_provider_attention_requested === true) {
+        metrics.attention_state = state.ai_provider_attention_requested ? 'paused_for_provider' : 'paused'
+        metrics.posture = 'stopped_on_pause'
+        break
+      }
+      if (!reply) { metrics.posture = 'held_after_reply_timeout'; break }
+      priorNumbers.push(...currentNumbers)
+    }
+    metrics.budget_first = seenBudget && firstQuoteTurn !== null && turns.findIndex((turn) => /\b(budget|maximum|max|afford)\b/i.test(turn) && /\$|\bcad\b/i.test(turn)) <= firstQuoteTurn
+    if (metrics.posture === 'held_at_turn_bound' && metrics.evidence_count > 0) metrics.posture = 'source_turns_exhausted'
+    receipt.incident = { name: INCIDENT_MODE, status: 'completed', ...metrics }
+    receipt.mode = 'incident'
+    receipt.status = 'incident_completed'
+  } finally {
+    // The incident path never resumes AI. Explicitly leave the owned thread held.
+    const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`)
+    verifyOwnedConversation(rows?.[0], fixture, fixtureData.runMarker)
+    await dbRequest(`conversations?id=eq.${encodeURIComponent(conversationId)}&participant_a=eq.${encodeURIComponent(fixture.participantA)}&participant_b=eq.${encodeURIComponent(fixture.participantB)}`, { method: 'PATCH', prefer: 'return=minimal', body: { metadata: { ...(rows[0].metadata || {}), ai_mode: 'paused', ai_mode_set_by: 'yqaa_foley_taylor_replay', ai_paused_reason: 'incident_replay_hold' } } })
+    const held = await dbRequest(`conversations?select=id,metadata&id=eq.${encodeURIComponent(conversationId)}`)
+    if (held?.[0]?.metadata?.ai_mode !== 'paused') throw new Error('Incident replay could not verify the final held state.')
+    metrics.attention_state = held[0].metadata?.ai_provider_attention_requested ? 'paused_for_provider' : 'held'
+    if (receipt.incident) receipt.incident.attention_state = metrics.attention_state
+    if (receipt.incident) receipt.incident.posture = metrics.posture
+    turns.fill('')
+    await auth.context.close()
+    clientPage = null
+  }
 }
 
 async function fixtureClerkUser(username, marker, suffix) {
@@ -617,6 +826,17 @@ let error = null
 try {
   for (const key of ['CLERK_SECRET_KEY', 'YQAA_EXPECTED_SHA', 'YQAA_EXPECTED_BUILD_ID', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_REPOSITORY']) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
   await assertLiveIdentity()
+  const replayIncident = String(process.env.YQAA_REPLAY_INCIDENT || 'none')
+  if (replayIncident !== 'none' && replayIncident !== INCIDENT_MODE) throw new Error('Unsupported incident replay mode.')
+  if (replayIncident === INCIDENT_MODE) {
+    receipt.mode = 'incident'
+    receipt.incident = { name: INCIDENT_MODE, status: 'running' }
+    browser = await chromium.launch({ headless: true })
+    const sourceData = await loadIncidentSource()
+    const fixtureData = await createIncidentFixtures(sourceData)
+    receipt.fixtures = { provider_count: fixtureData.providerCount, gig_count: fixtureData.gigCount, conversation_count: 1, designated_client_mode: true, hidden_test_profiles: true, source_preferences_mirrored: fixtureData.sourcePreferenceMirrored }
+    await runIncidentReplay(sourceData, fixtureData)
+  } else {
   const publicGenerationOk = await publicGenerationProbe()
   browser = await chromium.launch({ headless: true })
   await loadAndVerifyFixtures()
@@ -625,6 +845,8 @@ try {
   await assertLiveIdentity()
   if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')
   receipt.status = 'passed'
+  receipt.mode = 'full_acceptance'
+  }
 } catch (caught) {
   error = safeFailure(caught)
   receipt.status = 'failed'
