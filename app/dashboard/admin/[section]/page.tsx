@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic'
 // components/design/admin.jsx.
 const VALID_SECTIONS = new Set([
   'dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics',
+  'yqaa-learning',
   'financials', 'gigs', 'settings',
   // Search Console — GSC query/page/device/country + index coverage
   'gsc',

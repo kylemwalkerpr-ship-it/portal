@@ -18,6 +18,7 @@ const AdminTemplates = React.lazy(() => import('./admin-templates'))
 const UserDetailDrawer = React.lazy(() => import('./admin-user-detail'))
 const AdminContentStudio = React.lazy(() => import('./admin-content-studio'))
 const AdminGscDashboard = React.lazy(() => import('./admin-gsc-dashboard'))
+const AdminYqaaLearning = React.lazy(() => import('./admin-yqaa-learning'))
 const AdminMasterMessenger = React.lazy(() => import('../messaging/AdminMasterMessenger'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
@@ -100,7 +101,7 @@ function AdminApp({ onLogout }) {
   // app/dashboard/admin/[section]/page.tsx); the legacy /dashboard?page=...
   // form is still read for old bookmarks. escrow / payouts / wallets /
   // loyalty are aliases for the matching Financials tab.
-  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'gsc', 'financials', 'gigs', 'content', 'master-chats', 'settings'];
+  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'gsc', 'financials', 'gigs', 'content', 'master-chats', 'yqaa-learning', 'settings'];
   const FINANCIAL_TAB_ALIASES = { escrow: 'escrow', payouts: 'payouts', wallets: 'wallets', loyalty: 'loyalty' };
   const [financialsTab, setFinancialsTab] = React.useState(null);
   const rawSectionFromUrl = () => {
@@ -613,6 +614,7 @@ function AdminApp({ onLogout }) {
         <NavGroupLabel label="Overview" first />
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
+        <NavItem icon="🧭" label="YQAA Learning" active={page === 'yqaa-learning'} onClick={() => setPage('yqaa-learning')} />
         <NavItem icon="🔍" label="Search Console" active={page === 'gsc'} onClick={() => setPage('gsc')} />
         <NavGroupLabel label="People" />
         <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
@@ -2585,7 +2587,7 @@ const Settings = () => {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gsc: 'Search Console', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', 'master-chats': 'Master Chats', content: 'Content Studio', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gsc: 'Search Console', 'yqaa-learning': 'YQAA Learning', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', 'master-chats': 'Master Chats', content: 'Content Studio', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2615,6 +2617,7 @@ const Settings = () => {
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'gsc' && <AdminGscDashboard />}
+          {page === 'yqaa-learning' && <AdminYqaaLearning />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} initialTab={financialsTab} />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} consultantFeePercent={consultantFeePercent} platformFeePercent={platformFeePercent} platformSettings={platformSettings} primaryCurrency={primaryCurrency} />}
           

@@ -30,7 +30,7 @@ describe('versioned YQAA decision records', () => {
   it('stratifies offline metrics and holds all false-safe calibration proposals', () => {
     const cases = [
       ...Array.from({ length: 5 }, (_, i) => ({ id: `safe-${i}`, stratum: 'public', predictedSafe: true, humanSafe: true, labelSource: 'licensed_expert' as const, expertQualification: 'licensed attorney', rubricVersion: 'r1', provenance: 'review-batch-1' })),
-      ...Array.from({ length: 5 }, (_, i) => ({ id: `unsafe-${i}`, stratum: 'high-stakes', predictedSafe: i > 0, humanSafe: false, labelSource: 'licensed_expert' as const, expertQualification: 'licensed attorney', rubricVersion: 'r1', provenance: 'review-batch-1' })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `unsafe-${i}`, stratum: 'high-stakes', predictedSafe: i > 0, humanSafe: false, labelSource: 'licensed_expert' as const, expertQualification: 'licensed attorney', critical: true, reviewerIds: ['reviewer-a', 'reviewer-b'], reviewerQualifications: ['licensed attorney', 'licensed attorney'], rubricVersion: 'r1', provenance: 'review-batch-1' })),
     ]
     const result = evaluateYqaaGoldSet(cases, 5, ['public', 'high-stakes'])
     expect(result.strata.public.count).toBe(5)
@@ -46,10 +46,11 @@ describe('versioned YQAA decision records', () => {
       { id: 'unqualified', stratum: 'public', predictedSafe: true, humanSafe: true, labelSource: 'trained_reviewer', rubricVersion: 'r1', expertQualification: 'licensed attorney', provenance: 'review-batch' },
       { id: 'unversioned', stratum: 'public', predictedSafe: true, humanSafe: false, labelSource: 'licensed_expert', rubricVersion: '', expertQualification: 'licensed attorney', provenance: 'review-batch' },
       { id: 'no-provenance', stratum: 'public', predictedSafe: true, humanSafe: false, labelSource: 'licensed_expert', rubricVersion: 'r1', expertQualification: 'licensed attorney' },
+      { id: 'critical-single-review', stratum: 'risk:high-stakes', predictedSafe: true, humanSafe: false, labelSource: 'licensed_expert', rubricVersion: 'r1', expertQualification: 'licensed attorney', provenance: 'review-batch' },
     ]
     const result = evaluateYqaaGoldSet(malformedGold as any, 1, ['public'])
     expect(result.validLabelCount).toBe(0)
-    expect(result.invalidLabelCount).toBe(3)
+    expect(result.invalidLabelCount).toBe(4)
     expect(result.falseSafeCount).toBe(0)
     expect(result.strata.public.count).toBe(0)
     expect(result.promotion).toBe('HOLD_INSUFFICIENT_LABELS')
