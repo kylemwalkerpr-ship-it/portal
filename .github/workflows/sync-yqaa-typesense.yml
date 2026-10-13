@@ -35,6 +35,5 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.YQAA_MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.YQAA_MODAL_TOKEN_SECRET }}
         run: |
-          VERSION=$(python -c 'import json; print(json.load(open("/tmp/yqaa-typesense-snapshot/manifest.json"))["sha256"])')
-          modal volume put yqaa-typesense-public-snapshots /tmp/yqaa-typesense-snapshot "/$VERSION"
+          VERSION=$(python scripts/publish-yqaa-typesense.py)
           YQAA_SNAPSHOT_VERSION="$VERSION" modal deploy services/yqaa_typesense/app.py
