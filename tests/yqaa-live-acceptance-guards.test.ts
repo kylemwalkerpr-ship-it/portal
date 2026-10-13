@@ -4,7 +4,7 @@ import path from 'node:path'
 const root = path.resolve(__dirname, '..')
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/yqaa-live-acceptance.yml'), 'utf8')
 const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mjs'), 'utf8')
-const { registerOwnedGig, registerOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
+const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
   test('receipt path matches workflow upload and success rechecks deployment identity', () => {
@@ -51,10 +51,33 @@ describe('manual YQAA live acceptance safety guards', () => {
     await expect(setup()).rejects.toThrow('metadata marker PATCH failed')
     const pause = jest.fn(async (registered: typeof registry) => registered.map((item) => item.id))
     await expect(pause(registry)).resolves.toEqual(['conversation-1'])
-    expect(harness.indexOf('registerOwnedConversation(fixtureThreads')).toBeLessThan(harness.indexOf('yqaa_live_acceptance_run:'))
-    expect(harness).toContain("verifyOwnedFixtureProfile(thread.profileId, thread.clerkUserId, 'client')")
+    expect(harness.indexOf('registerOwnedConversation(fixtureThreads')).toBeGreaterThan(harness.indexOf('verifyOwnedConversation(row, threadFixture, CURRENT_RUN_MARKER)'))
+    expect(harness).toContain("if (thread.clientKind === 'designated') return verifyDesignatedClient(thread.profileId, thread.clerkUserId)")
     expect(harness).toContain("verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, 'consultant')")
     expect(harness).not.toContain("rows[0].metadata?.yqaa_live_acceptance !== true) throw new Error('fixture ownership")
+  })
+
+  test('current-run ownership fence rejects a different run even for the same participants', () => {
+    const fixture = { id: 'conversation-1', participantA: 'client-a', participantB: 'provider-b', gigId: 'gig-1' }
+    const row = { id: fixture.id, participant_a: 'client-a', participant_b: 'provider-b', context_kind: 'gig', context_id: 'gig-1', metadata: { yqaa_live_acceptance: true, yqaa_live_acceptance_run: 'run-current' } }
+    expect(() => verifyOwnedConversation(row, fixture, 'run-current')).not.toThrow()
+    expect(() => verifyOwnedConversation({ ...row, metadata: { ...row.metadata, yqaa_live_acceptance_run: 'other-run' } }, fixture, 'run-current')).toThrow('current-run marker')
+    expect(() => verifyOwnedConversation({ ...row, participant_a: 'someone-else' }, fixture, 'run-current')).toThrow('current-run marker')
+    expect(harness).toContain("method: 'POST', prefer: 'return=representation'")
+    expect(harness).toContain("ai_mode: 'auto', ai_disclosed: false, yqaa_live_acceptance: true, yqaa_live_acceptance_run: CURRENT_RUN_MARKER")
+    expect(harness).not.toContain("rpc/get_or_create_conversation")
+  })
+
+  test('conversation ownership is registered immediately after atomic insert or verified uncertain recovery', () => {
+    const createAt = harness.indexOf("method: 'POST', prefer: 'return=representation'", harness.indexOf('for (const threadKey'))
+    const registerAt = harness.indexOf('registerOwnedConversation(fixtureThreads, threadFixture)', createAt)
+    const messagesAt = harness.indexOf('conversation_messages?select=id,metadata&conversation_id=eq.${id}', createAt)
+    expect(createAt).toBeGreaterThan(-1)
+    expect(registerAt).toBeGreaterThan(createAt)
+    expect(messagesAt).toBeGreaterThan(registerAt)
+    expect(harness).toContain("if (/database 409/.test(String(error?.message))) throw error")
+    expect(harness).toContain('const recovered = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&participant_a=eq.${participantA}&participant_b=eq.${participantB}`)')
+    expect(harness).toContain('verifyOwnedConversation(rows?.[0], thread, CURRENT_RUN_MARKER)')
   })
 
   test('workflow is manual only, exact-main scoped, and contents-read only', () => {
@@ -111,6 +134,40 @@ describe('manual YQAA live acceptance safety guards', () => {
     for (const scenario of ['orientation', 'budget', 'scope_narrowing', 'counter', 'lowball', 'frustration', 'provider_attention']) {
       expect(harness).toContain(`name: '${scenario}'`)
     }
+  })
+
+  test('optional designated client stays read-only and gets six distinct participant pairs', () => {
+    expect(workflow).toContain('client_email:')
+    expect(workflow).toContain('YQAA_CLIENT_EMAIL: ${{ inputs.client_email }}')
+    expect(harness).toContain("const DESIGNATED_CLIENT_ID = '35c89030-b9bd-4a51-877f-739e97fe2d04'")
+    expect(harness).toContain("matches[0].role !== 'client' || matches[0].status !== 'active'")
+    expect(harness).toContain('item.verification?.status === \'verified\'')
+    expect(harness).toContain("['negotiation', 'attention'] : ['shared']")
+    expect(harness).toContain('providerForThread(fixtureProviders, category.id, threadKey, Boolean(designatedClient))')
+    expect(harness).toContain("clientKind: designatedClient ? 'designated' : 'synthetic'")
+    expect(harness).toContain('if (profileId !== DESIGNATED_CLIENT_ID || !clerkUserId)')
+    expect(harness).toContain("profile.role !== 'client' || profile.status !== 'active'")
+    expect(harness).not.toContain('profiles?on_conflict=id')
+    expect(harness).not.toContain('email: designatedEmail')
+    expect(harness).toContain('assertFreshParticipantPair(preexisting)')
+    expect(harness).toContain('if (ownMessages?.length) throw new Error')
+    const providers = ['education', 'academic-writing', 'mentorship'].flatMap((category) => ['negotiation', 'attention'].map((scenario) => ({ category, scenario, profileId: `${category}-${scenario}-provider` })))
+    const pairs = ['education', 'academic-writing', 'mentorship'].flatMap((category) => ['negotiation', 'attention'].map((scenario) => [`known-client`, providerForThread(providers, category, scenario, true)?.profileId].sort().join(':')))
+    expect(pairs).toHaveLength(6)
+    expect(new Set(pairs).size).toBe(6)
+    expect(() => assertFreshParticipantPair([])).not.toThrow()
+    expect(() => assertFreshParticipantPair([{ id: 'existing' }])).toThrow('refusing reuse or reset')
+    expect(providerForThread(providers, 'education', 'negotiation', false)?.profileId).toBe('education-negotiation-provider')
+  })
+
+  test('designated cleanup verifies the known profile and never mutates its profile or Clerk identity', () => {
+    const cleanup = harness.slice(harness.indexOf('async function cleanup()'))
+    expect(cleanup).toContain('verifyDesignatedClient(thread.profileId, thread.clerkUserId)')
+    expect(cleanup).toContain("profile.is_test_account !== false || profile.is_hidden !== false")
+    expect(cleanup).toContain('const identity = await clerkApi(`/users/${encodeURIComponent(clerkUserId)}`)')
+    expect(cleanup).not.toMatch(/profiles[^\n]*(PATCH|POST)/)
+    expect(cleanup).not.toMatch(/clerkApi\([^\n]*method:\s*['"](POST|PATCH|DELETE)/)
+    expect(cleanup).toContain("body: { status: 'archived'")
   })
 
   test('acceptance requires a real generated reply and cleans up through soft actions only', () => {
