@@ -84,7 +84,10 @@ async function dbRequest(tablePath, { method = 'GET', body, prefer } = {}) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }, 'fixture database')
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(`Fixture database ${response.status} at ${tablePath.split('?')[0]}`)
+  if (!response.ok) {
+    const code = /^(?:PGRST\d{3}|[0-9A-Z]{5})$/.test(String(data?.code || '')) ? data.code : 'unknown'
+    throw new Error(`Fixture database ${response.status} ${method} ${code} at ${tablePath.split('?')[0]}`)
+  }
   return data
 }
 
@@ -313,7 +316,7 @@ async function createIncidentFixtures(sourceData) {
   const verifiedEmail = (identity.email_addresses || []).find((item) => item.id === identity.primary_email_address_id && item.email_address?.toLowerCase() === target.email?.toLowerCase() && item.verification?.status === 'verified')
   if (identity.id !== target.clerk_user_id || !verifiedEmail) throw new Error('Authorized replay client Clerk identity could not be verified.')
 
-  const publicGigs = await dbRequest(`gigs?select=id,title,category,subcategory,status,is_hidden,unit_pricing,hourly_rate_cents,negotiation_enabled,negotiation_flex_pct,min_floor_cents&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}&status=eq.active&is_hidden=eq.false&order=created_at.asc&limit=10`)
+  const publicGigs = await dbRequest(`gigs?select=id,title,category,subcategory,status,is_hidden,unit_pricing,hourly_rate_cents&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}&status=eq.active&is_hidden=eq.false&order=created_at.asc&limit=10`)
   if (!Array.isArray(publicGigs) || !publicGigs.length || publicGigs.length > 10) throw new Error('No bounded set of public source gigs was available to mirror.')
   const [sourceTiers, sourcePrefs] = await Promise.all([
     dbRequest(`gig_tiers?select=gig_id,tier,title,description,price,delivery_days,revisions,is_active,features,scope_depth,scope_units&gig_id=in.(${publicGigs.map((gig) => gig.id).join(',')})&is_active=eq.true&order=tier.asc`),
@@ -336,7 +339,6 @@ async function createIncidentFixtures(sourceData) {
           provider_id: provider.id, provider_type: 'consultant', title: `Synthetic replay listing ${index + 1}`, category: sourceGig.category, subcategory: sourceGig.subcategory, slug,
           pitch: 'Hidden synthetic test listing for bounded replay only.', description: 'Synthetic hidden fixture. No real provider, credentials, licensure, advice, or professional service is represented.', requirements: 'Replay fixture only.',
           status: 'paused', is_hidden: true, tags: ['synthetic', 'acceptance-fixture', 'foley-taylor-replay'], unit_pricing: sourceGig.unit_pricing, hourly_rate_cents: sourceGig.hourly_rate_cents,
-          negotiation_enabled: sourceGig.negotiation_enabled, negotiation_flex_pct: sourceGig.negotiation_flex_pct, min_floor_cents: sourceGig.min_floor_cents,
         }] })
         gig = inserted?.[0]
       } catch (error) {
