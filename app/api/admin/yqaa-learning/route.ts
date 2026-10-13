@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdminUser(request)
   if ('error' in auth) return fail(auth.error, auth.status)
   const { data: outcomes, error: outcomeError } = await auth.db
-    .from('yqaa_negotiation_outcomes').select('source_kind,source_id,state,occurred_at').order('occurred_at', { ascending: false }).limit(5000)
+    .from('yqaa_negotiation_outcomes').select('source_kind,source_id,state,occurred_at,event_order').order('event_order', { ascending: false }).limit(5000)
   if (outcomeError) return fail('YQAA outcome stream is unavailable. Apply the additive Phase 3 migration first.', 503)
   const { data: decisions, error: decisionError } = await auth.db
     .from('yqaa_decision_records').select('id,record_version,policy_version,rubric_version,channel,posture,negotiation_action,escalated,reason_codes,created_at').order('created_at', { ascending: false }).limit(500)

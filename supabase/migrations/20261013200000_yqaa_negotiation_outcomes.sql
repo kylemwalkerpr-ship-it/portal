@@ -2,8 +2,13 @@
 -- Events are derived exclusively from YQAA offers and provider approval state.
 -- No conversation text, contact data, prices, or transcript URLs are copied.
 
+-- Sequence gaps after rolled-back transactions are harmless; every committed
+-- source transition still gets its own durable, globally ordered identity.
+create sequence if not exists public.yqaa_negotiation_outcomes_order_seq;
+
 create table if not exists public.yqaa_negotiation_outcomes (
   id uuid primary key default gen_random_uuid(),
+  event_order bigint not null unique,
   occurred_at timestamptz not null default clock_timestamp(),
   source_kind text not null check (source_kind in ('offer','provider_approval')),
   source_id uuid not null,
@@ -12,7 +17,7 @@ create table if not exists public.yqaa_negotiation_outcomes (
   constraint yqaa_negotiation_outcomes_key_len check (length(event_key) between 1 and 180)
 );
 create index if not exists yqaa_negotiation_outcomes_time_idx
-  on public.yqaa_negotiation_outcomes (occurred_at desc, source_kind, state);
+  on public.yqaa_negotiation_outcomes (occurred_at desc, event_order desc, source_kind, state);
 alter table public.yqaa_negotiation_outcomes enable row level security;
 alter table public.yqaa_negotiation_outcomes force row level security;
 revoke all on table public.yqaa_negotiation_outcomes from public, anon, authenticated;
@@ -46,17 +51,16 @@ create policy yqaa_review_submissions_service_only on public.yqaa_review_submiss
 
 create or replace function public.capture_yqaa_offer_outcome()
 returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_event_order bigint;
 begin
   begin
     if new.yqaa_idempotency_key is null then return new; end if;
-    if tg_op = 'INSERT' then
-      insert into public.yqaa_negotiation_outcomes(source_kind, source_id, state, event_key)
-      values ('offer', new.id, new.status, 'offer:' || new.id::text || ':' || new.status)
-      on conflict (event_key) do nothing;
-    elsif old.status is distinct from new.status then
-      insert into public.yqaa_negotiation_outcomes(source_kind, source_id, state, event_key)
-      values ('offer', new.id, new.status, 'offer:' || new.id::text || ':' || new.status)
-      on conflict (event_key) do nothing;
+    if tg_op = 'INSERT' or old.status is distinct from new.status then
+      v_event_order := nextval('public.yqaa_negotiation_outcomes_order_seq');
+      insert into public.yqaa_negotiation_outcomes(event_order, source_kind, source_id, state, event_key)
+      values (v_event_order, 'offer', new.id, new.status,
+        'offer:' || new.id::text || ':' || v_event_order::text || ':' || new.status);
     end if;
   exception when others then
     raise warning 'YQAA offer outcome capture failed; source status remains authoritative';
@@ -73,18 +77,15 @@ grant execute on function public.capture_yqaa_offer_outcome() to service_role;
 
 create or replace function public.capture_yqaa_approval_outcome()
 returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_event_order bigint;
 begin
   begin
-    if tg_op = 'INSERT' then
-      insert into public.yqaa_negotiation_outcomes(source_kind, source_id, state, event_key)
-      values ('provider_approval', md5(new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text)::uuid, new.status,
-        'approval:' || new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text || ':' || new.status)
-      on conflict (event_key) do nothing;
-    elsif old.status is distinct from new.status then
-      insert into public.yqaa_negotiation_outcomes(source_kind, source_id, state, event_key)
-      values ('provider_approval', md5(new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text)::uuid, new.status,
-        'approval:' || new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text || ':' || new.status)
-      on conflict (event_key) do nothing;
+    if tg_op = 'INSERT' or old.status is distinct from new.status then
+      v_event_order := nextval('public.yqaa_negotiation_outcomes_order_seq');
+      insert into public.yqaa_negotiation_outcomes(event_order, source_kind, source_id, state, event_key)
+      values (v_event_order, 'provider_approval', md5(new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text)::uuid, new.status,
+        'approval:' || new.conversation_id::text || ':' || new.request_id::text || ':' || new.version::text || ':' || v_event_order::text || ':' || new.status);
     end if;
   exception when others then
     raise warning 'YQAA provider approval outcome capture failed; source status remains authoritative';

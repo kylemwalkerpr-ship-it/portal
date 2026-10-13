@@ -21,6 +21,26 @@ describe('YQAA Phase 3 calibration boundaries', () => {
     expect(metrics.providerApprovalRate).toBe(0)
   })
 
+  it('uses durable transition order when event timestamps tie and honors offer reversions', () => {
+    const metrics = summarizeYqaaOutcomes([
+      { source_kind: 'offer', source_id: 'paid-after-retry', state: 'accepted', occurred_at: '2026-01-01T00:00:00Z', event_order: 10 },
+      { source_kind: 'offer', source_id: 'paid-after-retry', state: 'pending', occurred_at: '2026-01-01T00:00:00Z', event_order: 11 },
+      { source_kind: 'offer', source_id: 'paid-after-retry', state: 'accepted', occurred_at: '2026-01-01T00:00:00Z', event_order: 12 },
+      { source_kind: 'offer', source_id: 'paid-after-retry', state: 'paid', occurred_at: '2026-01-01T00:00:00Z', event_order: 13 },
+      { source_kind: 'offer', source_id: 'refunded-order', state: 'accepted', occurred_at: '2026-01-01T00:00:00Z', event_order: 14 },
+      { source_kind: 'offer', source_id: 'refunded-order', state: 'pending', occurred_at: '2026-01-01T00:00:00Z', event_order: 15 },
+      { source_kind: 'provider_approval', source_id: 'approval-v1', state: 'approved', occurred_at: '2026-01-01T00:00:00Z', event_order: 16 },
+      { source_kind: 'provider_approval', source_id: 'approval-v1', state: 'invalidated', occurred_at: '2026-01-01T00:00:00Z', event_order: 17 },
+      { source_kind: 'provider_approval', source_id: 'approval-v2', state: 'pending', occurred_at: '2026-01-01T00:00:00Z', event_order: 18 },
+      { source_kind: 'provider_approval', source_id: 'approval-v2', state: 'approved', occurred_at: '2026-01-01T00:00:00Z', event_order: 19 },
+    ])
+    expect(metrics.offerEvents).toBe(6)
+    expect(metrics.offerStates).toEqual({ accepted: 3, pending: 2, paid: 1 })
+    expect(metrics.resolvedOffers).toBe(1)
+    expect(metrics.offerAcceptanceRate).toBe(1)
+    expect(metrics.providerApprovalRate).toBe(0.5)
+  })
+
   it('requires two distinct, agreeing reviewer submissions for critical cases and never verifies claims itself', () => {
     const one = [{ decision_record_id: 'critical', reviewer_profile_id: 'admin-a', human_safe: false, is_critical: true, reviewer_qualification_claim: 'licensed attorney', provenance_ref: 'batch-001' }]
     expect(summarizeYqaaReviews(one)).toMatchObject({ criticalCasesPendingDualReview: 1, dualReviewedCriticalCases: 0, qualificationVerifiedCases: 0, eligibleGoldLabels: 0 })
@@ -58,6 +78,9 @@ describe('YQAA Phase 3 calibration boundaries', () => {
     expect(sql).toMatch(/grant select, insert on table public\.yqaa_negotiation_outcomes to service_role/i)
     expect(sql).toMatch(/new\.yqaa_idempotency_key is null then return new/i)
     expect(sql).toMatch(/old\.status is distinct from new\.status/i)
+    expect(sql).toMatch(/event_order bigint not null unique/i)
+    expect(sql).toMatch(/nextval\('public\.yqaa_negotiation_outcomes_order_seq'\)/i)
+    expect(sql).toMatch(/'offer:' \|\| new\.id::text \|\| ':' \|\| v_event_order::text/i)
     expect(sql).toMatch(/unique \(decision_record_id, reviewer_profile_id\)/i)
     expect(sql).toMatch(/check \(qualification_verified_at is null\)/i)
     expect(sql).not.toMatch(/grant .*authenticated/i)

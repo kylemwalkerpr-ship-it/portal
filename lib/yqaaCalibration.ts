@@ -1,6 +1,15 @@
 import { evaluateYqaaGoldSet, type YqaaEvaluation } from '@/lib/yqaaOfflineEvaluator'
 
-export type YqaaOutcomeEvent = { source_kind: 'offer' | 'provider_approval'; source_id?: string; occurred_at?: string; state: string }
+export type YqaaOutcomeEvent = { source_kind: 'offer' | 'provider_approval'; source_id?: string; occurred_at?: string; event_order?: number | string; state: string }
+
+function isLaterOutcome(candidate: YqaaOutcomeEvent, current: YqaaOutcomeEvent) {
+  const candidateOrder = Number(candidate.event_order)
+  const currentOrder = Number(current.event_order)
+  if (Number.isFinite(candidateOrder) && Number.isFinite(currentOrder) && candidateOrder !== currentOrder) {
+    return candidateOrder > currentOrder
+  }
+  return String(candidate.occurred_at || '') > String(current.occurred_at || '')
+}
 
 export function summarizeYqaaOutcomes(events: YqaaOutcomeEvent[]) {
   const offers = events.filter((event) => event.source_kind === 'offer')
@@ -13,7 +22,7 @@ export function summarizeYqaaOutcomes(events: YqaaOutcomeEvent[]) {
   offers.forEach((event, index) => {
     const key = event.source_id || `event-${index}`
     const current = latestOffers.get(key)
-    if (!current || String(event.occurred_at || '') > String(current.occurred_at || '')) latestOffers.set(key, event)
+    if (!current || isLaterOutcome(event, current)) latestOffers.set(key, event)
   })
   const terminalOffers = [...latestOffers.values()].filter((event) => ['accepted', 'paid', 'declined', 'expired', 'cancelled'].includes(event.state))
   const positiveOffers = terminalOffers.filter((event) => ['accepted', 'paid'].includes(event.state)).length
@@ -21,7 +30,7 @@ export function summarizeYqaaOutcomes(events: YqaaOutcomeEvent[]) {
   approvals.forEach((event, index) => {
     const key = event.source_id || `approval-event-${index}`
     const current = latestApprovals.get(key)
-    if (!current || String(event.occurred_at || '') > String(current.occurred_at || '')) latestApprovals.set(key, event)
+    if (!current || isLaterOutcome(event, current)) latestApprovals.set(key, event)
   })
   const resolvedApprovals = [...latestApprovals.values()].filter((event) => ['approved', 'declined', 'invalidated'].includes(event.state))
   const approved = resolvedApprovals.filter((event) => event.state === 'approved').length
