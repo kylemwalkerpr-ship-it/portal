@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Services', href: '/dashboard/gigs' },
   { label: 'Orders', href: '/dashboard/orders' },
+  { label: 'Pricing', href: '/dashboard/pricing' },
   { label: 'Marketplace', href: '/dashboard/marketplace' },
   { label: 'Compliance', href: '/dashboard/compliance' },
 ]

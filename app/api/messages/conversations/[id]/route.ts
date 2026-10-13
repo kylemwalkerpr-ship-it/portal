@@ -44,6 +44,21 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const counterpartId = conv.participant_a === profileId ? conv.participant_b : conv.participant_a
 
+  let pricingApproval: any = null
+  const metadata = (conv as any).metadata || {}
+  if (['attorney', 'consultant'].includes(auth.role) && metadata.ai_pricing_approval_request_id) {
+    try {
+      const { data } = await db.from('yqaa_pricing_approvals')
+        .select('request_id, version, price_cents, scope_hash, status, created_at, resolved_at, consumed_at')
+        .eq('conversation_id', id)
+        .eq('request_id', metadata.ai_pricing_approval_request_id)
+        .eq('version', Number(metadata.ai_pricing_approval_version) || 1)
+        .eq('provider_id', profileId)
+        .maybeSingle()
+      if (data) pricingApproval = { ...data, status: data.consumed_at ? 'used' : data.status }
+    } catch { /* additive approval migration may not be applied */ }
+  }
+
   let sourceInquiryArchivedAt: string | null = null
   if (conv.context_kind === 'inquiry' && conv.context_id) {
     try {
@@ -240,6 +255,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       source_inquiry_archived_at: sourceInquiryArchivedAt,
       ai_mode: readAiMode((conv as any).metadata),
       ai_disclosed: Boolean((conv as any).metadata?.ai_disclosed),
+      pricing_approval: pricingApproval,
     },
     messages,
     sidebar: {
