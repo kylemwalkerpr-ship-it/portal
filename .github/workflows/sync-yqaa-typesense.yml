@@ -34,6 +34,9 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.YQAA_MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.YQAA_MODAL_TOKEN_SECRET }}
+          YQAA_TYPESENSE_URL: ${{ secrets.YQAA_TYPESENSE_URL }}
+          YQAA_TYPESENSE_TOKEN: ${{ secrets.YQAA_TYPESENSE_TOKEN }}
         run: |
           VERSION=$(python scripts/publish-yqaa-typesense.py)
           YQAA_SNAPSHOT_VERSION="$VERSION" modal deploy services/yqaa_typesense/app.py
+          python scripts/verify-yqaa-typesense.py
