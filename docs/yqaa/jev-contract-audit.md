@@ -48,3 +48,7 @@ These are prioritized candidates for a separate design and implementation pass. 
 4. **Calibration/diagnostics:** retain per-question Choice confidence and probability distributions where permitted, then compare them to outcomes before changing any thresholds. Noul confidence remains the adapter's existing deterministic transform until a separately reviewed design and regression evidence support a policy change.
 
 Avoid using Jev for deterministic counts, arithmetic, date/deadline calculation, exact policy checks, or free-form adversarial text execution. Keep state compact and relevant, name the exact fields each instruction should use, and never treat question IDs as model-visible instructions.
+
+## Worker redirect compatibility repair (2026-10-13)
+
+A keyless probe using workerd 1.20260721.1 with production compatibility date 2026-05-12 and flags reproduced a TypeError before network I/O for `redirect: 'error'`. The same probe using `manual` reached the endpoint (HTTP 403). Both Jev adapters now use manual redirect handling and reject every 3xx response as `network_redirect`, without following Location or forwarding credentials. Regression tests cover both adapters and statuses 301, 302, 303, 307 and 308. The earlier paragraph describing `error` records the preceding implementation.

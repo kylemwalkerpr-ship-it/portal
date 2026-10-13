@@ -234,8 +234,11 @@ export async function requestJevAdvisory(
       },
       body: JSON.stringify(boundedPayload(ctx, yqaaJevTriggers(ctx))),
       signal: controller.signal,
-      redirect: 'error',
+      redirect: 'manual',
     })
+    if (response.status >= 300 && response.status < 400) {
+      return { available: false, reason: 'network_redirect' }
+    }
     if (!response.ok) {
       return { available: false, reason: knownFiniteHttpFailure(response.status) || 'request_failed' }
     }
@@ -492,8 +495,11 @@ export async function requestCompanionJev(
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(companionJevPayload(ctx)),
         signal: controller.signal,
-        redirect: 'error',
+        redirect: 'manual',
       })
+      if (response.status >= 300 && response.status < 400) {
+        return { available: false, reason: 'network_redirect' }
+      }
       if (!response.ok) {
         return { available: false, reason: knownFiniteHttpFailure(response.status) || 'request_failed' }
       }
