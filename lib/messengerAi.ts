@@ -55,6 +55,7 @@ import {
   synthesizeOfferFromQuote,
   type AdaptivePricingDecision,
 } from '@/lib/yqaaAdaptivePricing'
+import { approvalMatchesDecision, approvalQuoteMatchesDecision } from '@/lib/yqaaProviderControls'
 import {
   buildCompanionDecision,
   inferJourneyStage,
@@ -1122,6 +1123,17 @@ export async function maybeAutoReply(opts: {
       // Adaptive pricing is re-inferred on EVERY turn (scope, urgency, complexity,
       // agency and budget all move), wrapping the market-evidence layer as audit
       // evidence only. Numbers never come from the model (PRICING-ADAPTIVE §7.6).
+      let approvedPricingRequest = false
+      let approvedPricingAuthority: {
+        conversation_id: string
+        request_id: string
+        version: number
+        provider_id: string
+        price_cents: number
+        scope_hash: string
+        gig_id: string | null
+      } | null = null
+      let approvalRequestInvalidated = false
       const adaptive = await buildAdaptivePricingDecision({
         db,
         provider,
@@ -1136,6 +1148,75 @@ export async function maybeAutoReply(opts: {
         console.warn('[messengerAi] adaptive pricing failed', err instanceof Error ? err.message : err)
         return null as AdaptivePricingDecision | null
       })
+
+      // A prior provider click is authority only while the durable approval row
+      // still matches this provider, thread, request version, exact price, gig,
+      // and current scope. Its explicit provenance is consumed by the atomic
+      // approval-backed reply RPC only when this offer is committed.
+      if (adaptive && (conv.metadata?.ai_pricing_approval_status === 'approved' || conv.metadata?.ai_pricing_approval_pending === true)
+          && conv.metadata?.ai_pricing_approval_request_id) {
+        const requestId = String(conv.metadata.ai_pricing_approval_request_id)
+        const version = Number(conv.metadata.ai_pricing_approval_version) || 1
+        try {
+          const { data: approval } = await db.from('yqaa_pricing_approvals')
+            .select('conversation_id, request_id, version, provider_id, price_cents, scope_hash, gig_id, status, consumed_at')
+            .eq('conversation_id', opts.conversationId).eq('request_id', requestId)
+            .eq('version', version).eq('provider_id', provider.id).maybeSingle()
+          const currentClientPrice = adaptive.negotiation.counter_cents ?? adaptive.negotiation.budget?.maxCents ?? null
+          const exactQuote = currentClientPrice !== null && approvalQuoteMatchesDecision({
+            providerId: provider.id,
+            conversationId: opts.conversationId,
+            requestId,
+            version,
+            priceCents: Number(currentClientPrice),
+            scopeHash: adaptive.scope.scope_hash,
+            gigId: adaptive.gig_id,
+            approval,
+          })
+          const exactApproval = currentClientPrice !== null
+            && Number(currentClientPrice) === Number(conv.metadata.ai_pricing_approval_price_cents)
+            && approvalMatchesDecision({
+                status: adaptive.status,
+                providerId: provider.id,
+                conversationId: opts.conversationId,
+                requestId,
+                version,
+                priceCents: Number(currentClientPrice),
+                scopeHash: adaptive.scope.scope_hash,
+                gigId: adaptive.gig_id,
+                approval,
+              })
+          if (exactApproval) {
+            adaptive.approved_price_cents = Number(currentClientPrice)
+            adaptive.approved_floor_cents = Number(currentClientPrice)
+            adaptive.recommended_action = 'ACCEPT'
+            adaptive.eligible_actions = ['ACCEPT']
+            adaptive.counter_class = 'reasonable'
+            adaptive.approval_required = false
+            adaptive.status = 'negotiating'
+            adaptive.client_safe.approved_quote_cents = Number(currentClientPrice)
+            adaptive.reason_codes.push('durable_provider_approval_matched')
+            approvedPricingRequest = true
+            approvedPricingAuthority = {
+              conversation_id: opts.conversationId,
+              request_id: requestId,
+              version,
+              provider_id: provider.id,
+              price_cents: Number(currentClientPrice),
+              scope_hash: adaptive.scope.scope_hash,
+              gig_id: adaptive.gig_id,
+            }
+          } else if (approval && ['pending', 'approved'].includes(approval.status)
+              && (approval.status !== 'pending' || !exactQuote)) {
+            const { error } = await db.rpc('invalidate_yqaa_pricing_approval', {
+              p_conversation_id: opts.conversationId,
+              p_request_id: requestId,
+              p_version: version,
+            })
+            if (!error) approvalRequestInvalidated = true
+          }
+        } catch { /* approval schema is additive; default remains blocked */ }
+      }
 
       const priorScopeHash = conversationMemory.negotiation?.scope_current?.scope_hash || null
       const hasNewScopeOrCounter = Boolean(
@@ -1236,7 +1317,7 @@ export async function maybeAutoReply(opts: {
       let replyText = String(decision.reply || '').trim().slice(0, 8000)
       let approvedOffer: { priceCents: number } | null = null
       let providerReview = false
-      let approvalPending = Boolean(adaptive?.approval_required)
+      let approvalPending = Boolean(adaptive?.approval_required && !approvedPricingRequest)
 
       // Model output cannot clear a server-required escalation or issue an offer
       // on a handoff turn, regardless of the model's parsed `escalate` value.
@@ -1420,6 +1501,13 @@ export async function maybeAutoReply(opts: {
             scopedFloorCents: adaptive?.quote.scoped_floor_cents ?? null,
             scopedScopeHash: adaptive?.scope.scope_hash ?? null,
           })
+          if (offerPersistence && approvedPricingAuthority) {
+            if (approvedPricingAuthority.price_cents !== approvedOffer.priceCents) {
+              throw new Error('Approved pricing authority does not match the guarded offer price.')
+            }
+            offerPersistence.approval = approvedPricingAuthority
+            offerPersistence.audit.approval_authority = approvedPricingAuthority
+          }
         } catch (err) {
           console.error('[messengerAi] offer preparation failed', err instanceof Error ? err.message : err)
         }
@@ -1465,15 +1553,33 @@ export async function maybeAutoReply(opts: {
         ai_last_skip: null,
         ...(approvalPending
           ? {
+              ai_pricing_approval_status: 'pending',
               ai_pricing_approval_pending: true,
               ai_pricing_approval_requested_at: new Date().toISOString(),
+              ...(adaptive && Number(adaptive.negotiation.counter_cents || adaptive.negotiation.budget?.maxCents) >= 100
+                ? {
+                    ai_pricing_approval_request_id: triggerMessageId,
+                    ai_pricing_approval_version: 1,
+                    ai_pricing_approval_price_cents: Math.round(Number(adaptive.negotiation.counter_cents || adaptive.negotiation.budget?.maxCents)),
+                    ai_pricing_approval_scope_hash: adaptive.scope.scope_hash,
+                    ai_pricing_approval_gig_id: adaptive.gig_id,
+                  }
+                : {}),
               ai_provider_attention_requested: true,
               ai_provider_attention_requested_at: new Date().toISOString(),
             }
           : {}),
+        ...(approvalRequestInvalidated && !approvalPending ? {
+          ai_pricing_approval_status: 'invalidated',
+          ai_pricing_approval_pending: false,
+        } : {}),
+        ...(approvedPricingRequest ? { ai_pricing_approval_pending: false } : {}),
         ...(shouldEscalate ? { ai_escalated_at: new Date().toISOString(), ai_escalation_reason: providerReview ? 'pricing_provider_review' : 'model_escalation' } : {}),
       }
-      const { data: committedReply, error: commitError } = await db.rpc('commit_yqaa_reply', {
+      const commitRpc = offerPersistence?.approval
+        ? 'commit_yqaa_reply_with_pricing_approval'
+        : 'commit_yqaa_reply'
+      const { data: committedReply, error: commitError } = await db.rpc(commitRpc, {
         p_conversation_id: opts.conversationId,
         p_trigger_message_id: triggerMessageId,
         p_reply: {

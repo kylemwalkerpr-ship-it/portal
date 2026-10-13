@@ -72,6 +72,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [sending, setSending] = React.useState(false)
   const [showOfferComposer, setShowOfferComposer] = React.useState(false)
   const [aiModeBusy, setAiModeBusy] = React.useState(false)
+  const [pricingApprovalBusy, setPricingApprovalBusy] = React.useState(false)
   const [offerBusyId, setOfferBusyId] = React.useState(null)
   const [payingOfferId, setPayingOfferId] = React.useState(null)
   const [mobileShowChat, setMobileShowChat] = React.useState(() => Boolean(defaultThreadId))
@@ -1265,8 +1266,32 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const isDeleted = deletedConvId === activeId
 
   // ── Banner (archived inquiry) ───────────────────────────────────────
-  const banner = (isArchived && !isDeleted) ? (
-    <div style={{
+  const pricingApproval = activeConv?.pricing_approval
+  const showPricingApproval = ['attorney', 'consultant'].includes(role) && pricingApproval && ['pending', 'approved', 'declined', 'used'].includes(pricingApproval.status)
+  const banner = (isArchived && !isDeleted) || showPricingApproval ? (
+    <div style={{ display: 'grid', gap: 8 }}>
+    {showPricingApproval && <div style={{
+      padding: '12px 14px', background: pricingApproval.status === 'pending' ? '#FFF8E7' : 'var(--panel-2)',
+      color: 'var(--text-soft)', fontSize: 13, borderBottom: '1px solid var(--border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div><strong>YQAA pricing review · ${(Number(pricingApproval.price_cents) / 100).toFixed(2)}</strong><div style={{ marginTop: 3 }}>{pricingApproval.status === 'pending' ? 'A client request is waiting for your decision. Approval is limited to this conversation, version, and quoted scope.' : pricingApproval.status === 'used' ? 'Approved price used for a matching offer.' : pricingApproval.status === 'approved' ? 'YQAA can use this approved quote when the client next messages.' : pricingApproval.status === 'declined' ? 'The request was declined. YQAA remains paused for your review.' : `Request ${pricingApproval.status}.`}</div></div>
+        {pricingApproval.status === 'pending' && <div style={{ display: 'flex', gap: 8 }}>
+          {(['approved', 'declined'] as const).map((decision) => <button key={decision} type="button" className="cv-head-offer-cta" disabled={pricingApprovalBusy} onClick={async () => {
+            if (!activeId) return
+            setPricingApprovalBusy(true)
+            try {
+              const response = await fetch(`/api/messages/conversations/${activeId}/pricing-approval`, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ request_id: pricingApproval.request_id, version: pricingApproval.version, decision }) })
+              const result = await response.json()
+              if (!response.ok) throw new Error(result.error || 'Could not save decision.')
+              setActiveConv((current: any) => current ? { ...current, pricing_approval: { ...current.pricing_approval, status: decision } } : current)
+            } catch (e: any) { setThreadError(e?.message || 'Could not save decision.') }
+            finally { setPricingApprovalBusy(false) }
+          }}>{pricingApprovalBusy ? 'Saving…' : decision === 'approved' ? 'Approve request' : 'Decline'}</button>)}
+        </div>}
+      </div>
+    </div>}
+    {isArchived && !isDeleted && <div style={{
       padding: '8px 14px',
       background: 'var(--panel-2)',
       color: 'var(--text-soft)',
@@ -1278,6 +1303,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }}>
       <span>⏸</span>
       <span>This inquiry was archived {fmtRelative(activeConv.source_inquiry_archived_at)}. Existing messages are read-only.</span>
+    </div>}
     </div>
   ) : null
 
