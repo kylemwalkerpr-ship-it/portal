@@ -255,6 +255,7 @@ describe('YQAA marketplace pricing authority', () => {
   })
 
   test('clientFrustrationOrExit catches Foley-style frustration and exit intent', () => {
+    expect(clientFrustrationOrExit('This is not helpful and feels like a waste of my time; I still do not understand what is included or what happens next.')).toBe(true)
     expect(clientFrustrationOrExit('wow AI really just stops at the buck lol')).toBe(true)
     expect(clientFrustrationOrExit("I'll go ask another AI then")).toBe(true)
     expect(clientFrustrationOrExit('never mind, forget it')).toBe(true)

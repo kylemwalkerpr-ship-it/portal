@@ -194,6 +194,13 @@ function approved(decision: AdaptivePricingDecision): number {
 }
 
 describe('adaptive pricing — scope signal', () => {
+  test('parses the live harness supported Would you accept dollar counter as CAD cents', () => {
+    const counterCents = extractNegotiationSignal([
+      clientMessage('counter-1', 'The server quote record for this scope is CAD $45.00. Would you accept $40.50 CAD for the same narrowed scope?'),
+    ], { clientId: CLIENT }).counter_cents
+    expect(counterCents).toBe(4_050)
+  })
+
   test('F1 parses a range budget as 50–100 and detects consult + self-serve', () => {
     const messages = [
       clientMessage('m1', 'I am in Canada on a study permit and want PR through marriage. What are my options?'),
