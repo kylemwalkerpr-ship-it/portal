@@ -177,7 +177,7 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
       payload = String(init?.body)
       return new Response(JSON.stringify({ model: 'jev-1.13.0', answers: {
         sufficient: { type: 'noul', noul: 0.95 }, conflict: { type: 'noul', noul: 0.05 },
-        needs_handoff: { type: 'noul', noul: 0.05 }, market: { type: 'choice', choice: 'global', confidence: 0.9 },
+        needs_handoff: { type: 'noul', noul: 0.05 }, market: { type: 'choice', choice: 'global', confidence: 0.9, probabilities: { usa: 0, canada: 0, uk: 0, australia: 0, global: 1, unknown: 0 } },
       }, usage: { input_tokens: 100, output_tokens: 20 } }), { status: 200 })
     }) as typeof fetch
     const result = await requestJevAdvisory({ query: 'Public question jane@example.com sk-live-secretvalue123456 DEEPSEEK_API_KEY=do-not-send-this-value', hostname: 'portal.yousafeconsultancy.com', evidence: [{ id: 'pub', title: 'Public source', body: 'x'.repeat(5000), source: 'https://market.yousafeconsultancy.com/', sourceUrl: 'https://market.yousafeconsultancy.com/', site: 'market' }] }, fetcher, { apiKey: 'test-only-token' })
@@ -203,14 +203,78 @@ describe('YQAA Jev advisory and deterministic safety policy', () => {
     const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer worker-bound-key')
       return new Response(JSON.stringify({ answers: {
-        sufficient: { noul: 0.9 }, conflict: { noul: 0.1 }, needs_handoff: { noul: 0.1 }, market: { choice: 'global' },
+        sufficient: { type: 'noul', noul: 0.9 }, conflict: { type: 'noul', noul: 0.1 }, needs_handoff: { type: 'noul', noul: 0.1 }, market: { type: 'choice', choice: 'global', confidence: 1, probabilities: { usa: 0, canada: 0, uk: 0, australia: 0, global: 1, unknown: 0 } },
       } }), { status: 200 })
     }) as typeof fetch
     await expect(requestJevAdvisory(context, fetcher)).resolves.toMatchObject({ available: true })
     jest.resetModules()
     jest.doMock('@opennextjs/cloudflare', () => ({ getCloudflareContext: () => ({ env: {} }) }))
     const unconfigured = await import('@/lib/jevAdvisory')
+    const oldKey = process.env.TYPESAFE_API_KEY
+    process.env.TYPESAFE_API_KEY = 'environment-key'
+    await expect(unconfigured.requestJevAdvisory(context, (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer environment-key')
+      return new Response(JSON.stringify({ answers: {
+        sufficient: { type: 'noul', noul: 0.9 }, conflict: { type: 'noul', noul: 0.1 }, needs_handoff: { type: 'noul', noul: 0.1 }, market: { type: 'choice', choice: 'global', confidence: 1, probabilities: { usa: 0, canada: 0, uk: 0, australia: 0, global: 1, unknown: 0 } },
+      } }), { status: 200 })
+    }) as typeof fetch)).resolves.toMatchObject({ available: true })
+    if (oldKey === undefined) delete process.env.TYPESAFE_API_KEY
+    else process.env.TYPESAFE_API_KEY = oldKey
     await expect(unconfigured.requestJevAdvisory(context, fetcher)).resolves.toEqual({ available: false, reason: 'not_configured' })
+  })
+
+  it('validates the public Jev typed answer contract and offered market distribution', async () => {
+    const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
+    const context = { query: 'Compare options', evidence: [] }
+    const answer = (overrides: Record<string, unknown> = {}) => ({ answers: {
+      sufficient: { type: 'noul', noul: 0.9 }, conflict: { type: 'noul', noul: 0.1 },
+      needs_handoff: { type: 'noul', noul: 0.1 },
+      market: { type: 'choice', choice: 'global', confidence: 0.8, probabilities: { usa: 0.04, canada: 0.04, uk: 0.04, australia: 0.04, global: 0.8, unknown: 0.04 } },
+      ...overrides,
+    } })
+    const run = (body: unknown) => requestJevAdvisory(context, (async () => new Response(JSON.stringify(body))) as typeof fetch, { apiKey: 'test' })
+    await expect(run(answer())).resolves.toMatchObject({ available: true })
+    await expect(run(answer({ sufficient: { type: 'choice', noul: 0.9 } }))).resolves.toEqual({ available: false, reason: 'invalid_response' })
+    await expect(run(answer({ market: { type: 'choice', choice: 'mars', confidence: 1, probabilities: { usa: 0, canada: 0, uk: 0, australia: 0, global: 0, unknown: 0, mars: 1 } } }))).resolves.toEqual({ available: false, reason: 'invalid_response' })
+    await expect(run(answer({ market: { type: 'choice', choice: 'global', confidence: 0.8, probabilities: { usa: 0, canada: 0, uk: 0, australia: 0, global: 0.8 } } }))).resolves.toEqual({ available: false, reason: 'invalid_response' })
+    await expect(run(answer({ market: { type: 'choice', choice: 'global', confidence: 2, probabilities: { usa: 0.04, canada: 0.04, uk: 0.04, australia: 0.04, global: 0.8, unknown: 0.04 } } }))).resolves.toEqual({ available: false, reason: 'invalid_response' })
+  })
+
+  it('does not fetch for pre-aborted callers and cancels response streams on deadlines or declared oversize', async () => {
+    const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
+    const controller = new AbortController()
+    controller.abort()
+    const fetcher = jest.fn(async () => new Response('{}')) as unknown as typeof fetch
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, fetcher, { apiKey: 'test', signal: controller.signal })).resolves.toEqual({ available: false, reason: 'timeout' })
+    expect(fetcher).not.toHaveBeenCalled()
+
+    let cancelled = false
+    const oversized = new Response('x', { headers: { 'content-length': '5000' } })
+    const cancel = oversized.body!.cancel.bind(oversized.body)
+    oversized.body!.cancel = async (reason) => { cancelled = true; return cancel(reason) }
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, (async () => oversized) as typeof fetch, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'invalid_response' })
+    expect(cancelled).toBe(true)
+
+    let streamCancelled = false
+    const stalledBody = new Response(new ReadableStream({
+      pull() { return new Promise(() => {}) },
+      cancel() { streamCancelled = true },
+    }))
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, (async () => stalledBody) as typeof fetch, { apiKey: 'test' })).resolves.toEqual({ available: false, reason: 'timeout' })
+    expect(streamCancelled).toBe(true)
+  })
+
+  it.each([[401, 'http_401'], [403, 'http_403'], [422, 'http_422'], [429, 'http_429'], [529, 'http_529']] as const)('returns safe finite public HTTP diagnosis for %i', async (status, reason) => {
+    const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, (async () => new Response('provider private detail', { status })) as typeof fetch, { apiKey: 'test' })).resolves.toEqual({ available: false, reason })
+  })
+
+  it('returns a finite safe transport category from the public adapter', async () => {
+    const { requestJevAdvisory } = await import('@/lib/jevAdvisory')
+    const error = Object.assign(new TypeError('fetch failed; private response body TOKEN=secret'), { cause: { code: 'ENOTFOUND' } })
+    const fetcher = (async () => { throw error }) as typeof fetch
+    await expect(requestJevAdvisory({ query: 'hello', evidence: [] }, fetcher, { apiKey: 'test' }))
+      .resolves.toEqual({ available: false, reason: 'network_dns' })
   })
 })
 
