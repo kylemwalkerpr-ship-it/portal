@@ -1,4 +1,49 @@
-const { counterofferAcknowledged, runIndependentCategories } = require('../scripts/yqaa-acceptance-assertions.cjs')
+const { counterofferAcknowledged, orientationAddressesContext, exactSyntheticCounterApproval, runIndependentCategories } = require('../scripts/yqaa-acceptance-assertions.cjs')
+
+describe('category-aware YQAA orientation', () => {
+  test.each([
+    ['education', 'We can start with a university application checklist.'],
+    ['academic-writing', 'Let’s begin with the essay prompt, school requirements, and word count.'],
+    ['mentorship', 'We can map out a study plan around your goals as a student.'],
+  ])('checks the context vocabulary for %s', (category, reply) => {
+    expect(orientationAddressesContext(category, reply)).toBe(true)
+  })
+
+  test('rejects unrelated or unknown category vocabulary', () => {
+    expect(orientationAddressesContext('academic-writing', 'I can help organize your university documents.')).toBe(false)
+    expect(orientationAddressesContext('unknown', 'I can help with your essay.')).toBe(false)
+  })
+})
+
+describe('synthetic provider pricing-approval fence', () => {
+  const request = {
+    triggerMessageId: 'counter-trigger', counterCents: 13950, scopeHash: 'three-doc-scope',
+    runMarker: 'this-run', providerRole: 'consultant',
+  }
+  const metadata = {
+    yqaa_live_acceptance: true, yqaa_live_acceptance_run: 'this-run', ai_mode: 'paused', ai_pricing_approval_status: 'pending', ai_pricing_approval_pending: true,
+    ai_pricing_approval_request_id: 'counter-trigger', ai_pricing_approval_version: 1,
+    ai_pricing_approval_price_cents: 13950, ai_pricing_approval_scope_hash: 'three-doc-scope', ai_last_scope_hash: 'three-doc-scope',
+  }
+
+  test('allows only the exact current hidden fixture counter', () => {
+    expect(exactSyntheticCounterApproval(metadata, request)).toBe(true)
+  })
+
+  test.each([
+    [{ ...metadata, yqaa_live_acceptance: false }, request],
+    [{ ...metadata, yqaa_live_acceptance_run: 'another-run' }, request],
+    [{ ...metadata, ai_pricing_approval_request_id: 'older-trigger' }, request],
+    [{ ...metadata, ai_pricing_approval_version: 2 }, request],
+    [{ ...metadata, ai_pricing_approval_price_cents: 15500 }, request],
+    [{ ...metadata, ai_pricing_approval_scope_hash: 'other-scope' }, request],
+    [{ ...metadata, ai_mode: 'auto' }, request],
+    [{ ...metadata, ai_pricing_approval_status: 'approved' }, request],
+    [metadata, { ...request, providerRole: 'client' }],
+  ])('refuses approval when fixture identity or exact request differs', (candidate, options) => {
+    expect(exactSyntheticCounterApproval(candidate, options)).toBe(false)
+  })
+})
 
 const scopeHash = 'synthetic-three-document-scope'
 const triggerMessageId = 'trigger-current'
@@ -93,6 +138,11 @@ describe('counteroffer acceptance evidence', () => {
     expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', { ...state, committedOffer: { ...state.committedOffer, offer: { ...state.committedOffer.offer, price: 15500 } } })).toBe(false)
     expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', { ...state, committedOffer: { ...state.committedOffer, visibleCard: null } })).toBe(false)
     expect(counterofferAcknowledged('I hear your USD 139.50 counter. I can lock in USD 155 for the three-document scope.', state)).toBe(false)
+  })
+
+  test('a natural provider-review handoff acknowledges the exact counter without claiming approval', () => {
+    const body = 'Thanks for the USD 139.50 counter for the same work. I’ve sent it to Ms Foley to have a look, and I’ll let you know when I hear back.'
+    expect(counterofferAcknowledged(body, pendingReviewState())).toBe(true)
   })
 
   test.each([

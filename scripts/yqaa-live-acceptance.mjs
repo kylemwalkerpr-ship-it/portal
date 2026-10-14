@@ -714,9 +714,17 @@ async function messengerSmoke() {
     const diagnostic = diagnosticRows?.[0]?.metadata || {}
     if (diagnostic.ai_last_trigger_message_id !== triggerId || diagnostic.ai_last_error || diagnostic.ai_last_skip) throw new Error(`${label}: model/provider diagnostic indicates an unavailable or skipped response.`)
     if (latestThread?.conversation?.ai_disclosed !== true) throw new Error(`${label}: authenticated thread did not expose disclosure state.`)
+    if (/\*\*[^*\n]+\*\*/.test(reply.body)) {
+      await browserNavigation.navigateOwnedPage(clientPage, `${BASE}/dashboard?page=messages&thread=${encodeURIComponent(conversationId)}`, ms => releaseIdentityModule.abortableDelay(ms, runController.signal))
+      const expectedVisibleText = reply.body.replace(/\*\*([^*\n]+)\*\*/g, (_match, content) => String(content).trim()).replace(/\s+/g, ' ').trim()
+      const renderedBodies = await clientPage.locator('.bub-text').allTextContents()
+      const boldWasRendered = renderedBodies.some(body => body.replace(/\s+/g, ' ').trim() === expectedVisibleText && !/\*\*[^*\n]+\*\*/.test(body))
+      check(`${label}: bold formatting rendered in the client UI`, boldWasRendered)
+      if (!boldWasRendered) throw new Error(`${label}: message body contains Markdown bold markers that did not render as emphasis in the client UI.`)
+    }
     if (scenario.name === 'orientation' && !/(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai|automated assistant)/i.test(reply.body)) throw new Error(`${label}: actual response did not disclose AI identity.`)
     const lower = reply.body.toLowerCase()
-    if (scenario.name === 'orientation' && !/(canada|study|checklist|documents|clarif|service)/i.test(reply.body)) throw new Error('orientation: response did not address the stated context.')
+    if (scenario.name === 'orientation' && !acceptanceAssertions.orientationAddressesContext(category.id, reply.body)) throw new Error(`${label}: response did not address the ${category.id} context.`)
     if (scenario.name === 'budget' && !/(budget|cad|450|price|scope|cost)/i.test(reply.body)) throw new Error('budget: response did not address budget or scope.')
     if (scenario.name === 'scope_narrowing' && !/(checklist|scope|organ|exclude|form)/i.test(reply.body)) throw new Error('scope_narrowing: response did not preserve the narrowed scope.')
     if (scenario.name === 'lowball' && !/(budget|narrow|scope|provider|fit|offer|realistic|cannot|can.t|not able)/i.test(reply.body)) throw new Error('lowball: response did not address the stated budget and viable options.')
@@ -752,7 +760,32 @@ async function messengerSmoke() {
       }
       if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current, committedOffer, triggerMessageId: triggerId })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
       if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
-      if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
+      const counterCents = Math.max(1, Math.round(quoteCents * 0.9))
+      if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === counterCents)) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
+      if (current.ai_pricing_approval_pending === true) {
+        const providerRole = fixtureProviderRole(fixture)
+        const requestId = current.ai_pricing_approval_request_id
+        const version = Number(current.ai_pricing_approval_version)
+        if (!acceptanceAssertions.exactSyntheticCounterApproval(current, { triggerMessageId: triggerId, counterCents, scopeHash: quoteScopeHash, runMarker: CURRENT_RUN_MARKER, providerRole })) throw new Error(`${label}: approval is not bound to this run's hidden provider fixture and exact counter scope.`)
+        const providerAuth = await authenticatedPage(fixture.providerClerkUserId, '/dashboard?page=messages')
+        try {
+          const providerThread = await api(providerAuth.page, `/api/messages/conversations/${conversationId}`)
+          if (providerThread.status !== 200 || providerThread.data.conversation?.id !== conversationId || providerThread.data.conversation?.counterpart?.id !== fixture.profileId) throw new Error(`${label}: authenticated fixture provider could not verify the approval conversation.`)
+          const decision = await api(providerAuth.page, `/api/messages/conversations/${conversationId}/pricing-approval`, { method: 'POST', body: { request_id: requestId, version, decision: 'approved' } })
+          const approval = decision.data?.approval
+          if (decision.status !== 200 || approval?.status !== 'approved' || Number(approval.price_cents) !== counterCents || approval.scope_hash !== quoteScopeHash || Number(approval.version) !== version) throw new Error(`${label}: real provider pricing-approval route did not record the exact synthetic counter.`)
+          const resumed = await api(providerAuth.page, `/api/messages/conversations/${conversationId}/ai-mode`, { method: 'PATCH', body: { ai_mode: 'auto' } })
+          if (resumed.status !== 200 || resumed.data?.ai_mode !== 'auto') throw new Error(`${label}: authenticated fixture provider could not resume YQAA after approval.`)
+          const afterApproval = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata || {}
+          const approvalRow = (await dbRequest(`yqaa_pricing_approvals?select=status,price_cents,scope_hash,version,provider_id,request_id,conversation_id&conversation_id=eq.${conversationId}&request_id=eq.${encodeURIComponent(requestId)}&version=eq.${version}`))?.[0]
+          if (afterApproval.ai_pricing_approval_status !== 'approved' || afterApproval.ai_mode !== 'auto' || !approvalRow || approvalRow.status !== 'approved' || Number(approvalRow.price_cents) !== counterCents || approvalRow.scope_hash !== quoteScopeHash || approvalRow.provider_id !== fixture.providerProfileId || approvalRow.request_id !== requestId || approvalRow.conversation_id !== conversationId) throw new Error(`${label}: durable provider approval and resumed mode did not reconcile to the exact fixture scope.`)
+          receipt.provider_approval_followthrough ||= []
+          receipt.provider_approval_followthrough.push({ category: category.id, status: 'synthetic_provider_approved_exact_counter', version, price_cents: counterCents, scope_hash: safeHash(quoteScopeHash), ai_mode_after_approval: 'auto' })
+          console.log(`PASS ${label}: hidden fixture provider approved the exact counter and resumed this conversation`)
+        } finally {
+          await providerAuth.context.close()
+        }
+      }
     }
     if (scenario.name === 'frustration') {
       const attention = memory.provider_attention
