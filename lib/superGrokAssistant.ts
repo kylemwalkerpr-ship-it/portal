@@ -1,10 +1,43 @@
 import { resolveMessengerGrokAuth, type MessengerGrokAuth } from '@/lib/messengerAi'
 import { XAI_API_BASE_DEFAULT } from '@/lib/xaiSuperGrokOAuth'
+import { fetchYqaaJsonWithTimeout } from '@/lib/yqaaDeadline'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type SystemAssistantTurn = {
   role: 'user' | 'assistant'
   content: string
+}
+
+export type SystemAssistantAttemptDiagnostic = {
+  protocol: 'responses' | 'chat'; attempt: number; model: string;
+  authMode: MessengerGrokAuth['authMode']; inputChars: number; elapsedMs: number;
+  remainingMs: number | null; status: number | null;
+  category: 'ok' | 'timeout' | 'authentication' | 'rate_limit' | 'server_error' | 'network' | 'invalid_output' | 'rejected';
+  cancelled: boolean; outputPresent: boolean;
+}
+type AttemptObserver = {
+  protocol: SystemAssistantAttemptDiagnostic['protocol']; auth: MessengerGrokAuth;
+  inputChars: number; remainingMs: () => number;
+  onAttempt?: (event: SystemAssistantAttemptDiagnostic) => void;
+}
+
+function emitAttempt(observer: AttemptObserver | undefined, attempt: number, startedAt: number, signal: AbortSignal | undefined, result?: { response: Response; text: string }, error?: unknown) {
+  if (!observer?.onAttempt) return
+  const status = result?.response.status ?? null
+  const outputPresent = Boolean(result && (observer.protocol === 'responses' ? parseResponsesContent(result.text) : parseChatContent(result.text)))
+  const timeout = error instanceof Error && /AbortError|TimeoutError/.test(error.name)
+  const category: SystemAssistantAttemptDiagnostic['category'] = timeout || signal?.aborted ? 'timeout'
+    : status === null ? 'network' : status === 401 || status === 403 ? 'authentication'
+    : status === 408 ? 'timeout' : status === 429 ? 'rate_limit' : status >= 500 ? 'server_error'
+    : result?.response.ok ? outputPresent ? 'ok' : 'invalid_output' : 'rejected'
+  const remaining = observer.remainingMs()
+  try {
+    observer.onAttempt({ protocol: observer.protocol, attempt: attempt + 1,
+      model: observer.auth.model.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 80), authMode: observer.auth.authMode,
+      inputChars: observer.inputChars, elapsedMs: Math.max(0, Date.now() - startedAt),
+      remainingMs: Number.isFinite(remaining) ? Math.max(0, remaining) : null,
+      status, category, cancelled: Boolean(signal?.aborted || timeout), outputPresent })
+  } catch { /* Diagnostics must never change provider behavior. */ }
 }
 
 // Keep the primary Responses call and its independent Chat Completions
@@ -60,19 +93,7 @@ function headersFor(auth: MessengerGrokAuth): Record<string, string> {
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, parentSignal?: AbortSignal) {
-  const controller = new AbortController()
-  const onAbort = () => controller.abort(parentSignal?.reason)
-  if (parentSignal?.aborted) onAbort()
-  else parentSignal?.addEventListener('abort', onAbort, { once: true })
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(url, { ...init, signal: controller.signal })
-    const text = await response.text()
-    return { response, text }
-  } finally {
-    clearTimeout(timer)
-    parentSignal?.removeEventListener('abort', onAbort)
-  }
+  return fetchYqaaJsonWithTimeout(url, init, timeoutMs, parentSignal)
 }
 
 async function postJsonWithRetry(
@@ -81,20 +102,24 @@ async function postJsonWithRetry(
   timeoutMs: number,
   attempts = 2,
   signal?: AbortSignal,
+  observer?: AttemptObserver,
 ): Promise<{ response: Response; text: string }> {
   let lastError: unknown = null
   const deadlineAt = Date.now() + timeoutMs
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const startedAt = Date.now()
     try {
       if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
       const remainingMs = deadlineAt - Date.now()
       if (remainingMs <= 0) throw new Error('Assistant request timed out')
       const { response, text } = await fetchWithTimeout(url, init, remainingMs, signal)
+      emitAttempt(observer, attempt, startedAt, signal, { response, text })
       if (response.ok || !TRANSIENT_STATUS.has(response.status) || attempt === attempts - 1) {
         return { response, text }
       }
       await wait(250 * (attempt + 1))
     } catch (err) {
+      emitAttempt(observer, attempt, startedAt, signal, undefined, err)
       lastError = err
       const timeout = err instanceof Error && err.name === 'AbortError'
       // Timeouts switch protocol immediately instead of repeating a slow call.
@@ -138,6 +163,7 @@ async function callResponses(
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal,
   timeoutMs = RESPONSES_TIMEOUT_MS,
+  observer?: AttemptObserver,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/responses`,
@@ -156,6 +182,7 @@ async function callResponses(
     timeoutMs,
     2,
     signal,
+    observer,
   )
 }
 
@@ -164,6 +191,7 @@ async function callChatCompletions(
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal,
   timeoutMs = CHAT_TIMEOUT_MS,
+  observer?: AttemptObserver,
 ) {
   return postJsonWithRetry(
     `${auth.baseURL}/chat/completions`,
@@ -181,6 +209,7 @@ async function callChatCompletions(
     timeoutMs,
     1,
     signal,
+    observer,
   )
 }
 
@@ -192,21 +221,24 @@ async function callChatCompletions(
  * legacy Chat Completions remains an independent bounded recovery path.
  * Authentication is cached briefly and refreshed once on 401/403.
  */
-export async function callSystemSuperGrok(
+async function callSystemSuperGrokAttempt(
   system: string,
   turns: SystemAssistantTurn[],
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number; onAttempt?: (event: SystemAssistantAttemptDiagnostic) => void } = {},
 ): Promise<{ text: string; model: string; authMode: string; latencyMs: number }> {
   const startedAt = Date.now()
   const deadlineAt = options.timeoutMs === undefined ? null : startedAt + Math.max(1, options.timeoutMs)
   const remainingMs = () => deadlineAt === null ? Number.POSITIVE_INFINITY : Math.max(0, deadlineAt - Date.now())
   const boundedTimeout = (defaultMs: number) => Math.max(1, Math.min(defaultMs, remainingMs()))
+  options.signal?.throwIfAborted()
   let auth = await withTimeout(resolveCachedAuth(), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth resolution')
+  options.signal?.throwIfAborted()
   const messages = [
     { role: 'system', content: system },
     ...turns.map((turn) => ({ role: turn.role, content: turn.content })),
   ]
 
+  const observer = (protocol: AttemptObserver['protocol']): AttemptObserver => ({ protocol, auth, inputChars: messages.reduce((size, message) => size + message.content.length, 0), remainingMs, onAttempt: options.onAttempt })
   let responsesStatus = 0
   let responsesDiagnostic = ''
   try {
@@ -217,17 +249,18 @@ export async function callSystemSuperGrok(
     const responseBudget = deadlineAt === null
       ? RESPONSES_TIMEOUT_MS
       : boundedTimeout(Math.min(RESPONSES_TIMEOUT_MS, Math.max(1, remainingMs() - 3_000)))
-    let response = await callResponses(auth, messages, options.signal, responseBudget)
+    let response = await callResponses(auth, messages, options.signal, responseBudget, observer('responses'))
     responsesStatus = response.response.status
 
     if (AUTH_FAILURE_STATUS.has(response.response.status)) {
       authCache = null
       auth = await withTimeout(resolveCachedAuth(true), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth refresh')
-      response = await callResponses(auth, messages, options.signal, boundedTimeout(responseBudget))
+      options.signal?.throwIfAborted()
+      response = await callResponses(auth, messages, options.signal, boundedTimeout(responseBudget), observer('responses'))
       responsesStatus = response.response.status
     }
 
-    responsesDiagnostic = response.text.slice(0, 240)
+    responsesDiagnostic = response.response.ok ? 'invalid_output' : 'http_rejected'
     if (response.response.ok) {
       const content = parseResponsesContent(response.text)
       if (content) {
@@ -241,16 +274,16 @@ export async function callSystemSuperGrok(
     }
   } catch (err) {
     if (options.signal?.aborted) throw err
-    responsesDiagnostic = err instanceof Error ? err.message : String(err)
+    responsesDiagnostic = err instanceof Error && /AbortError|TimeoutError/.test(err.name) ? 'timeout' : 'network'
   }
 
   let chatStatus = 0
   let chatDiagnostic = ''
   try {
     if (remainingMs() <= 0) throw new Error('Assistant model attempt budget exhausted before Chat Completions')
-    const chat = await callChatCompletions(auth, messages, options.signal, boundedTimeout(CHAT_TIMEOUT_MS))
+    const chat = await callChatCompletions(auth, messages, options.signal, boundedTimeout(CHAT_TIMEOUT_MS), observer('chat'))
     chatStatus = chat.response.status
-    chatDiagnostic = chat.text.slice(0, 240)
+    chatDiagnostic = chat.response.ok ? 'invalid_output' : 'http_rejected'
     if (chat.response.ok) {
       const content = parseChatContent(chat.text)
       if (content) {
@@ -264,12 +297,44 @@ export async function callSystemSuperGrok(
     }
   } catch (err) {
     if (options.signal?.aborted) throw err
-    chatDiagnostic = err instanceof Error ? err.message : String(err)
+    chatDiagnostic = err instanceof Error && /AbortError|TimeoutError/.test(err.name) ? 'timeout' : 'network'
   }
 
   throw new Error(
     `Assistant model unavailable after bounded recovery (responses=${responsesStatus || 'network'} ${responsesDiagnostic}; chat=${chatStatus || 'network'} ${chatDiagnostic})`,
   )
+}
+
+/** The entire allowance includes auth and recovery; cancellation also wins during auth. */
+export async function callSystemSuperGrok(
+  system: string,
+  turns: SystemAssistantTurn[],
+  options: { signal?: AbortSignal; timeoutMs?: number; onAttempt?: (event: SystemAssistantAttemptDiagnostic) => void } = {},
+): Promise<{ text: string; model: string; authMode: string; latencyMs: number }> {
+  const controller = new AbortController()
+  const abortFromParent = () => controller.abort(options.signal?.reason)
+  if (options.signal?.aborted) abortFromParent()
+  else options.signal?.addEventListener('abort', abortFromParent, { once: true })
+  const timer = options.timeoutMs === undefined ? null : setTimeout(
+    () => controller.abort(new DOMException('Assistant model attempt budget exhausted', 'AbortError')),
+    Math.max(1, options.timeoutMs),
+  )
+  let onAbort: () => void = () => {}
+  try {
+    controller.signal.throwIfAborted()
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(controller.signal.reason || new DOMException('Aborted', 'AbortError'))
+      controller.signal.addEventListener('abort', onAbort, { once: true })
+    })
+    return await Promise.race([
+      callSystemSuperGrokAttempt(system, turns, { ...options, signal: controller.signal }),
+      cancelled,
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+    controller.signal.removeEventListener('abort', onAbort)
+    options.signal?.removeEventListener('abort', abortFromParent)
+  }
 }
 
 export function resetSystemAssistantAuthCache(): void {

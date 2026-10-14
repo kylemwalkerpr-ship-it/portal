@@ -21,3 +21,14 @@ The public chat endpoint emits `Server-Timing` values for knowledge, model, and 
 ## Knowledge integrity
 
 Deep knowledge is not removed to gain speed. Retrieval is lazy and intent-aware. The central crawler keeps the public sister-site coverage while storing a more compact per-page snapshot, and the model still follows the grounding contract: use verified YouSafe evidence, disclose uncertainty, and never fabricate prices, policies, credentials, availability, outcomes, or URLs.
+
+
+## 14 October recovery and acceptance continuation
+
+A deterministic slow-path regression reproduced fallback starvation: a 24-second primary attempt followed by a nine-second compact retry consumed the entire 33-second generation allowance. The configured fallback is now attempted inside the recovery reserve before compact recovery, after a bounded credential lookup. A quick fallback rejection leaves compact primary recovery available. Grok remains primary, and public 42-second and Messenger commit deadlines are unchanged.
+
+Production and direct inference are separate evidence. The baseline production probe returned HTTP 504 with knowledge 4 seconds, optional web research 6 seconds, and model timeout near 32 seconds. Synthetic direct subscription-authenticated Grok Responses and Chat Completions requests succeeded in approximately 13 and 12 seconds. A saved first-party DeepSeek credential returned HTTP 402; credential presence is not operational availability. No paid provisioning is part of this change.
+
+Transport diagnostics record only protocol, attempt, sanitized model, authentication mode, input character count, elapsed/remaining time, finite status/category, cancellation and output presence. Provider bodies, customer text, prompts and credentials are excluded. Public errors no longer include raw provider rejection bodies.
+
+Acceptance now verifies the actual counter amount, same-scope server quote, retained counter memory and authorized disposition. A failed negotiation stops its dependent turns but independent category and provider-attention fixtures continue. Failed and unreached turns remain explicit failures/unreached evidence; cleanup and release identity gates remain required. A public HTTP 200 also needs substantive reply content.
