@@ -301,6 +301,7 @@ CONVERSATION QUALITY — VERY IMPORTANT:
 - Use the supplied GROUNDED CONVERSATION MEMORY plus recent thread. If the client already gave a budget, country, deadline, documents, or scope, remember it and move forward instead of asking again.
 - Ask at most one or two high-value clarifying questions at a time. Keep momentum.
 - Acknowledge what the client actually said; do not mechanically summarize their whole message back to them.
+- For uncertain pricing, never default to “I don’t have enough verified Marketplace pricing...” boilerplate or expose internal checks. Acknowledge the scope in the context of this thread, explain naturally when the provider needs to confirm the price, and leave one useful conversational next step. Avoid generic numbered checklists unless the client asks for one.
 
 SAFETY / YMYL:
 1. Educational orientation only; individualized professional advice requires a suitably qualified person. No outcome guarantees for visas, cases, admissions, refunds, or timelines.
@@ -388,15 +389,12 @@ export function applyPricingGuardDecision(modelDecision: GrokDecision, guard: Re
 export function insufficientEvidenceHandoffReply(providerLabel: string, budget?: PricingAuthority['budget'], latestClientText = '') {
   const provider = String(providerLabel || 'the provider').trim().slice(0, 120) || 'the provider'
   const budgetNote = budget && Number.isFinite(budget.maxCents) && budget.maxCents > 0 && /^[a-z]{3}$/i.test(budget.currency)
-    ? `I’ve noted your ${budget.currency.toUpperCase()} ${(budget.maxCents / 100).toFixed(2)} budget. You and the provider can agree what work it covers before anything is booked.\n\n`
+    ? `I’ve kept your ${budget.currency.toUpperCase()} ${(budget.maxCents / 100).toFixed(2)} budget in mind. `
     : ''
   if (/\b(?:request|ask|contact)\b[^.!?]{0,70}\b(?:provider|human|review)\b|\breview personally\b/i.test(latestClientText)) {
-    return `${budgetNote}I’ve requested a review from ${provider}. Their reply is still pending. You can leave any other questions here so they have the full picture.`
+    return `${budgetNote}I’ve asked ${provider} to weigh in; their reply hasn’t come through yet. Is there one detail you’d like me to add for them?`
   }
-  const opener = /\b(move|moving|relocat\w*|settle\w*)\b/i.test(latestClientText)
-    ? 'Planning ahead gives you room to keep the move manageable. Start with a short outline before committing to a full paid service.'
-    : 'Let’s get the useful groundwork ready before committing to a paid service.'
-  return `${budgetNote}${opener}\n\n1. Note the place involved and the rough dates you have in mind.\n2. List the documents you already have, keeping confirmed facts separate from things still being checked.\n3. Write down the questions you want answered, and which parts you’re comfortable handling yourself.\n\nI’ve asked ${provider} to review what help they can offer; their reply is still pending. A suitably qualified professional should confirm any personal legal options. You can leave that outline here so it’s ready for them.`
+  return `${budgetNote}I want to make sure you get a clear answer, so I’ve asked ${provider} to look at what you have in mind. Their reply hasn’t come through yet. While we wait, what would you most like their help with first?`
 }
 
 export function yqaaOfferIdempotencyKey(conversationId: string, triggerMessageId: string | null | undefined) {
@@ -1724,7 +1722,11 @@ export async function maybeAutoReply(opts: {
         : offerPersistence?.approval
           ? 'commit_yqaa_reply_with_pricing_approval'
           : 'commit_yqaa_reply'
-      if (opts.runtime) await opts.runtime.markStage('atomic_reply_commit')
+      // Record the stage in memory so a timeout remains diagnosable, but do
+      // not await another database round trip immediately before the atomic
+      // commit. The failure receipt is written by scheduleAutoReply if the
+      // commit misses the runtime deadline.
+      if (opts.runtime) opts.runtime.stage = 'atomic_reply_commit'
       if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
       const rpc = db.rpc(opts.runtime ? 'commit_yqaa_reply_with_runtime_deadline' : commitRpc, {
         p_conversation_id: opts.conversationId,

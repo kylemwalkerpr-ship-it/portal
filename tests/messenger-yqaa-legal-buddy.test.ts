@@ -75,11 +75,12 @@ describe('legal-buddy escalation reply', () => {
 
   test('missing evidence handoff is explicit and names the human provider', () => {
     const reply = insufficientEvidenceHandoffReply('Avery')
-    expect(reply).toContain('List the documents')
-    expect(reply).toContain('reply is still pending')
-    expect(reply).toContain('qualified professional')
-    expect(reply).not.toContain('I don’t have enough reliable information')
     expect(reply).toContain('Avery')
+    expect(reply).toContain('asked')
+    expect(reply).toContain('what would you most like their help with first?')
+    expect(reply).not.toMatch(/^\s*\d\./m)
+    expect(reply).not.toContain('I don’t have enough reliable information')
+    expect(reply).not.toMatch(/verified Marketplace pricing|server-approved numbers|insufficient evidence/i)
   })
 
   test('evidence handoff acknowledges the stated budget without approving a price', () => {
@@ -87,9 +88,10 @@ describe('legal-buddy escalation reply', () => {
       minCents:null, maxCents:45000, currency:'cad', sourceText:'', messageId:null, confidence:'explicit',
     })
     expect(reply).toContain('CAD 450.00')
-    expect(reply).toContain('agree what work it covers before anything is booked')
+    expect(reply).toContain('kept your CAD 450.00 budget in mind')
     expect(reply).toContain('Avery')
     expect(reply).not.toMatch(/discount|offer created|approved price/i)
+    expect(reply).not.toContain('You and the provider can agree what work it covers')
   })
 
   test('server escalation overrides a model decline and removes its offer', () => {
@@ -115,6 +117,8 @@ describe('legal-buddy escalation reply', () => {
  expect(prompt).not.toContain('with the licensed provider available on this thread')
  expect(prompt).toContain('A role label is not evidence of licensure or availability')
  expect(prompt).toContain('requested/pending')
+ expect(prompt).toContain('never default to “I don’t have enough verified Marketplace pricing...” boilerplate')
+ expect(prompt).toContain('Avoid generic numbered checklists unless the client asks for one')
  })
 
  test.each([['model_provider_401','provider_auth'],['model_provider_400','provider_rejected'],['model_provider_408','provider_timeout'],['model_provider_429','provider_rate_limited'],['model_provider_503','provider_unavailable'],['Messenger provider attempt timed out','provider_timeout']])('classifies finite model failure%s without exposing error text',(message,category)=>{expect(providerFailureCategory(new Error(message))).toBe(category)})
@@ -156,8 +160,8 @@ test('mandatory handoff with stored budget and no adaptive pricing stays determi
  const draft=await resolveMessengerDraft({handoff,budgetReply:null,generate})
  const polished=await polishMessengerDraft({input:{reply:draft.reply,allowedAmountsCents:[],approvedPriceCents:15500,includes:['Paid scope']},mandatoryHandoff:true,budget,regenerate:generate})
  expect(polished.reply).toContain('CAD 450.00')
- expect(polished.reply).toContain('documents')
- expect(polished.reply).toContain('reply is still pending')
+ expect(polished.reply).toContain('what would you most like their help with first?')
+ expect(polished.reply).toContain('reply hasn’t come through yet')
  expect(polished.reply).not.toContain('Paid scope')
  expect(draft).toMatchObject({escalate:true,offer:null})
  expect(generate).not.toHaveBeenCalled()
