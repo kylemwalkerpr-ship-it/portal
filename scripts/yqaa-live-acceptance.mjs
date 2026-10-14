@@ -735,7 +735,22 @@ async function messengerSmoke() {
     }
     if (scenario.name === 'budget' && (Number(memory.budget?.maxCents || memory.negotiation?.budget_latest?.maxCents || 0) < 1 || !current.ai_last_pricing_status)) throw new Error(`${label}: server memory did not retain client budget and pricing state.`)
     if (scenario.name === 'counter') {
-      if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
+      let committedOffer
+      if (typeof current.ai_last_offer_id === 'string' && /^[0-9a-f-]{36}$/i.test(current.ai_last_offer_id)) {
+        const offerId = current.ai_last_offer_id
+        const [commits, offers, cards] = await Promise.all([
+          dbRequest(`yqaa_reply_commits?select=conversation_id,trigger_message_id,reply_message_id,offer_id&conversation_id=eq.${conversationId}&trigger_message_id=eq.${triggerId}`),
+          dbRequest(`offers?select=id,chat_id,sender_id,recipient_id,price,currency,status&id=eq.${offerId}&chat_id=eq.${conversationId}&sender_id=eq.${fixture.providerProfileId}&recipient_id=eq.${fixture.profileId}`),
+          dbRequest(`conversation_messages?select=id,conversation_id,sender_id,type,ref_offer_id,metadata&conversation_id=eq.${conversationId}&ref_offer_id=eq.${offerId}&type=eq.offer`),
+        ])
+        if (commits?.length === 1 && offers?.length === 1 && cards?.length === 1) committedOffer = {
+          conversationId, triggerMessageId: triggerId, replyMessageId: reply.id,
+          providerId: fixture.providerProfileId, clientId: fixture.profileId,
+          commit: commits[0], offer: offers[0], card: cards[0],
+          visibleCard: (latestThread?.messages || []).find(message => message.id === cards[0].id && message.ref_offer_id === offerId),
+        }
+      }
+      if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current, committedOffer })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
       if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
       if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
     }

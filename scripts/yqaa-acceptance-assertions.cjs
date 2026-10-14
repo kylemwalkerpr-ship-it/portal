@@ -4,7 +4,29 @@ function moneyCents(body) {
     .map((match) => Math.round(Number(match[1].replaceAll(',', '')) * 100))
 }
 
-function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, metadata }) {
+/** A current-turn offer must be visible to the client and bound to its durable commit. */
+function currentCommittedOffer(evidence, { metadata, counterCents, scopeHash, priceCents }) {
+  if (!evidence) return false
+  const { conversationId, triggerMessageId, replyMessageId, providerId, clientId, commit, offer, card, visibleCard } = evidence
+  if (![conversationId, triggerMessageId, replyMessageId, providerId, clientId].every(id => typeof id === 'string' && id.length > 0)) return false
+  if (providerId === clientId || triggerMessageId === replyMessageId) return false
+  if (commit?.conversation_id !== conversationId || commit.trigger_message_id !== triggerMessageId || commit.reply_message_id !== replyMessageId) return false
+  if (!offer?.id || commit.offer_id !== offer.id || metadata.ai_last_offer_id !== offer.id || metadata.ai_last_message_id !== replyMessageId || metadata.ai_last_trigger_message_id !== triggerMessageId) return false
+  if (offer.chat_id !== conversationId || offer.sender_id !== providerId || offer.recipient_id !== clientId || offer.status !== 'pending') return false
+  if (!Number.isInteger(priceCents) || priceCents <= 0 || offer.price !== priceCents || metadata.ai_last_approved_price_cents !== priceCents) return false
+  if (card?.conversation_id !== conversationId || card.sender_id !== providerId || card.type !== 'offer' || card.ref_offer_id !== offer.id) return false
+  if (card.metadata?.ai_generated !== true || card.metadata?.pricing_guarded !== true || card.metadata?.price !== priceCents || card.metadata?.pricing_scope_hash !== scopeHash) return false
+  if (!card.id || visibleCard?.id !== card.id || visibleCard.type !== 'offer' || visibleCard.ref_offer_id !== offer.id || visibleCard.metadata?.price !== priceCents) return false
+  if (visibleCard.offer?.id !== offer.id || visibleCard.offer?.price_cents !== priceCents || visibleCard.offer?.status !== 'pending' || visibleCard.offer?.currency !== offer.currency) return false
+  if (typeof offer.currency !== 'string' || !/^[a-z]{3}$/i.test(offer.currency)) return false
+  if (card.metadata.currency !== offer.currency || visibleCard.metadata?.currency !== offer.currency || String(metadata.ai_memory?.last_offer?.currency || '').toLowerCase() !== offer.currency.toLowerCase()) return false
+  const negotiation = metadata.ai_memory?.negotiation
+  // These live acceptance negotiations narrow to exactly three documents.
+  if (metadata.ai_last_scope_hash !== scopeHash || negotiation?.scope_current?.scope_hash !== scopeHash || negotiation.scope_current.units?.unit !== 'document' || negotiation.scope_current.units?.qty !== 3) return false
+  return (negotiation.client_counters || []).some(counter => counter.message_id === triggerMessageId && Number(counter.cents) === counterCents)
+}
+
+function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, metadata, committedOffer }) {
   if (!Number.isInteger(quoteCents) || quoteCents <= 0 || !Number.isInteger(counterCents) || counterCents <= 0 || !scopeHash) return false
   const negotiation = metadata?.ai_memory?.negotiation
   const quotes = negotiation?.quotes_made || []
@@ -41,11 +63,23 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
   })
   const holdsQuote = !authorityCondition && affirmative.some(sentence =>
     [...sentence.matchAll(firmPrice)].some(match => moneyCents(match[1]).includes(Number(latestScopedQuote?.cents))) || holdsScopedQuote(sentence))
+  const replyCurrencyMismatch = [
+    ...[...body.matchAll(/\b(USD|CAD|EUR|GBP|AUD)\s*\$?\s*\d/gi)].map(match => match[1]),
+    ...[...body.matchAll(/\b\d+(?:\.\d+)?\s*(USD|CAD|EUR|GBP|AUD)\b/gi)].map(match => match[1]),
+  ].some(currency => currency.toLowerCase() !== committedOffer?.offer?.currency?.toLowerCase())
+
+  const committedPrice = !authorityCondition && !replyCurrencyMismatch && currentCommittedOffer(committedOffer, { metadata, counterCents, scopeHash, priceCents: Number(latestScopedQuote?.cents) }) && affirmative.some(sentence => {
+    if (!/(?<![\w-])(?:(?:three|3)[- ](?:(?:application-essay|study-planning|application|essay|study|planning)[- ]{1}){0,2}documents?)\b/i.test(sentence)) return false
+    if (/\b(?:zero|no|six|four|five|two|one|[024-9])\s+(?:application\s+)?documents?\b/i.test(sentence)) return false
+    // The price must immediately follow the commitment, not another subject.
+    const direct = /\b(?:i can meet you at|(?:the )?fixed price i can send is|(?:the )?scoped work i can put through is)\s+((?:\$\s*|USD\s+)\d+(?:\.\d{1,2})?)(?!\d|\.\d)/gi
+    return [...sentence.matchAll(direct)].some(match => moneyCents(match[1]).includes(Number(latestScopedQuote?.cents)))
+  })
   const pending = /\b(provider|human)\b/i.test(body) && /\b(pending|review|approval|confirm\w*)\b/i.test(body) && metadata.ai_provider_attention_requested === true
   const accepted = !authorityCondition && affirmative.some(sentence => moneyCents(sentence).includes(counterCents) && /\b(accept\w*|agreed|confirmed|approved)\b/i.test(sentence)) && quotes.some((quote) => Number(quote.cents) === counterCents && quote.scope_hash === scopeHash)
   // A claimed acceptance must be backed by an actual quote at that amount.
   if (/\b(?:accept(?:ed)?|agreed|confirmed)\s+(?:your\s+)?(?:offer\s+(?:of\s+)?)?\$\s*/i.test(body) && !accepted) return false
-  return holdsQuote || pending || accepted
+  return holdsQuote || committedPrice || pending || accepted
 }
 
 /** Failures in a negotiation stop its dependent steps, but not a separate category/attention fixture. */
@@ -64,4 +98,4 @@ async function runIndependentCategories(categories, { negotiation, attention, on
   }
   return passed
 }
-module.exports = { moneyCents, counterofferAcknowledged, runIndependentCategories }
+module.exports = { moneyCents, currentCommittedOffer, counterofferAcknowledged, runIndependentCategories }
