@@ -164,7 +164,7 @@ describe('manual YQAA live acceptance safety guards', () => {
 
   test('incident gig mirror uses deployed columns and provider preferences', () => {
     const fixtures = harness.slice(harness.indexOf('async function createIncidentFixtures'), harness.indexOf('async function runIncidentReplay'))
-    expect(fixtures).toContain('unit_pricing,hourly_rate_cents&provider_id=eq.')
+    expect(fixtures).toContain('unit_pricing,hourly_rate_cents,pitch,description&provider_id=eq.')
     expect(fixtures).not.toContain('negotiation_flex_pct')
     expect(fixtures).not.toContain('min_floor_cents: sourceGig')
     expect(fixtures).toContain('provider_pricing_preferences?select=negotiation_enabled')

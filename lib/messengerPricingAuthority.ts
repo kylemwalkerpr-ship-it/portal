@@ -432,21 +432,21 @@ export async function buildMessengerPricingAuthority(args: {
   base.empirical = empirical
   base.empiricalIncluded = Boolean(empirical && empirical.count >= MIN_EMPIRICAL_SAMPLE)
 
-  if (!market || market.count < 1) {
+  if ((!market || market.count < 1) && !providerStats) {
     base.status = 'insufficient_market_data'
     base.rationale.push('Matched Marketplace scope has no active tier prices; do not invent a quote.')
     return base
   }
 
-  const referenceMeanCents = weightedReferenceMean(market, providerStats, empirical)
+  const referenceMeanCents = market ? weightedReferenceMean(market, providerStats, empirical) : providerStats!.meanCents
   // Revenue floor: 15% below reference mean at most, then respect the
   // provider's lowest live same-scope tier and platform minimum.
   const meanFloor = Math.ceil(referenceMeanCents * MIN_REFERENCE_RATIO)
   const providerFloor = providerStats?.minCents || 0
   const minimumAutoOfferCents = Math.max(meanFloor, providerFloor, platformMinimumCents)
   const evidenceHighCents = Math.max(
-    market.p90Cents,
-    market.maxCents,
+    market?.p90Cents || 0,
+    market?.maxCents || 0,
     providerStats?.maxCents || 0,
     empirical && empirical.count >= MIN_EMPIRICAL_SAMPLE ? empirical.p90Cents : 0,
   )
@@ -455,7 +455,9 @@ export async function buildMessengerPricingAuthority(args: {
   base.minimumAutoOfferCents = minimumAutoOfferCents
   base.evidenceHighCents = evidenceHighCents
   base.rationale.push(
-    `Marketplace ${intent.subcategoryName || intent.categoryName}: ${market.count} live tier prices; mean ${money(market.meanCents, currency)}, median ${money(market.medianCents, currency)}.`,
+    market
+      ? `Marketplace ${intent.subcategoryName || intent.categoryName}: ${market.count} live tier prices; mean ${money(market.meanCents, currency)}, median ${money(market.medianCents, currency)}.`
+      : 'No comparable Marketplace tier prices; reference uses this provider’s verified same-scope tiers only.',
   )
   if (providerStats) {
     base.rationale.push(`This provider has ${providerStats.count} same-scope tier prices; range ${money(providerStats.minCents, currency)}–${money(providerStats.maxCents, currency)}.`)

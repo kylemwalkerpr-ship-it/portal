@@ -1,4 +1,6 @@
+jest.mock('@/lib/fiverr', () => ({ getPaymentSettingsForApi: async () => ({primary_currency:'usd',minimum_offer_amount_cents:100,maximum_offer_amount_cents:500000}) }))
 import {
+  buildMessengerPricingAuthority,
   budgetGapReplyAlreadySent,
   clientFrustrationOrExit,
   extractClientBudget,
@@ -55,6 +57,33 @@ function pricing(overrides: Partial<PricingAuthority> = {}): PricingAuthority {
 }
 
 describe('YQAA marketplace pricing authority', () => {
+  function ownTierDb(category = 'mentorship', subcategory = 'student-mentorship') {
+    const gig = {id:'own-gig',provider_id:'provider',status:'paused',category,subcategory,tiers:[{price:2500,is_active:true},{price:5000,is_active:true}]}
+    return {from(table: string) {
+      const conditions: Array<(row: any) => boolean> = []
+      const query: any = {
+        select: () => query, limit: () => query, order: () => query, gt: () => query,
+        eq: (key: string, value: unknown) => { conditions.push(row => row[key] === value); return query },
+        in: (key: string, values: unknown[]) => { conditions.push(row => values.includes(row[key])); return query },
+        then: (resolve: any) => Promise.resolve({data:(table === 'gigs' ? [gig] : []).filter(row => conditions.every(condition => condition(row))),error:null}).then(resolve),
+      }
+      return query
+    }}
+  }
+  test('verified owner same-scope tiers support pricing when no other listings exist, retaining the floor and budget guard', async () => {
+    const message = {id:'budget',sender_id:'client',body:'My budget is USD 450 for student study planning.'}
+    const authority = await buildMessengerPricingAuthority({db:ownTierDb(),provider:{id:'provider'},client:{id:'client'},messages:[message],latestClientText:message.body})
+    expect(authority).toMatchObject({status:'ready',market:null,referenceMeanCents:3750,minimumAutoOfferCents:3188,providerRelevantGigIds:['own-gig']})
+    expect(guardMessengerOffer({pricing:authority,proposedPriceUsd:50,gigId:'own-gig'}).ok).toBe(true)
+    expect(guardMessengerOffer({pricing:authority,proposedPriceUsd:30,gigId:'own-gig'})).toMatchObject({ok:false,reason:'below_guarded_floor'})
+    expect(guardMessengerOffer({pricing:authority,proposedPriceUsd:451,gigId:'own-gig'})).toMatchObject({ok:false,reason:'above_client_budget'})
+  })
+  test('unrelated provider tiers cannot replace missing scope evidence', async () => {
+    const message = {id:'budget',sender_id:'client',body:'My budget is USD 450 for student study planning.'}
+    const authority = await buildMessengerPricingAuthority({db:ownTierDb('business','tax-advisory'),provider:{id:'provider'},client:{id:'client'},messages:[message],latestClientText:message.body})
+    expect(authority.status).toBe('insufficient_market_data')
+    expect(authority.referenceMeanCents).toBeNull()
+  })
   test('a frustrated budget handoff explains scope limits and the pending next step without inventing approval', () => {
     const reply = frustratedBudgetHandoffReply('the provider')
     expect(reply).toContain('cannot approve the requested scope')

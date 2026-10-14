@@ -195,8 +195,8 @@ function approved(decision: AdaptivePricingDecision): number {
 }
 
 describe('adaptive pricing — scope signal', () => {
-  test('live acceptance narrowed wording parses three documents as partial scope', () => {
-    const scope = extractScopeSignal([clientMessage('narrow-live', 'Let us narrow the previous full request to organizing only a portion: 3 documents for a university application. Leave form completion and advice out of scope.')], { clientId: CLIENT })
+  test.each(['a university application','an application essay','study planning'])('narrowed %s keeps its concrete three-document workload', (subject) => {
+    const scope = extractScopeSignal([clientMessage('narrow-live', `Let us narrow the previous full request to organizing only a portion: 3 documents for ${subject}. Leave form completion and advice out of scope.`)], { clientId: CLIENT })
     expect(scope.depth).toBe('partial')
     expect(scope.units).toEqual({ unit: 'document', qty: 3 })
   })

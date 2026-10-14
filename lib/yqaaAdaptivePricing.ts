@@ -433,32 +433,28 @@ function extractUnits(text: string): ScopeUnits | null {
   const source = normalizeText(text)
   if (!source) return null
 
-  const pages = /(\d[\d,]*|one|two|three|four|five|ten|a|an)\s*(?:more\s+)?(?:pages?|pgs?)\b/i.exec(source)
-  const words = /(\d[\d,]*|one|two|three|four|five|ten)\s*(?:more\s+)?(?:words?|word)\b/i.exec(source)
-  const documents = /(\d[\d,]*|one|two|three|four|five|a|an|couple|few|several)\s*(?:more\s+)?(?:documents?|docs?|files?)\b/i.exec(source)
-  const forms = /(\d[\d,]*|one|two|three|four|five|a|an)\s*(?:more\s+)?(?:forms?|applications?)\b/i.exec(source)
-  const sessions = /(\d[\d,]*|one|two|three|a|an)\s*(?:more\s+)?(?:sessions?|calls?|meetings?)\b/i.exec(source)
-  const hours = /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i.exec(source)
-  const halfHour = /\bhalf[- ]?(?:an )?hour\b/i.test(source)
-
-  const candidates: ScopeUnits[] = []
-  const pageQty = toQty(pages?.[1])
-  if (pageQty) candidates.push({ unit: 'page', qty: pageQty })
-  const wordQty = toQty(words?.[1])
-  if (wordQty) candidates.push({ unit: 'word', qty: wordQty })
-  const docQty = toQty(documents?.[1])
-  if (docQty) candidates.push({ unit: 'document', qty: docQty })
-  const formQty = toQty(forms?.[1])
-  if (formQty) candidates.push({ unit: 'form', qty: formQty })
-  const sessionQty = toQty(sessions?.[1])
-  if (sessionQty) candidates.push({ unit: 'session', qty: sessionQty })
-  const hourQty = hours ? Number(hours[1]) : null
-  if (hourQty && hourQty > 0) candidates.push({ unit: 'hour', qty: hourQty })
-  if (halfHour) candidates.push({ unit: 'hour', qty: 0.5 })
-
+  const candidates: Array<ScopeUnits & { index: number; explicit: boolean }> = []
+  const collect = (unit: ScopeUnitName, pattern: RegExp) => {
+    for (const match of source.matchAll(pattern)) {
+      const qty = toQty(match[1])
+      if (qty) candidates.push({ unit, qty, index: match.index, explicit: !/^(?:a|an)$/i.test(match[1]) })
+    }
+  }
+  collect('page', /\b(\d[\d,]*|one|two|three|four|five|ten|a|an)\s*(?:more\s+)?(?:pages?|pgs?)\b/gi)
+  collect('word', /\b(\d[\d,]*|one|two|three|four|five|ten)\s*(?:more\s+)?words?\b/gi)
+  collect('document', /\b(\d[\d,]*|one|two|three|four|five|six|a|an|couple|few|several)\s*(?:more\s+)?(?:documents?|docs?|files?)\b/gi)
+  collect('form', /\b(\d[\d,]*|one|two|three|four|five|a|an)\s*(?:more\s+)?(?:forms?|applications?)\b/gi)
+  collect('session', /\b(\d[\d,]*|one|two|three|a|an)\s*(?:more\s+)?(?:sessions?|calls?|meetings?)\b/gi)
+  collect('hour', /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/gi)
+  const halfHour = /\bhalf[- ]?(?:an )?hour\b/i.exec(source)
+  if (halfHour) candidates.push({unit:'hour',qty:0.5,index:halfHour.index,explicit:true})
   if (!candidates.length) return null
-  // The last stated unit wins (conversational corrections come last).
-  return candidates[candidates.length - 1]
+  // A concrete count such as "3 documents for an application essay" owns
+  // the workload. The article in the subject does not replace it with one
+  // application. Among concrete counts, the latest correction wins.
+  candidates.sort((a, b) => Number(a.explicit) - Number(b.explicit) || a.index - b.index)
+  const selected = candidates[candidates.length - 1]
+  return {unit:selected.unit,qty:selected.qty}
 }
 
 function depthFromText(text: string): { depth: ScopeDepth; reasons: string[] } {
