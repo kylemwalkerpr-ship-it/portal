@@ -148,6 +148,23 @@ describe('assistant explicit human-handoff intent', () => {
   })
 })
 
+test('preloaded public evidence builds context without another optional network fetch',async()=>{
+  jest.resetModules()
+  const fetchLiveKnowledge=jest.fn(()=>new Promise(()=>{}))
+  jest.doMock('@/lib/liveKnowledge',()=>({fetchLiveKnowledge}))
+  try {
+    const {buildCentralAssistantKnowledge,normalizeAssistantOrigin}=await import('@/lib/centralAssistantKnowledge')
+    const origin=normalizeAssistantOrigin({},new Request('https://portal.yousafeconsultancy.com/api/chat'))
+    const work=buildCentralAssistantKnowledge({latestUserMessage:'provider checklist',origin,includeLiveSupplement:false,curatedChunks:[{id:'public-fixture',title:'Checklist',body:'Verified fixture public checklist',source:'https://yousafeconsultancy.com/',site:'main',repository:'public'}]})
+    await Promise.resolve()
+    expect(fetchLiveKnowledge).not.toHaveBeenCalled()
+    expect(await work).toContain('Verified fixture public checklist')
+    const empty=await buildCentralAssistantKnowledge({latestUserMessage:'provider checklist',origin,includeLiveSupplement:false,curatedChunks:[]})
+    expect(empty).toContain('YOUSAFE QUICK ASSISTANCE AGENT')
+    expect(fetchLiveKnowledge).not.toHaveBeenCalled()
+  } finally {jest.dontMock('@/lib/liveKnowledge');jest.resetModules()}
+})
+
 describe('system-wide assistant model routing', () => {
   const originalFetch = global.fetch
 

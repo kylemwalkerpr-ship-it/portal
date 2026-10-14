@@ -4,6 +4,7 @@ import {
   YqaaDeadlineError,
   YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS,
   YQAA_DM_REPLY_COMMIT_RESERVE_MS,
+  YQAA_DM_DIAGNOSTIC_BUDGET_MS,
 } from '@/lib/yqaaDeadline'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -54,8 +55,8 @@ describe('YQAA end-to-end deadline', () => {
 
   it('ends scheduled DM work before the Cloudflare waitUntil lifetime and aborts its upstream request', async () => {
     jest.useFakeTimers()
-    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS).toBe(24_000)
-    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS).toBeLessThan(30_000)
+    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS).toBe(27_000)
+    expect(YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS + YQAA_DM_DIAGNOSTIC_BUDGET_MS).toBeLessThan(30_000)
 
     const deadline = createYqaaDeadline(null, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
     let aborted = false
@@ -75,21 +76,40 @@ describe('YQAA end-to-end deadline', () => {
     deadline.close()
   })
 
+  it('allows measured inference after context preparation while retaining the commit reserve',async()=>{
+    jest.useFakeTimers()
+    const originalFetch=global.fetch
+    const deadline=createYqaaDeadline(null,YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
+    try {
+      jest.advanceTimersByTime(6000)
+      global.fetch=jest.fn((_url,init)=>new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>resolve(Response.json({completed:true})),14000)
+        init?.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
+      })) as typeof fetch
+      let result:any=null
+      const work=fetchYqaaJsonWithTimeout('https://provider.invalid',{},deadline.providerRemainingMs(),deadline.signal).then(value=>{result=value},()=>{result={failed:true}})
+      await jest.advanceTimersByTimeAsync(14001)
+      expect(result?.response?.status).toBe(200)
+      expect(deadline.remainingMs()).toBeGreaterThan(YQAA_DM_REPLY_COMMIT_RESERVE_MS)
+      await work
+    } finally {deadline.close();global.fetch=originalFetch}
+  })
+
   it('keeps a fixed commit reserve as model and polish retries consume the phase budget', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-10-13T15:24:26.707Z'))
     const deadline = createYqaaDeadline(null, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS)
     const originalDeadline = Date.now() + deadline.remainingMs()
     const providerBudget = () => deadline.providerRemainingMs()
 
-    expect(deadline.remainingMs()).toBe(24_000)
-    expect(providerBudget()).toBe(24_000 - YQAA_DM_REPLY_COMMIT_RESERVE_MS)
+    expect(deadline.remainingMs()).toBe(27_000)
+    expect(providerBudget()).toBe(27_000 - YQAA_DM_REPLY_COMMIT_RESERVE_MS)
     jest.advanceTimersByTime(15_000)
     // A provider retry / polish regeneration reads the same shrinking phase budget.
-    expect(providerBudget()).toBe(5_000)
+    expect(providerBudget()).toBe(8_000)
     jest.advanceTimersByTime(1_001)
-    expect(providerBudget()).toBe(3_999)
+    expect(providerBudget()).toBe(6_999)
     expect(Date.now() + deadline.remainingMs()).toBe(originalDeadline)
-    expect(deadline.remainingMs()).toBe(7_999)
+    expect(deadline.remainingMs()).toBe(10_999)
     deadline.close()
   })
 
@@ -106,7 +126,8 @@ describe('YQAA end-to-end deadline', () => {
     expect(scheduler).toContain('if (result?.replied) return result')
     expect(scheduler).toContain("ai_last_skip: skip || 'no_result'")
     expect(scheduler).toContain('runTriggerMessageId')
-    expect(scheduler).toContain('AbortSignal.timeout(4_000)')
+    expect(scheduler).toContain('AbortSignal.timeout(YQAA_DM_DIAGNOSTIC_BUDGET_MS)')
+    expect(scheduler).toContain('ai_last_error: result?.providerFailure ||')
     expect(source).toContain('remainingMs: opts.runtime?.providerRemainingMs')
     expect(source).toContain("db.rpc('patch_yqaa_runtime_diagnostic'")
     expect(source).not.toContain('ai_last_error: msg.slice')

@@ -542,6 +542,10 @@ export async function POST(req: Request) {
           latestUserMessage: lastUser.content,
           origin: inquiryOrigin,
           curatedChunks: publicEvidence,
+          // The evidence stage already attempted the public knowledge pack.
+          // Empty packs still use canonical authority and honest evidence limits.
+          // Keep this assembly step free of another optional origin fetch.
+          includeLiveSupplement: false,
         }),
       )
       finishStage(contextStage)
