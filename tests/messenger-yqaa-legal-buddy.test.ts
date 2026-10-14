@@ -118,8 +118,8 @@ describe('legal-buddy escalation reply', () => {
     const reply = counterNeedsProviderReviewReply(13950, 'usd')
     expect(reply).toContain('USD 139.50')
     expect(reply).toMatch(/provider.*review/i)
-    expect(reply).toMatch(/can’t agree.*different price/i)
-    expect(reply).not.toMatch(/approved|accepted|discount/i)
+    expect(reply).toMatch(/I’ll let you know as soon as I hear back/i)
+    expect(reply).not.toMatch(/approved|accepted|discount|agree to a different price/i)
   })
 
   test('missing evidence handoff is explicit and names the human provider', () => {
@@ -163,10 +163,17 @@ test('an unapproved explicit counter is acknowledged without waiting on provider
   const handoff = explicitCounterReviewDraft({ action: 'ESCALATE_PROVIDER', counterSource: 'explicit', counterCents: 13950, currency: 'usd' })
   expect(handoff).toMatchObject({ escalate: true, offer: null })
   expect(handoff?.reply).toContain('USD 139.50')
+  expect(handoff?.reply).toContain('counter')
+  expect(handoff?.reply).toContain('review')
   const generate = jest.fn(async () => { throw new Error('provider_timeout') })
   expect(await resolveMessengerDraft({ handoff, budgetReply: null, generate })).toBe(handoff)
   expect(generate).not.toHaveBeenCalled()
   expect(explicitCounterReviewDraft({ action: 'ACCEPT', counterSource: 'explicit', counterCents: 13950, currency: 'usd' })).toBeNull()
+  const approvalRequired = explicitCounterReviewDraft({ action: 'ACCEPT', approvalRequired: true, counterSource: 'explicit', counterCents: 13950, currency: 'usd', providerLabel: 'Ms Foley' })
+  expect(approvalRequired).toMatchObject({ escalate: true, offer: null })
+  expect(approvalRequired?.reply).toContain('Ms Foley')
+  expect(approvalRequired?.reply).toContain('USD 139.50')
+  expect(explicitCounterReviewDraft({ action: 'ACCEPT', approvalRequired: true, counterSource: 'budget', counterCents: 13950, currency: 'usd' })).toBeNull()
   expect(explicitCounterReviewDraft({ action: 'ESCALATE_PROVIDER', counterSource: 'budget', counterCents: 13950, currency: 'usd' })).toBeNull()
 })
 
