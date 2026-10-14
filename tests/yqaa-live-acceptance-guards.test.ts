@@ -210,7 +210,7 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('frustration escalated and paused for provider within one turn')
     expect(harness).toContain('waste of my time')
     expect(harness).toContain('scope_depth: \'partial\', scope_units: 3')
-    expect(harness).toContain('scope_depth: \'full\', scope_units: 12')
+    expect(harness).toContain('scope_depth: \'full\', scope_units: 6')
     expect(harness).not.toContain('The quoted total is CAD 600')
     expect(harness).not.toContain('would you accept CAD 510')
     expect(harness).toContain('frustration escalated and paused for provider within one turn')

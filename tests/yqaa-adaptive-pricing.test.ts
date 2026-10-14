@@ -688,6 +688,24 @@ describe('adaptive pricing — workload model (W1–W6)', () => {
     }
   }
 
+  test('live continuous fixture stays below the range handoff threshold', () => {
+    const fs = require('node:fs'), path = require('node:path')
+    const harness = fs.readFileSync(path.join(__dirname, '../scripts/yqaa-live-acceptance.mjs'), 'utf8')
+    const fullRequests = [...harness.matchAll(/fullRequest: '([^']+)'/g)].map((match: any) => match[1])
+    expect(fullRequests).toHaveLength(3)
+    for (const text of fullRequests) {
+      const messages = [clientMessage('m-fixture', text)]
+      const scope = extractScopeSignal(messages, { clientId: CLIENT })
+      expect(scope.units).toEqual({ unit: 'document', qty: 6 })
+      const estimate = estimateWorkload(scope, signalsFor(text))
+      const quote = priceFromWorkload(estimate, policy, { hourlyRateCents: 4500 })
+      expect(quote.needs_provider_confirm).toBe(false)
+      expect(quote.price_cents).toBeLessThanOrEqual(45000)
+    }
+    const oversized = estimateWorkload(buildScopeSignal({ depth: 'full', units: { unit: 'document', qty: 12 } }), signalsFor('organizing the full application across 12 documents'))
+    expect(priceFromWorkload(oversized, policy, { hourlyRateCents: 4500 }).needs_provider_confirm).toBe(true)
+  })
+
   test('W1 a 45-day deadline costs less than a 5-day deadline, and the rush is reflected', () => {
     const relaxed = signalsFor('Please prepare my 20 pages, the deadline is in 45 days. Budget is around $2,000.')
     const rushing = signalsFor('Please prepare my 20 pages, the deadline is in 5 days. Budget is around $2,000.')
