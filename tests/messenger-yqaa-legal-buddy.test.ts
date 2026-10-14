@@ -7,6 +7,7 @@ import {
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
   insufficientEvidenceOrientationReply,
+  canContinueGroundedOrientation,
   counterNeedsProviderReviewReply,
   explicitCounterReviewDraft,
   loadMessengerLegalEvidence,
@@ -68,6 +69,23 @@ describe('legal-buddy evidence wiring', () => {
 })
 
 describe('legal-buddy escalation reply', () => {
+  test('grounded general orientation can continue after a Jev-only handoff recommendation', () => {
+    const request = {
+      hasGroundedEvidence: true,
+      highStakes: false,
+      frustrated: false,
+      explicitProviderReviewRequest: false,
+      budgetGapAlreadyExplained: false,
+      commerceIntent: false,
+      companionReasons: ['jev_requires_handoff'],
+    }
+    expect(canContinueGroundedOrientation(request)).toBe(true)
+    expect(canContinueGroundedOrientation({ ...request, hasGroundedEvidence: false })).toBe(false)
+    expect(canContinueGroundedOrientation({ ...request, highStakes: true })).toBe(false)
+    expect(canContinueGroundedOrientation({ ...request, explicitProviderReviewRequest: true })).toBe(false)
+    expect(canContinueGroundedOrientation({ ...request, companionReasons: ['jev_requires_handoff', 'client_frustration_or_exit'] })).toBe(false)
+  })
+
   test('empathetic handoff names the provider and never leaks floors', () => {
     const reply = lowBudgetEscalationReply('Morganne A. Foley')
     expect(reply).toContain('Morganne A. Foley')
@@ -88,7 +106,7 @@ describe('legal-buddy escalation reply', () => {
     expect(reply).toMatch(/residency routes|residence routes/i)
     expect(reply).toMatch(/marriage|family connection/i)
     expect(reply).toMatch(/compare|prepare/i)
-    expect(reply).toContain('Which country would you apply from?')
+    expect(reply).toContain('Where are you a citizen now, and where do you expect to apply?')
     expect(reply).not.toMatch(/I’ve asked Ms Foley|I have asked Ms Foley|verified Marketplace pricing|insufficient evidence/i)
     expect(usefulFirstOrientation(reply)).toBe(true)
   })
