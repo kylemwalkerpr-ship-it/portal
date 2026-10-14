@@ -64,6 +64,12 @@ describe('counteroffer acceptance evidence', () => {
     'I hear your $139.50. I can keep the scope on hold at $155.',
     'I hear your $139.50. I can keep the estimated price at $155.',
     'I hear your $139.50. I can offer the scope without committing for $155.',
+    'I hear your $139.50. I can offer zero application documents for $155.',
+    'I hear your $139.50. For organizing twenty-three documents, I can meet you at $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 CAD.',
+    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
+    'I hear your $139.50. I can send the three documents, and a train ticket costs $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155 CAD.',
     'I hear your $139.50. I can offer no documents for $155.',
     'I hear your $139.50. I am offering the scoped document packet at $155 contingent on your approval.',
     'I hear your $139.50. I am offering the scoped document packet at $155 on condition that funding arrives.',
@@ -147,5 +153,60 @@ describe('independent category coverage', () => {
       attention, onFailure: jest.fn(),
     })).rejects.toThrow('cancelled')
     expect(attention).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('durable current-turn counter disposition', () => {
+  function proof() {
+    const card = { id: 'card', conversation_id: 'conversation', sender_id: 'provider', type: 'offer', ref_offer_id: 'offer', metadata: { ai_generated: true, pricing_guarded: true, price: 15500, currency: 'usd', pricing_scope_hash: state.scopeHash } }
+    return {
+      ...state,
+      metadata: { ...state.metadata, ai_last_offer_id: 'offer', ai_last_message_id: 'reply', ai_last_trigger_message_id: 'trigger', ai_last_approved_price_cents: 15500, ai_last_scope_hash: state.scopeHash,
+        ai_memory: { last_offer: { currency: 'usd' }, negotiation: { ...state.metadata.ai_memory.negotiation, scope_current: { scope_hash: state.scopeHash, units: { unit: 'document', qty: 3 } }, client_counters: [{ cents: 13950, message_id: 'trigger' }] } } },
+      committedOffer: { conversationId: 'conversation', triggerMessageId: 'trigger', replyMessageId: 'reply', providerId: 'provider', clientId: 'client',
+        commit: { conversation_id: 'conversation', trigger_message_id: 'trigger', reply_message_id: 'reply', offer_id: 'offer' },
+        offer: { id: 'offer', chat_id: 'conversation', sender_id: 'provider', recipient_id: 'client', price: 15500, currency: 'usd', status: 'pending' }, card, visibleCard: { ...structuredClone(card), offer: { id: 'offer', price_cents: 15500, currency: 'usd', status: 'pending' } } },
+    }
+  }
+  const body = 'I hear your $139.50. For organizing three documents only, I can meet you at $155.'
+  test('requires real current-turn visible offer evidence for natural price wording', () => {
+    expect(counterofferAcknowledged(body, proof())).toBe(true)
+    expect(counterofferAcknowledged(body, state)).toBe(false)
+  })
+  test('rejects missing or wrong rendered offer and explicit reply currency', () => {
+    const p: any = proof(); delete p.committedOffer.visibleCard.offer
+    expect(counterofferAcknowledged(body, p)).toBe(false)
+    const q: any = proof(); q.committedOffer.visibleCard.offer.price_cents = 15400
+    expect(counterofferAcknowledged(body, q)).toBe(false)
+    expect(counterofferAcknowledged(body.replace('$155', 'CAD 155'), proof())).toBe(false)
+  })
+  test.each(['commit', 'offer', 'card', 'visibleCard'])('fails closed when %s is absent', (field) => {
+    const p: any = proof(); delete p.committedOffer[field]
+    expect(counterofferAcknowledged(body, p)).toBe(false)
+  })
+  test.each([
+    ['commit', 'trigger_message_id', 'older-trigger'], ['commit', 'reply_message_id', 'older-reply'],
+    ['offer', 'price', 15400], ['offer', 'status', 'cancelled'], ['offer', 'recipient_id', 'other-client'],
+    ['card', 'ref_offer_id', 'other-offer'], ['visibleCard', 'id', 'other-card'],
+  ])('rejects mismatched %s.%s', (field, key, value) => {
+    const p: any = proof(); p.committedOffer[field][key] = value
+    expect(counterofferAcknowledged(body, p)).toBe(false)
+  })
+  test.each([
+    'I hear your $139.50. I can offer zero application documents for $155.',
+    'I hear your $139.50. For organizing twenty-three documents, I can meet you at $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 CAD.',
+    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
+    'I hear your $139.50. I can send the three documents, and a train ticket costs $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155 CAD.',
+    'I hear your $139.50. I can offer no documents for $155.',
+    'I hear your $139.50. I can keep the documents unchanged and book a hotel for $155.',
+    'I hear your $139.50. A hotel costs $155.',
+    'I hear your $139.50. I cannot offer the three-document checklist at $155.',
+    'I hear your $139.50. The three-document checklist is $155 if the provider approves.',
+    'I hear your $139.50. The three-document checklist is $154.',
+  ])('committed evidence does not excuse unrelated, negative or conditional copy', (text) => {
+    expect(counterofferAcknowledged(text, proof())).toBe(false)
   })
 })
