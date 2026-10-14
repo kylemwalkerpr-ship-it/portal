@@ -191,6 +191,26 @@ describe('system-wide assistant model routing', () => {
     expect(body.store).toBe(false)
   })
 
+  it('preserves a full primary Responses allowance after cold authentication', async () => {
+    jest.useFakeTimers()
+    jest.doMock('@/lib/messengerAi', () => ({ resolveMessengerGrokAuth: jest.fn(() => new Promise(resolve => setTimeout(() => resolve({
+      apiKey:'test-only',baseURL:'https://system-ai.example/v1',model:'grok-test-model',authMode:'supergrok',
+    }),6_500))) }))
+    const fetchMock = jest.fn((_url:string,init:RequestInit) => new Promise((resolve,reject) => {
+      const timer=setTimeout(()=>resolve({ok:true,status:200,text:async()=>JSON.stringify({output_text:'Completed after cold auth'})}),13_500)
+      init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
+    }))
+    global.fetch=fetchMock as any
+    const {generateYqaaAnswer}=await import('@/lib/yqaaGeneration')
+    const work=generateYqaaAnswer('public evidence',[{role:'user',content:'question'}])
+    let completed:unknown=null
+    void work.then(value=>{completed=value},()=>{completed={text:'failed'}})
+    await jest.advanceTimersByTimeAsync(20_001)
+    expect(completed).toMatchObject({text:'Completed after cold auth',provider:'grok',fallback:false})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await work
+  })
+
   it('lets a bounded Responses attempt finish instead of prematurely restarting it', async () => {
     jest.useFakeTimers()
     jest.doMock('@/lib/messengerAi', () => ({ resolveMessengerGrokAuth: jest.fn(async () => ({

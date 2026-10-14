@@ -16,7 +16,7 @@ import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { getDeterministicYqaaReply } from '@/lib/assistantFastReplies'
 import type { SystemAssistantTurn } from '@/lib/superGrokAssistant'
 import { requestJevAdvisory, yqaaJevTriggers } from '@/lib/jevAdvisory'
-import { classifyYqaaProviderFailure, generateYqaaAnswer, publicYqaaProviderLabel } from '@/lib/yqaaGeneration'
+import { classifyYqaaProviderFailure, generateYqaaAnswer, publicYqaaProviderLabel, YQAA_GENERATION_BUDGET_MS } from '@/lib/yqaaGeneration'
 import { guardYqaaPricingClaims } from '@/lib/assistantPricingGuard'
 import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
@@ -38,7 +38,7 @@ const KNOWLEDGE_STAGE_BUDGET_MS = 12_000
 const JEV_STAGE_BUDGET_MS = 1_500
 const WEB_STAGE_BUDGET_MS = 6_000
 const CONTEXT_STAGE_BUDGET_MS = 500
-const MODEL_STAGE_BUDGET_MS = 26_000
+const MODEL_STAGE_BUDGET_MS = YQAA_GENERATION_BUDGET_MS
 
 type ViewerSnapshot = {
   visitor: SupportVisitor | null

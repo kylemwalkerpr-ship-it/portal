@@ -7,7 +7,10 @@ export type YqaaFailureKind = 'timeout' | 'network' | 'rate_limit' | 'server_err
 export type YqaaFallbackEvidence = { kind: YqaaFailureKind; status: number | null; eligible: boolean }
 export type YqaaGenerationResult = { text: string; provider: YqaaProvider; model: string; fallback: boolean; failureEvidence?: YqaaFallbackEvidence }
 export type YqaaProviderEnvironment = Readonly<Record<string, string | undefined>>
-const GROK_GENERATION_BUDGET_MS = 26_000
+// Primary needs up to 7s auth + 14s Responses + 3s protocol recovery.
+// Keep the independent 9s compact reserve; the caller's unchanged 42s
+// request signal still caps the complete turn including retrieval.
+export const YQAA_GENERATION_BUDGET_MS = 33_000
 const COMPACT_RECOVERY_RESERVE_MS = 9_000
 
 function waitForAbortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -86,18 +89,18 @@ function compactGrokRecoverySystem(system: string): string {
 export async function generateYqaaAnswer(system: string, turns: SystemAssistantTurn[], options: { signal?: AbortSignal } = {}): Promise<YqaaGenerationResult> {
   const selection = configuredYqaaProviders()
   const startedAt = Date.now()
-  const deadlineAt = startedAt + GROK_GENERATION_BUDGET_MS
+  const deadlineAt = startedAt + YQAA_GENERATION_BUDGET_MS
   const controller = new AbortController()
   const abortForParent = () => controller.abort(options.signal?.reason)
   if (options.signal?.aborted) abortForParent()
   else options.signal?.addEventListener('abort', abortForParent, { once: true })
-  const timer = setTimeout(() => controller.abort(new DOMException('YQAA model budget exhausted', 'AbortError')), GROK_GENERATION_BUDGET_MS)
+  const timer = setTimeout(() => controller.abort(new DOMException('YQAA model budget exhausted', 'AbortError')), YQAA_GENERATION_BUDGET_MS)
   const remainingMs = () => Math.max(0, deadlineAt - Date.now())
   try {
     if (controller.signal.aborted) throw options.signal?.reason || new DOMException('Aborted', 'AbortError')
     try {
       const primaryBudget = Math.min(
-        GROK_GENERATION_BUDGET_MS - COMPACT_RECOVERY_RESERVE_MS,
+        YQAA_GENERATION_BUDGET_MS - COMPACT_RECOVERY_RESERVE_MS,
         Math.max(1, remainingMs() - COMPACT_RECOVERY_RESERVE_MS),
       )
       const generated = await generateWithProvider(selection.primary, system, turns, controller.signal, primaryBudget)

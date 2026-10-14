@@ -99,3 +99,12 @@ describe('legal-buddy escalation reply', () => {
     )
   })
 })
+
+ test('the standing prompt does not assume provider credentials or availability',()=>{
+ const fs=require('node:fs'),path=require('node:path')
+ const source=fs.readFileSync(path.join(__dirname,'../lib/messengerAi.ts'),'utf8')
+ const prompt=source.split('const SYSTEM_PROMPT = `')[1].split('`')[0]
+ expect(prompt).not.toContain('with the licensed provider available on this thread')
+ expect(prompt).toContain('A role label is not evidence of licensure or availability')
+ expect(prompt).toContain('requested/pending')
+ })

@@ -224,6 +224,13 @@ export async function buildCompanionDecision(args: CompanionDecisionArgs): Promi
         frustration: args.frustration,
         duplicateRisk: args.duplicateRisk,
         budgetStatus: pricing?.status ?? 'unknown',
+        evidenceSensitive: Boolean(args.evidenceSensitive),
+        serverPricingAuthority: pricing ? {
+          quoteApproved: Boolean(pricing.channel === 'dm' && pricing.approved_price_cents && !pricing.approval_required),
+          providerApprovalRequired: Boolean(pricing.approval_required),
+          budgetKnown: Boolean(pricing.negotiation.budget || pricing.negotiation.counter_cents),
+          scopeKnown: pricing.scope.depth !== 'unknown',
+        } : undefined,
         triggers: args.triggers,
         postureOptions: postures,
         negotiationOptions,

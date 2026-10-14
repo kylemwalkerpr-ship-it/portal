@@ -855,6 +855,19 @@ describe('adaptive pricing — leaks, Jev payload and public surface (L1, J1, P1
     expect(serialized).not.toContain('negotiation_posture')
   })
 
+  test('Jev receives trusted pricing flags with no amounts or rates', () => {
+    const payload = companionJevPayload({
+      query: 'Budget CAD 450 for organizing a university checklist',
+      postureOptions: ['COMMERCE','DISCOVER','ESCALATE_PROVIDER'],
+      serverPricingAuthority: {quoteApproved:true,providerApprovalRequired:false,budgetKnown:true,scopeKnown:true},
+      evidenceSensitive: false,
+    } as any)
+    expect(payload.state).toMatchObject({evidenceSensitive:false,serverPricingAuthority:{quoteApproved:true,providerApprovalRequired:false,budgetKnown:true,scopeKnown:true}})
+    expect(JSON.stringify(payload)).not.toMatch(/450|cents|hourly_rate|floor_cents/)
+    expect(JSON.stringify(payload.questions.needs_handoff)).toContain('server-approved')
+    expect(JSON.stringify(payload.questions.sufficient)).toContain('server-approved')
+  })
+
   test('J1c a sole eligible negotiation action is deterministic and omitted from Jev Choice', async () => {
     const payload = companionJevPayload({
       query: 'Can you meet me in the middle?',
