@@ -322,7 +322,7 @@ describe('YQAA provider pin and fallback policy', () => {
       const result = await generateYqaaAnswer(system, [{ role: 'user', content: 'question' }])
       expect(result).toMatchObject({ text: 'Recovered Grok answer', provider: 'grok', fallback: false, failureEvidence: { kind: 'timeout', eligible: true } })
       expect(callSystemSuperGrok).toHaveBeenCalledTimes(2)
-      expect(callSystemSuperGrok.mock.calls[0][2]).toMatchObject({ timeoutMs: 17_000 })
+      expect(callSystemSuperGrok.mock.calls[0][2]).toMatchObject({ timeoutMs: 24_000 })
       expect(callSystemSuperGrok.mock.calls[1][2].timeoutMs).toBeGreaterThan(0)
       expect(callSystemSuperGrok.mock.calls[1][2].timeoutMs).toBeLessThanOrEqual(9_000)
       expect(String(callSystemSuperGrok.mock.calls[1][0])).toContain('Recovery prompt compacted')

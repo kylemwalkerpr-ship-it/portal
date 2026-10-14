@@ -327,6 +327,13 @@ export type CompanionJevContext = {
   duplicateRisk?: boolean
   budgetStatus?: string | null
   triggers?: JevTrigger[]
+  evidenceSensitive?: boolean
+  serverPricingAuthority?: {
+    quoteApproved: boolean
+    providerApprovalRequired: boolean
+    budgetKnown: boolean
+    scopeKnown: boolean
+  }
   /** Pruned server-side before the call: forbidden postures are removed, not down-weighted. */
   postureOptions: JevPosture[]
   /** Pruned server-side; empty = pricing not in play, so no negotiation question is asked. */
@@ -398,6 +405,17 @@ export async function readJevBoundedResponse(response: Response, maxBytes: numbe
   return readBoundedResponse(response, maxBytes)
 }
 
+const COMPANION_POSTURE_CRITERIA: Record<JevPosture, string> = {
+  EDUCATE: 'Cautious general orientation without individualized legal conclusions.',
+  DISCOVER: 'Ask for missing scope, budget or jurisdiction details that can be clarified safely.',
+  EMPATHIZE: 'Acknowledge the client emotion and provide a useful next step.',
+  COMMERCE: 'Discuss organizational-service scope and server-approved pricing within the supplied authority.',
+  NEGOTIATE: 'Respond to a scope change or counter using only the server-authorized negotiation action.',
+  ESCALATE_PROVIDER: 'Human review required for individualized high-stakes judgment, requested provider attention, frustration or required pricing approval.',
+  HANDOFF_SUPPORT: 'A support issue or explicit support request needs the support channel.',
+  ABSTAIN: 'No safe factual answer can be given from the available evidence.',
+}
+
 export function companionJevPayload(ctx: CompanionJevContext) {
   const postureOptions = [...new Set(ctx.postureOptions)].filter(Boolean)
   const negotiationOptions = [...new Set(ctx.negotiationOptions || [])].filter(Boolean)
@@ -417,16 +435,20 @@ export function companionJevPayload(ctx: CompanionJevContext) {
     ...(postureOptions.length >= 2 ? { posture: {
       type: 'choice',
       instructions: `${JEV_INSTRUCTIONS} Pick the single best conversational posture for the next YQAA reply, from the allowed list only.`,
-      criteria: Object.fromEntries(postureOptions.map((option) => [option, option])),
+      criteria: Object.fromEntries(postureOptions.map((option) => [option, COMPANION_POSTURE_CRITERIA[option]])),
     } } : {}),
     sufficient: {
       type: 'noul',
-      instructions: `${JEV_INSTRUCTIONS} Is the supplied public evidence sufficient for a cautious general informational answer to the question?`,
-      criteria: { true: 'Enough relevant, consistent public evidence exists.', false: 'Evidence is insufficient, irrelevant, or conflicting.' },
+      instructions: `${JEV_INSTRUCTIONS} Is the supplied state sufficient for a cautious next reply within its authorized scope? Legal factual claims need publicEvidence; ordinary organizational-service pricing can use the server-approved quote and safe discovery. Missing details may be clarified without inventing facts.`,
+      criteria: { true: 'Relevant public evidence supports factual claims, or a server-approved organizational-service quote or safe clarification supports this next step.', false: 'The next step needs unsupported legal or factual claims, conflicting evidence, or an unauthorized pricing decision.' },
     },
     needs_handoff: {
       type: 'noul',
-      instructions: 'Should this request be handed to a qualified human because the supplied evidence and conversation state cannot support a safe answer?',
+      instructions: 'Does this turn require a qualified human now? Evaluate individualized legal or safety risk, an explicit human request or frustration, and serverPricingAuthority.providerApprovalRequired. Ordinary organizational-service pricing can use a server-approved quote, and missing details can be clarified. Public legal evidence is required for legal factual claims, not to repeat a server-approved price. Never calculate or approve a price yourself; redacted amounts are intentionally unavailable.',
+      criteria: {
+        true: 'Individualized high-stakes judgment, explicit human request or frustration, provider approval required, or uncertainty that prevents even safe clarification.',
+        false: 'General orientation, safe discovery, or organizational-service pricing supported by the server-approved quote. Redacted amounts or absent public legal sources alone do not require a handoff.',
+      },
     },
     market: {
       type: 'choice',
@@ -455,6 +477,13 @@ export function companionJevPayload(ctx: CompanionJevContext) {
       frustration: Boolean(ctx.frustration),
       duplicateRisk: Boolean(ctx.duplicateRisk),
       budgetStatus: ctx.budgetStatus || 'unknown',
+      evidenceSensitive: Boolean(ctx.evidenceSensitive),
+      serverPricingAuthority: ctx.serverPricingAuthority ? {
+        quoteApproved: Boolean(ctx.serverPricingAuthority.quoteApproved),
+        providerApprovalRequired: Boolean(ctx.serverPricingAuthority.providerApprovalRequired),
+        budgetKnown: Boolean(ctx.serverPricingAuthority.budgetKnown),
+        scopeKnown: Boolean(ctx.serverPricingAuthority.scopeKnown),
+      } : null,
       publicEvidence: evidence,
     },
     model: JEV_MODEL,

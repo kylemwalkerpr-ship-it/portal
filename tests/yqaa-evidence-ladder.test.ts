@@ -163,6 +163,19 @@ describe('YQAA final evidence ladder', () => {
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
   })
 
+  test('generation cannot extend the complete request past42seconds after slow retrieval',async()=>{
+    jest.useFakeTimers()
+    const flow=await setup({evidenceDelayMs:10000,generationHang:true})
+    const pending=flow.ask('Explain general housing rules in the United States')
+    await jest.advanceTimersByTimeAsync(42001)
+    const result=await pending
+    expect(result.status).toBe(504)
+    expect(result.headers.get('Server-Timing')).toContain('total;dur=42000')
+    expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
+    expect(flow.loadYqaaEvidence.mock.calls[0][0]).toMatchObject({databaseFallbackTimeoutMs:2000})
+    jest.useRealTimers()
+  })
+
   test.each(['database', 'model'] as const)('non-fast public chat cancels slow %s work and returns a bounded honest timeout', async (stage) => {
     jest.useFakeTimers()
     const flow = await setup({ ...(stage === 'database' ? { evidenceHang: true } : { generationHang: true }) })
@@ -173,7 +186,7 @@ describe('YQAA final evidence ladder', () => {
     expect(result.status).toBe(504)
     expect(result.body.retryable).toBe(true)
     expect(result.body.error).toMatch(/time limit|retry/i)
-    expect(result.headers.get('Server-Timing')).toMatch(stage === 'database' ? /knowledge;dur=12000;desc="timeout"/ : /model;dur=26000;desc="timeout"/)
+    expect(result.headers.get('Server-Timing')).toMatch(stage === 'database' ? /knowledge;dur=12000;desc="timeout"/ : /model;dur=33000;desc="timeout"/)
     if (stage === 'database') expect(flow.loadYqaaEvidence.mock.calls[0][0].signal.aborted).toBe(true)
     if (stage === 'model') expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
   })

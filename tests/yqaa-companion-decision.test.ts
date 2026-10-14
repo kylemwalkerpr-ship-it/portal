@@ -150,6 +150,16 @@ async function pricingDecision(body: string): Promise<AdaptivePricingDecision> {
 }
 
 describe('companion decision — deterministic gates', () => {
+  test.each([false,true])('passes trusted quote flags and preserves approval-required=%s', async (approvalRequired) => {
+    const pricing=await pricingDecision('Organize the full application across 3 documents. My budget is $450.')
+    pricing.approval_required=approvalRequired
+    pricing.approved_price_cents=10000
+    const seen:CompanionJevContext[]=[]
+    await buildCompanionDecision(args({redactedQuery:'Organize a checklist within my stated budget',pricing,evidenceSensitive:false,jevRequest:jevStub(jevSufficient,seen)}))
+    expect(seen[0]).toMatchObject({evidenceSensitive:false,serverPricingAuthority:{quoteApproved:!approvalRequired,providerApprovalRequired:approvalRequired,budgetKnown:true,scopeKnown:true}})
+    expect(JSON.stringify(seen[0])).not.toContain('10000')
+  })
+
   test('an orientation question resolves to EDUCATE', async () => {
     const decision = await buildCompanionDecision(args())
     expect(decision.posture).toBe('EDUCATE')
