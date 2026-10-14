@@ -57,6 +57,11 @@ function pricing(overrides: Partial<PricingAuthority> = {}): PricingAuthority {
 }
 
 describe('YQAA marketplace pricing authority', () => {
+  test('keeps an explicitly requested study-planning checklist in document memory', () => {
+    const body = 'My budget is USD 450 for help organizing a student study planning checklist.'
+    const memory = buildGroundedConversationMemory({messages:[{sender_id:'client',body}],clientId:'client',pricing:pricing()})
+    expect(memory.document_highlights).toContain(body)
+  })
   function ownTierDb(category = 'mentorship', subcategory = 'student-mentorship') {
     const gig = {id:'own-gig',provider_id:'provider',status:'paused',category,subcategory,tiers:[{price:2500,is_active:true},{price:5000,is_active:true}]}
     return {from(table: string) {

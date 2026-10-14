@@ -1,5 +1,6 @@
 import {
   enforceCompanionEscalation,
+  applyPricingGuardDecision,
   applyAdaptiveOfferAuthority,
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
@@ -7,7 +8,7 @@ import {
   messengerNeedsLegalEvidence,
   yqaaOfferIdempotencyKey,
 } from '@/lib/messengerAi'
-import { lowBudgetEscalationReply } from '@/lib/messengerPricingAuthority'
+import { guardMessengerOffer, lowBudgetEscalationReply } from '@/lib/messengerPricingAuthority'
 
 jest.mock('@/lib/yqaaKnowledgeDb', () => ({
   loadYqaaEvidence: jest.fn(async () => ({
@@ -72,7 +73,10 @@ describe('legal-buddy escalation reply', () => {
 
   test('missing evidence handoff is explicit and names the human provider', () => {
     const reply = insufficientEvidenceHandoffReply('Avery')
-    expect(reply).toContain('enough reliable information')
+    expect(reply).toContain('List the documents')
+    expect(reply).toContain('reply is still pending')
+    expect(reply).toContain('qualified professional')
+    expect(reply).not.toContain('I don’t have enough reliable information')
     expect(reply).toContain('Avery')
   })
 
@@ -81,7 +85,7 @@ describe('legal-buddy escalation reply', () => {
       minCents:null, maxCents:45000, currency:'cad', sourceText:'', messageId:null, confidence:'explicit',
     })
     expect(reply).toContain('CAD 450.00')
-    expect(reply).toContain('confirm which scope fits')
+    expect(reply).toContain('agree what work it covers before anything is booked')
     expect(reply).toContain('Avery')
     expect(reply).not.toMatch(/discount|offer created|approved price/i)
   })
@@ -124,4 +128,14 @@ test('the server-approved scope replaces a model-supplied unrelated gig as well 
  const offer=applyAdaptiveOfferAuthority({title:'Test',price_usd:1,gig_id:'unrelated-gig'} as any,{channel:'dm',approved_price_cents:15500,gig_id:'owned-approved-gig'} as any)
  expect(offer).toMatchObject({price_usd:155,gig_id:'owned-approved-gig'})
  expect(offer.price).toBeUndefined()
+})
+
+test('a prose price blocked by missing market data cannot claim a review without escalating', () => {
+ const guard=guardMessengerOffer({pricing:{status:'insufficient_market_data'} as any})
+ const decision=applyPricingGuardDecision({reply:'It costs $150.',escalate:false,offer:{title:'Unsafe',price_usd:150}},guard)
+ expect(decision).toMatchObject({reply:guard.ok?'':guard.reply,escalate:true,offer:null})
+})
+test('an ordinary missing-budget question clears the offer without requesting a human', () => {
+ const guard=guardMessengerOffer({pricing:{status:'need_budget',budget:null,currency:'usd'} as any})
+ expect(applyPricingGuardDecision({reply:'It costs $150.',escalate:false,offer:{title:'Unsafe'}},guard)).toMatchObject({escalate:false,offer:null})
 })

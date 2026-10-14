@@ -317,27 +317,30 @@ function clip(s: unknown, n: number): string {
 export async function loadProviderGigContext(
   db: any,
   provider: { id: string; role?: string; full_name?: string | null; email?: string | null },
+  replayPublicProfile?: Record<string, any> | null,
 ): Promise<ProviderGigContext> {
   const role = String(provider.role || '').toLowerCase()
   const lines: string[] = [
     `Provider id: ${provider.id}`,
-    `Name: ${provider.full_name || provider.email || 'YouSafe provider'}`,
+    `Name: ${provider.full_name || 'YouSafe provider'}`,
     `Role: ${role || 'unknown'}`,
   ]
+  if (replayPublicProfile) lines.push('Public profile reference for a hidden synthetic replay; this does not verify credentials, availability, or commercial terms.')
 
   try {
     if (role === 'attorney') {
-      const { data } = await db
+      const { data: liveProfile } = await db
         .from('attorneys')
         .select(
           'tagline, bio, intro, jurisdictions, practice_areas, specialties, languages, years_experience, offers_free_consult, starting_price, available',
         )
         .eq('profile_id', provider.id)
         .maybeSingle()
+      const data = replayPublicProfile || liveProfile
       if (data) {
         if (data.tagline) lines.push(`Tagline: ${clip(data.tagline, 200)}`)
-        if (data.intro) lines.push(`Intro: ${clip(data.intro, 400)}`)
-        if (data.bio) lines.push(`Bio: ${clip(data.bio, 600)}`)
+        if (data.intro) lines.push(`Intro: ${clip(data.intro, 800)}`)
+        if (data.bio) lines.push(`Bio: ${clip(data.bio, 1600)}`)
         if (data.jurisdictions) lines.push(`Jurisdictions: ${clip(JSON.stringify(data.jurisdictions), 240)}`)
         if (data.practice_areas) lines.push(`Practice areas: ${clip(JSON.stringify(data.practice_areas), 240)}`)
         if (data.specialties) lines.push(`Specialties: ${clip(JSON.stringify(data.specialties), 240)}`)
@@ -348,17 +351,18 @@ export async function loadProviderGigContext(
         if (data.available != null) lines.push(`Available: ${Boolean(data.available)}`)
       }
     } else if (role === 'consultant') {
-      const { data } = await db
+      const { data: liveProfile } = await db
         .from('consultants')
         .select(
           'tagline, bio, intro, specialties, languages, years_experience, offers_free_consult, starting_price, available, subjects, industries',
         )
         .eq('profile_id', provider.id)
         .maybeSingle()
+      const data = replayPublicProfile || liveProfile
       if (data) {
         if (data.tagline) lines.push(`Tagline: ${clip(data.tagline, 200)}`)
-        if (data.intro) lines.push(`Intro: ${clip(data.intro, 400)}`)
-        if (data.bio) lines.push(`Bio: ${clip(data.bio, 600)}`)
+        if (data.intro) lines.push(`Intro: ${clip(data.intro, 800)}`)
+        if (data.bio) lines.push(`Bio: ${clip(data.bio, 1600)}`)
         if (data.specialties) lines.push(`Specialties: ${clip(JSON.stringify(data.specialties), 240)}`)
         if (data.subjects) lines.push(`Subjects: ${clip(JSON.stringify(data.subjects), 200)}`)
         if (data.industries) lines.push(`Industries: ${clip(JSON.stringify(data.industries), 200)}`)
@@ -426,6 +430,7 @@ function formatChunks(chunks: KnowledgeChunk[]): string {
 export async function buildMessengerSiteKnowledge(opts: {
   db?: any
   provider?: { id: string; role?: string; full_name?: string | null; email?: string | null } | null
+  replayPublicProfile?: Record<string, any> | null
   latestUserMessage?: string
   kbDir?: string
 }): Promise<SiteKnowledgePack> {
@@ -434,7 +439,7 @@ export async function buildMessengerSiteKnowledge(opts: {
 
   let providerContext: ProviderGigContext | null = null
   if (opts.db && opts.provider?.id) {
-    providerContext = await loadProviderGigContext(opts.db, opts.provider)
+    providerContext = await loadProviderGigContext(opts.db, opts.provider, opts.replayPublicProfile)
   }
 
   // Always pin brand-identity so the model keeps the YQAA persona even on tiny queries.

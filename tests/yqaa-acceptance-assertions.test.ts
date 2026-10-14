@@ -9,6 +9,15 @@ const state = {
 }
 
 describe('counteroffer acceptance evidence', () => {
+  test('recognizes a new authorised same-scope counterproposal, and rejects an unsaved value', () => {
+    const updated = {...state,metadata:{...state.metadata,ai_memory:{negotiation:{...state.metadata.ai_memory.negotiation,quotes_made:[...state.metadata.ai_memory.negotiation.quotes_made,{cents:15000,scope_hash:state.scopeHash}]}}}}
+    expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $150.', updated)).toBe(true)
+    expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $149.', updated)).toBe(false)
+  })
+  test('recognizes the natural lock-it-at disposition tied to the exact saved quote and counter', () => {
+    expect(counterofferAcknowledged('I hear you wanting $139.50 for the same three-document checklist. For that narrowed work, I can lock it at $155 on-platform.', state)).toBe(true)
+    expect(counterofferAcknowledged('I can lock it at $154. I hear your $139.50 proposal.', state)).toBe(false)
+  })
   test('accepts actual amount acknowledgment holding the authorized total without old keywords', () => {
     expect(counterofferAcknowledged('I noted your $139.50. The approved total remains $155 for the three-document checklist.', state)).toBe(true)
   })
@@ -16,6 +25,25 @@ describe('counteroffer acceptance evidence', () => {
     'I can help organize a checklist. What country are you applying to?',
     'We can review the price with a provider.',
     'A hotel is $155 and a bus ticket is $139.50.',
+    'I can’t lock it at $155. Your $139.50 proposal still needs a decision.',
+    'I cannot offer this scope at $155. I noted your $139.50.',
+    'I couldn’t lock it at $155. Your $139.50 proposal still needs a decision.',
+    'I noted your $139.50 proposal. Can I lock it at $155?',
+    'I noted your $139.50 proposal. The approved total remains $155?',
+    'I might lock it at $155. Your $139.50 proposal is noted.',
+    'I noted your $139.50. The approved total is probably $155.',
+    'I noted your $139.50. The approved total is likely $155.',
+    'I noted your $139.50. The approved total is estimated at $155.',
+    'I noted your $139.50. We can hold it at $155 as long as the provider approves.',
+    'I noted your $139.50. The approved total is $155 if the provider approves.',
+    'I noted your $139.50. We can hold it at $155 subject to provider approval.',
+    'I noted your $139.50. We can hold it at $155 once the provider approves.',
+    'I noted your $139.50. I can lock it at $155. If the provider approves.',
+    'I noted your $139.50. I can lock it at $155. Provider approval is required.',
+    'I noted your $139.50. I can lock it at $155. The provider must approve first.',
+    'I noted your $139.50. I can lock it at $155. The provider is available? Approval is required.',
+    `I noted your $139.50. I can lock it at $155. The provider ${'additional details '.repeat(15)} approval is required.`,
+    'The approved total is not $155. Your $139.50 proposal is noted.',
     'I accept your $139.50 offer; the previous total was $155.',
     'The approved total remains $155. Please tell me your budget.',
     'Your $139.51 proposal leaves the approved total at $155.',
@@ -30,6 +58,7 @@ describe('counteroffer acceptance evidence', () => {
   test('acceptance at the counter needs a real same-scope quote at that amount', () => {
     const approved = { ...state, metadata: { ...state.metadata, ai_memory: { negotiation: { ...state.metadata.ai_memory.negotiation, quotes_made: [...state.metadata.ai_memory.negotiation.quotes_made, { cents: 13950, scope_hash: state.scopeHash }] } } } }
     expect(counterofferAcknowledged('I accept your $139.50 offer for this scope.', approved)).toBe(true)
+    expect(counterofferAcknowledged('I accept your $139.50 offer. Provider approval is required.', approved)).toBe(false)
   })
 })
 
