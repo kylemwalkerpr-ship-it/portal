@@ -18,6 +18,11 @@ function registerOwnedConversation(registry, fixture) {
   return fixture
 }
 
+function fixtureProviderRole(fixture) {
+  if (!['attorney', 'consultant'].includes(fixture?.providerRole)) throw new Error('Verified fixture provider role is missing or unsupported.')
+  return fixture.providerRole
+}
+
 function providerForThread(providers, category, scenario, designatedMode) {
   return providers.find((item) => item.category === category && (!designatedMode || item.scenario === scenario)) || null
 }
@@ -40,4 +45,4 @@ function verifyOwnedConversation(row, fixture, runMarker) {
   return true
 }
 
-module.exports = { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation }
+module.exports = { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation, fixtureProviderRole }

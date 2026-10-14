@@ -9,9 +9,9 @@ const args: any = {
 test('explains a first impossible budget without promising a smaller paid scope or a requested handoff', () => {
   const reply=firstBudgetLimitExplanation(args)
   expect(reply).toContain('USD 1.00')
-  expect(reply).toContain('No paid scope has been approved')
-  expect(reply).toContain('cannot promise the full request or send an offer')
-  expect(reply).toContain('I have not requested it yet')
+  expect(reply).toContain('I can’t offer the full paid work at that amount')
+  expect(reply).not.toMatch(/offer (?:created|approved)|your (?:booking|order) is confirmed/i)
+  expect(reply).toContain('I haven’t requested their review yet')
 })
 test.each([
   {pricing:{...args.pricing,intent:{categoryId:'legal-services'}}}, {adaptive:{...args.adaptive,eligible_actions:['HOLD_VALUE','ESCALATE_PROVIDER']}}, {companion:{escalate:true}}, {companion:null}, {companion:{escalate:false,posture:'HANDOFF_SUPPORT'}}, {highStakes:true}, {frustrated:true}, {budgetGapAlreadyExplained:true}, {legalEvidenceMissing:true},

@@ -86,7 +86,7 @@ describe('manual YQAA live acceptance safety guards', () => {
     await expect(pause(registry)).resolves.toEqual(['conversation-1'])
     expect(harness.indexOf('registerOwnedConversation(fixtureThreads')).toBeGreaterThan(harness.indexOf('verifyOwnedConversation(row, threadFixture, CURRENT_RUN_MARKER)'))
     expect(harness).toContain("if (thread.clientKind === 'designated') return verifyDesignatedClient(thread.profileId, thread.clerkUserId)")
-    expect(harness).toContain("verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, 'consultant')")
+    expect(harness).toContain("verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, fixtureProviderRole(thread))")
     expect(harness).not.toContain("rows[0].metadata?.yqaa_live_acceptance !== true) throw new Error('fixture ownership")
   })
 
@@ -164,7 +164,7 @@ describe('manual YQAA live acceptance safety guards', () => {
 
   test('incident gig mirror uses deployed columns and provider preferences', () => {
     const fixtures = harness.slice(harness.indexOf('async function createIncidentFixtures'), harness.indexOf('async function runIncidentReplay'))
-    expect(fixtures).toContain('unit_pricing,hourly_rate_cents,pitch,description&provider_id=eq.')
+    expect(fixtures).toContain('unit_pricing,hourly_rate_cents,pitch,description,jurisdiction&provider_id=eq.')
     expect(fixtures).not.toContain('negotiation_flex_pct')
     expect(fixtures).not.toContain('min_floor_cents: sourceGig')
     expect(fixtures).toContain('provider_pricing_preferences?select=negotiation_enabled')
@@ -314,3 +314,12 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).not.toContain('reply.body,')
   })
 })
+
+ test('cleanup requires the verified provider role and never defaults to consultant', () => {
+ const { fixtureProviderRole } = require('../scripts/yqaa-fixture-registry.cjs')
+ expect(fixtureProviderRole({providerRole:'attorney'})).toBe('attorney')
+ expect(fixtureProviderRole({providerRole:'consultant'})).toBe('consultant')
+ expect(()=>fixtureProviderRole({})).toThrow()
+ expect(()=>fixtureProviderRole({providerRole:'client'})).toThrow()
+ expect(harness.match(/verifyOwnedFixtureProfile\(thread.providerProfileId, thread.providerClerkUserId, fixtureProviderRole\(thread\)\)/g)).toHaveLength(3)
+ })

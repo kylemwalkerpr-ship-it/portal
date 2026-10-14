@@ -98,7 +98,7 @@ const MARKET_PATTERNS: Array<[string, RegExp]> = [
 
 const HIGH_VALUE = /\b(budget|price|quote|offer|order|need|want|looking for|help with|apply|application|visa|permit|immigration|admission|school|university|legal|lawyer|attorney|resume|cv|sop|essay|housing|settlement|family|sponsor|deadline|urgent|document|passport|transcript|refusal|appeal|feedback|update|follow up|follow-up)\b/i
 const DEADLINE = /\b(deadline|due|urgent|urgently|asap|appointment|interview|hearing|filing|by\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|next\s+week|next\s+month|\w+\s+\d{1,2}))\b/i
-const DOCUMENT = /\b(document|documents|passport|transcript|i-?20|cas|coe|oshc|letter|statement|sop|resume|cv|certificate|degree|bank statement|evidence|form|application)\b/i
+const DOCUMENT = /\b(document|documents|checklists?|passport|transcript|i-?20|cas|coe|oshc|letter|statement|sop|resume|cv|certificate|degree|bank statement|evidence|form|application)\b/i
 
 function clean(value: unknown, max = 320) {
   return typeof value === 'string'

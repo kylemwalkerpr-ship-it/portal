@@ -121,7 +121,7 @@ function money(cents: number | null | undefined, currency = 'usd') {
   if (!Number.isFinite(Number(cents))) return '—'
   const value = Number(cents) / 100
   const symbol = currency.toLowerCase() === 'usd' ? '$' : `${currency.toUpperCase()} `
-  return `${symbol}${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+  return `${symbol}${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
 function clampInt(value: unknown) {
@@ -535,16 +535,16 @@ export function lowBudgetReply(_pricing: PricingAuthority) {
   // handoff. Never dump internal floors, means, or "revenue-safe" math on the
   // client, and never repeat this same template across turns (Foley/Taylor).
   return [
-    'Thanks for being upfront about your budget — that genuinely helps.',
-    'For the full scope you have described, I am not able to send an offer at that level automatically.',
-    'Two honest paths: we can narrow the scope so it fits what you are comfortable with, or I can hand this to the provider directly to talk through realistic options.',
-    'Just tell me which you would prefer. 🙂',
+    'Thanks for being clear about your budget.',
+    'I can’t offer the full work we’ve discussed at that amount.',
+    'We can look at a smaller part of the work, or ask the provider what options they can offer.',
+    'Which would suit you better?',
   ].join(' ')
 }
 
 /** Short empathetic handoff used when the budget gap was already explained — escalate, never loop. */
 export function lowBudgetEscalationReply(providerLabel = 'the provider') {
-  return `I hear you — and I don’t want to keep going in circles on budget. I’m requesting ${providerLabel} to review what scope and price can work. That request is pending until they reply. If you need help sooner, contact YouSafe Support.`
+  return `I hear you. You shouldn’t have to keep going in circles. I’ve asked ${providerLabel} to discuss the options with you. Their reply is still pending; you can leave any important questions here, or contact YouSafe Support if you need help sooner.`
 }
 
 /** Explains a failed budget scope plainly when the client is already frustrated. */
@@ -621,7 +621,7 @@ export function budgetGapReplyAlreadySent(previousAiBodies: string[]): boolean {
     if (!normalized) continue
     const mentionsBudget = /\bbudget\b/.test(normalized)
     const offersAlternative = /\b(narrow|smaller scope|reduce the scope|adjust the budget|revisit|provider|hand)/.test(normalized)
-    const explainsGap = /\b(below|can t send|cant send|cannot send|not able to send|unable to send|more than|outside|at that level|automatically)\b/.test(normalized)
+    const explainsGap = /\b(below|can t offer|cant offer|cannot offer|not able to offer|unable to offer|can t send|cant send|cannot send|not able to send|unable to send|more than|outside|at that level|automatically)\b/.test(normalized)
     if (mentionsBudget && offersAlternative && explainsGap) return true
   }
   return false
@@ -659,7 +659,7 @@ export function guardMessengerOffer(args: {
     return { ok: false, reason: 'insufficient_scope', reply: 'I can price this once I understand the exact service you need. What would you like the provider to handle for you?' }
   }
   if (p.status === 'insufficient_market_data') {
-    return { ok: false, reason: 'insufficient_market_data', reply: 'I don’t have enough verified Marketplace pricing for this exact scope to send a safe quote yet. I’ll keep the scope here and have the provider confirm the price rather than guessing.', needsProviderReview: true }
+    return { ok: false, reason: 'insufficient_market_data', reply: 'Let’s get a clear price for the work you actually need. I’ve asked the provider to confirm what they can offer; their reply is still pending. You can add which part you’d like help with first.', needsProviderReview: true }
   }
   if (p.status === 'need_budget' || !p.budget) {
     return { ok: false, reason: 'missing_budget', reply: budgetQuestion(p.currency) }
@@ -673,14 +673,14 @@ export function guardMessengerOffer(args: {
   const raw = args.proposedPriceUsd ?? args.proposedPrice
   const priceCents = Number.isFinite(Number(raw)) ? Math.round(Number(raw) * 100) : 0
   if (priceCents <= 0) {
-    return { ok: false, reason: 'invalid_price', reply: 'I have the scope and budget, but the offer price did not validate cleanly. I’ll recalculate it rather than send a questionable quote.' }
+    return { ok: false, reason: 'invalid_price', reply: 'Let me double-check the price for the work we agreed on before sending an offer.' }
   }
 
   if (hasScopedFloor && Number.isFinite(approvedPriceCents) && approvedPriceCents > 0 && priceCents !== Math.round(approvedPriceCents)) {
     return {
       ok: false,
       reason: 'invalid_price',
-      reply: 'The server already approved a specific figure for this scope. I’ll recalculate it rather than send a different number.',
+      reply: 'Let me check that amount against the work we agreed on before sending an offer.',
     }
   }
 
@@ -692,8 +692,8 @@ export function guardMessengerOffer(args: {
       ok: false,
       reason: 'below_guarded_floor',
       reply: hasScopedFloor
-        ? `That figure sits below what this scope of work needs, and I don’t want to undercut the provider’s work. I can ask the provider to review the pricing for this scope — want me to do that?`
-        : `I can’t send that figure — it sits below what the current live evidence supports for this scope, and I don’t want to undercut the provider’s work. Rather than throwing numbers around, tell me the figure you’d be comfortable with and I’ll check it against the evidence, or we can narrow what’s included.`,
+        ? `I can’t offer that part of the work at that amount. I’ve asked the provider whether they can suggest another option; their reply is still pending.`
+        : `I can’t offer the work we’ve discussed at that amount. I’ve asked the provider to talk through the options with you; their reply is still pending.`,
       needsProviderReview: true,
     }
   }
@@ -708,7 +708,7 @@ export function guardMessengerOffer(args: {
     return {
       ok: false,
       reason: 'above_platform_limit',
-      reply: 'This looks like a high-value custom scope. I’m keeping the details here, but the provider needs to confirm the commercial terms before an offer at that level can be sent.',
+      reply: 'For a job this size, I’ve asked the provider to agree the work and price with you before an offer goes out. Their reply is still pending.',
       needsProviderReview: true,
     }
   }
@@ -719,7 +719,7 @@ export function guardMessengerOffer(args: {
     return {
       ok: false,
       reason: 'above_evidence_requires_provider_review',
-      reply: 'Your scope may justify a premium custom quote, but it sits above the current live Marketplace evidence I can verify automatically. I’ll keep the details and have the provider confirm that higher figure rather than risk overquoting you.',
+      reply: 'For a custom job at that price, I’ve asked the provider to confirm the work and amount with you. Their reply is still pending.',
       needsProviderReview: true,
     }
   }

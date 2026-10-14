@@ -18,5 +18,5 @@ export function firstBudgetLimitExplanation(args: {
   const currency = pricing.budget.currency.toUpperCase()
   if (!/^[A-Z]{3}$/.test(currency) || !Number.isFinite(pricing.budget.maxCents) || pricing.budget.maxCents <= 0) return null
   const amount = (pricing.budget.maxCents / 100).toFixed(2)
-  return `I understand your maximum is ${currency} ${amount}. No paid scope has been approved at that amount, so I cannot promise the full request or send an offer for it. You can keep organizing your documents yourself, revise the budget, or ask the provider to discuss other options. If you want me to request their review, tell me; I have not requested it yet.`
+  return `I understand your maximum is ${currency} ${amount}. I can’t offer the full paid work at that amount. You can keep organizing your documents yourself, revise the budget, or ask the provider to discuss other options. If you’d like me to ask them, just say so. I haven’t requested their review yet.`
 }

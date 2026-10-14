@@ -41,6 +41,8 @@ export type PolishInput = {
   allowedAmountsCents?: number[] | null
   /** Server-approved number used to build the safe fallback template. */
   approvedPriceCents?: number | null
+  /** Actual client proposal, distinct from the approved quote and budget. */
+  clientCounterCents?: number | null
   currency?: string | null
   previousAiBodies?: string[] | null
   /** Bullets describing what the reduced price includes (from the scoped quote). */
@@ -120,7 +122,7 @@ export function extractReplyAmountsCents(text: string): number[] {
 
 function money(cents: number, currency = 'usd') {
   const symbol = String(currency || 'usd').toLowerCase() === 'usd' ? '$' : `${String(currency).toUpperCase()} `
-  return `${symbol}${(Math.round(cents) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+  return `${symbol}${(Math.round(cents) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
 /**
@@ -136,12 +138,13 @@ export function safeApprovedPriceTemplate(args: {
   const price = money(args.approvedPriceCents, args.currency || 'usd')
   const includes = (args.includes || []).slice(0, 3)
   const parts = [
+    args.clientFigureCents && args.clientFigureCents > 0 ? `I’ve noted your ${money(args.clientFigureCents, args.currency || 'usd')} proposal.` : '',
     `I can put this together for ${price} for the scope we just narrowed down.`,
     includes.length ? `That includes ${includes.join(', ')}.` : '',
     args.clientFigureCents && args.clientFigureCents > 0
-      ? `That is the server-approved number for this scope with the budget you mentioned.`
+      ? `I’ve kept the budget you gave me in mind.`
       : '',
-    'Want me to send it over as an offer?',
+    'If that suits you, we can take the next step here.',
   ]
   return parts.filter(Boolean).join(' ')
 }
@@ -198,6 +201,7 @@ export function polishCompanionReply(input: PolishInput): PolishResult {
         approvedPriceCents: input.approvedPriceCents,
         currency: input.currency,
         includes: input.includes,
+        clientFigureCents: (input.allowedAmountsCents || []).includes(Number(input.clientCounterCents)) ? input.clientCounterCents : null,
       })
       return { reply, action: 'fallback_template', escalate: false, reasons }
     }
@@ -216,7 +220,7 @@ export function polishCompanionReply(input: PolishInput): PolishResult {
         approvedPriceCents: input.approvedPriceCents,
         currency: input.currency,
         includes: input.includes,
-        clientFigureCents: allowed.size ? [...allowed][0] : null,
+        clientFigureCents: allowed.has(Number(input.clientCounterCents)) ? input.clientCounterCents : null,
       })
     } else {
       // No approved number to fall back to: drop the sentence carrying the amount.

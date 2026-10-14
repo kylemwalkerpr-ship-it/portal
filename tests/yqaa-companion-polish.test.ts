@@ -172,3 +172,13 @@ describe('companion polish — regeneration pipeline', () => {
     expect(leaksCompanionPricingLanguage(result.reply)).toBe(false)
   })
 })
+
+test('fallback preserves the actual client counter cents and does not invent one from a budget', () => {
+ const base={reply:'The server-approved floor is $812.',allowedAmountsCents:[15500,13950,20000],approvedPriceCents:15500,regenerated:true}
+ const result=polishCompanionReply({...base,clientCounterCents:13950})
+ expect(result.reply).toContain('$139.5')
+ expect(result.reply).toContain('$155')
+ expect(result.reply).not.toMatch(/server-approved|floor/)
+ expect(polishCompanionReply(base).reply).not.toContain('proposal')
+ expect(polishCompanionReply({...base,clientCounterCents:13800}).reply).not.toContain('proposal')
+})
