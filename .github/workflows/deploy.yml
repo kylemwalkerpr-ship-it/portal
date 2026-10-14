@@ -201,6 +201,7 @@ jobs:
           # System One API. This key is written only to the ephemeral Worker
           # secrets file and is never included in build-time/client env.
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          TYPESEARCH_API_KEY: ${{ secrets.TYPESEARCH_API_KEY }}
           # DataForSEO Backlinks API — Master SEO Engine links subsystem
           YQAA_TYPESENSE_URL: ${{ secrets.YQAA_TYPESENSE_URL }}
           YQAA_TYPESENSE_TOKEN: ${{ secrets.YQAA_TYPESENSE_TOKEN }}

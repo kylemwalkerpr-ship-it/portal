@@ -7,6 +7,17 @@ const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mj
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
+  test('local runtime is bounded and cleanup has independent request allowance',()=>{
+    expect(harness).toContain('ACCEPTANCE_RUN_BUDGET_MS = 30 * 60_000')
+    expect(harness).toContain('runWithDeadline(runAcceptance,ACCEPTANCE_RUN_BUDGET_MS,runController')
+    expect(harness).toContain("acceptancePhase.run({phase:'cleanup',signal:cleanupController.signal},cleanup)")
+    expect(harness).toContain("phase?.phase === 'cleanup' ? phase.signal : runController.signal")
+    expect(harness).toContain("requiredAcceptanceSettings(process.env.YQAA_RELEASE_MODE)")
+    expect(harness).toContain('activeReleaseMatches(active,version,deployment)')
+    expect(harness).toContain('chromium.launchServer({headless:true,timeout:15_000})')
+    expect(harness).toContain("browserServer.process()?.kill('SIGKILL')")
+  })
+
   test('incident mode initializes database before loading source', () => {
     expect(harness).toMatch(/if \(replayIncident === INCIDENT_MODE\) \{\s+initializeFixtureDatabase\(\)/)
   })
@@ -166,7 +177,7 @@ describe('manual YQAA live acceptance safety guards', () => {
   })
 
   test('public generation health probe runs after deployed identity and stores only bounded diagnostics', () => {
-    expect(harness).toMatch(/\} else \{\s+const publicGenerationOk = await publicGenerationProbe\(\);?\s+browser = await chromium\.launch/)
+    expect(harness).toMatch(/\} else \{\s+const publicGenerationOk = await publicGenerationProbe\(\);?\s+await launchOwnedBrowser\(\)/)
     expect(harness).toContain("'For a public service listing, what questions should someone ask before choosing a provider?'")
     expect(harness).toContain('model_category: modelCategory')
     expect(harness).toContain('await response.json().catch(() => null)')

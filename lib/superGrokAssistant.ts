@@ -210,11 +210,13 @@ export async function callSystemSuperGrok(
   let responsesStatus = 0
   let responsesDiagnostic = ''
   try {
-    // Split a caller-supplied attempt budget across both protocols. This
-    // leaves time for Chat Completions after a slow Responses timeout.
+    // Preserve the measured Responses latency inside a bounded attempt.
+    // A proportional 55% split cancelled working ~10.5s public prompts at
+    // ~9.35s and restarted inference. Reserve a short independent Chat
+    // Completions recovery without shortening the primary below its cap.
     const responseBudget = deadlineAt === null
       ? RESPONSES_TIMEOUT_MS
-      : boundedTimeout(Math.min(RESPONSES_TIMEOUT_MS, Math.max(1, Math.floor(remainingMs() * 0.55))))
+      : boundedTimeout(Math.min(RESPONSES_TIMEOUT_MS, Math.max(1, remainingMs() - 3_000)))
     let response = await callResponses(auth, messages, options.signal, responseBudget)
     responsesStatus = response.response.status
 
