@@ -14,6 +14,11 @@ describe('counteroffer acceptance evidence', () => {
     expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $150.', updated)).toBe(true)
     expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $149.', updated)).toBe(false)
   })
+  test('recognizes direct offer-figure language at the saved amount and rejects conditional or invented figures', () => {
+    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155.',state)).toBe(true)
+    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $154.',state)).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155 if the provider approves.',state)).toBe(false)
+  })
   test('recognizes the natural lock-it-at disposition tied to the exact saved quote and counter', () => {
     expect(counterofferAcknowledged('I hear you wanting $139.50 for the same three-document checklist. For that narrowed work, I can lock it at $155 on-platform.', state)).toBe(true)
     expect(counterofferAcknowledged('I can lock it at $154. I hear your $139.50 proposal.', state)).toBe(false)
