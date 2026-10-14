@@ -404,44 +404,51 @@ export function insufficientEvidenceOrientationReply(args: {
   recentClientContext: string
   providerLabel?: string
   budget?: PricingAuthority['budget']
+  disclose?: boolean
 }) {
   const latest = String(args.latestClientText || '').trim()
   const context = `${String(args.recentClientContext || '')}\n${latest}`
   const name = context.match(/\bmy name is\s+([a-z][a-z’'-]{1,39})\b/i)?.[1]
   const greeting = name ? `Thanks for laying that out, ${name}.` : 'Thanks for laying that out.'
+  const opening = args.disclose
+    ? `Hi${name ? ` ${name}` : ''} — I’m **YQAA**, an AI assistant here to help you get oriented.`
+    : greeting
   const provider = String(args.providerLabel || '').trim()
-  const providerName = provider && !/^(?:your provider|the provider)$/i.test(provider) ? provider : 'the provider'
+  const providerName = provider && !/^(?:your provider|the provider|synthetic replay provider)$/i.test(provider) ? provider : 'the provider'
 
-  if (/\b(?:going rates?|rates?|price|pricing|cost|how much)\b/i.test(latest)) {
-    return `${greeting} The cost will depend on how much help you want. Since you’re still planning ahead, we could start by comparing the residency routes you’ve found and the documents each one asks for. Would a route comparison or a document checklist be more useful to you?`
+  if (/\b(?:going rates?|rates?|price|pricing|how much)\b|\b(?:what(?:'s| is| are| would| does)|how much)\b[^.!?]{0,50}\b(?:cost|price)\b/i.test(latest)) {
+    return `${opening} That’s a fair question. There’s a big difference between one conversation to map your routes and having someone help prepare an application, so I don’t want to throw out a number that may not fit. Since you’re still planning ahead, starting with the routes and documents sounds sensible. Were you looking for that kind of guidance, or help with the application itself?`
   }
 
   if (args.budget && Number.isFinite(args.budget.maxCents) && args.budget.maxCents > 0) {
     const amount = `${String(args.budget.currency || 'usd').toUpperCase()} ${(args.budget.maxCents / 100).toFixed(2)}`
     const acknowledgment = name ? `Thanks, ${name}—that gives me a useful ceiling.` : 'Thanks, that gives me a useful ceiling.'
-    return `${acknowledgment} I’ll keep your ${amount} limit in mind. We can start with a comparison of the residency routes and the documents you’d need. Before I tell you whether that fits, I’d want to confirm the consult price with ${providerName}. Would comparing the routes be a good place to start?`
+    const budgetOpening = args.disclose ? `${opening} ${acknowledgment}` : acknowledgment
+    return `${budgetOpening} I’ll keep your ${amount} limit in mind. We can start with a comparison of the residency routes and the documents you’d need. Before I tell you whether that fits, I’d want to confirm the consult price with ${providerName}. Would comparing the routes be a good place to start?`
   }
 
   const move = context.match(/\b(?:move|relocat\w*|settle)\s+(?:to|in)\s+([A-Z][A-Za-z’'-]*(?:[\s-]+[A-Z][A-Za-z’'-]*){0,3})/)?.[1]
   const moveNote = move ? ` a move to ${move}` : ' this'
-  return `${greeting} It makes sense to look into${moveNote} now and keep costs in view. I’d start by checking which residency routes fit your own citizenship and where you’d apply from, then compare what each asks you to prepare. Your fiancé’s family connection could be useful context, but I wouldn’t assume it settles which options are open to you. Where are you a citizen now, and where do you expect to apply? Then we can narrow down the official information and make any time with ${providerName} more focused.`
+  return `${opening} It makes sense to look into${moveNote} now and keep costs in view. I’d start by checking which residency routes fit your own citizenship and where you’d apply from, then compare what each asks you to prepare. Your fiancé’s family connection could be useful context, but I wouldn’t assume it settles which options are open to you. Where are you a citizen now, and where do you expect to apply? Then we can narrow down the official information and decide what’s worth covering in a first consult.`
 }
 
-/** A cautious Jev handoff may be overruled only for a grounded, general orientation turn. */
-export function canContinueGroundedOrientation(args: {
-  hasGroundedEvidence: boolean
+/** First broad legal-orientation turn stays useful unless a deterministic safety gate applies. */
+export function canUseSafeFirstLegalOrientation(args: {
+  isFirstYqaaReply: boolean
+  isLegalOrientation: boolean
   highStakes: boolean
   frustrated: boolean
   explicitProviderReviewRequest: boolean
   budgetGapAlreadyExplained: boolean
-  commerceIntent: boolean
+  explicitBuyIntent: boolean
   companionReasons: string[]
 }) {
-  const blockingReasons = args.companionReasons.filter((reason) => reason !== 'jev_requires_handoff')
-  return args.hasGroundedEvidence && !args.highStakes && !args.frustrated &&
+  const hardReasons = args.companionReasons.filter((reason) =>
+    ['client_frustration_or_exit', 'high_stakes_ymyl', 'duplicate_reply_risk', 'budget_gap_already_explained', 'support_issue_handoff'].includes(reason),
+  )
+  return args.isFirstYqaaReply && args.isLegalOrientation && !args.highStakes && !args.frustrated &&
     !args.explicitProviderReviewRequest && !args.budgetGapAlreadyExplained &&
-    !args.commerceIntent && args.companionReasons.includes('jev_requires_handoff') &&
-    blockingReasons.length === 0
+    !args.explicitBuyIntent && hardReasons.length === 0
 }
 
 /** Honest provider-review response for an explicit counter the server cannot authorize. */
@@ -1429,22 +1436,23 @@ export async function maybeAutoReply(opts: {
           ['jev_requires_handoff', 'client_frustration_or_exit', 'high_stakes_ymyl', 'duplicate_reply_risk', 'budget_gap_already_explained', 'support_issue_handoff'].includes(reason),
         ),
       )
-      const safeGroundedOrientation = canContinueGroundedOrientation({
-        hasGroundedEvidence: legalEvidenceBundle.evidence.length > 0,
+      const safeFirstLegalOrientation = canUseSafeFirstLegalOrientation({
+        isFirstYqaaReply: priorAiBodies.length === 0,
+        isLegalOrientation: messengerNeedsLegalEvidence(String(latestClientText || '')),
         highStakes,
         frustrated,
         explicitProviderReviewRequest,
         budgetGapAlreadyExplained,
-        commerceIntent: commerceBuyIntent(String(latestClientText || '')),
+        explicitBuyIntent: commerceBuyIntent(String(latestClientText || '')),
         companionReasons: companion?.reasons || [],
       })
-      const safeOrientationContinuation = safeMissingEvidenceIntake || safeGroundedOrientation
+      const safeOrientationContinuation = safeMissingEvidenceIntake || safeFirstLegalOrientation
       const replyCompanion: CompanionDecision | null = safeOrientationContinuation && companion
         ? {
             ...companion,
             posture: 'DISCOVER',
             escalate: false,
-            reasons: companion.reasons.filter(reason => reason !== 'legal_evidence_missing' && reason !== 'jev_evidence_insufficient' && reason !== 'jev_requires_handoff'),
+            reasons: companion.reasons.filter(reason => !reason.startsWith('jev_') && reason !== 'legal_evidence_missing'),
           }
         : companion
 
@@ -1530,6 +1538,7 @@ export async function maybeAutoReply(opts: {
                 recentClientContext: msgs.filter((message: any) => message.sender_id === client.id).slice(-8).map((message: any) => String(message.body || '')).join('\n'),
                 providerLabel,
                 budget: pricing.budget,
+                disclose: safeFirstLegalOrientation && !disclosed,
               }), escalate: false, offer: null }
             : null)
         decision = await resolveMessengerDraft({ handoff, budgetReply: budgetLimitExplanation, generate: async () => {
@@ -1570,7 +1579,7 @@ export async function maybeAutoReply(opts: {
       // Model output cannot clear a server-required escalation or issue an offer
       // on a handoff turn, regardless of the model's parsed `escalate` value.
 
-      decision = enforceCompanionEscalation(decision, replyCompanion || (legalEvidenceMissing && !safeMissingEvidenceIntake ? { escalate: true } : null))
+      decision = enforceCompanionEscalation(decision, replyCompanion || (legalEvidenceMissing && !safeOrientationContinuation ? { escalate: true } : null))
       if (insufficientEvidenceHandoff) {
         replyText = insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || ''))
       }
