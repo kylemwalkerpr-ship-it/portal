@@ -72,6 +72,8 @@ describe('counteroffer acceptance evidence', () => {
   test('a provider review is acknowledged only for the exact current counter turn', () => {
     const body = 'Thanks for putting USD 139.50 forward. I’ve asked the provider to review that counter; their answer is still pending.'
     expect(counterofferAcknowledged(body, pendingReviewState())).toBe(true)
+    expect(counterofferAcknowledged('Thanks for the USD 139.50 counter on the same narrowed scope. I’ve asked the provider, Ms Foley, to review it, and I’ll let you know as soon as I hear back.', pendingReviewState())).toBe(true)
+    expect(counterofferAcknowledged('Your counter was USD 155.00. I’ve asked the provider to review USD 139.50.', pendingReviewState())).toBe(false)
     expect(counterofferAcknowledged('Thanks for your counter of USD 139.50 for the same work. I’ve sent it to Ms Foley to review.', pendingReviewState())).toBe(true)
     expect(counterofferAcknowledged(body, { ...pendingReviewState(), metadata: { ...pendingReviewState().metadata, ai_last_trigger_message_id: 'older-trigger' } })).toBe(false)
     expect(counterofferAcknowledged(body, { ...pendingReviewState(), triggerMessageId: 'older-trigger' })).toBe(false)

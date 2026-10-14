@@ -432,17 +432,19 @@ export function counterNeedsProviderReviewReply(counterCents: number, currency: 
   const code = /^[a-z]{3}$/i.test(String(currency || '')) ? String(currency).toUpperCase() : 'USD'
   const amount = `${code} ${(Math.round(counterCents) / 100).toFixed(2)}`
   const provider = String(providerLabel || '').trim() || 'the provider'
-  return `Thanks for your counter of ${amount} for the same work. I’ve sent it to ${provider} to review. I can’t agree to a different price for them, so I’ll hold off on confirming that amount until I hear back.`
+  const providerReference = /^the provider$/i.test(provider) ? provider : `the provider, ${provider}`
+  return `Thanks for the ${amount} counter on the same narrowed scope. I’ve asked ${providerReference} to review it, and I’ll let you know as soon as I hear back.`
 }
 
 export function explicitCounterReviewDraft(args: {
   action?: string | null
+  approvalRequired?: boolean
   counterSource?: string | null
   counterCents?: number | null
   currency: string
   providerLabel?: string
 }): GrokDecision | null {
-  if (args.action !== 'ESCALATE_PROVIDER' || args.counterSource !== 'explicit' || !Number.isFinite(args.counterCents) || Number(args.counterCents) <= 0) return null
+  if ((args.action !== 'ESCALATE_PROVIDER' && args.approvalRequired !== true) || args.counterSource !== 'explicit' || !Number.isFinite(args.counterCents) || Number(args.counterCents) <= 0) return null
   return { reply: counterNeedsProviderReviewReply(Number(args.counterCents), args.currency, args.providerLabel), escalate: true, offer: null }
 }
 
@@ -1484,6 +1486,7 @@ export async function maybeAutoReply(opts: {
       const budgetLimitExplanation = firstBudgetLimitExplanation({pricing, adaptive, companion, latestClientText: String(latestClientText || ''), frustrated, budgetGapAlreadyExplained, legalEvidenceMissing, highStakes})
       const counterReviewDraft = explicitCounterReviewDraft({
         action: adaptive?.recommended_action,
+        approvalRequired: adaptive?.approval_required && !approvedPricingRequest,
         counterSource: adaptive?.negotiation.counter_source,
         counterCents: adaptive?.negotiation.counter_cents,
         currency: pricing.currency,
@@ -1572,6 +1575,7 @@ export async function maybeAutoReply(opts: {
       // `ai_pricing_approval_pending` + provider attention instead.
       const adaptiveAuthorized = Boolean(
         adaptive &&
+        !adaptive.approval_required &&
         adaptive.approved_price_cents &&
         adaptive.channel === 'dm' &&
         (adaptive.recommended_action === 'ACCEPT' ||

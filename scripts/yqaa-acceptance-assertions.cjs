@@ -41,10 +41,18 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
 
   // An explicit provider review is a valid disposition only when it is tied to
   // this exact counter turn and the durable thread state records the handoff.
-  const counterAmountSentence = body.split(/(?<=[.!?\n])\s+/).some(sentence =>
-    moneyCents(sentence).includes(counterCents) &&
-      /\b(?:counter|proposal|offer|putting|forward)\b[^.!?;]{0,40}(?:\$\s*|\bUSD\s+)\d|(?:\$\s*|\bUSD\s+)\d[^.!?;]{0,40}\b(?:counter|proposal|offer|putting|forward)\b/i.test(sentence),
-  )
+  // Keep decimal punctuation inside a money token from breaking amount-to-counter
+  // association. The exact value and counter must occur in the same sentence.
+  const counterAmountSentence = body.split(/(?<=[!?\n])\s+|\.(?!\d)\s+/).some(sentence => {
+    const money = [...sentence.matchAll(/(?:\$\s*|\bUSD\s+)\d+(?:,\d{3})*(?:\.\d{1,2})?(?!\d|\.\d)/gi)]
+    const terms = [...sentence.matchAll(/\b(?:counter|proposal|offer|putting|forward)\b/gi)]
+    return money.some(amount => moneyCents(amount[0]).includes(counterCents) && terms.some(term => {
+      const start = Math.min(amount.index, term.index) + amount[0].length * (amount.index <= term.index ? 1 : 0)
+      const end = amount.index <= term.index ? term.index : amount.index
+      const between = sentence.slice(start, end)
+      return between.length <= 40 && !/[.!?;]/.test(between)
+    }))
+  })
   const reviewPending = counterAmountSentence && metadata.ai_provider_attention_requested === true &&
     /\b(?:review|approval|confirm\w*)\b/i.test(body) &&
     /\bcounter\b/i.test(body) &&
