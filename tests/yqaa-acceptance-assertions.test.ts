@@ -172,6 +172,14 @@ describe('durable current-turn counter disposition', () => {
     }
   }
   const body = 'I hear your $139.50. For organizing three documents only, I can meet you at $155.'
+  test('client choice after a committed quote is not provider-price approval', () => {
+    const text = 'Thanks for the $139.50 counter. For this same narrowed three-document checklist I can send the on-platform offer at $155 so you can accept it here if it still works for you.'
+    expect(counterofferAcknowledged(text, proof())).toBe(true)
+    expect(counterofferAcknowledged(text, state)).toBe(false)
+    expect(counterofferAcknowledged(text.replace('if it still works for you', 'if the provider approves'), proof())).toBe(false)
+    expect(counterofferAcknowledged(text.replace('if it still works for you', 'if it still works for you and funding arrives'), proof())).toBe(false)
+    expect(counterofferAcknowledged(text.replace('$155', '$154'), proof())).toBe(false)
+  })
   test('requires real current-turn visible offer evidence for natural price wording', () => {
     expect(counterofferAcknowledged(body, proof())).toBe(true)
     expect(counterofferAcknowledged(body, state)).toBe(false)
