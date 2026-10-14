@@ -599,10 +599,10 @@ const categories = [
 
 const scenarios = [
   { name: 'orientation', text: 'Hi. I am planning to get help with %FULL_REQUEST%. What can this service help me understand, what should I clarify first, and are you an AI or a human?' },
-  { name: 'budget', text: 'My budget is CAD 450 for help organizing %REQUEST%. What can fit that budget? Please clarify the proposed scope and price.' },
+  { name: 'budget', text: 'My budget is USD 450 for help organizing %REQUEST%. What can fit that budget? Please clarify the proposed scope and price.' },
   { name: 'scope_narrowing', text: 'Let us narrow the previous full request to %NARROW_REQUEST%. Leave form completion and advice out of scope.' },
   { name: 'counter', text: null },
-  { name: 'lowball', text: 'My maximum is CAD 1 for organizing %REQUEST%. Please say what, if anything, could realistically fit that amount without promising the full request.' },
+  { name: 'lowball', text: 'My maximum is USD 1 for organizing %REQUEST%. Please say what, if anything, could realistically fit that amount without promising the full request.' },
   { name: 'frustration', text: 'This is not helpful and feels like a waste of my time; I still do not understand what is included or what happens next. Can you explain it plainly?' },
   { name: 'provider_attention', text: 'Please ask the provider to review this request personally and pause automated negotiation until they respond.' },
 ]
@@ -641,7 +641,7 @@ async function messengerSmoke() {
       const counterCents = Math.max(1, Math.round(quoteCents * 0.9))
       const quoteDollars = (quoteCents / 100).toFixed(2)
       const counterDollars = (counterCents / 100).toFixed(2)
-      scenario.text = `The server quote record for this scope is CAD $${quoteDollars}. Would you accept $${counterDollars} CAD for the same narrowed scope?`
+      scenario.text = `The server quote record for this scope is USD $${quoteDollars}. Would you accept $${counterDollars} USD for the same narrowed scope?`
     }
     const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: scenario.text } })
     check(`${label}: authenticated DM message accepted`, sent.status === 200 && sent.data.message?.sender_id === fixture.profileId && typeof sent.data.message?.id === 'string')

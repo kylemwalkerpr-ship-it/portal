@@ -111,3 +111,9 @@ describe('legal-buddy escalation reply', () => {
  })
 
  test.each([['model_provider_401','provider_auth'],['model_provider_400','provider_rejected'],['model_provider_408','provider_timeout'],['model_provider_429','provider_rate_limited'],['model_provider_503','provider_unavailable'],['Messenger provider attempt timed out','provider_timeout']])('classifies finite model failure%s without exposing error text',(message,category)=>{expect(providerFailureCategory(new Error(message))).toBe(category)})
+
+ test('budget handoff never claims unverified licensure or an already-present provider',()=>{
+ const reply=lowBudgetEscalationReply('Synthetic Provider')
+ expect(reply).not.toMatch(/licensed|they can see everything|looping in/i)
+ expect(reply).toMatch(/request|pending/i)
+ })

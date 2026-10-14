@@ -542,7 +542,7 @@ export function lowBudgetReply(_pricing: PricingAuthority) {
 
 /** Short empathetic handoff used when the budget gap was already explained — escalate, never loop. */
 export function lowBudgetEscalationReply(providerLabel = 'the provider') {
-  return `I hear you — and I don’t want to keep going in circles on budget. I’m looping in ${providerLabel}, the licensed specialist on this thread, so you get a straight answer on what’s actually possible. They can see everything you’ve shared here. 🙂`
+  return `I hear you — and I don’t want to keep going in circles on budget. I’m requesting ${providerLabel} to review what scope and price can work. That request is pending until they reply. If you need help sooner, contact YouSafe Support.`
 }
 
 const CLIENT_FRUSTRATION_EXIT_RE = /\b(another\s+ai|other\s+ai|different\s+ai|chatgpt|claude|perplexity|stops?\s+at\s+the\s+buck|just\s+wants?\s+(?:my\s+)?money|only\s+cares?\s+about\s+(?:the\s+)?money|all\s+about\s+the\s+money|no\s+help|not\s+helpful|never\s+helps?|useless|waste\s+of\s+time|wasting\s+my\s+time|never\s+mind|forget\s+it|forget\s+about\s+it|done\s+here|giving\s+up|give\s+up|good\s*bye|goodbye)\b/i
