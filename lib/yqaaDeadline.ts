@@ -5,8 +5,9 @@ export class YqaaDeadlineError extends Error {
   }
 }
 
-export const YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS = 24_000
+export const YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS = 27_000
 export const YQAA_DM_REPLY_COMMIT_RESERVE_MS = 4_000
+export const YQAA_DM_DIAGNOSTIC_BUDGET_MS = 2_000
 
 /** Keeps the request abort listener and timer alive through response body consumption. */
 export async function fetchYqaaJsonWithTimeout(

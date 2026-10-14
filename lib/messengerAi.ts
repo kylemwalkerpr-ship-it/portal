@@ -45,7 +45,7 @@ import {
   type YqaaConversationMemory,
 } from '@/lib/messengerConversationMemory'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
-import { createYqaaDeadline, fetchYqaaJsonWithTimeout, YqaaDeadlineError, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS } from '@/lib/yqaaDeadline'
+import { createYqaaDeadline, fetchYqaaJsonWithTimeout, YqaaDeadlineError, YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS, YQAA_DM_DIAGNOSTIC_BUDGET_MS } from '@/lib/yqaaDeadline'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
 import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
 import { buildYqaaLiveResearchContext } from '@/lib/yqaaWebEvidence'
@@ -80,7 +80,7 @@ const DEBOUNCE_MS = 8_000
 const REPLY_COOLDOWN_MS = 4_000
 const RESPONSES_TIMEOUT_MS = 18_000
 const CHAT_TIMEOUT_MS = 10_000
-// Keep DM reply work inside the 24s runtime and reserve a separate 4s diagnostic cap.
+// Main work27s + independent diagnostics2s stays below the30s background lifetime.
 export const DM_AUTOREPLY_RUNTIME_BUDGET_MS = YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS
 const AUTH_CACHE_TTL_MS = 120_000
 const MAX_OUTPUT_TOKENS = 1400
@@ -97,12 +97,16 @@ export interface AiReplyResult {
   messageId?: string
   offerId?: string | null
   aiMode?: AiMode
+  providerFailure?: MessengerProviderFailure
 }
 
-function providerFailureCategory(err: unknown): string {
+export type MessengerProviderFailure = 'provider_timeout' | 'provider_auth' | 'provider_rate_limited' | 'provider_unavailable' | 'provider_rejected' | 'provider_network_or_format'
+
+export function providerFailureCategory(err: unknown): MessengerProviderFailure {
   const text = String(err instanceof Error ? `${err.name} ${err.message}` : err).toLowerCase()
-  if (/abort|timeout|deadline|etimedout/.test(text)) return 'provider_timeout'
-  const status = text.match(/\b(401|403|408|409|425|429|5\d\d)\b/)?.[1]
+  if (/abort|timed?\s*out|timeout|deadline|etimedout/.test(text)) return 'provider_timeout'
+  const status = text.match(/(?:^|\D)(400|401|403|408|409|422|425|429|5\d\d)(?:\D|$)/)?.[1]
+  if (status === '408') return 'provider_timeout'
   if (status === '401' || status === '403') return 'provider_auth'
   if (status === '429') return 'provider_rate_limited'
   if (status && status.startsWith('5')) return 'provider_unavailable'
@@ -479,6 +483,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
     { role: 'user', content: args.user },
   ]
 
+  let providerTimedOut = false
   let responseStatus = 0
   try {
     let result = await postJson(
@@ -531,6 +536,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
     }
   } catch (err) {
     if (args.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    if (err instanceof Error && /AbortError|TimeoutError/.test(err.name)) providerTimedOut = true
   }
 
   let chatStatus = 0
@@ -560,8 +566,10 @@ async function callGrokChat(args: { system: string; user: string; conversationId
     }
   } catch (err) {
     if (args.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    if (err instanceof Error && /AbortError|TimeoutError/.test(err.name)) providerTimedOut = true
   }
 
+  if (providerTimedOut && !chatStatus && (responseStatus === 0 || responseStatus === 200 || TRANSIENT_STATUS.has(responseStatus))) throw new Error('Messenger provider attempt timed out')
   throw new Error(`model_provider_${responseStatus || chatStatus || 'network'}`)
 }
 
@@ -811,14 +819,14 @@ function renderYqaaEvidenceChunks(chunks: any[], limit = 6): string {
   return lines.join('\n')
 }
 
-export async function loadMessengerLegalEvidenceBundle(latestClientText: string): Promise<{ appendix: string | null; evidence: KnowledgeChunk[] }> {
+export async function loadMessengerLegalEvidenceBundle(latestClientText: string, options: { signal?: AbortSignal } = {}): Promise<{ appendix: string | null; evidence: KnowledgeChunk[] }> {
   const query = String(latestClientText || '').trim()
   if (!query || !messengerNeedsLegalEvidence(query)) return { appendix: null, evidence: [] }
 
   const parts: string[] = []
   const evidence: KnowledgeChunk[] = []
   try {
-    const pack = await loadYqaaEvidence({ query, limit: 12 })
+    const pack = await loadYqaaEvidence({ query, limit: 12, databaseFallbackTimeoutMs: 1_000, signal: options.signal })
     if (pack?.chunks?.length) {
       evidence.push(...pack.chunks)
       parts.push(`## GROUNDED LEGAL / PUBLIC EVIDENCE\nSource: YouSafe curated knowledge${pack.source === 'database' || pack.source === 'database+bundled' ? ' + indexed knowledge base' : ''} (confidence ${(pack.retrievalConfidence || 0).toFixed(2)}).\n${renderYqaaEvidenceChunks(pack.chunks)}`)
@@ -829,7 +837,7 @@ export async function loadMessengerLegalEvidenceBundle(latestClientText: string)
 
   if (yqaaNeedsFreshWebResearch(query)) {
     try {
-      const webChunks = await researchYqaaPublicWeb(query)
+      const webChunks = await researchYqaaPublicWeb(query, undefined, { signal: options.signal })
       evidence.push(...webChunks)
       const liveContext = buildYqaaLiveResearchContext(webChunks, webChunks.length ? 'retrieved' : 'insufficient')
       if (liveContext) {
@@ -1114,7 +1122,7 @@ export async function maybeAutoReply(opts: {
           console.warn('[messengerAi] pricing authority failed')
           return null
         }),
-        loadMessengerLegalEvidenceBundle(String(latestClientText || '')).catch((err) => {
+        loadMessengerLegalEvidenceBundle(String(latestClientText || ''), { signal: opts.runtime?.signal ?? opts.signal }).catch((err) => {
           // An empty source set is handled as a deterministic provider handoff.
           console.warn('[messengerAi] legal evidence failed')
           return { appendix: null, evidence: [] }
@@ -1359,7 +1367,7 @@ export async function maybeAutoReply(opts: {
           ai_last_error: failure,
           ai_last_error_at: new Date().toISOString(),
         }, opts.runtime?.triggerMessageId, false, opts.runtime?.signal)
-        return { replied: false, skipped: 'grok_error', aiMode }
+        return { replied: false, skipped: 'grok_error', aiMode, providerFailure: failure }
       }
 
       let replyText = String(decision.reply || '').trim().slice(0, 8000)
@@ -1720,14 +1728,14 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
       if (result?.replied) return result
       const skip = result?.skipped
       if (!runTriggerMessageId) return result
-      const diagnosticAbort = AbortSignal.timeout(4_000)
+      const diagnosticAbort = AbortSignal.timeout(YQAA_DM_DIAGNOSTIC_BUDGET_MS)
       await recordAiDiagnostic(createSupabaseAdminClient(), conversationId, {
         ai_last_run_status: 'skipped',
         ai_last_run_stage: runtime.stage,
         ai_last_run_finished_at: new Date().toISOString(),
         ai_last_skip: skip || 'no_result',
         ai_last_skip_at: new Date().toISOString(),
-        ai_last_error: skip ? `YQAA skipped: ${skip}` : 'YQAA run returned no result.',
+        ai_last_error: result?.providerFailure || (skip ? `YQAA skipped: ${skip}` : 'YQAA run returned no result.'),
         ai_last_error_at: new Date().toISOString(),
       }, runTriggerMessageId, false, diagnosticAbort)
       return result
@@ -1739,7 +1747,7 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
       console.error('[messengerAi] scheduleAutoReply', failure)
       try {
         const db = createSupabaseAdminClient()
-        const diagnosticAbort = AbortSignal.timeout(4_000)
+        const diagnosticAbort = AbortSignal.timeout(YQAA_DM_DIAGNOSTIC_BUDGET_MS)
         await recordAiDiagnostic(db, conversationId, {
           ai_last_run_status: 'failed',
           ai_last_run_stage: runtime.stage,

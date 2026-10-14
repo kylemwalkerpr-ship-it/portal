@@ -140,6 +140,7 @@ export async function buildCentralAssistantKnowledge(opts: {
   origin: AssistantOrigin
   db?: any
   curatedChunks?: KnowledgeChunk[]
+  includeLiveSupplement?: boolean
 }): Promise<string> {
   const deepNetwork = shouldUseDeepNetworkKnowledge(opts.latestUserMessage)
   const authorityContext = buildAuthoritativeNetworkContext(opts.latestUserMessage)
@@ -157,7 +158,7 @@ export async function buildCentralAssistantKnowledge(opts: {
 
   const [curatedChunks, liveKnowledge] = await Promise.all([
     curatedPromise,
-    fetchLiveKnowledge().catch(() => null),
+    opts.includeLiveSupplement === false ? Promise.resolve(null) : fetchLiveKnowledge().catch(() => null),
   ])
 
   const marketplaceIntent = matchMarketplaceIntent(opts.latestUserMessage)

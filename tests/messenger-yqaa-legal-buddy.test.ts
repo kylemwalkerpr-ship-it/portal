@@ -1,5 +1,6 @@
 import {
   enforceCompanionEscalation,
+  providerFailureCategory,
   insufficientEvidenceHandoffReply,
   loadMessengerLegalEvidence,
   messengerNeedsLegalEvidence,
@@ -108,3 +109,5 @@ describe('legal-buddy escalation reply', () => {
  expect(prompt).toContain('A role label is not evidence of licensure or availability')
  expect(prompt).toContain('requested/pending')
  })
+
+ test.each([['model_provider_401','provider_auth'],['model_provider_400','provider_rejected'],['model_provider_408','provider_timeout'],['model_provider_429','provider_rate_limited'],['model_provider_503','provider_unavailable'],['Messenger provider attempt timed out','provider_timeout']])('classifies finite model failure%s without exposing error text',(message,category)=>{expect(providerFailureCategory(new Error(message))).toBe(category)})
