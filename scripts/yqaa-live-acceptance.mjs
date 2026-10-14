@@ -227,7 +227,7 @@ async function loadAndVerifyFixtures() {
         registerOwnedGig(fixtureProviders, { category: category.id, scenario: providerScenario, profileId: provider.id, clerkUserId: providerUser.id, gigId: gig.id, username: providerUsername })
         await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: [
         { gig_id: gig.id, tier: 'basic', title: 'Three document checklist', description: 'Organize a checklist for up to 3 application documents; no advice or form completion.', price: 2500, delivery_days: 5, revisions: 1, scope_depth: 'partial', scope_units: 3, features: ['Synthetic test fixture'] },
-        { gig_id: gig.id, tier: 'standard', title: 'Twelve document checklist', description: 'Organize a checklist for up to 12 application documents; no advice or form completion.', price: 5000, delivery_days: 7, revisions: 1, scope_depth: 'full', scope_units: 12, features: ['Synthetic test fixture'] },
+        { gig_id: gig.id, tier: 'standard', title: 'Six document checklist', description: 'Organize a checklist for up to 6 application documents; no advice or form completion.', price: 5000, delivery_days: 7, revisions: 1, scope_depth: 'full', scope_units: 6, features: ['Synthetic test fixture'] },
       ] })
     }
     }
@@ -592,9 +592,9 @@ async function providerUiChecks() {
 }
 
 const categories = [
-  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist', fullRequest: 'organizing the full application for university admissions across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for a university application' },
-  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist', fullRequest: 'organizing the full application essay packet across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for an application essay' },
-  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist', fullRequest: 'organizing the full application for student planning across 12 documents', narrowRequest: 'organizing only a portion: 3 documents for study planning' },
+  { id: 'education', subcategoryId: 'university-admissions', gigTitle: 'Synthetic university application checklist organization', request: 'university application checklist', fullRequest: 'organizing the full application for university admissions across 6 documents', narrowRequest: 'organizing only a portion: 3 documents for a university application' },
+  { id: 'academic-writing', subcategoryId: 'application-essays', gigTitle: 'Synthetic application essay organization support', request: 'application essay editing checklist', fullRequest: 'organizing the full application essay packet across 6 documents', narrowRequest: 'organizing only a portion: 3 documents for an application essay' },
+  { id: 'mentorship', subcategoryId: 'student-mentorship', gigTitle: 'Synthetic student planning checklist support', request: 'student study planning checklist', fullRequest: 'organizing the full application for student planning across 6 documents', narrowRequest: 'organizing only a portion: 3 documents for study planning' },
 ]
 
 const scenarios = [

@@ -223,6 +223,28 @@ function mergeEvidence(
   return out.slice(0, Math.max(1, Math.min(24, limit)))
 }
 
+async function boundedDatabaseFallback(db: any, opts: Parameters<typeof searchYqaaKnowledgeIndex>[1], timeoutMs?: number) {
+  if (!Number.isFinite(timeoutMs) || Number(timeoutMs) <= 0) return searchYqaaKnowledgeIndex(db, opts)
+  const controller = new AbortController()
+  const signal = opts.signal ? AbortSignal.any([opts.signal, controller.signal]) : controller.signal
+  signal.throwIfAborted()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      searchYqaaKnowledgeIndex(db, { ...opts, signal }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new DOMException('Database evidence fallback timed out', 'TimeoutError')
+          controller.abort(error)
+          reject(error)
+        }, Math.min(12_000, Number(timeoutMs)))
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
 export async function loadYqaaEvidence(opts: {
   query: string
   hostname?: string | null
@@ -230,6 +252,7 @@ export async function loadYqaaEvidence(opts: {
   limit?: number
   db?: any
   onSearchStatus?: (status: TypesenseSearchStatus) => void
+  databaseFallbackTimeoutMs?: number
   signal?: AbortSignal
 }): Promise<YqaaEvidencePack> {
   const limit = Math.max(1, Math.min(24, opts.limit || 12))
@@ -256,12 +279,12 @@ export async function loadYqaaEvidence(opts: {
     }
     const db = opts.db || (isServiceRoleAchieved() ? getSupabaseAdminClient() : null)
     if (!indexed && db && !opts.signal?.aborted) {
-      indexed = await searchYqaaKnowledgeIndex(db, {
+      indexed = await boundedDatabaseFallback(db, {
         query: opts.query,
         hostname: opts.hostname,
         limit,
         signal: opts.signal,
-      })
+      }, opts.databaseFallbackTimeoutMs)
     }
   } catch (error) {
     console.warn(

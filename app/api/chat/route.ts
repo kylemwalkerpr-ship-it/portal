@@ -389,6 +389,9 @@ export async function POST(req: Request) {
     try {
       evidencePack = await runBoundedStage(deadline, 'knowledge', KNOWLEDGE_STAGE_BUDGET_MS, (signal) =>
         loadYqaaEvidence({
+          // Modal may cold-start beyond its 2s client bound. Do not then spend
+          // another ~10s on the database fallback and starve generation.
+          databaseFallbackTimeoutMs: 2_000,
           onSearchStatus: (status) => { searchStatus = status },
           query: lastUser.content,
           hostname: inquiryOrigin.hostname,
