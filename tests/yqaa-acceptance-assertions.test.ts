@@ -1,135 +1,152 @@
 const { counterofferAcknowledged, runIndependentCategories } = require('../scripts/yqaa-acceptance-assertions.cjs')
 
-const state = {
-  quoteCents: 15500, counterCents: 13950, scopeHash: 'synthetic-three-document-scope',
-  metadata: { ai_last_pricing_status: 'ready', ai_memory: { negotiation: {
-    quotes_made: [{ cents: 15500, scope_hash: 'synthetic-three-document-scope' }],
-    client_counters: [{ cents: 13950 }],
-  } } },
+const scopeHash = 'synthetic-three-document-scope'
+const triggerMessageId = 'trigger-current'
+const baseState = {
+  quoteCents: 15500,
+  counterCents: 13950,
+  scopeHash,
+  triggerMessageId,
+  metadata: {
+    ai_last_trigger_message_id: triggerMessageId,
+    ai_last_pricing_status: 'provider_approval_required',
+    ai_memory: { negotiation: {
+      quotes_made: [{ cents: 15500, scope_hash: scopeHash }],
+      client_counters: [{ cents: 13950, message_id: triggerMessageId }],
+    } },
+  },
+}
+
+function pendingReviewState() {
+  return {
+    ...baseState,
+    metadata: { ...baseState.metadata, ai_provider_attention_requested: true },
+  }
+}
+
+function acceptedCounterState() {
+  const offerId = 'offer-current'
+  const cardId = 'card-current'
+  const replyMessageId = 'reply-current'
+  const card = {
+    id: cardId,
+    conversation_id: 'conversation-current',
+    sender_id: 'provider-current',
+    type: 'offer',
+    ref_offer_id: offerId,
+    metadata: { ai_generated: true, pricing_guarded: true, price: 13950, currency: 'usd', pricing_scope_hash: scopeHash },
+  }
+  return {
+    ...baseState,
+    metadata: {
+      ...baseState.metadata,
+      ai_last_offer_id: offerId,
+      ai_last_message_id: replyMessageId,
+      ai_last_trigger_message_id: triggerMessageId,
+      ai_last_approved_price_cents: 13950,
+      ai_last_scope_hash: scopeHash,
+      ai_memory: {
+        last_offer: { currency: 'usd' },
+        negotiation: {
+          ...baseState.metadata.ai_memory.negotiation,
+          scope_current: { scope_hash: scopeHash, units: { unit: 'document', qty: 3 } },
+          quotes_made: [...baseState.metadata.ai_memory.negotiation.quotes_made, { cents: 13950, scope_hash: scopeHash }],
+        },
+      },
+    },
+    committedOffer: {
+      conversationId: 'conversation-current',
+      triggerMessageId,
+      replyMessageId,
+      providerId: 'provider-current',
+      clientId: 'client-current',
+      commit: { conversation_id: 'conversation-current', trigger_message_id: triggerMessageId, reply_message_id: replyMessageId, offer_id: offerId },
+      offer: { id: offerId, chat_id: 'conversation-current', sender_id: 'provider-current', recipient_id: 'client-current', price: 13950, currency: 'usd', status: 'pending' },
+      card,
+      visibleCard: { ...structuredClone(card), offer: { id: offerId, price_cents: 13950, currency: 'usd', status: 'pending' } },
+    },
+  }
 }
 
 describe('counteroffer acceptance evidence', () => {
-  test('recognizes a new authorised same-scope counterproposal, and rejects an unsaved value', () => {
-    const updated = {...state,metadata:{...state.metadata,ai_memory:{negotiation:{...state.metadata.ai_memory.negotiation,quotes_made:[...state.metadata.ai_memory.negotiation.quotes_made,{cents:15000,scope_hash:state.scopeHash}]}}}}
-    expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $150.', updated)).toBe(true)
-    expect(counterofferAcknowledged('I noted your $139.50 proposal. I can offer this scope at $149.', updated)).toBe(false)
+  test('a provider review is acknowledged only for the exact current counter turn', () => {
+    const body = 'Thanks for putting USD 139.50 forward. I’ve asked the provider to review that counter; their answer is still pending.'
+    expect(counterofferAcknowledged(body, pendingReviewState())).toBe(true)
+    expect(counterofferAcknowledged('Thanks for your counter of USD 139.50 for the same work. I’ve sent it to Ms Foley to review.', pendingReviewState())).toBe(true)
+    expect(counterofferAcknowledged(body, { ...pendingReviewState(), metadata: { ...pendingReviewState().metadata, ai_last_trigger_message_id: 'older-trigger' } })).toBe(false)
+    expect(counterofferAcknowledged(body, { ...pendingReviewState(), triggerMessageId: 'older-trigger' })).toBe(false)
   })
-  test('holds the saved price when scope details sit between the commitment and amount', () => {
-    expect(counterofferAcknowledged('I hear your $139.50. I can keep that narrowed scope as-is—organizing three documents only, no form completion and no advice—at $155.',state)).toBe(true)
-    expect(counterofferAcknowledged('I hear your $139.50. I can keep that narrowed scope unchanged, and you can book a hotel for $155.',state)).toBe(false)
-    expect(counterofferAcknowledged('I hear your $139.50. I can keep that narrowed scope at $154.',state)).toBe(false)
-    expect(counterofferAcknowledged('I hear your $139.50. I can keep that narrowed scope at $155 if the provider approves.',state)).toBe(false)
-    expect(counterofferAcknowledged('I hear your $139.50. I couldn’t keep that narrowed scope at $155.',state)).toBe(false)
+
+  test('repeating the existing quote never acknowledges a lower client counter', () => {
+    const oldQuoteReply = 'I hear your USD 139.50 counter. I can keep the three-document scope at USD 155; you can accept the current offer if it works.'
+    expect(counterofferAcknowledged(oldQuoteReply, baseState)).toBe(false)
+    expect(counterofferAcknowledged(oldQuoteReply, pendingReviewState())).toBe(false)
   })
-  test('recognizes direct offer-figure language at the saved amount and rejects conditional or invented figures', () => {
-    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155.',state)).toBe(true)
-    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $154.',state)).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155 if the provider approves.',state)).toBe(false)
+
+  test('acceptance requires a visible, durable current-turn offer at the exact counter', () => {
+    const state = acceptedCounterState()
+    expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', state)).toBe(true)
+    expect(counterofferAcknowledged('For that same narrowed scope — the three-document checklist — I can lock in USD 139.50.', state)).toBe(true)
+    expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', baseState)).toBe(false)
+    expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', { ...state, committedOffer: { ...state.committedOffer, offer: { ...state.committedOffer.offer, price: 15500 } } })).toBe(false)
+    expect(counterofferAcknowledged('I can accept your USD 139.50 counter for the three-document scope.', { ...state, committedOffer: { ...state.committedOffer, visibleCard: null } })).toBe(false)
+    expect(counterofferAcknowledged('I hear your USD 139.50 counter. I can lock in USD 155 for the three-document scope.', state)).toBe(false)
   })
+
   test.each([
-    'I hear you wanting $139.50. For that narrowed scope I can put the offer through at $155 USD.',
-    'I hear you wanting $139.50. For that narrowed checklist I can send it at $155.',
-    'I hear you wanting $139.50. For that narrowed packet I can keep the offer at $155 on YouSafe.',
-    'I hear you wanting $139.50. The on-platform figure I can put in front of you is $155.',
-  ])('recognizes direct saved offer disposition: %s', (body) => {
-    expect(counterofferAcknowledged(body, state)).toBe(true)
-    expect(counterofferAcknowledged(body.replace('$155', '$154'), state)).toBe(false)
-    expect(counterofferAcknowledged(body + ' Provider approval is required.', state)).toBe(false)
-    expect(counterofferAcknowledged(body.replace('I can', 'I could'), state)).toBe(false)
+    'I accept your USD 139.50 counter. Provider review is still pending.',
+    'I agreed to USD 139.50. I’ve asked the provider to review the counter.',
+    'I approved your USD 139.50 counter, subject to the provider review.',
+  ])('a pending-review reply cannot also claim the counter was accepted: %s', (body) => {
+    expect(counterofferAcknowledged(body, pendingReviewState())).toBe(false)
   })
+
   test.each([
-    'I hear your $139.50. I can put through the narrowed organization at $155.',
-    'I hear your $139.50. For that narrowed scope I’m keeping it at $155 on-platform.',
-    'I hear your $139.50. I can hold the on-platform package at $155.',
-    'I hear your **$139.50**. I’ll keep the three document checklist at **$155**.',
-    'I hear your $139.50. We are offering the narrowed packet for $155.',
-  ])('binds a natural scoped commitment to the saved quote: %s', (body) => {
-    expect(counterofferAcknowledged(body, state)).toBe(true)
-    expect(counterofferAcknowledged(body.replace('$155', '$154'), state)).toBe(false)
-    expect(counterofferAcknowledged(body + ' Provider approval is required.', state)).toBe(false)
-    expect(counterofferAcknowledged(body.replace(/I can|I’m|I’ll|We are/, 'We might'), state)).toBe(false)
+    'I hear your USD 139.50 counter. I can keep the three-document offer at USD 155.',
+    'Your USD 139.50 is noted. The old quote is still USD 155 and available to accept.',
+    'I can accept USD 139.50 if the provider approves it.',
+    'I can offer USD 139.50 for a hotel instead of the three documents.',
+    'I can accept USD 139.50 for six documents.',
+    'I can accept CAD 139.50 for the three-document scope.',
+    'A train costs USD 139.50; the provider can review your counter later.',
+    'The provider may accept USD 139.50 for the three-document scope.',
+  ])('does not treat an uncommitted or changed-scope reply as acceptance: %s', (body) => {
+    expect(counterofferAcknowledged(body, pendingReviewState())).toBe(false)
+    expect(counterofferAcknowledged(body, acceptedCounterState())).toBe(false)
   })
+
   test.each([
-    'I hear your $139.50. I can keep the scope that your organization quoted at $155.',
-    'I hear your $139.50. I can keep your organization quoted price at $155.',
-    'I hear your $139.50. I am offering the packet at $155. Subject to your approval.',
-    'I hear your $139.50. I am offering the packet at $155. Only when funding arrives.',
-    'I hear your $139.50. I can keep the scope as Bob books a hotel for $155.',
-    'I hear your $139.50. I can keep the scope whilst Bob books a hotel for $155.',
-    'I hear your $139.50. I can offer a possible package for $155.',
-    'I hear your $139.50. I am offering a hypothetical package at $155.',
-    'I hear your $139.50. I can offer zero documents for $155.',
-    'I hear your $139.50. I am keeping the scope suspended at $155.',
-    'I hear your $139.50. I can keep the scope while Bob books a hotel for $155.',
-    'I hear your $139.50. I can keep the scope that Bob changed for a hotel for $155.',
-    'I hear your $139.50. I am holding off on this scope at $155.',
-    'I hear your $139.50. I can keep the scope on hold at $155.',
-    'I hear your $139.50. I can keep the estimated price at $155.',
-    'I hear your $139.50. I can offer the scope without committing for $155.',
-    'I hear your $139.50. I can offer zero application documents for $155.',
-    'I hear your $139.50. For organizing twenty-three documents, I can meet you at $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 CAD.',
-    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
-    'I hear your $139.50. I can send the three documents, and a train ticket costs $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155 CAD.',
-    'I hear your $139.50. I can offer no documents for $155.',
-    'I hear your $139.50. I am offering the scoped document packet at $155 contingent on your approval.',
-    'I hear your $139.50. I am offering the scoped document packet at $155 on condition that funding arrives.',
-    'I hear your $139.50. I am offering the scoped document packet at $155. Only if funding arrives.',
-    'I hear your $139.50. I can keep a hotel at $155.',
-    'I hear your $139.50. I can keep the scope unchanged and book a hotel for $155.',
-    'I hear your $139.50. I can keep the scope unchanged at a hotel for $155.',
-    'I hear your $139.50. I can hold the packet and you can book a hotel for $155.',
-    'I hear your $139.50. I’m not keeping the packet at $155.',
-    'I hear your $139.50. We are offering the packet for $155 if the provider approves.',
-  ])('rejects a bridged, unrelated or conditional commitment: %s', (body) => {
-    expect(counterofferAcknowledged(body, state)).toBe(false)
+    'I hear your USD 139.50. I can offer zero application documents for USD 155.',
+    'I hear your USD 139.50. For organizing twenty-three documents, I can meet you at USD 155.',
+    'I hear your USD 139.50. For organizing three documents, I can meet you at USD 155 CAD.',
+    'I hear your USD 139.50. For organizing six documents only, I can meet you at USD 155.',
+    'I hear your USD 139.50. I can send the three documents, and a train ticket costs USD 155.',
+    'I hear your USD 139.50. I can offer no documents for USD 155.',
+    'I hear your USD 139.50. I can keep the documents unchanged and book a hotel for USD 155.',
+    'I hear your USD 139.50. A hotel costs USD 155.',
+    'I hear your USD 139.50. I cannot offer the three-document checklist at USD 155.',
+    'I hear your USD 139.50. The three-document checklist is USD 155 if the provider approves.',
+    'I hear your USD 139.50. The three-document checklist is USD 154.',
+    'I hear your USD 139.50. For organizing three documents, I can meet you at USD 155 on-platform in NZD.',
+    'I hear your USD 139.50. I can meet you at USD 155. The offer is in NZD and is final.',
+    'I hear your USD 139.50. For the three-document checklist, which is out of scope, I can meet you at USD 155.',
+    'I hear your USD 139.50. The three-document checklist is not included in the USD 155 offer.',
+    'I can accept USD 139.50 if the provider approves it.',
+    'I can accept USD 139.50 for a hotel instead of the three documents.',
+    'I can accept USD 139.50 for six documents.',
+    'I can accept CAD 139.50 for the three-document scope.',
+    'The provider may accept USD 139.50 for the three-document scope.',
+  ])('rejects unrelated, off-scope, conditional, or differently priced copy: %s', (body) => {
+    expect(counterofferAcknowledged(body, acceptedCounterState())).toBe(false)
   })
-  test('recognizes the natural lock-it-at disposition tied to the exact saved quote and counter', () => {
-    expect(counterofferAcknowledged('I hear you wanting $139.50 for the same three-document checklist. For that narrowed work, I can lock it at $155 on-platform.', state)).toBe(true)
-    expect(counterofferAcknowledged('I can lock it at $154. I hear your $139.50 proposal.', state)).toBe(false)
-  })
-  test('accepts actual amount acknowledgment holding the authorized total without old keywords', () => {
-    expect(counterofferAcknowledged('I noted your $139.50. The approved total remains $155 for the three-document checklist.', state)).toBe(true)
-  })
-  test.each([
-    'I can help organize a checklist. What country are you applying to?',
-    'We can review the price with a provider.',
-    'A hotel is $155 and a bus ticket is $139.50.',
-    'I can’t lock it at $155. Your $139.50 proposal still needs a decision.',
-    'I cannot offer this scope at $155. I noted your $139.50.',
-    'I couldn’t lock it at $155. Your $139.50 proposal still needs a decision.',
-    'I noted your $139.50 proposal. Can I lock it at $155?',
-    'I noted your $139.50 proposal. The approved total remains $155?',
-    'I might lock it at $155. Your $139.50 proposal is noted.',
-    'I noted your $139.50. The approved total is probably $155.',
-    'I noted your $139.50. The approved total is likely $155.',
-    'I noted your $139.50. The approved total is estimated at $155.',
-    'I noted your $139.50. We can hold it at $155 as long as the provider approves.',
-    'I noted your $139.50. The approved total is $155 if the provider approves.',
-    'I noted your $139.50. We can hold it at $155 subject to provider approval.',
-    'I noted your $139.50. We can hold it at $155 once the provider approves.',
-    'I noted your $139.50. I can lock it at $155. If the provider approves.',
-    'I noted your $139.50. I can lock it at $155. Provider approval is required.',
-    'I noted your $139.50. I can lock it at $155. The provider must approve first.',
-    'I noted your $139.50. I can lock it at $155. The provider is available? Approval is required.',
-    `I noted your $139.50. I can lock it at $155. The provider ${'additional details '.repeat(15)} approval is required.`,
-    'The approved total is not $155. Your $139.50 proposal is noted.',
-    'I accept your $139.50 offer; the previous total was $155.',
-    'The approved total remains $155. Please tell me your budget.',
-    'Your $139.51 proposal leaves the approved total at $155.',
-  ])('rejects unrelated, evasive, wrong-value or unauthorized reply: %s', (body) => {
-    expect(counterofferAcknowledged(body, state)).toBe(false)
-  })
-  test('rejects missing counter memory and wrong-scope quote', () => {
-    const body = 'I noted your $139.50. The approved total remains $155.'
+
+  test('fails closed when the turn, scope, or counter evidence is missing', () => {
+    const body = 'Thanks for putting USD 139.50 forward. I’ve asked the provider to review that counter; their answer is still pending.'
+    const state = pendingReviewState()
     expect(counterofferAcknowledged(body, { ...state, metadata: { ...state.metadata, ai_memory: { negotiation: { ...state.metadata.ai_memory.negotiation, client_counters: [] } } } })).toBe(false)
-    expect(counterofferAcknowledged(body, { ...state, scopeHash: 'different-scope' })).toBe(false)
-  })
-  test('acceptance at the counter needs a real same-scope quote at that amount', () => {
-    const approved = { ...state, metadata: { ...state.metadata, ai_memory: { negotiation: { ...state.metadata.ai_memory.negotiation, quotes_made: [...state.metadata.ai_memory.negotiation.quotes_made, { cents: 13950, scope_hash: state.scopeHash }] } } } }
-    expect(counterofferAcknowledged('I accept your $139.50 offer for this scope.', approved)).toBe(true)
-    expect(counterofferAcknowledged('I accept your $139.50 offer. Provider approval is required.', approved)).toBe(false)
+    expect(counterofferAcknowledged(body, { ...state, metadata: { ...state.metadata, ai_provider_attention_requested: false } })).toBe(false)
+    expect(counterofferAcknowledged('I’ve asked the provider to review your counter; their answer is still pending.', state)).toBe(false)
+    expect(counterofferAcknowledged(body, { ...state, scopeHash: 'another-scope' })).toBe(false)
   })
 })
 
@@ -155,105 +172,5 @@ describe('independent category coverage', () => {
       attention, onFailure: jest.fn(),
     })).rejects.toThrow('cancelled')
     expect(attention).not.toHaveBeenCalled()
-  })
-})
-
-
-describe('durable current-turn counter disposition', () => {
-  function proof() {
-    const card = { id: 'card', conversation_id: 'conversation', sender_id: 'provider', type: 'offer', ref_offer_id: 'offer', metadata: { ai_generated: true, pricing_guarded: true, price: 15500, currency: 'usd', pricing_scope_hash: state.scopeHash } }
-    return {
-      ...state,
-      metadata: { ...state.metadata, ai_last_offer_id: 'offer', ai_last_message_id: 'reply', ai_last_trigger_message_id: 'trigger', ai_last_approved_price_cents: 15500, ai_last_scope_hash: state.scopeHash,
-        ai_memory: { last_offer: { currency: 'usd' }, negotiation: { ...state.metadata.ai_memory.negotiation, scope_current: { scope_hash: state.scopeHash, units: { unit: 'document', qty: 3 } }, client_counters: [{ cents: 13950, message_id: 'trigger' }] } } },
-      committedOffer: { conversationId: 'conversation', triggerMessageId: 'trigger', replyMessageId: 'reply', providerId: 'provider', clientId: 'client',
-        commit: { conversation_id: 'conversation', trigger_message_id: 'trigger', reply_message_id: 'reply', offer_id: 'offer' },
-        offer: { id: 'offer', chat_id: 'conversation', sender_id: 'provider', recipient_id: 'client', price: 15500, currency: 'usd', status: 'pending' }, card, visibleCard: { ...structuredClone(card), offer: { id: 'offer', price_cents: 15500, currency: 'usd', status: 'pending' } } },
-    }
-  }
-  const body = 'I hear your $139.50. For organizing three documents only, I can meet you at $155.'
-  test('client choice after a committed quote is not provider-price approval', () => {
-    const text = 'Thanks for the $139.50 counter. For this same narrowed three-document checklist I can send the on-platform offer at $155 so you can accept it here if it still works for you.'
-    expect(counterofferAcknowledged(text, proof())).toBe(true)
-    expect(counterofferAcknowledged(text, state)).toBe(false)
-    expect(counterofferAcknowledged(text.replace('if it still works for you', 'if the provider approves'), proof())).toBe(false)
-    expect(counterofferAcknowledged(text.replace('if it still works for you', 'if it still works for you and funding arrives'), proof())).toBe(false)
-    expect(counterofferAcknowledged(text.replace('$155', '$154'), proof())).toBe(false)
-  })
-  test('requires real current-turn visible offer evidence for natural price wording', () => {
-    expect(counterofferAcknowledged(body, proof())).toBe(true)
-    expect(counterofferAcknowledged(body, state)).toBe(false)
-  })
-  test('recognizes a lock-in price only when the matching offer is committed and visible', () => {
-    const text = 'I hear you on $139.50. For that narrowed scope I can lock in $155: the three-document checklist and planning fixture.'
-    expect(counterofferAcknowledged(text, proof())).toBe(true)
-    expect(counterofferAcknowledged(text, state)).toBe(false)
-    expect(counterofferAcknowledged(text.replace('$155', '$154'), proof())).toBe(false)
-    expect(counterofferAcknowledged(text + ' Provider approval is required.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. I can lock in $155 for a hotel.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 for a hotel.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: a hotel, while the three-document checklist remains unchanged.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 on-platform: a three-document hotel booking checklist.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 on-platform so you can accept it here for a hotel room.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: three-document checklist for a hotel room.', proof())).toBe(false)
-    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: the three-document checklist, which is out of scope.', proof())).toBe(false)
-  })
-  test.each([
-    'Thanks for putting a number on it, Mr. Kanyi — I hear $139.50 for the same three-document organizing work. For that narrowed packet I can lock in $155 on-platform: a three-document checklist plus the synthetic test fixture, with form completion and advice still out of scope. If that works, accept the offer below and we can start from the three prompts or drafts you have.',
-    'Thanks for putting a number on it, Mr. Kanyi — I hear you on $139.50 for the same three-document study-planning checklist (no forms, no advice). For that narrowed scope I can lock in $155: three-document checklist plus the planning fixture. If that works, accept the offer on-platform and we can start from the three files you have.\n\nWhat that includes:\n• Three document checklist\n• Synthetic test fixture',
-  ])('accepts the exact previous live reply wording with matching offer evidence: %s', (text) => {
-    expect(counterofferAcknowledged(text, proof())).toBe(true)
-  })
-  test('rejects missing or wrong rendered offer and explicit reply currency', () => {
-    const p: any = proof(); delete p.committedOffer.visibleCard.offer
-    expect(counterofferAcknowledged(body, p)).toBe(false)
-    const q: any = proof(); q.committedOffer.visibleCard.offer.price_cents = 15400
-    expect(counterofferAcknowledged(body, q)).toBe(false)
-    expect(counterofferAcknowledged(body.replace('$155', 'CAD 155'), proof())).toBe(false)
-  })
-  test.each(['commit', 'offer', 'card', 'visibleCard'])('fails closed when %s is absent', (field) => {
-    const p: any = proof(); delete p.committedOffer[field]
-    expect(counterofferAcknowledged(body, p)).toBe(false)
-  })
-  test.each([
-    ['commit', 'trigger_message_id', 'older-trigger'], ['commit', 'reply_message_id', 'older-reply'],
-    ['offer', 'price', 15400], ['offer', 'status', 'cancelled'], ['offer', 'recipient_id', 'other-client'],
-    ['card', 'ref_offer_id', 'other-offer'], ['visibleCard', 'id', 'other-card'],
-  ])('rejects mismatched %s.%s', (field, key, value) => {
-    const p: any = proof(); p.committedOffer[field][key] = value
-    expect(counterofferAcknowledged(body, p)).toBe(false)
-  })
-  test.each([
-    'I hear your $139.50. I can offer zero application documents for $155.',
-    'I hear your $139.50. For organizing twenty-three documents, I can meet you at $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 CAD.',
-    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
-    'I hear your $139.50. I can send the three documents, and a train ticket costs $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155 CAD.',
-    'I hear your $139.50. I can offer no documents for $155.',
-    'I hear your $139.50. I can keep the documents unchanged and book a hotel for $155.',
-    'I hear your $139.50. A hotel costs $155.',
-    'I hear your $139.50. I cannot offer the three-document checklist at $155.',
-    'I hear your $139.50. The three-document checklist is $155 if the provider approves.',
-    'I hear your $139.50. The three-document checklist is $154.',
-    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155 for a hotel.',
-    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 JPY.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155 cad.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155 on-platform in NZD.',
-    'I hear your $139.50. For organizing zero documents, I can meet you at $155.',
-    'I hear your $139.50. For organizing six documents, I can meet you at $155.',
-    'I hear your $139.50. For the six study-planning documents, I can meet you at $155.',
-    'I hear your $139.50. I can meet you at $155. The checklist covers six revised study-planning documents.',
-    'I hear your $139.50. I can meet you at $155. The checklist covers twenty-three study-planning documents.',
-    'I hear your $139.50. For three documents plus forty-one study-planning documents, I can meet you at $155.',
-    'I hear your $139.50. For organizing three documents, I can meet you at $155. All prices are in NZD.',
-    'I hear your $139.50. I can meet you at $155. The offer is in NZD and is final.',
-    'I hear your $139.50. For the three-document checklist, which is out of scope, I can meet you at $155.',
-    'I hear your $139.50. The three-document checklist is not included in the $155 offer.',
-    'I hear your $139.50. For that narrowed scope I can lock in $155. Separately, the three-document checklist is available.',
-    'I hear your $139.50. For that narrowed scope I can lock in $155. This includes a hotel booking. Separately, the three-document checklist is available.',
-  ])('committed evidence rejects unrelated, negative or conditional copy: %s', (text) => {
-    expect(counterofferAcknowledged(text, proof())).toBe(false)
   })
 })

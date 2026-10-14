@@ -6,6 +6,9 @@ import {
   applyAdaptiveOfferAuthority,
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
+  insufficientEvidenceOrientationReply,
+  counterNeedsProviderReviewReply,
+  explicitCounterReviewDraft,
   loadMessengerLegalEvidence,
   messengerNeedsLegalEvidence,
   yqaaOfferIdempotencyKey,
@@ -73,6 +76,52 @@ describe('legal-buddy escalation reply', () => {
     expect(reply).toMatch(/hear|circles|straight answer/i)
   })
 
+  test('thin legal retrieval stays useful and personal for a low-risk orientation request', () => {
+    const reply = insufficientEvidenceOrientationReply({
+      latestClientText: 'I have plans to move to Beaver Harbor in a few years and want to compare permanent residency options. My fiancé is working on ancestry forms and his father is a citizen in Canada.',
+      recentClientContext: 'Hello, my name is Taylor. I want a cost-effective way to understand marriage and permanent residency options.',
+      providerLabel: 'Ms Foley',
+    })
+    const { usefulFirstOrientation } = require('../scripts/yqaa-incident-quality.cjs')
+    expect(reply).toContain('Taylor')
+    expect(reply).toContain('Beaver Harbor')
+    expect(reply).toMatch(/residency routes|residence routes/i)
+    expect(reply).toMatch(/marriage|family connection/i)
+    expect(reply).toMatch(/compare|prepare/i)
+    expect(reply).toContain('Which country would you apply from?')
+    expect(reply).not.toMatch(/I’ve asked Ms Foley|I have asked Ms Foley|verified Marketplace pricing|insufficient evidence/i)
+    expect(usefulFirstOrientation(reply)).toBe(true)
+  })
+
+  test('rates and a stated budget get a scoped next step without inventing a price', () => {
+    const rates = insufficientEvidenceOrientationReply({
+      latestClientText: 'What are the going rates for help?',
+      recentClientContext: 'My name is Taylor. I am planning to move in a few years and want to compare residency options.',
+      providerLabel: 'Ms Foley',
+    })
+    expect(rates).toContain('Taylor')
+    expect(rates).toMatch(/comparing the residency routes/i)
+    expect(rates).not.toMatch(/budget|\$\s*\d|\bUSD\s+\d/i)
+
+    const budget = insufficientEvidenceOrientationReply({
+      latestClientText: 'I could maybe do 50 dollars to 100 at most for a consult.',
+      recentClientContext: 'My name is Taylor. I want to compare residency options and gather documents.',
+      providerLabel: 'Ms Foley',
+      budget: { minCents: 5000, maxCents: 10000, currency: 'usd', sourceText: '', messageId: 'budget-turn', confidence: 'explicit' },
+    })
+    expect(budget).toContain('USD 100.00')
+    expect(budget).toMatch(/before I tell you whether that fits.*confirm the consult price/i)
+    expect(budget).not.toMatch(/approved price|offer created/i)
+  })
+
+  test('counter-review copy names the client amount and does not claim provider approval', () => {
+    const reply = counterNeedsProviderReviewReply(13950, 'usd')
+    expect(reply).toContain('USD 139.50')
+    expect(reply).toMatch(/provider.*review/i)
+    expect(reply).toMatch(/can’t agree.*different price/i)
+    expect(reply).not.toMatch(/approved|accepted|discount/i)
+  })
+
   test('missing evidence handoff is explicit and names the human provider', () => {
     const reply = insufficientEvidenceHandoffReply('Avery')
     expect(reply).toContain('Avery')
@@ -108,6 +157,17 @@ describe('legal-buddy escalation reply', () => {
       yqaaOfferIdempotencyKey('conversation-1', 'message-9'),
     )
   })
+})
+
+test('an unapproved explicit counter is acknowledged without waiting on provider generation', async () => {
+  const handoff = explicitCounterReviewDraft({ action: 'ESCALATE_PROVIDER', counterSource: 'explicit', counterCents: 13950, currency: 'usd' })
+  expect(handoff).toMatchObject({ escalate: true, offer: null })
+  expect(handoff?.reply).toContain('USD 139.50')
+  const generate = jest.fn(async () => { throw new Error('provider_timeout') })
+  expect(await resolveMessengerDraft({ handoff, budgetReply: null, generate })).toBe(handoff)
+  expect(generate).not.toHaveBeenCalled()
+  expect(explicitCounterReviewDraft({ action: 'ACCEPT', counterSource: 'explicit', counterCents: 13950, currency: 'usd' })).toBeNull()
+  expect(explicitCounterReviewDraft({ action: 'ESCALATE_PROVIDER', counterSource: 'budget', counterCents: 13950, currency: 'usd' })).toBeNull()
 })
 
  test('the standing prompt does not assume provider credentials or availability',()=>{

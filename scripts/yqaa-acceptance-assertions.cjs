@@ -28,15 +28,35 @@ function currentCommittedOffer(evidence, { metadata, counterCents, scopeHash, pr
   return (negotiation.client_counters || []).some(counter => counter.message_id === triggerMessageId && Number(counter.cents) === counterCents)
 }
 
-function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, metadata, committedOffer }) {
+function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, metadata, committedOffer, triggerMessageId }) {
   if (!Number.isInteger(quoteCents) || quoteCents <= 0 || !Number.isInteger(counterCents) || counterCents <= 0 || !scopeHash) return false
   const negotiation = metadata?.ai_memory?.negotiation
   const quotes = negotiation?.quotes_made || []
   if (!quotes.some((quote) => Number(quote.cents) === quoteCents && quote.scope_hash === scopeHash)) return false
-  if (!(negotiation?.client_counters || []).some((counter) => Number(counter.cents) === counterCents)) return false
+  if (typeof triggerMessageId !== 'string' || !triggerMessageId || metadata.ai_last_trigger_message_id !== triggerMessageId) return false
+  if (!(negotiation?.client_counters || []).some((counter) => counter.message_id === triggerMessageId && Number(counter.cents) === counterCents)) return false
   if (!metadata.ai_last_pricing_status) return false
-  // Match rendered emphasis as ordinary text, without changing monetary values.
   body = String(body || '').replace(/\*\*([^*\n]+)\*\*/g, '$1')
+  if (!moneyCents(body).includes(counterCents)) return false
+
+  // An explicit provider review is a valid disposition only when it is tied to
+  // this exact counter turn and the durable thread state records the handoff.
+  const counterAmountSentence = body.split(/(?<=[.!?\n])\s+/).some(sentence =>
+    moneyCents(sentence).includes(counterCents) &&
+      /\b(?:counter|proposal|offer|putting|forward)\b[^.!?;]{0,40}(?:\$\s*|\bUSD\s+)\d|(?:\$\s*|\bUSD\s+)\d[^.!?;]{0,40}\b(?:counter|proposal|offer|putting|forward)\b/i.test(sentence),
+  )
+  const reviewPending = counterAmountSentence && metadata.ai_provider_attention_requested === true &&
+    /\b(?:review|approval|confirm\w*)\b/i.test(body) &&
+    /\bcounter\b/i.test(body) &&
+    !/\b(?:accept(?:ed)?|agreed|confirmed|approved)\b[^.!?\n]{0,80}(?:\$\s*|\bUSD\s+)\d/i.test(body)
+  if (reviewPending) return true
+
+  // Otherwise, acceptance must create a current-turn offer at the counter. A
+  // prior quote, even if still visible, cannot be mistaken for accepting it.
+  const counterQuote = quotes.some(quote => Number(quote.cents) === counterCents && quote.scope_hash === scopeHash)
+  const currentCounterOffer = currentCommittedOffer(committedOffer, { metadata, counterCents, scopeHash, priceCents: counterCents })
+  if (!counterQuote || !currentCounterOffer) return false
+  // Match rendered emphasis as ordinary text, without changing monetary values.
   const amounts = moneyCents(body)
   if (!amounts.includes(counterCents)) return false
   // Require a disposition tied to this monetary proposal, not a generic pricing keyword.
@@ -131,7 +151,7 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
     })
   })
   const pending = /\b(provider|human)\b/i.test(body) && /\b(pending|review|approval|confirm\w*)\b/i.test(body) && metadata.ai_provider_attention_requested === true
-  const accepted = !authorityCondition && affirmative.some(sentence => moneyCents(sentence).includes(counterCents) && /\b(accept\w*|agreed|confirmed|approved)\b/i.test(sentence)) && quotes.some((quote) => Number(quote.cents) === counterCents && quote.scope_hash === scopeHash)
+  const accepted = committedCopyMatchesScope && !authorityCondition && affirmative.some(sentence => moneyCents(sentence).includes(counterCents) && /\b(accept\w*|agreed|confirmed|approved)\b/i.test(sentence)) && quotes.some((quote) => Number(quote.cents) === counterCents && quote.scope_hash === scopeHash)
   // A claimed acceptance must be backed by an actual quote at that amount.
   if (/\b(?:accept(?:ed)?|agreed|confirmed)\s+(?:your\s+)?(?:offer\s+(?:of\s+)?)?\$\s*/i.test(body) && !accepted) return false
   return holdsQuote || committedLockIn || committedPrice || pending || accepted

@@ -466,6 +466,20 @@ describe('adaptive pricing — N-series negotiation bands', () => {
     expect(finalized.action).toBe('ACCEPT')
   })
 
+  test('N1b an ACCEPT below the provider floor escalates instead of silently raising the client counter', () => {
+    const finalized = finalizeNumbers({
+      action: 'ACCEPT',
+      listPriceCents: 15_500,
+      floorCents: 15_500,
+      policy,
+      counterCents: 13_950,
+      clientBudgetMaxCents: 13_950,
+      scopeHash: 'scope-counter-below-floor',
+    })
+    expect(finalized).toMatchObject({ action: 'ESCALATE_PROVIDER', price_cents: null })
+    expect(finalized.reason_codes).toContain('counter_below_scope_floor')
+  })
+
   test('N2 a counter 13% below meets in the middle at or above the floor', () => {
     const counter = Math.round(list * 0.87)
     expect(classifyCounter({ counterCents: counter, listPriceCents: list, policy })).toBe('reasonable_meet')

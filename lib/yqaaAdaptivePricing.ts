@@ -1858,6 +1858,20 @@ export function finalizeNumbers(args: {
       price = Math.floor(counter / step) * step
       reasonCodes.push('counter_round_down')
     }
+    // ACCEPT means accepting the client's amount. Raising that amount to the
+    // provider floor would silently turn an acceptance into a higher counter.
+    // Keep the price unset and ask the provider to review the exception.
+    if (price < floor) {
+      const priorBelowFloor = (args.previousQuotes || []).some((quote) =>
+        quote && quote.scope_hash === args.scopeHash && Number(quote.cents) > 0 && Number(quote.cents) < floor,
+      )
+      return {
+        price_cents: null,
+        action: 'ESCALATE_PROVIDER',
+        concessions_used: concessionsUsed,
+        reason_codes: [...reasonCodes, 'counter_below_scope_floor', ...(priorBelowFloor ? ['monotonic_below_current_floor'] : [])],
+      }
+    }
   }
   if (price < floor) {
     price = roundToStep(floor, policy.round_to_cents)

@@ -750,7 +750,7 @@ async function messengerSmoke() {
           visibleCard: (latestThread?.messages || []).find(message => message.id === cards[0].id && message.ref_offer_id === offerId),
         }
       }
-      if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current, committedOffer })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
+      if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current, committedOffer, triggerMessageId: triggerId })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
       if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
       if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
     }

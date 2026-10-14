@@ -289,6 +289,7 @@ LEGAL BUDDY — SUBSTANCE BEFORE SALES (HIGHEST PRIORITY):
 - Never repeat a prior YQAA reply. Vary structure. If your next message would look like the previous one, take the conversation forward instead.
 - Frustration or exit intent (“another AI”, “no help”, “never mind”, “stops at the buck”) → empathize briefly, set escalate=true, hand to the provider. STOP any budget lecture immediately.
 - PRICING IS ADAPTIVE: when the client narrows the scope or makes a reasonable counter, follow the # NEGOTIATION STATE block — acknowledge the constraint warmly in their own terms, say what the reduced price includes, and use ONLY the server-approved number. Never restate a bigger number for smaller work.
+- If the server action is ESCALATE_PROVIDER for a client counter, acknowledge the exact amount and say the provider's review is pending only when the turn records that request. Do not repeat the previous quote as if it accepted the counter, and do not create a new offer.
 - If the budget cannot support the requested scope: empathize ONCE, then use the server-authorized action (a scoped or downscoped quote at the approved number, or a provider-approval step). Never repeat the same budget explanation on later turns.
 - NEVER quote internal pricing floors, means, medians, bands, percentages, averages, hourly rates, weights, multipliers, “revenue-safe” figures, or guard math to the client.
 
@@ -395,6 +396,54 @@ export function insufficientEvidenceHandoffReply(providerLabel: string, budget?:
     return `${budgetNote}I’ve asked ${provider} to weigh in; their reply hasn’t come through yet. Is there one detail you’d like me to add for them?`
   }
   return `${budgetNote}I want to make sure you get a clear answer, so I’ve asked ${provider} to look at what you have in mind. Their reply hasn’t come through yet. While we wait, what would you most like their help with first?`
+}
+
+/** Safe, context-aware intake when retrieval is thin but the client has not asked for a human decision. */
+export function insufficientEvidenceOrientationReply(args: {
+  latestClientText: string
+  recentClientContext: string
+  providerLabel?: string
+  budget?: PricingAuthority['budget']
+}) {
+  const latest = String(args.latestClientText || '').trim()
+  const context = `${String(args.recentClientContext || '')}\n${latest}`
+  const name = context.match(/\bmy name is\s+([a-z][a-z’'-]{1,39})\b/i)?.[1]
+  const greeting = name ? `Thanks for laying that out, ${name}.` : 'Thanks for laying that out.'
+  const provider = String(args.providerLabel || '').trim()
+  const providerName = provider && !/^(?:your provider|the provider)$/i.test(provider) ? provider : 'the provider'
+
+  if (/\b(?:going rates?|rates?|price|pricing|cost|how much)\b/i.test(latest)) {
+    return `${greeting} The cost will depend on how much help you want. Since you’re still planning ahead, we could start by comparing the residency routes you’ve found and the documents each one asks for. Would a route comparison or a document checklist be more useful to you?`
+  }
+
+  if (args.budget && Number.isFinite(args.budget.maxCents) && args.budget.maxCents > 0) {
+    const amount = `${String(args.budget.currency || 'usd').toUpperCase()} ${(args.budget.maxCents / 100).toFixed(2)}`
+    const acknowledgment = name ? `Thanks, ${name}—that gives me a useful ceiling.` : 'Thanks, that gives me a useful ceiling.'
+    return `${acknowledgment} I’ll keep your ${amount} limit in mind. We can start with a comparison of the residency routes and the documents you’d need. Before I tell you whether that fits, I’d want to confirm the consult price with ${providerName}. Would comparing the routes be a good place to start?`
+  }
+
+  const move = context.match(/\b(?:move|relocat\w*|settle)\s+(?:to|in)\s+([A-Z][A-Za-z’'-]*(?:[\s-]+[A-Z][A-Za-z’'-]*){0,3})/)?.[1]
+  const moveNote = move ? ` as you plan a move to ${move}` : ' while you plan your move'
+  return `${greeting} I can see why you’re weighing the family connection and the cost${moveNote}. A sensible first step is to list the residency routes you’ve found and compare what each asks you to prepare. I wouldn’t want to guess what your fiancé’s family connection means for your own situation. Which country would you apply from? That will help me point you toward the right official information and make the next conversation with ${providerName} more useful.`
+}
+
+/** Honest provider-review response for an explicit counter the server cannot authorize. */
+export function counterNeedsProviderReviewReply(counterCents: number, currency: string, providerLabel = 'the provider') {
+  const code = /^[a-z]{3}$/i.test(String(currency || '')) ? String(currency).toUpperCase() : 'USD'
+  const amount = `${code} ${(Math.round(counterCents) / 100).toFixed(2)}`
+  const provider = String(providerLabel || '').trim() || 'the provider'
+  return `Thanks for your counter of ${amount} for the same work. I’ve sent it to ${provider} to review. I can’t agree to a different price for them, so I’ll hold off on confirming that amount until I hear back.`
+}
+
+export function explicitCounterReviewDraft(args: {
+  action?: string | null
+  counterSource?: string | null
+  counterCents?: number | null
+  currency: string
+  providerLabel?: string
+}): GrokDecision | null {
+  if (args.action !== 'ESCALATE_PROVIDER' || args.counterSource !== 'explicit' || !Number.isFinite(args.counterCents) || Number(args.counterCents) <= 0) return null
+  return { reply: counterNeedsProviderReviewReply(Number(args.counterCents), args.currency, args.providerLabel), escalate: true, offer: null }
 }
 
 export function yqaaOfferIdempotencyKey(conversationId: string, triggerMessageId: string | null | undefined) {
@@ -1066,15 +1115,6 @@ export async function maybeAutoReply(opts: {
     if (!conv) return { replied: false, skipped: 'not_found' }
     const aiMode = conv.ai_mode as AiMode
 
-    const { provider, client } = await resolveProviderAndClient(db, conv)
-    if (!provider || !client) {
-      await recordAiDiagnostic(db, opts.conversationId, {
-        ai_last_skip: 'not_provider_client_thread',
-        ai_last_skip_at: new Date().toISOString(),
-      }, opts.runtime?.triggerMessageId, false, opts.runtime?.signal)
-      return { replied: false, skipped: 'not_provider_client_thread', aiMode }
-    }
-
     const loadCommittedReply = async (triggerId: string) => {
       const { data, error } = await db
         .from('yqaa_reply_commits')
@@ -1095,6 +1135,20 @@ export async function maybeAutoReply(opts: {
         console.error('[messengerAi] durable reply lookup failed')
         return { replied: false, skipped: 'persistence_unavailable', aiMode }
       }
+    }
+
+    // A paused thread needs no profile, history, pricing, or model work. Keep
+    // this gate after the durable idempotency lookup so an already-committed
+    // reply can still be returned to a retry of the same client turn.
+    if (aiMode !== 'auto' && !opts.force) return { replied: false, skipped: `ai_mode_${aiMode}`, aiMode }
+
+    const { provider, client } = await resolveProviderAndClient(db, conv)
+    if (!provider || !client) {
+      await recordAiDiagnostic(db, opts.conversationId, {
+        ai_last_skip: 'not_provider_client_thread',
+        ai_last_skip_at: new Date().toISOString(),
+      }, opts.runtime?.triggerMessageId, false, opts.runtime?.signal)
+      return { replied: false, skipped: 'not_provider_client_thread', aiMode }
     }
 
     const { data: messages } = await db
@@ -1126,7 +1180,6 @@ export async function maybeAutoReply(opts: {
         return { replied: false, skipped: 'persistence_unavailable', aiMode }
       }
     }
-    if (aiMode !== 'auto' && !opts.force) return { replied: false, skipped: `ai_mode_${aiMode}`, aiMode }
     const now = Date.now()
     const last = lastTriggerAt.get(key) || 0
     if (!opts.force && now - last < DEBOUNCE_MS) return { replied: false, skipped: 'debounced', aiMode }
@@ -1349,10 +1402,27 @@ export async function maybeAutoReply(opts: {
         return null as CompanionDecision | null
       })
 
-      if (companion) await persistYqaaDecisionRecord(db, {
+      const explicitProviderReviewRequest = /\b(?:ask|contact|request|speak|talk|review personally|human|personally)\b[^.!?]{0,60}\b(?:provider|human|review)\b/i.test(String(latestClientText || ''))
+      const safeMissingEvidenceIntake = Boolean(
+        legalEvidenceMissing && !highStakes && !frustrated && !explicitProviderReviewRequest &&
+        !budgetGapAlreadyExplained && !commerceBuyIntent(String(latestClientText || '')) &&
+        !(companion?.reasons || []).some(reason =>
+          ['jev_requires_handoff', 'client_frustration_or_exit', 'high_stakes_ymyl', 'duplicate_reply_risk', 'budget_gap_already_explained', 'support_issue_handoff'].includes(reason),
+        ),
+      )
+      const replyCompanion: CompanionDecision | null = safeMissingEvidenceIntake && companion
+        ? {
+            ...companion,
+            posture: 'DISCOVER',
+            escalate: false,
+            reasons: companion.reasons.filter(reason => reason !== 'legal_evidence_missing' && reason !== 'jev_evidence_insufficient'),
+          }
+        : companion
+
+      if (replyCompanion) await persistYqaaDecisionRecord(db, {
         channel: 'dm',
         interactionKey: `${opts.conversationId}:${triggerMessageId}`,
-        decision: companion,
+        decision: replyCompanion,
         evidenceIds: legalEvidenceBundle.evidence.map((item) => item.id),
         providerKey: provider.id,
         categoryKey: adaptive?.evidence.intent?.categoryId ?? null,
@@ -1373,7 +1443,7 @@ export async function maybeAutoReply(opts: {
             decision: adaptive,
             journeyStage,
             emotionBand,
-            lastPosture: companion?.posture ?? null,
+            lastPosture: replyCompanion?.posture ?? null,
           })
         : { ...conversationMemory, journey_stage: journeyStage, emotion_band: emotionBand }
       await recordAiDiagnostic(db, opts.conversationId, {
@@ -1381,7 +1451,7 @@ export async function maybeAutoReply(opts: {
         ai_last_scope_hash: adaptive?.scope.scope_hash ?? null,
         ai_last_counter_class: adaptive?.counter_class ?? null,
         ai_last_negotiation_action: adaptive?.recommended_action ?? null,
-        ai_last_posture: companion?.posture ?? null,
+        ai_last_posture: replyCompanion?.posture ?? null,
       }, opts.runtime?.triggerMessageId, false, opts.runtime?.signal)
 
       const systemBase = SYSTEM_PROMPT.replace(/\{provider\}/g, providerLabel)
@@ -1391,7 +1461,7 @@ export async function maybeAutoReply(opts: {
         legalEvidence || '',
         renderPricingAuthority(pricing),
         adaptive ? renderNegotiationAuthority(adaptive) : '',
-        companion ? renderDecisionAuthority(companion) : '',
+        replyCompanion ? renderDecisionAuthority(replyCompanion) : '',
         renderConversationMemory(memory),
       ].filter(Boolean).join('\n\n')
 
@@ -1408,15 +1478,30 @@ export async function maybeAutoReply(opts: {
         docSummary,
       ].join('\n')
 
-      const insufficientEvidenceHandoff = legalEvidenceMissing || Boolean(companion?.reasons.some(
+      const insufficientEvidenceHandoff = (legalEvidenceMissing && !safeMissingEvidenceIntake) || Boolean(replyCompanion?.reasons.some(
         (reason) => reason === 'legal_evidence_missing' || reason === 'jev_requires_handoff' || reason === 'jev_evidence_insufficient',
       ))
       const budgetLimitExplanation = firstBudgetLimitExplanation({pricing, adaptive, companion, latestClientText: String(latestClientText || ''), frustrated, budgetGapAlreadyExplained, legalEvidenceMissing, highStakes})
+      const counterReviewDraft = explicitCounterReviewDraft({
+        action: adaptive?.recommended_action,
+        counterSource: adaptive?.negotiation.counter_source,
+        counterCents: adaptive?.negotiation.counter_cents,
+        currency: pricing.currency,
+        providerLabel,
+      })
+      const counterReviewRequired = Boolean(counterReviewDraft)
       let decision: GrokDecision
       try {
-        const handoff = insufficientEvidenceHandoff
+        const handoff = counterReviewDraft || (insufficientEvidenceHandoff
           ? {reply: insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || '')), escalate: true, offer: null}
-          : null
+          : safeMissingEvidenceIntake
+            ? { reply: insufficientEvidenceOrientationReply({
+                latestClientText: String(latestClientText || ''),
+                recentClientContext: msgs.filter((message: any) => message.sender_id === client.id).slice(-8).map((message: any) => String(message.body || '')).join('\n'),
+                providerLabel,
+                budget: pricing.budget,
+              }), escalate: false, offer: null }
+            : null)
         decision = await resolveMessengerDraft({ handoff, budgetReply: budgetLimitExplanation, generate: async () => {
           if (opts.runtime) await opts.runtime.markStage('model_generation')
           return callGrokChat({
@@ -1444,19 +1529,25 @@ export async function maybeAutoReply(opts: {
       let replyText = String(decision.reply || '').trim().slice(0, 8000)
       let approvedOffer: { priceCents: number } | null = null
       let providerReview = false
-      let approvalPending = Boolean(adaptive?.approval_required && !approvedPricingRequest)
+      let approvalPending = Boolean(adaptive?.approval_required && !approvedPricingRequest && !safeMissingEvidenceIntake)
+      if (counterReviewDraft && adaptive) {
+        decision.escalate = true
+        decision.offer = null
+        approvalPending = true
+        replyText = counterReviewDraft.reply
+      }
 
       // Model output cannot clear a server-required escalation or issue an offer
       // on a handoff turn, regardless of the model's parsed `escalate` value.
 
-      decision = enforceCompanionEscalation(decision, companion || (legalEvidenceMissing ? { escalate: true } : null))
+      decision = enforceCompanionEscalation(decision, replyCompanion || (legalEvidenceMissing && !safeMissingEvidenceIntake ? { escalate: true } : null))
       if (insufficientEvidenceHandoff) {
         replyText = insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || ''))
       }
 
       // Never let the model bypass budget-first pricing merely by placing a
       // number in prose rather than the structured offer field.
-      if (!pricing.budget && containsPriceSuggestion(replyText)) {
+      if (!pricing.budget && containsPriceSuggestion(replyText) && !counterReviewRequired) {
         const guard = guardMessengerOffer({ pricing })
         if (!guard.ok) {
           decision = applyPricingGuardDecision(decision, guard)
@@ -1568,10 +1659,10 @@ export async function maybeAutoReply(opts: {
       // ── Polish stage (rules first; one regeneration; then a safe template) ──
       const allowedAmounts = companionAllowedAmounts(adaptive, approvedOffer)
       const polish = await polishMessengerDraft({
-        mandatoryHandoff: insufficientEvidenceHandoff, budget: pricing.budget,
+        mandatoryHandoff: insufficientEvidenceHandoff || counterReviewRequired, budget: pricing.budget,
         input: {
           reply: replyText,
-          posture: budgetLimitExplanation ? 'EDUCATE' : companion?.posture ?? null,
+          posture: budgetLimitExplanation ? 'EDUCATE' : replyCompanion?.posture ?? null,
           allowedAmountsCents: allowedAmounts,
           approvedPriceCents: adaptive?.approved_price_cents ?? approvedOffer?.priceCents ?? null,
           clientCounterCents: adaptive?.negotiation.counter_source !== 'budget' ? adaptive?.negotiation.counter_cents ?? null : null,
@@ -1598,6 +1689,7 @@ export async function maybeAutoReply(opts: {
         },
       })
       replyText = polish.reply
+      if (counterReviewRequired) replyText = counterNeedsProviderReviewReply(Number(adaptive?.negotiation.counter_cents), pricing.currency, providerLabel)
       if (polish.escalate) {
         decision.escalate = true
         decision.offer = null
@@ -1612,8 +1704,8 @@ export async function maybeAutoReply(opts: {
 
       if (!replyText) return { replied: false, skipped: 'empty_reply', aiMode }
       if (!disclosed && !/ai-powered|ai assistant|artificial intelligence|i[’']?m an ai|i am an ai|automated assistant/i.test(replyText)) {
-        const introducedName = String(latestClientText || '').match(/\bmy name is\s+([a-z][a-z’'-]{1,39})\b/i)?.[1]
-        replyText = `Hi${introducedName ? ` ${introducedName}` : ''} — I’m **YQAA**, the **YouSafe Quick Assistance Agent** and your AI assistant here.\n\n${replyText}`
+        const introducedName = msgs.filter((message: any) => message.sender_id === client.id).map((message: any) => String(message.body || '')).join('\n').match(/\bmy name is\s+([a-z][a-z’'-]{1,39})\b/i)?.[1]
+        replyText = `Hi${introducedName ? ` ${introducedName}` : ''} — I’m **YQAA**, YouSafe’s Quick Assistance Agent. I’m an AI, and I can help you work through this one step at a time.\n\n${replyText}`
       }
 
       await clearTypingBubble(db, typingId)
@@ -1661,7 +1753,7 @@ export async function maybeAutoReply(opts: {
             approvedPriceCents: Number(offerPersistence.row.price),
             journeyStage,
             emotionBand,
-            lastPosture: companion?.posture ?? null,
+            lastPosture: replyCompanion?.posture ?? null,
           })
         }
       }
@@ -1683,7 +1775,7 @@ export async function maybeAutoReply(opts: {
         ai_last_scope_hash: adaptive?.scope.scope_hash ?? null,
         ai_last_counter_class: adaptive?.counter_class ?? null,
         ai_last_negotiation_action: adaptive?.recommended_action ?? null,
-        ai_last_posture: companion?.posture ?? null,
+        ai_last_posture: replyCompanion?.posture ?? null,
         ai_last_approved_price_cents: decision.offer && approvedOffer ? approvedOffer.priceCents : null,
         ai_last_error: null,
         ai_last_skip: null,
