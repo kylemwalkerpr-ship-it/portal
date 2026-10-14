@@ -423,8 +423,25 @@ export function insufficientEvidenceOrientationReply(args: {
   }
 
   const move = context.match(/\b(?:move|relocat\w*|settle)\s+(?:to|in)\s+([A-Z][A-Za-z’'-]*(?:[\s-]+[A-Z][A-Za-z’'-]*){0,3})/)?.[1]
-  const moveNote = move ? ` as you plan a move to ${move}` : ' while you plan your move'
-  return `${greeting} I can see why you’re weighing the family connection and the cost${moveNote}. A sensible first step is to list the residency routes you’ve found and compare what each asks you to prepare. I wouldn’t want to guess what your fiancé’s family connection means for your own situation. Which country would you apply from? That will help me point you toward the right official information and make the next conversation with ${providerName} more useful.`
+  const moveNote = move ? ` a move to ${move}` : ' this'
+  return `${greeting} It makes sense to look into${moveNote} now and keep costs in view. I’d start by checking which residency routes fit your own citizenship and where you’d apply from, then compare what each asks you to prepare. Your fiancé’s family connection could be useful context, but I wouldn’t assume it settles which options are open to you. Where are you a citizen now, and where do you expect to apply? Then we can narrow down the official information and make any time with ${providerName} more focused.`
+}
+
+/** A cautious Jev handoff may be overruled only for a grounded, general orientation turn. */
+export function canContinueGroundedOrientation(args: {
+  hasGroundedEvidence: boolean
+  highStakes: boolean
+  frustrated: boolean
+  explicitProviderReviewRequest: boolean
+  budgetGapAlreadyExplained: boolean
+  commerceIntent: boolean
+  companionReasons: string[]
+}) {
+  const blockingReasons = args.companionReasons.filter((reason) => reason !== 'jev_requires_handoff')
+  return args.hasGroundedEvidence && !args.highStakes && !args.frustrated &&
+    !args.explicitProviderReviewRequest && !args.budgetGapAlreadyExplained &&
+    !args.commerceIntent && args.companionReasons.includes('jev_requires_handoff') &&
+    blockingReasons.length === 0
 }
 
 /** Honest provider-review response for an explicit counter the server cannot authorize. */
@@ -1412,12 +1429,22 @@ export async function maybeAutoReply(opts: {
           ['jev_requires_handoff', 'client_frustration_or_exit', 'high_stakes_ymyl', 'duplicate_reply_risk', 'budget_gap_already_explained', 'support_issue_handoff'].includes(reason),
         ),
       )
-      const replyCompanion: CompanionDecision | null = safeMissingEvidenceIntake && companion
+      const safeGroundedOrientation = canContinueGroundedOrientation({
+        hasGroundedEvidence: legalEvidenceBundle.evidence.length > 0,
+        highStakes,
+        frustrated,
+        explicitProviderReviewRequest,
+        budgetGapAlreadyExplained,
+        commerceIntent: commerceBuyIntent(String(latestClientText || '')),
+        companionReasons: companion?.reasons || [],
+      })
+      const safeOrientationContinuation = safeMissingEvidenceIntake || safeGroundedOrientation
+      const replyCompanion: CompanionDecision | null = safeOrientationContinuation && companion
         ? {
             ...companion,
             posture: 'DISCOVER',
             escalate: false,
-            reasons: companion.reasons.filter(reason => reason !== 'legal_evidence_missing' && reason !== 'jev_evidence_insufficient'),
+            reasons: companion.reasons.filter(reason => reason !== 'legal_evidence_missing' && reason !== 'jev_evidence_insufficient' && reason !== 'jev_requires_handoff'),
           }
         : companion
 
@@ -1480,7 +1507,7 @@ export async function maybeAutoReply(opts: {
         docSummary,
       ].join('\n')
 
-      const insufficientEvidenceHandoff = (legalEvidenceMissing && !safeMissingEvidenceIntake) || Boolean(replyCompanion?.reasons.some(
+      const insufficientEvidenceHandoff = (legalEvidenceMissing && !safeOrientationContinuation) || Boolean(replyCompanion?.reasons.some(
         (reason) => reason === 'legal_evidence_missing' || reason === 'jev_requires_handoff' || reason === 'jev_evidence_insufficient',
       ))
       const budgetLimitExplanation = firstBudgetLimitExplanation({pricing, adaptive, companion, latestClientText: String(latestClientText || ''), frustrated, budgetGapAlreadyExplained, legalEvidenceMissing, highStakes})
@@ -1497,7 +1524,7 @@ export async function maybeAutoReply(opts: {
       try {
         const handoff = counterReviewDraft || (insufficientEvidenceHandoff
           ? {reply: insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || '')), escalate: true, offer: null}
-          : safeMissingEvidenceIntake
+          : safeOrientationContinuation
             ? { reply: insufficientEvidenceOrientationReply({
                 latestClientText: String(latestClientText || ''),
                 recentClientContext: msgs.filter((message: any) => message.sender_id === client.id).slice(-8).map((message: any) => String(message.body || '')).join('\n'),
@@ -1532,7 +1559,7 @@ export async function maybeAutoReply(opts: {
       let replyText = String(decision.reply || '').trim().slice(0, 8000)
       let approvedOffer: { priceCents: number } | null = null
       let providerReview = false
-      let approvalPending = Boolean(adaptive?.approval_required && !approvedPricingRequest && !safeMissingEvidenceIntake)
+      let approvalPending = Boolean(adaptive?.approval_required && !approvedPricingRequest && !safeOrientationContinuation)
       if (counterReviewDraft && adaptive) {
         decision.escalate = true
         decision.offer = null
