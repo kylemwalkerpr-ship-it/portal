@@ -8,7 +8,9 @@ export function firstBudgetLimitExplanation(args: {
   latestClientText: string; frustrated: boolean; budgetGapAlreadyExplained: boolean; legalEvidenceMissing: boolean; highStakes: boolean;
 }): string | null {
   const {pricing, adaptive, companion} = args
-  if (pricing.status !== 'budget_too_low' || !pricing.budget || !adaptive || adaptive.channel !== 'dm' ||
+  if (!['education', 'academic-writing', 'mentorship'].includes(String(pricing.intent?.categoryId || '')) ||
+      pricing.status !== 'budget_too_low' || !pricing.budget || !adaptive || adaptive.channel !== 'dm' ||
+      adaptive.recommended_action !== 'HOLD_VALUE' || adaptive.eligible_actions.length !== 1 || adaptive.eligible_actions[0] !== 'HOLD_VALUE' ||
       adaptive.approval_required || adaptive.approved_price_cents || adaptive.downscope_options.length ||
       adaptive.scope.depth === 'unknown' || args.frustrated || args.budgetGapAlreadyExplained ||
       args.legalEvidenceMissing || args.highStakes || !companion || companion.escalate || companion.posture === 'HANDOFF_SUPPORT' ||
