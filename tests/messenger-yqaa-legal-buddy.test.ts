@@ -117,8 +117,10 @@ describe('legal-buddy escalation reply', () => {
   test('counter-review copy names the client amount and does not claim provider approval', () => {
     const reply = counterNeedsProviderReviewReply(13950, 'usd')
     expect(reply).toContain('USD 139.50')
-    expect(reply).toMatch(/provider.*review/i)
-    expect(reply).toMatch(/I’ll let you know as soon as I hear back/i)
+    expect(reply).toMatch(/counter for the same work/i)
+    expect(reply).toMatch(/sent it to your provider to have a look/i)
+    expect(reply).toMatch(/I’ll let you know when I hear back/i)
+    expect(reply).not.toMatch(/the provider,\s+your provider/i)
     expect(reply).not.toMatch(/approved|accepted|discount|agree to a different price/i)
   })
 
@@ -164,7 +166,7 @@ test('an unapproved explicit counter is acknowledged without waiting on provider
   expect(handoff).toMatchObject({ escalate: true, offer: null })
   expect(handoff?.reply).toContain('USD 139.50')
   expect(handoff?.reply).toContain('counter')
-  expect(handoff?.reply).toContain('review')
+  expect(handoff?.reply).toContain('have a look')
   const generate = jest.fn(async () => { throw new Error('provider_timeout') })
   expect(await resolveMessengerDraft({ handoff, budgetReply: null, generate })).toBe(handoff)
   expect(generate).not.toHaveBeenCalled()

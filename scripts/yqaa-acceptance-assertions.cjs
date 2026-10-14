@@ -4,6 +4,36 @@ function moneyCents(body) {
     .map((match) => Math.round(Number(match[1].replaceAll(',', '')) * 100))
 }
 
+/** The orientation check follows the tested request category, not one shared vocabulary. */
+function orientationAddressesContext(categoryId, body) {
+  const vocabularies = {
+    education: /\b(?:universit\w*|admission\w*|study|checklist|document\w*|application|school)\b/i,
+    'academic-writing': /\b(?:essay\w*|draft\w*|prompt\w*|word count\w*|application|school|writing|edit\w*)\b/i,
+    mentorship: /\b(?:student\w*|mentorship|study|planning|checklist|application|school|goal\w*)\b/i,
+  }
+  const vocabulary = vocabularies[categoryId]
+  return Boolean(vocabulary && vocabulary.test(String(body || '')))
+}
+
+/** Approval follow-through is permitted only for this run's hidden provider fixture and exact counter scope. */
+function exactSyntheticCounterApproval(metadata, { triggerMessageId, counterCents, scopeHash, runMarker, providerRole }) {
+  return typeof triggerMessageId === 'string' && triggerMessageId.length > 0 &&
+    Number.isInteger(counterCents) && counterCents > 0 &&
+    typeof scopeHash === 'string' && scopeHash.length > 0 &&
+    typeof runMarker === 'string' && runMarker.length > 0 &&
+    metadata?.yqaa_live_acceptance === true &&
+    metadata.yqaa_live_acceptance_run === runMarker &&
+    ['attorney', 'consultant'].includes(providerRole) &&
+    metadata.ai_mode === 'paused' &&
+    metadata.ai_pricing_approval_status === 'pending' &&
+    metadata.ai_pricing_approval_pending === true &&
+    metadata.ai_pricing_approval_request_id === triggerMessageId &&
+    Number(metadata.ai_pricing_approval_version) === 1 &&
+    Number(metadata.ai_pricing_approval_price_cents) === counterCents &&
+    metadata.ai_pricing_approval_scope_hash === scopeHash &&
+    metadata.ai_last_scope_hash === scopeHash
+}
+
 const ISO_CURRENCY_CODES = new Set('AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP SLE SLL SOS SRD SSP STN SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX USD UYU UZS VES VND VUV WST XAF XCD XOF XPF YER ZAR ZMW ZWL'.split(' '))
 
 /** A current-turn offer must be visible to the client and bound to its durable commit. */
@@ -54,7 +84,7 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
     }))
   })
   const reviewPending = counterAmountSentence && metadata.ai_provider_attention_requested === true &&
-    /\b(?:review|approval|confirm\w*)\b/i.test(body) &&
+    /\b(?:review|approval|confirm\w*|have a look|look it over)\b/i.test(body) &&
     /\bcounter\b/i.test(body) &&
     !/\b(?:accept(?:ed)?|agreed|confirmed|approved)\b[^.!?\n]{0,80}(?:\$\s*|\bUSD\s+)\d/i.test(body)
   if (reviewPending) return true
@@ -158,7 +188,7 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
       return moneyCents(match[1]).includes(Number(latestScopedQuote?.cents))
     })
   })
-  const pending = /\b(provider|human)\b/i.test(body) && /\b(pending|review|approval|confirm\w*)\b/i.test(body) && metadata.ai_provider_attention_requested === true
+  const pending = /\b(provider|human)\b/i.test(body) && /\b(pending|review|approval|confirm\w*)\b|\bhave a look\b/i.test(body) && metadata.ai_provider_attention_requested === true
   const accepted = committedCopyMatchesScope && !authorityCondition && affirmative.some(sentence => moneyCents(sentence).includes(counterCents) && /\b(accept\w*|agreed|confirmed|approved)\b/i.test(sentence)) && quotes.some((quote) => Number(quote.cents) === counterCents && quote.scope_hash === scopeHash)
   // A claimed acceptance must be backed by an actual quote at that amount.
   if (/\b(?:accept(?:ed)?|agreed|confirmed)\s+(?:your\s+)?(?:offer\s+(?:of\s+)?)?\$\s*/i.test(body) && !accepted) return false
@@ -181,4 +211,4 @@ async function runIndependentCategories(categories, { negotiation, attention, on
   }
   return passed
 }
-module.exports = { moneyCents, currentCommittedOffer, counterofferAcknowledged, runIndependentCategories }
+module.exports = { moneyCents, currentCommittedOffer, counterofferAcknowledged, orientationAddressesContext, exactSyntheticCounterApproval, runIndependentCategories }

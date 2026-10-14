@@ -432,8 +432,8 @@ export function counterNeedsProviderReviewReply(counterCents: number, currency: 
   const code = /^[a-z]{3}$/i.test(String(currency || '')) ? String(currency).toUpperCase() : 'USD'
   const amount = `${code} ${(Math.round(counterCents) / 100).toFixed(2)}`
   const provider = String(providerLabel || '').trim() || 'the provider'
-  const providerReference = /^the provider$/i.test(provider) ? provider : `the provider, ${provider}`
-  return `Thanks for the ${amount} counter on the same narrowed scope. I’ve asked ${providerReference} to review it, and I’ll let you know as soon as I hear back.`
+  const providerReference = /^(?:the provider|your provider)$/i.test(provider) ? 'your provider' : provider
+  return `Thanks for the ${amount} counter for the same work. I’ve sent it to ${providerReference} to have a look, and I’ll let you know when I hear back.`
 }
 
 export function explicitCounterReviewDraft(args: {
