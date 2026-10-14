@@ -76,6 +76,16 @@ describe('system-wide assistant origin context', () => {
 })
 
 describe('assistant marketplace intent', () => {
+  it.each([
+    ['application essay editing checklist', 'academic-writing', 'application-essays'],
+    ['student study planning checklist', 'mentorship', 'student-mentorship'],
+    ['organizing the full application for student planning across 6 documents', 'mentorship', 'student-mentorship'],
+    ['university application checklist', 'education', 'university-admissions'],
+    ['statement of purpose review', 'academic-writing', 'sop-writing'],
+  ])('keeps the named service %s in its own pricing category', async (request, categoryId, subcategoryId) => {
+    const { matchMarketplaceIntent } = await import('@/lib/assistantMarketplaceIntent')
+    expect(matchMarketplaceIntent(`My budget is USD 450 for help with ${request}. Please clarify the scope and price.`)).toMatchObject({categoryId, subcategoryId})
+  })
   it('maps concrete intent to a real canonical marketplace subcategory', async () => {
     const { matchMarketplaceIntent } = await import('@/lib/assistantMarketplaceIntent')
     const match = matchMarketplaceIntent('I need help preparing for an F-1 student visa and study permit')

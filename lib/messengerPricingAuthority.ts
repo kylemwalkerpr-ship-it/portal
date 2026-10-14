@@ -545,6 +545,11 @@ export function lowBudgetEscalationReply(providerLabel = 'the provider') {
   return `I hear you — and I don’t want to keep going in circles on budget. I’m requesting ${providerLabel} to review what scope and price can work. That request is pending until they reply. If you need help sooner, contact YouSafe Support.`
 }
 
+/** Explains a failed budget scope plainly when the client is already frustrated. */
+export function frustratedBudgetHandoffReply(providerLabel = 'the provider') {
+  return `I understand this has been frustrating. In plain terms, I cannot approve the requested scope at your current budget or send an offer for it. The next step is for ${providerLabel} to explain what can be included and confirm a price with you. I’m requesting that review now; it remains pending until they reply. If you need help sooner, contact YouSafe Support.`
+}
+
 const CLIENT_FRUSTRATION_EXIT_RE = /\b(another\s+ai|other\s+ai|different\s+ai|chatgpt|claude|perplexity|stops?\s+at\s+the\s+buck|just\s+wants?\s+(?:my\s+)?money|only\s+cares?\s+about\s+(?:the\s+)?money|all\s+about\s+the\s+money|no\s+help|not\s+helpful|never\s+helps?|useless|waste\s+of\s+time|wasting\s+my\s+time|never\s+mind|forget\s+it|forget\s+about\s+it|done\s+here|giving\s+up|give\s+up|good\s*bye|goodbye)\b/i
 
 /** Internal pricing phrases that must never reach a client-facing reply. */

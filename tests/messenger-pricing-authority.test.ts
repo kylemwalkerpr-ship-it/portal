@@ -6,6 +6,7 @@ import {
   isNearDuplicateReply,
   leaksInternalFloorLanguage,
   lowBudgetReply,
+  frustratedBudgetHandoffReply,
   MIN_REFERENCE_RATIO,
   pricingAuditSnapshot,
   renderPricingAuthority,
@@ -54,6 +55,13 @@ function pricing(overrides: Partial<PricingAuthority> = {}): PricingAuthority {
 }
 
 describe('YQAA marketplace pricing authority', () => {
+  test('a frustrated budget handoff explains scope limits and the pending next step without inventing approval', () => {
+    const reply = frustratedBudgetHandoffReply('the provider')
+    expect(reply).toContain('cannot approve the requested scope')
+    expect(reply).toContain('explain what can be included')
+    expect(reply).toContain('pending until they reply')
+    expect(leaksInternalFloorLanguage(reply)).toBe(false)
+  })
   test('uses 15% below mean as the automatic baseline floor policy', () => {
     expect(MIN_REFERENCE_RATIO).toBe(0.85)
   })
