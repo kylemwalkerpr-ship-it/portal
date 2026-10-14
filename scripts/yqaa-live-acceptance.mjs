@@ -11,6 +11,7 @@ import path from 'node:path'
 import { chromium } from '@playwright/test'
 import registryModule from './yqaa-fixture-registry.cjs'
 import acceptanceAssertions from './yqaa-acceptance-assertions.cjs'
+import incidentQuality from './yqaa-incident-quality.cjs'
 
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = registryModule
 
@@ -294,7 +295,7 @@ function incidentUuid(value) {
 }
 
 function incidentBudgetRange(turns) {
-  const amounts = turns.flatMap((turn) => [...turn.matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.')))).filter(Number.isFinite)
+  const amounts = turns.flatMap(incidentQuality.moneyValues)
   if (!amounts.length) return 'unknown'
   const max = Math.max(...amounts)
   return max < 100 ? 'under_100' : max < 500 ? '100_499' : max < 1000 ? '500_999' : '1000_plus'
@@ -305,7 +306,7 @@ function incidentSignals(text) {
   return {
     orientation: /(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai|automated assistant)/i.test(body),
     internalLeak: /(internal floor|reference mean|pricing floor|minimum price is|revenue-safe floor)/i.test(body),
-    amounts: [...body.matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.'))).filter(Number.isFinite),
+    amounts: incidentQuality.moneyValues(body),
   }
 }
 
@@ -322,7 +323,7 @@ async function loadIncidentSource() {
   const [clientRows, providerRows, messages] = await Promise.all([
     dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceClientId)}`),
     dbRequest(`profiles?select=id,role&id=eq.${encodeURIComponent(sourceProviderId)}`),
-    dbRequest(`conversation_messages?select=sender_id,body,created_at&conversation_id=eq.${encodeURIComponent(sourceConversationId)}&order=created_at.asc&limit=201`),
+    dbRequest(`conversation_messages?select=sender_id,body,created_at,metadata&conversation_id=eq.${encodeURIComponent(sourceConversationId)}&order=created_at.asc&limit=201`),
   ])
   if (clientRows?.length !== 1 || clientRows[0].role !== 'client' || providerRows?.length !== 1 || !['consultant', 'attorney'].includes(String(providerRows[0].role).toLowerCase())) throw new Error('Incident source participant roles could not be verified.')
   if (!Array.isArray(messages) || messages.length > 200) throw new Error('Incident source message count is outside the read bound.')
@@ -332,7 +333,9 @@ async function loadIncidentSource() {
   }
   const totalChars = turns.reduce((total, turn) => total + turn.length, 0)
   if (!turns.length || turns.length > MAX_INCIDENT_TURNS || turns.some((turn) => turn.length > 8_000) || totalChars > 48_000) throw new Error('Incident source client turn count or text size is outside the replay bound.')
-  return { sourceConversationId, sourceClientId, sourceProviderId, source, turns }
+  const sourceHumanProviderTurns = messages.filter(message => message.sender_id === sourceProviderId && !message.metadata?.ai_generated && typeof message.body === 'string' && message.body.trim()).length
+  if (sourceHumanProviderTurns) throw new Error('This client-turn replay cannot represent original human provider messages; a separate explicit replay mode is required.')
+  return { sourceConversationId, sourceClientId, sourceProviderId, source, turns, sourceHumanProviderTurns }
 }
 
 async function createIncidentFixtures(sourceData) {
@@ -345,7 +348,7 @@ async function createIncidentFixtures(sourceData) {
   const verifiedEmail = (identity.email_addresses || []).find((item) => item.id === identity.primary_email_address_id && item.email_address?.toLowerCase() === target.email?.toLowerCase() && item.verification?.status === 'verified')
   if (identity.id !== target.clerk_user_id || !verifiedEmail) throw new Error('Authorized replay client Clerk identity could not be verified.')
 
-  const publicGigs = await dbRequest(`gigs?select=id,title,category,subcategory,status,is_hidden,unit_pricing,hourly_rate_cents&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}&status=eq.active&is_hidden=eq.false&order=created_at.asc&limit=10`)
+  const publicGigs = await dbRequest(`gigs?select=id,title,category,subcategory,status,is_hidden,unit_pricing,hourly_rate_cents,pitch,description&provider_id=eq.${encodeURIComponent(sourceData.sourceProviderId)}&status=eq.active&is_hidden=eq.false&order=created_at.asc&limit=10`)
   if (!Array.isArray(publicGigs) || !publicGigs.length || publicGigs.length > 10) throw new Error('No bounded set of public source gigs was available to mirror.')
   const [sourceTiers, sourcePrefs] = await Promise.all([
     dbRequest(`gig_tiers?select=gig_id,tier,title,description,price,delivery_days,revisions,is_active,features,scope_depth,scope_units&gig_id=in.(${publicGigs.map((gig) => gig.id).join(',')})&is_active=eq.true&order=tier.asc`),
@@ -365,8 +368,8 @@ async function createIncidentFixtures(sourceData) {
     if (!gig) {
       try {
         const inserted = await dbRequest('gigs?select=id,provider_id,status,is_hidden,category,subcategory', { method: 'POST', prefer: 'return=representation', body: [{
-          provider_id: provider.id, provider_type: 'consultant', title: `Synthetic replay listing ${index + 1}`, category: sourceGig.category, subcategory: sourceGig.subcategory, slug,
-          pitch: 'Hidden synthetic test listing for bounded replay only.', description: 'Synthetic hidden fixture. No real provider, credentials, licensure, advice, or professional service is represented.', requirements: 'Replay fixture only.',
+          provider_id: provider.id, provider_type: 'consultant', title: `Synthetic replay: ${String(sourceGig.title || `listing ${index + 1}`).slice(0, 150)}`, category: sourceGig.category, subcategory: sourceGig.subcategory, slug,
+          pitch: String(sourceGig.pitch || 'Hidden synthetic test listing for bounded replay only.').slice(0, 500), description: `Public service scope copied for a hidden synthetic replay; no provider credentials or licensure are verified by this fixture.\n\n${String(sourceGig.description || '').slice(0, 8000)}`, requirements: 'Replay fixture only.',
           status: 'paused', is_hidden: true, tags: ['synthetic', 'acceptance-fixture', 'foley-taylor-replay'], unit_pricing: sourceGig.unit_pricing, hourly_rate_cents: sourceGig.hourly_rate_cents,
         }] })
         gig = inserted?.[0]
@@ -382,7 +385,7 @@ async function createIncidentFixtures(sourceData) {
     ownedGigs.set(sourceGig.id, gig)
     const tiers = sourceTiers.filter((tier) => tier.gig_id === sourceGig.id)
     const priorTiers = await dbRequest(`gig_tiers?select=id,tier,price,scope_depth,scope_units&gig_id=eq.${encodeURIComponent(gig.id)}`)
-    if (!priorTiers?.length && tiers.length) await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: tiers.map((tier) => ({ gig_id: gig.id, tier: tier.tier, title: `Synthetic ${tier.tier} scope`, description: 'Synthetic replay pricing and scope mirror.', price: tier.price, delivery_days: tier.delivery_days, revisions: tier.revisions, is_active: true, features: ['Synthetic replay fixture'], scope_depth: tier.scope_depth, scope_units: tier.scope_units })) })
+    if (!priorTiers?.length && tiers.length) await dbRequest('gig_tiers', { method: 'POST', prefer: 'return=minimal', body: tiers.map((tier) => ({ gig_id: gig.id, tier: tier.tier, title: String(tier.title || `Synthetic ${tier.tier} scope`).slice(0, 160), description: String(tier.description || 'Synthetic replay pricing and scope mirror.').slice(0, 4000), price: tier.price, delivery_days: tier.delivery_days, revisions: tier.revisions, is_active: true, features: Array.isArray(tier.features) ? tier.features.slice(0, 20).map(value => String(value).slice(0, 500)) : ['Synthetic replay fixture'], scope_depth: tier.scope_depth, scope_units: tier.scope_units })) })
   }
   if (sourcePrefs?.length) {
     const preference = sourcePrefs[0]
@@ -423,23 +426,33 @@ async function runIncidentReplay(sourceData, fixtureData) {
   const auth = await authenticatedPage(fixtureData.clientUserId, '/messenger')
   clientPage = auth.page
   const turns = [...sourceData.turns]
-  const metrics = { orientation_present: false, budget_first: false, internal_leak_count: 0, stale_number_count: 0, budget_range: incidentBudgetRange(turns), duplicate_reply_count: 0, attention_state: 'not_observed', latency_ms: [], evidence_count: 0, posture: 'held_at_turn_bound' }
+  const metrics = { orientation_present: false, budget_first: false, internal_leak_count: 0, stale_number_count: 0, budget_range: incidentBudgetRange(turns), duplicate_reply_count: 0, source_client_turns: turns.length, posted_verbatim_turns: 0, turns_after_pause: 0, useful_first_orientation: false, reply_turns: [], attention_state: 'not_observed', latency_ms: [], evidence_count: 0, posture: 'held_at_turn_bound' }
   const replyFingerprints = new Set()
-  const seenBudget = turns.some((turn) => /\b(budget|maximum|max|afford)\b/i.test(turn) && /\$|\bcad\b/i.test(turn))
+  const firstBudgetTurn = turns.findIndex(turn => incidentQuality.moneyValues(turn).length > 0)
+  const seenBudget = firstBudgetTurn >= 0
   const priorNumbers = []
   let firstQuoteTurn = null
   const conversationId = fixture.id
   try {
     for (let index = 0; index < turns.length && index < MAX_INCIDENT_TURNS; index++) {
-      const currentNumbers = [...turns[index].matchAll(/(?:cad\s*)?\$\s?(\d+(?:[.,]\d{1,2})?)/gi)].map((match) => Number(match[1].replace(',', '.'))).filter(Number.isFinite)
+      const currentNumbers = incidentQuality.moneyValues(turns[index])
       const before = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`)
       verifyOwnedConversation(before?.[0], fixture, fixtureData.runMarker)
-      if (before[0].metadata?.ai_mode === 'paused') { metrics.attention_state = before[0].metadata?.ai_provider_attention_requested ? 'paused_for_provider' : 'paused'; metrics.posture = 'stopped_on_pause'; break }
+      const alreadyPaused = before[0].metadata?.ai_mode === 'paused'
+      if (alreadyPaused) { metrics.attention_state = before[0].metadata?.ai_provider_attention_requested ? 'paused_for_provider' : 'paused'; metrics.posture = 'stopped_on_pause' }
       const started = Date.now()
       const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: turns[index] } })
       if (sent.status !== 200 || typeof sent.data.message?.id !== 'string' || sent.data.message?.sender_id !== fixture.profileId) throw new Error('Incident replay client turn was not accepted by the owned conversation.')
       metrics.evidence_count++
       const triggerId = sent.data.message.id
+      const stored = await dbRequest(`conversation_messages?select=id,sender_id,body&conversation_id=eq.${encodeURIComponent(conversationId)}&id=eq.${encodeURIComponent(triggerId)}`)
+      if (stored?.length !== 1 || stored[0].sender_id !== fixture.profileId || stored[0].body !== turns[index]) throw new Error('Incident source turn was not stored word for word.')
+      metrics.posted_verbatim_turns++
+      if (alreadyPaused) {
+        metrics.turns_after_pause++
+        metrics.reply_turns.push({turn:index + 1,status:'not_expected_ai_paused'})
+        continue
+      }
       const deadline = Date.now() + MAX_WAIT_MS
       let reply = null
       let state = null
@@ -459,7 +472,17 @@ async function runIncidentReplay(sourceData, fixtureData) {
       if (reply && typeof reply.body === 'string') {
         metrics.evidence_count++
         const signals = incidentSignals(reply.body)
-        if (index === 0) metrics.orientation_present = signals.orientation
+        if (index === 0) {
+          metrics.orientation_present = signals.orientation
+          metrics.useful_first_orientation = incidentQuality.usefulFirstOrientation(reply.body)
+          if (/\*\*[^*]+\*\*/.test(reply.body)) {
+            await clientPage.goto(`${BASE}/messenger?thread=${encodeURIComponent(conversationId)}`, { waitUntil: 'domcontentloaded' })
+            await clientPage.locator('.bub-text strong').first().waitFor({ state: 'visible', timeout: 15_000 })
+            const visibleBodies = await clientPage.locator('.bub-text').allTextContents()
+            metrics.bold_rendered = !(visibleBodies.some(body => /\*\*[^*]+\*\*/.test(body)))
+          } else metrics.bold_rendered = null
+        }
+        metrics.reply_turns.push({turn:index + 1,status:'reply_received'})
         if (signals.internalLeak) metrics.internal_leak_count++
         if (signals.amounts.some((amount) => priorNumbers.includes(amount) && !currentNumbers.includes(amount))) metrics.stale_number_count++
         const fingerprint = createHash('sha256').update(reply.body).digest('hex')
@@ -470,17 +493,21 @@ async function runIncidentReplay(sourceData, fixtureData) {
       if (state?.ai_mode === 'paused' || state?.ai_provider_attention_requested === true) {
         metrics.attention_state = state.ai_provider_attention_requested ? 'paused_for_provider' : 'paused'
         metrics.posture = 'stopped_on_pause'
-        break
+        continue
       }
       if (!reply) { metrics.posture = 'held_after_reply_timeout'; break }
       priorNumbers.push(...currentNumbers)
     }
-    metrics.budget_first = seenBudget && firstQuoteTurn !== null && turns.findIndex((turn) => /\b(budget|maximum|max|afford)\b/i.test(turn) && /\$|\bcad\b/i.test(turn)) <= firstQuoteTurn
+    metrics.budget_first = seenBudget && firstQuoteTurn !== null && firstBudgetTurn <= firstQuoteTurn
     if (metrics.posture === 'held_at_turn_bound' && metrics.evidence_count > 0) metrics.posture = 'source_turns_exhausted'
     receipt.incident = { name: INCIDENT_MODE, status: 'completed', ...metrics }
     initializeFixtureDatabase()
     receipt.mode = 'incident'
     receipt.status = 'incident_completed'
+    if (!metrics.useful_first_orientation || metrics.bold_rendered === false || metrics.posted_verbatim_turns !== turns.length || metrics.internal_leak_count || metrics.stale_number_count || metrics.duplicate_reply_count || metrics.posture === 'held_after_reply_timeout') {
+      receipt.incident.status = 'failed_quality'
+      throw new Error('Incident replay failed useful first orientation, complete verbatim delivery, or reply safety checks.')
+    }
   } finally {
     // The incident path never resumes AI. Explicitly leave the owned thread held.
     const rows = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`)

@@ -10,7 +10,7 @@
     "test:e2e:ui": "playwright test --ui",
     "sync:seo-strategies": "node scripts/sync-seo-strategies.mjs",
     "smoke:prod": "node scripts/smoke-prod.mjs",
-    "prebuild": "node scripts/sync-seo-strategies.mjs",
+    "prebuild": "node scripts/sync-seo-strategies.mjs && node scripts/bundle-yqaa-runtime-knowledge.mjs",
     "build": "NODE_OPTIONS='--max-old-space-size=4096' next build --webpack && NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "NODE_OPTIONS='--max-old-space-size=4096' opennextjs-cloudflare build",
     "populate:static-incremental-cache": "node scripts/populate-static-incremental-cache.mjs",

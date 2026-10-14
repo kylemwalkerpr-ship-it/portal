@@ -7,6 +7,7 @@
  */
 import fs from 'fs'
 import path from 'path'
+import runtimePublicKnowledge from '@/content/messenger-kb/runtime-public.json'
 
 export interface KnowledgeChunk {
   id: string
@@ -131,7 +132,7 @@ export function loadCuratedKbChunks(dirOverride?: string, coreOnly = false): Kno
       if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue
       const files = fs
         .readdirSync(dir)
-        .filter((f) => coreOnly ? CORE_FILES.has(f) : /\.(md|txt|json)$/i.test(f))
+        .filter((f) => f !== 'runtime-public.json' && (coreOnly ? CORE_FILES.has(f) : /\.(md|txt|json)$/i.test(f)))
         .sort()
       for (const file of files) {
         const full = path.join(dir, file)
@@ -170,6 +171,16 @@ export function loadCuratedKbChunks(dirOverride?: string, coreOnly = false): Kno
         dir,
         err instanceof Error ? err.message : err,
       )
+    }
+  }
+  // Workers do not expose the repository filesystem. Ship the same bounded
+  // public reference material in the module graph; indexed/live evidence can
+  // still supplement it and this snapshot never establishes freshness.
+  if (!dirOverride && !chunks.length) {
+    for (const row of runtimePublicKnowledge) {
+      if (coreOnly && !CORE_FILES.has(row.source.split('/').at(-1))) continue
+      if (row.sourceUrl && (!trustedSourceUrl(row.sourceUrl, row.site) || row.repository !== REPOSITORY_BY_SITE[row.site])) continue
+      chunks.push(row as KnowledgeChunk)
     }
   }
   if (!dirOverride) {
