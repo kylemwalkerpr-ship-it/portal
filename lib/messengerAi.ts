@@ -33,6 +33,7 @@ import {
   isNearDuplicateReply,
   leaksInternalFloorLanguage,
   lowBudgetEscalationReply,
+  frustratedBudgetHandoffReply,
   lowBudgetReply,
   pricingAuditSnapshot,
   renderPricingAuthority,
@@ -1484,7 +1485,7 @@ export async function maybeAutoReply(opts: {
           if (decision.escalate && (frustrated || budgetGapAlreadyExplained || !modelHandlesBudgetEmpathetically)) {
             replyText = veryShortModelReply && !frustrated && !budgetGapAlreadyExplained
               ? replyText
-              : lowBudgetEscalationReply(providerLabel)
+              : frustrated ? frustratedBudgetHandoffReply(providerLabel) : lowBudgetEscalationReply(providerLabel)
           }
         } else if (nearDuplicate) {
           decision.escalate = true

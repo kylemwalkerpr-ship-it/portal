@@ -476,7 +476,7 @@ export const CATEGORIES: Category[] = [
         id: 'student-mentorship',
         name: 'Student Mentorship',
         description: 'Ongoing student support and guidance',
-        keywords: ['student', 'mentorship', 'guidance', 'support'],
+        keywords: ['student', 'mentorship', 'guidance', 'support', 'student planning', 'study planning'],
         popular: false,
         order: 1,
       },

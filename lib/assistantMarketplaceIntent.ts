@@ -27,7 +27,10 @@ function tokens(value: string): string[] {
 function phraseScore(query: string, phrase: string, weight: number): number {
   const normalized = phrase.trim().toLowerCase()
   if (!normalized || normalized.length < 3) return 0
-  return query.includes(normalized) ? weight : 0
+  // A keyword must be a complete phrase: "study plan" must not match
+  // "study planning", and "sop" must not match an unrelated word.
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`).test(query) ? weight : 0
 }
 
 /**
@@ -67,7 +70,9 @@ export function matchMarketplaceIntent(input: string): MarketplaceIntentMatch | 
       score += phraseScore(query, subcategory.id.replace(/-/g, ' '), 7)
       score += phraseScore(query, subcategory.name.toLowerCase(), 7)
       for (const keyword of subcategory.keywords || []) {
-        score += phraseScore(query, keyword.toLowerCase(), keyword.includes(' ') ? 8 : 5)
+        // A named service phrase outranks overlapping generic words such as
+        // "application" and "essay" in the broader admissions category.
+        score += phraseScore(query, keyword.toLowerCase(), keyword.includes(' ') ? 12 : 5)
       }
       const haystack = `${subcategory.name} ${subcategory.description} ${(subcategory.keywords || []).join(' ')} ${subcategory.id}`.toLowerCase()
       for (const token of queryTokens) {
