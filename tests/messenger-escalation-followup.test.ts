@@ -5,6 +5,7 @@ import {
 import {
   buildGroundedConversationMemory,
   renderConversationMemory,
+  withProviderAttentionRequested,
 } from '@/lib/messengerConversationMemory'
 
 describe('YQAA provider escalation follow-ups', () => {
@@ -113,4 +114,15 @@ describe('YQAA provider escalation follow-ups', () => {
     expect(prompt).toMatch(/answer promptly/i)
     expect(prompt).toMatch(/do not invent/i)
   })
+})
+
+
+test('a new handoff immediately records pending attention; only a subsequent real provider reply settles it', () => {
+ const memory=buildGroundedConversationMemory({clientId:'client',pricing:{budget:null,intent:null} as any,metadata:{},messages:[]})
+ const at='2026-10-14T05:00:00.000Z'
+ const requested=withProviderAttentionRequested(memory,at)
+ expect(requested.provider_attention).toMatchObject({requested_at:at,pending:true,human_reply_after_request:false})
+ const metadata={ai_provider_attention_requested:true,ai_provider_attention_requested_at:at}
+ expect(evaluateProviderAttention({metadata,providerId:'provider',messages:[{sender_id:'provider',created_at:'2026-10-14T05:00:01.000Z',metadata:{ai_generated:true}}]}).pending).toBe(true)
+ expect(evaluateProviderAttention({metadata,providerId:'provider',messages:[{sender_id:'provider',created_at:'2026-10-14T05:00:02.000Z',metadata:{}}]}).pending).toBe(false)
 })

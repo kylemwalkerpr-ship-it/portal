@@ -992,3 +992,29 @@ describe('adaptive pricing — migration tolerance', () => {
     expect(quote.needs_provider_confirm).toBe(true)
   })
 })
+
+
+test('a newer explicit maximum supersedes an older counter without erasing counter history', () => {
+  const messages=[{id:'counter',sender_id:'client',body:'Would you accept $139.50 USD?'},{id:'latest-budget',sender_id:'client',body:'My maximum is USD 1. What could realistically fit?'}]
+  const signal=extractNegotiationSignal(messages,{clientId:'client'})
+  expect(signal.budget?.maxCents).toBe(100)
+  expect(signal.counter_cents).toBeNull()
+  expect(signal.counter_count).toBe(1)
+  expect(messages[0].body).toContain('139.50')
+})
+
+test.each([
+ ['education','university-admissions'],['academic-writing','application-essays'],['mentorship','student-mentorship'],
+])('a first informational impossible budget in %s holds value without an offer or mandatory review', async (category,subcategory) => {
+ const gig=gigRow({category,subcategory,title:'Organizing a document checklist',tiers:[tierRow({price:31000,scope_depth:'full',scope_units:6})]})
+ const pricing:any={status:'budget_too_low',intent:{categoryId:category,subcategoryId:subcategory,categoryName:category,subcategoryName:subcategory,score:1},budget:{maxCents:100,minCents:null,currency:'usd',messageId:'low',confidence:'explicit'}}
+ const memory={negotiation:{scope_current:{depth:'full',units:{unit:'document',qty:6}}}}
+ const decision=await decide({gigs:[gig],pricing,memory,messages:[clientMessage('scope','Organizing the full application across 6 documents.'),clientMessage('low','My maximum is USD 1 for organizing a checklist. Please say what, if anything, could realistically fit without promising the full request.')]})
+ expect(decision.counter_class).toBe('lowball')
+ expect(decision.recommended_action).toBe('HOLD_VALUE')
+ expect(decision.approved_price_cents).toBeNull()
+ expect(decision.approval_required).toBe(false)
+ const requested=await decide({gigs:[gig],pricing,memory,messages:[clientMessage('scope','Organizing the full application across 6 documents.'),clientMessage('low','My maximum is USD 1. Please ask the provider to review this personally.')]})
+ expect(requested.recommended_action).toBe('ESCALATE_PROVIDER')
+ expect(requested.approved_price_cents).toBeNull()
+})

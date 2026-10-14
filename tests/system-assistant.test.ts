@@ -244,6 +244,21 @@ describe('system-wide assistant model routing', () => {
     jest.useRealTimers()
   })
 
+  it('allows a measured slow Responses answer to finish inside the unchanged primary budget', async () => {
+    jest.useFakeTimers()
+    jest.doMock('@/lib/messengerAi', () => ({resolveMessengerGrokAuth: jest.fn(async () => ({apiKey:'synthetic',baseURL:'https://provider.invalid/v1',model:'grok-4.6',authMode:'supergrok'}))}))
+    const fetchMock=jest.fn((_url:string,init:RequestInit)=>new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>resolve(new Response(JSON.stringify({output_text:'Completed slow answer'}),{status:200})),19000)
+      init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
+    }))
+    global.fetch=fetchMock as any
+    const {callSystemSuperGrok}=await import('@/lib/superGrokAssistant')
+    const work=callSystemSuperGrok('Synthetic policy',[{role:'user',content:'Question'}],{timeoutMs:24000})
+    await jest.advanceTimersByTimeAsync(19001)
+    await expect(work).resolves.toMatchObject({text:'Completed slow answer'})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('uses Chat Completions as an independent low-reasoning fallback after a Responses timeout', async () => {
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({

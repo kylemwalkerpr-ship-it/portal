@@ -32,3 +32,12 @@ Production and direct inference are separate evidence. The baseline production p
 Transport diagnostics record only protocol, attempt, sanitized model, authentication mode, input character count, elapsed/remaining time, finite status/category, cancellation and output presence. Provider bodies, customer text, prompts and credentials are excluded. Public errors no longer include raw provider rejection bodies.
 
 Acceptance now verifies the actual counter amount, same-scope server quote, retained counter memory and authorized disposition. A failed negotiation stops its dependent turns but independent category and provider-attention fixtures continue. Failed and unreached turns remain explicit failures/unreached evidence; cleanup and release identity gates remain required. A public HTTP 200 also needs substantive reply content.
+
+
+## Live follow-up on PR429
+
+PR429 shipped at main 1499eba0 with build zefcr41EnBnpgrx8A8KhR and Worker c3241c18-f8e9-4304-867a-af3bfe4bd79b. Smoke and 41-secret manifest parity passed. Full acceptance collected nine passes, six failures and six unreached dependent turns; cleanup passed. Public Responses and Chat attempts exhausted their caps. A synthetic request using the actual public route payload returned output in 14,212 ms, just beyond the old 14-second Responses cap. The primary Responses allowance is now 20 seconds, still bounded by the existing 24-second attempt, 33-second generation and 42-second route budgets; cancellation and recovery remain bounded.
+
+A newer explicit budget now supersedes an older counter for the current decision while preserving counter history. Server-approved offers replace model-supplied gig attachments with the authoritative scope attachment. Every committed human handoff records pending provider attention in metadata and memory; only a real later provider reply can settle that request.
+
+For a first informational impossible-budget question in known education, application-essay organization or student-mentorship scope, the server can hold value and explain that no paid scope is approved at that amount. It issues no offer, discount or claimed handoff. Actual provider-review requests, regulated advice, high-stakes flags, mandatory companion handoff, support handoff, unknown scope, repeat budget gaps and frustration keep their existing escalation gates. This is the existing first-budget-gap explanation policy applied without allowing an old counter or a generated handoff to change its authority.
