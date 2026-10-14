@@ -4,7 +4,9 @@
  * All app records are owned test fixtures; no customer profile is edited.
  */
 import { randomBytes, createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import releaseIdentityModule from './yqaa-release-identity.cjs'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
 import registryModule from './yqaa-fixture-registry.cjs'
@@ -24,12 +26,16 @@ const INCIDENT_MODE = 'foley_taylor_20261005'
 const ARTIFACT_DIR = process.env.GITHUB_STEP_SUMMARY ? path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance') : path.resolve('artifacts/yqaa-live-acceptance')
 const receipt = { version: 1, started_at: new Date().toISOString(), checks: [], scenarios: [], cleanup: 'pending' }
 let browser
+let browserServer
 let clientPage
 let providerPage
 let fixtureProviders = []
 let fixtureThreads = []
 let supabaseUrl
 let serviceKey
+const runController = new AbortController()
+const acceptancePhase = new AsyncLocalStorage()
+const ACCEPTANCE_RUN_BUDGET_MS = 30 * 60_000
 
 function safeHash(value) {
   return createHash('sha256').update(String(value)).digest('hex').slice(0, 12)
@@ -55,7 +61,10 @@ function check(name, ok, detail = '') {
 async function checkedFetch(url, init = {}, label = 'request', timeoutMs = 10_000) {
   let response
   try {
-    response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const phase = acceptancePhase.getStore()
+    const signal = AbortSignal.any([timeout,phase?.phase === 'cleanup' ? phase.signal : runController.signal])
+    response = await fetch(url, { ...init, signal })
   } catch {
     throw new Error(`${label}: network failure`)
   }
@@ -94,19 +103,36 @@ async function dbRequest(tablePath, { method = 'GET', body, prefer } = {}) {
 async function assertLiveIdentity() {
   const expectedSha = String(process.env.YQAA_EXPECTED_SHA || '').toLowerCase()
   const expectedBuild = String(process.env.YQAA_EXPECTED_BUILD_ID || '')
-  const repo = process.env.GITHUB_REPOSITORY || ''
-  const ref = process.env.GITHUB_REF || ''
-  const checkoutSha = String(process.env.GITHUB_SHA || '').toLowerCase()
-  check('manual main ref', ref === 'refs/heads/main' && /^[^/]+\/[^/]+$/.test(repo))
-  check('exact main checkout SHA', /^[0-9a-f]{40}$/.test(expectedSha) && checkoutSha === expectedSha)
-  check('expected deployed build ID supplied', /^[A-Za-z0-9_-]{10,}$/.test(expectedBuild))
+  if (process.env.YQAA_RELEASE_MODE === 'authorized-local') {
+    const deployment = JSON.parse(await readFile(process.env.YQAA_LOCAL_RELEASE_RECEIPT || '', 'utf8'))
+    check('authorized local release receipt', releaseIdentityModule.validateLocalReleaseReceipt(deployment, expectedSha, expectedBuild))
+    const git = (...args) => releaseIdentityModule.boundedIdentityCommand('git',args)
+    check('exact main checkout SHA', git('rev-parse','HEAD') === expectedSha)
+    check('clean source checkout', git('status','--porcelain') === '')
+    check('canonical repository remote', /^https:\/\/github\.com\/kylemwalkerpr-ship-it\/portal(?:\.git)?$/.test(git('remote','get-url','origin')))
+    const remoteSha = git('ls-remote','origin','refs/heads/main').split(/\s+/)[0]
+    check('GitHub main matches local release', remoteSha === expectedSha)
+    const wrangler = (...args) => JSON.parse(releaseIdentityModule.boundedIdentityCommand(process.execPath,[path.resolve('node_modules/wrangler/bin/wrangler.js'),...args]))
+    const active = wrangler('deployments','list','--name','yousafe-portal','--json')
+    const version = wrangler('versions','view',deployment.worker_version,'--name','yousafe-portal','--json')
+    check('active Worker matches source and build receipt',releaseIdentityModule.activeReleaseMatches(active,version,deployment))
+    receipt.deployment = {sha:expectedSha,build_id_hash:safeHash(expectedBuild),worker_version:deployment.worker_version,mode:'authorized_local'}
+  } else {
+    const repo = process.env.GITHUB_REPOSITORY || ''
+    const ref = process.env.GITHUB_REF || ''
+    const checkoutSha = String(process.env.GITHUB_SHA || '').toLowerCase()
+    check('manual main ref', ref === 'refs/heads/main' && /^[^/]+\/[^/]+$/.test(repo))
+    check('exact main checkout SHA', /^[0-9a-f]{40}$/.test(expectedSha) && checkoutSha === expectedSha)
+    check('expected deployed build ID supplied', /^[A-Za-z0-9_-]{10,}$/.test(expectedBuild))
 
-  const runsUrl = `https://api.github.com/repos/${repo}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1`
-  const runsResponse = await checkedFetch(runsUrl, { headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }, 'official deployment identity')
-  if (!runsResponse.ok) throw new Error(`Official deployment identity lookup failed (${runsResponse.status})`)
-  const runs = await runsResponse.json()
-  const latest = runs.workflow_runs?.[0]
-  check('latest successful official deploy matches SHA', latest?.head_sha === expectedSha && latest?.conclusion === 'success', latest ? `run #${latest.run_number}` : 'no successful deploy run')
+    const runsUrl = `https://api.github.com/repos/${repo}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1`
+    const runsResponse = await checkedFetch(runsUrl, { headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }, 'official deployment identity')
+    if (!runsResponse.ok) throw new Error(`Official deployment identity lookup failed (${runsResponse.status})`)
+    const runs = await runsResponse.json()
+    const latest = runs.workflow_runs?.[0]
+    check('latest successful official deploy matches SHA', latest?.head_sha === expectedSha && latest?.conclusion === 'success', latest ? `run #${latest.run_number}` : 'no successful deploy run')
+    receipt.deployment = {sha:expectedSha,build_id_hash:safeHash(expectedBuild),workflow_run:latest.run_number,mode:'official_workflow'}
+  }
 
   const root = await checkedFetch(`${BASE}/?__yqaa_acceptance=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }, 'production build identity')
   if (!root.ok) throw new Error(`Production build identity page returned ${root.status}`)
@@ -119,7 +145,7 @@ async function assertLiveIdentity() {
   check('production serves expected build ID', ids.includes(expectedBuild))
   const manifest = await checkedFetch(`${BASE}/_next/static/${expectedBuild}/_buildManifest.js`, {}, 'production build manifest')
   check('expected deployed build manifest is live', manifest.status === 200, `HTTP ${manifest.status}`)
-  receipt.deployment = { sha: expectedSha, build_id_hash: safeHash(expectedBuild), workflow_run: latest.run_number }
+  if (!receipt.deployment) receipt.deployment = { sha: expectedSha, build_id_hash: safeHash(expectedBuild), mode: 'official_workflow' }
 }
 
 async function publicGenerationProbe() {
@@ -415,7 +441,7 @@ async function runIncidentReplay(sourceData, fixtureData) {
       let reply = null
       let state = null
       while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1500))
+        await releaseIdentityModule.abortableDelay(1500,runController.signal)
         const [threadResult, stateRows] = await Promise.all([
           api(clientPage, `/api/messages/conversations/${conversationId}`),
           dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${encodeURIComponent(conversationId)}`),
@@ -501,7 +527,7 @@ async function authenticatedPage(clerkUserId, landing) {
     for (let i = 0; i < 80; i++) {
       const root = window.Clerk
       if (root?.loaded && root?.client && root?.setActive) break
-      await new Promise((resolve) => setTimeout(resolve, 250))
+      await releaseIdentityModule.abortableDelay(250,runController.signal)
     }
     const root = window.Clerk
     if (!root?.loaded || !root?.setActive) return { ok: false, category: 'clerk_not_loaded' }
@@ -514,7 +540,7 @@ async function authenticatedPage(clerkUserId, landing) {
       for (let i = 0; i < 40; i++) {
         userId = root.user?.id || (await root.session?.user)?.id || null
         if (userId) break
-        await new Promise((resolve) => setTimeout(resolve, 250))
+        await releaseIdentityModule.abortableDelay(250,runController.signal)
       }
       if (userId !== expectedUserId) return { ok: false, category: 'clerk_identity_mismatch' }
       return { ok: true }
@@ -624,7 +650,7 @@ async function messengerSmoke() {
     let reply = null
     let latestThread = null
     while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await releaseIdentityModule.abortableDelay(1500,runController.signal)
       const thread = await api(clientPage, `/api/messages/conversations/${conversationId}`)
       if (thread.status !== 200) throw new Error(`${label}: authenticated thread read returned HTTP ${thread.status}`)
       latestThread = thread.data
@@ -698,7 +724,7 @@ async function attentionSmoke(category) {
   let reply = null
   let thread = null
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await releaseIdentityModule.abortableDelay(1500,runController.signal)
     state = (await dbRequest(`conversations?select=metadata&id=eq.${conversationId}`))?.[0]?.metadata || {}
     thread = await api(clientPage, `/api/messages/conversations/${conversationId}`)
     reply = (thread.data.messages || []).find((message) => message.metadata?.ai_generated && !message.metadata?.ai_typing && message.metadata?.yqaa_trigger_message_id === sent.data.message.id)
@@ -757,7 +783,7 @@ async function cleanup() {
       outcomes.push({ category: thread.category, scenario: thread.scenario, ai_paused: false, quiet_period: 'verification_failed' })
     }
   }
-  if (quietSnapshots.size) await new Promise((resolve) => setTimeout(resolve, MAX_WAIT_MS))
+  if (quietSnapshots.size) await releaseIdentityModule.abortableDelay(MAX_WAIT_MS,acceptancePhase.getStore().signal)
   for (const thread of fixtureThreads) {
     const snapshot = quietSnapshots.get(thread.id)
     const quietOutcome = await (async () => {
@@ -830,9 +856,19 @@ async function persistReceipt() {
   }
 }
 
-let error = null
-try {
-  for (const key of ['CLERK_SECRET_KEY', 'YQAA_EXPECTED_SHA', 'YQAA_EXPECTED_BUILD_ID', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_REPOSITORY']) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
+async function launchOwnedBrowser() {
+  runController.signal.throwIfAborted()
+  browserServer = await chromium.launchServer({headless:true,timeout:15_000})
+  if (runController.signal.aborted) {
+    browserServer.process()?.kill('SIGKILL')
+    runController.signal.throwIfAborted()
+  }
+  browser = await chromium.connect(browserServer.wsEndpoint(),{timeout:10_000})
+  runController.signal.throwIfAborted()
+}
+
+async function runAcceptance() {
+  for (const key of releaseIdentityModule.requiredAcceptanceSettings(process.env.YQAA_RELEASE_MODE)) if (!process.env[key]) throw new Error(`Required CI setting missing: ${key}`)
   await assertLiveIdentity()
   const replayIncident = String(process.env.YQAA_REPLAY_INCIDENT || 'none')
   if (replayIncident !== 'none' && replayIncident !== INCIDENT_MODE) throw new Error('Unsupported incident replay mode.')
@@ -840,14 +876,14 @@ try {
     initializeFixtureDatabase()
     receipt.mode = 'incident'
     receipt.incident = { name: INCIDENT_MODE, status: 'running' }
-    browser = await chromium.launch({ headless: true })
+    await launchOwnedBrowser()
     const sourceData = await loadIncidentSource()
     const fixtureData = await createIncidentFixtures(sourceData)
     receipt.fixtures = { provider_count: fixtureData.providerCount, gig_count: fixtureData.gigCount, conversation_count: 1, designated_client_mode: true, hidden_test_profiles: true, source_preferences_mirrored: fixtureData.sourcePreferenceMirrored }
     await runIncidentReplay(sourceData, fixtureData)
   } else {
   const publicGenerationOk = await publicGenerationProbe()
-  browser = await chromium.launch({ headless: true })
+  await launchOwnedBrowser()
   await loadAndVerifyFixtures()
   await providerUiChecks()
   await messengerSmoke()
@@ -856,12 +892,26 @@ try {
   receipt.status = 'passed'
   receipt.mode = 'full_acceptance'
   }
+}
+let error = null
+try {
+  await releaseIdentityModule.runWithDeadline(runAcceptance,ACCEPTANCE_RUN_BUDGET_MS,runController,()=>{
+    // This is solely the browser process launched for this acceptance run.
+    browserServer?.process()?.kill('SIGKILL')
+  })
 } catch (caught) {
   error = safeFailure(caught)
   receipt.status = 'failed'
   receipt.failure = error.slice(0, 240)
 } finally {
-  const cleanupOk = await cleanup()
+  const cleanupController = new AbortController()
+  let cleanupOk = false
+  try {
+    cleanupOk = await releaseIdentityModule.runWithDeadline(
+      ()=>acceptancePhase.run({phase:'cleanup',signal:cleanupController.signal},cleanup),
+      10 * 60_000,cleanupController,()=>{},
+    )
+  } catch { receipt.cleanup = [{status:'cleanup_deadline_or_failure'}] }
   if (!cleanupOk) {
     receipt.status = 'failed'
     error ||= 'One or more fixture cleanup steps failed.'

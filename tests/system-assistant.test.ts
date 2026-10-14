@@ -153,6 +153,7 @@ describe('system-wide assistant model routing', () => {
 
   afterEach(() => {
     global.fetch = originalFetch
+    jest.useRealTimers()
     jest.resetModules()
     jest.clearAllMocks()
   })
@@ -188,6 +189,26 @@ describe('system-wide assistant model routing', () => {
     expect(body.reasoning).toEqual({ effort: 'low' })
     expect(body.prompt_cache_key).toBe('yqaa-public-assistant-v2')
     expect(body.store).toBe(false)
+  })
+
+  it('lets a bounded Responses attempt finish instead of prematurely restarting it', async () => {
+    jest.useFakeTimers()
+    jest.doMock('@/lib/messengerAi', () => ({ resolveMessengerGrokAuth: jest.fn(async () => ({
+      apiKey:'test-only',baseURL:'https://system-ai.example/v1',model:'grok-test-model',authMode:'supergrok',
+    })) }))
+    const fetchMock = jest.fn((_url: string, init: RequestInit) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve({ok:true,status:200,text:async()=>JSON.stringify({output_text:'Completed answer'})}), 10_500)
+      init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
+    }))
+    global.fetch=fetchMock as any
+    const {callSystemSuperGrok}=await import('@/lib/superGrokAssistant')
+    const work=callSystemSuperGrok('public evidence',[{role:'user',content:'question'}],{timeoutMs:17_000})
+    let completed: unknown = null
+    void work.then(value=>{completed=value},()=>{completed={text:'failed'}})
+    await jest.advanceTimersByTimeAsync(10_501)
+    expect(completed).toMatchObject({text:'Completed answer'})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    jest.useRealTimers()
   })
 
   it('uses Chat Completions as an independent low-reasoning fallback after a Responses timeout', async () => {
