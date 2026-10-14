@@ -133,6 +133,19 @@ describe('YQAA end-to-end deadline', () => {
     expect(source).not.toContain('ai_last_error: msg.slice')
   })
 
+  it('returns paused threads before profile, history, pricing, or model work', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
+    const reply = source.slice(source.indexOf('export async function maybeAutoReply('), source.indexOf('export function scheduleAutoReply('))
+    const durableLookup = reply.indexOf('const loadCommittedReply')
+    const pausedGate = reply.indexOf("if (aiMode !== 'auto' && !opts.force)")
+    const profileLookup = reply.indexOf('resolveProviderAndClient(db, conv)')
+    const historyLookup = reply.indexOf(".from('conversation_messages')")
+    expect(durableLookup).toBeGreaterThanOrEqual(0)
+    expect(pausedGate).toBeGreaterThan(durableLookup)
+    expect(profileLookup).toBeGreaterThan(pausedGate)
+    expect(historyLookup).toBeGreaterThan(profileLookup)
+  })
+
   it('cancels the final RPC and sends its server-enforced runtime cutoff', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
     const commit = source.slice(source.indexOf('const commitRpc ='), source.indexOf('if (commitError || !committedReply?.reply_message_id)'))
