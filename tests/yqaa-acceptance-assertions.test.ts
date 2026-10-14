@@ -35,6 +35,48 @@ describe('counteroffer acceptance evidence', () => {
     expect(counterofferAcknowledged(body + ' Provider approval is required.', state)).toBe(false)
     expect(counterofferAcknowledged(body.replace('I can', 'I could'), state)).toBe(false)
   })
+  test.each([
+    'I hear your $139.50. I can put through the narrowed organization at $155.',
+    'I hear your $139.50. For that narrowed scope I’m keeping it at $155 on-platform.',
+    'I hear your $139.50. I can hold the on-platform package at $155.',
+    'I hear your **$139.50**. I’ll keep the three document checklist at **$155**.',
+    'I hear your $139.50. We are offering the narrowed packet for $155.',
+  ])('binds a natural scoped commitment to the saved quote: %s', (body) => {
+    expect(counterofferAcknowledged(body, state)).toBe(true)
+    expect(counterofferAcknowledged(body.replace('$155', '$154'), state)).toBe(false)
+    expect(counterofferAcknowledged(body + ' Provider approval is required.', state)).toBe(false)
+    expect(counterofferAcknowledged(body.replace(/I can|I’m|I’ll|We are/, 'We might'), state)).toBe(false)
+  })
+  test.each([
+    'I hear your $139.50. I can keep the scope that your organization quoted at $155.',
+    'I hear your $139.50. I can keep your organization quoted price at $155.',
+    'I hear your $139.50. I am offering the packet at $155. Subject to your approval.',
+    'I hear your $139.50. I am offering the packet at $155. Only when funding arrives.',
+    'I hear your $139.50. I can keep the scope as Bob books a hotel for $155.',
+    'I hear your $139.50. I can keep the scope whilst Bob books a hotel for $155.',
+    'I hear your $139.50. I can offer a possible package for $155.',
+    'I hear your $139.50. I am offering a hypothetical package at $155.',
+    'I hear your $139.50. I can offer zero documents for $155.',
+    'I hear your $139.50. I am keeping the scope suspended at $155.',
+    'I hear your $139.50. I can keep the scope while Bob books a hotel for $155.',
+    'I hear your $139.50. I can keep the scope that Bob changed for a hotel for $155.',
+    'I hear your $139.50. I am holding off on this scope at $155.',
+    'I hear your $139.50. I can keep the scope on hold at $155.',
+    'I hear your $139.50. I can keep the estimated price at $155.',
+    'I hear your $139.50. I can offer the scope without committing for $155.',
+    'I hear your $139.50. I can offer no documents for $155.',
+    'I hear your $139.50. I am offering the scoped document packet at $155 contingent on your approval.',
+    'I hear your $139.50. I am offering the scoped document packet at $155 on condition that funding arrives.',
+    'I hear your $139.50. I am offering the scoped document packet at $155. Only if funding arrives.',
+    'I hear your $139.50. I can keep a hotel at $155.',
+    'I hear your $139.50. I can keep the scope unchanged and book a hotel for $155.',
+    'I hear your $139.50. I can keep the scope unchanged at a hotel for $155.',
+    'I hear your $139.50. I can hold the packet and you can book a hotel for $155.',
+    'I hear your $139.50. I’m not keeping the packet at $155.',
+    'I hear your $139.50. We are offering the packet for $155 if the provider approves.',
+  ])('rejects a bridged, unrelated or conditional commitment: %s', (body) => {
+    expect(counterofferAcknowledged(body, state)).toBe(false)
+  })
   test('recognizes the natural lock-it-at disposition tied to the exact saved quote and counter', () => {
     expect(counterofferAcknowledged('I hear you wanting $139.50 for the same three-document checklist. For that narrowed work, I can lock it at $155 on-platform.', state)).toBe(true)
     expect(counterofferAcknowledged('I can lock it at $154. I hear your $139.50 proposal.', state)).toBe(false)
