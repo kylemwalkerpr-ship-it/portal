@@ -137,6 +137,8 @@ describe('YQAA end-to-end deadline', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'lib/messengerAi.ts'), 'utf8')
     const commit = source.slice(source.indexOf('const commitRpc ='), source.indexOf('if (commitError || !committedReply?.reply_message_id)'))
 
+    expect(commit).toContain("opts.runtime.stage = 'atomic_reply_commit'")
+    expect(commit).not.toContain("await opts.runtime.markStage('atomic_reply_commit')")
     expect(commit).toContain("'commit_yqaa_reply_with_runtime_deadline'")
     expect(commit).toContain('p_deadline_at: new Date(Date.now() + opts.runtime.remainingMs()).toISOString()')
     expect(commit).toContain('rpc.abortSignal(opts.runtime.signal)')

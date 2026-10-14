@@ -184,6 +184,26 @@ describe('durable current-turn counter disposition', () => {
     expect(counterofferAcknowledged(body, proof())).toBe(true)
     expect(counterofferAcknowledged(body, state)).toBe(false)
   })
+  test('recognizes a lock-in price only when the matching offer is committed and visible', () => {
+    const text = 'I hear you on $139.50. For that narrowed scope I can lock in $155: the three-document checklist and planning fixture.'
+    expect(counterofferAcknowledged(text, proof())).toBe(true)
+    expect(counterofferAcknowledged(text, state)).toBe(false)
+    expect(counterofferAcknowledged(text.replace('$155', '$154'), proof())).toBe(false)
+    expect(counterofferAcknowledged(text + ' Provider approval is required.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. I can lock in $155 for a hotel.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 for a hotel.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: a hotel, while the three-document checklist remains unchanged.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 on-platform: a three-document hotel booking checklist.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155 on-platform so you can accept it here for a hotel room.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: three-document checklist for a hotel room.', proof())).toBe(false)
+    expect(counterofferAcknowledged('I hear you on $139.50. For that narrowed scope I can lock in $155: the three-document checklist, which is out of scope.', proof())).toBe(false)
+  })
+  test.each([
+    'Thanks for putting a number on it, Mr. Kanyi — I hear $139.50 for the same three-document organizing work. For that narrowed packet I can lock in $155 on-platform: a three-document checklist plus the synthetic test fixture, with form completion and advice still out of scope. If that works, accept the offer below and we can start from the three prompts or drafts you have.',
+    'Thanks for putting a number on it, Mr. Kanyi — I hear you on $139.50 for the same three-document study-planning checklist (no forms, no advice). For that narrowed scope I can lock in $155: three-document checklist plus the planning fixture. If that works, accept the offer on-platform and we can start from the three files you have.\n\nWhat that includes:\n• Three document checklist\n• Synthetic test fixture',
+  ])('accepts the exact previous live reply wording with matching offer evidence: %s', (text) => {
+    expect(counterofferAcknowledged(text, proof())).toBe(true)
+  })
   test('rejects missing or wrong rendered offer and explicit reply currency', () => {
     const p: any = proof(); delete p.committedOffer.visibleCard.offer
     expect(counterofferAcknowledged(body, p)).toBe(false)
@@ -216,7 +236,24 @@ describe('durable current-turn counter disposition', () => {
     'I hear your $139.50. I cannot offer the three-document checklist at $155.',
     'I hear your $139.50. The three-document checklist is $155 if the provider approves.',
     'I hear your $139.50. The three-document checklist is $154.',
-  ])('committed evidence does not excuse unrelated, negative or conditional copy', (text) => {
+    'I hear your $139.50. For organizing six documents only, I can meet you at $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155 for a hotel.',
+    'I hear your $139.50. For organizing three documents, I can meet you at USD 155 JPY.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155 cad.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155 on-platform in NZD.',
+    'I hear your $139.50. For organizing zero documents, I can meet you at $155.',
+    'I hear your $139.50. For organizing six documents, I can meet you at $155.',
+    'I hear your $139.50. For the six study-planning documents, I can meet you at $155.',
+    'I hear your $139.50. I can meet you at $155. The checklist covers six revised study-planning documents.',
+    'I hear your $139.50. I can meet you at $155. The checklist covers twenty-three study-planning documents.',
+    'I hear your $139.50. For three documents plus forty-one study-planning documents, I can meet you at $155.',
+    'I hear your $139.50. For organizing three documents, I can meet you at $155. All prices are in NZD.',
+    'I hear your $139.50. I can meet you at $155. The offer is in NZD and is final.',
+    'I hear your $139.50. For the three-document checklist, which is out of scope, I can meet you at $155.',
+    'I hear your $139.50. The three-document checklist is not included in the $155 offer.',
+    'I hear your $139.50. For that narrowed scope I can lock in $155. Separately, the three-document checklist is available.',
+    'I hear your $139.50. For that narrowed scope I can lock in $155. This includes a hotel booking. Separately, the three-document checklist is available.',
+  ])('committed evidence rejects unrelated, negative or conditional copy: %s', (text) => {
     expect(counterofferAcknowledged(text, proof())).toBe(false)
   })
 })
