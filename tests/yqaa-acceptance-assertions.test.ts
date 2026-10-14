@@ -27,6 +27,7 @@ describe('counteroffer acceptance evidence', () => {
     expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155 if the provider approves.',state)).toBe(false)
   })
   test.each([
+    'I hear you wanting $139.50. For that narrowed checklist I can send it at $155.',
     'I hear you wanting $139.50. For that narrowed packet I can keep the offer at $155 on YouSafe.',
     'I hear you wanting $139.50. The on-platform figure I can put in front of you is $155.',
   ])('recognizes direct saved offer disposition: %s', (body) => {
