@@ -1,5 +1,6 @@
 import {
   enforceCompanionEscalation,
+  applyAdaptiveOfferAuthority,
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
   loadMessengerLegalEvidence,
@@ -117,3 +118,10 @@ describe('legal-buddy escalation reply', () => {
  expect(reply).not.toMatch(/licensed|they can see everything|looping in/i)
  expect(reply).toMatch(/request|pending/i)
  })
+
+
+test('the server-approved scope replaces a model-supplied unrelated gig as well as its price', () => {
+ const offer=applyAdaptiveOfferAuthority({title:'Test',price_usd:1,gig_id:'unrelated-gig'} as any,{channel:'dm',approved_price_cents:15500,gig_id:'owned-approved-gig'} as any)
+ expect(offer).toMatchObject({price_usd:155,gig_id:'owned-approved-gig'})
+ expect(offer.price).toBeUndefined()
+})

@@ -43,7 +43,7 @@ function emitAttempt(observer: AttemptObserver | undefined, attempt: number, sta
 // Keep the primary Responses call and its independent Chat Completions
 // recovery inside the public synthesis window, leaving time for compact
 // recovery when the first protocol pair fails transiently.
-const RESPONSES_TIMEOUT_MS = 14_000
+const RESPONSES_TIMEOUT_MS = 20_000
 const CHAT_TIMEOUT_MS = 8_000
 const AUTH_TIMEOUT_MS = 7_000
 const AUTH_CACHE_TTL_MS = 120_000

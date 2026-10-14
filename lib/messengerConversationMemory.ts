@@ -202,6 +202,11 @@ export function buildGroundedConversationMemory(args: {
   }
 }
 
+/** Record a request, never a human reply or completed review. */
+export function withProviderAttentionRequested(memory: YqaaConversationMemory, requestedAt: string): YqaaConversationMemory {
+  return {...memory, provider_attention: {requested_at: requestedAt, pending: true, human_reply_after_request: false}}
+}
+
 export function withOfferInMemory(
   memory: YqaaConversationMemory,
   offer: { id: string; title: string; priceCents: number; currency: string },

@@ -244,6 +244,41 @@ describe('system-wide assistant model routing', () => {
     jest.useRealTimers()
   })
 
+  it('allows a measured slow Responses answer to finish inside the unchanged primary budget', async () => {
+    jest.useFakeTimers()
+    jest.doMock('@/lib/messengerAi', () => ({resolveMessengerGrokAuth: jest.fn(async () => ({apiKey:'synthetic',baseURL:'https://provider.invalid/v1',model:'grok-4.6',authMode:'supergrok'}))}))
+    const fetchMock=jest.fn((_url:string,init:RequestInit)=>new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>resolve(new Response(JSON.stringify({output_text:'Completed slow answer'}),{status:200})),19000)
+      init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
+    }))
+    global.fetch=fetchMock as any
+    const {callSystemSuperGrok}=await import('@/lib/superGrokAssistant')
+    const work=callSystemSuperGrok('Synthetic policy',[{role:'user',content:'Question'}],{timeoutMs:24000})
+    await jest.advanceTimersByTimeAsync(19001)
+    await expect(work).resolves.toMatchObject({text:'Completed slow answer'})
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([0,6500])('shrinks Chat recovery to remaining attempt time after Responses times out (auth %i ms)', async authMs => {
+    jest.useFakeTimers()
+    jest.doMock('@/lib/messengerAi', () => ({resolveMessengerGrokAuth: jest.fn(() => new Promise(resolve=>setTimeout(()=>resolve({apiKey:'synthetic',baseURL:'https://provider.invalid/v1',model:'grok-4.6',authMode:'supergrok'}),authMs)))}))
+    const calls:Array<{protocol:string,started:number}>=[]
+    const started=Date.now()
+    const fetchMock=jest.fn((url:string,init:RequestInit)=>new Promise((resolve,reject)=>{
+      calls.push({protocol:url.endsWith('/responses')?'responses':'chat',started:Date.now()-started})
+      const timer=url.endsWith('/chat/completions')?setTimeout(()=>resolve(new Response(JSON.stringify({choices:[{message:{content:'Recovered within remaining budget'}}]}),{status:200})),2500):null
+      init.signal?.addEventListener('abort',()=>{if(timer)clearTimeout(timer);const error=new Error('Provider attempt timed out');error.name='AbortError';reject(error)},{once:true})
+    }))
+    global.fetch=fetchMock as any
+    const {callSystemSuperGrok}=await import('@/lib/superGrokAssistant')
+    const work=callSystemSuperGrok('Synthetic policy',[{role:'user',content:'Question'}],{timeoutMs:24000})
+    await jest.advanceTimersByTimeAsync(23999)
+    await expect(work).resolves.toMatchObject({text:'Recovered within remaining budget'})
+    expect(calls.map(x=>x.protocol)).toEqual(['responses','chat'])
+    expect(calls[1].started).toBeLessThanOrEqual(21000)
+    expect(Date.now()-started).toBeLessThan(24000)
+  })
+
   it('uses Chat Completions as an independent low-reasoning fallback after a Responses timeout', async () => {
     jest.doMock('@/lib/messengerAi', () => ({
       resolveMessengerGrokAuth: jest.fn(async () => ({

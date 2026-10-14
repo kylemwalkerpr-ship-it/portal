@@ -672,6 +672,16 @@ export function extractNegotiationSignal(messages: any[], context: SignalContext
     }
   }
 
+  // A later explicit budget replaces the figure used for this decision;
+  // historical counters remain in conversation memory for audit.
+  const budgetIndex = budget?.messageId ? rows.findIndex(row => row.id === budget.messageId) : -1
+  const counterIndex = counterMessageId ? rows.findIndex(row => row.id === counterMessageId) : -1
+  if (budgetIndex > counterIndex && counterIndex >= 0) {
+    counterCents = null
+    counterMessageId = null
+    reasonCodes.push('newer_budget_supersedes_counter')
+  }
+
   let counterCount = texts.filter((text) => {
     COUNTER_RE.lastIndex = 0
     return COUNTER_RE.test(text)
@@ -2008,7 +2018,7 @@ export async function buildAdaptivePricingDecision(args: {
     : []
   const bestDownscope = options[0] || null
 
-  const eligible = eligibleActions({
+  let eligible = eligibleActions({
     counterClass,
     policy,
     hasDownscopeOption: Boolean(bestDownscope),
@@ -2016,6 +2026,16 @@ export async function buildAdaptivePricingDecision(args: {
     finalQuoteLanguage: negotiation.final_quote_language,
     channel,
   })
+  // An informational first budget-limit question in these non-regulated
+  // organizational services can be answered without a discount or offer.
+  // Regulated advice, provider confirmation and actual review requests retain
+  // their existing escalation routes.
+  const informationalBudgetLimit = counterClass === 'lowball' && !bestDownscope && !args.highStakes &&
+    !quote.needs_provider_confirm && scope.depth !== 'unknown' &&
+    ['education', 'academic-writing', 'mentorship'].includes(String(pricing.intent?.categoryId || '')) &&
+    /\b(?:what|anything)\b[^.!?]{0,80}\b(?:fit|realistic)\w*/i.test(args.latestClientText) &&
+    !/\b(?:provider|human|personally|legal|immigration|visa|lawyer|attorney)\b/i.test(args.latestClientText)
+  if (informationalBudgetLimit) eligible = ['HOLD_VALUE']
   const recommended = channel === 'public'
     ? 'HOLD_VALUE'
     : recommendedActionFor({ counterClass, eligible, hasDownscopeOption: Boolean(bestDownscope) })

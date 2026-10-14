@@ -8,6 +8,7 @@
  * - Server-calculated marketplace pricing authority before any AI-created offer
  * - Human Take over / admin intervention pauses AI
  */
+import { firstBudgetLimitExplanation } from '@/lib/messengerBudgetContinuation'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   ensureSuperGrokAccessToken,
@@ -42,6 +43,7 @@ import {
   renderConversationMemory,
   withAdaptivePricingInMemory,
   withOfferInMemory,
+  withProviderAttentionRequested,
   type YqaaConversationMemory,
 } from '@/lib/messengerConversationMemory'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
@@ -351,6 +353,11 @@ type GrokDecision = {
     expires_in_days?: number
     gig_id?: string
   } | null
+}
+
+/** The approved scope owns its gig attachment as well as its amount. */
+export function applyAdaptiveOfferAuthority(offer: NonNullable<GrokDecision['offer']>, adaptive: AdaptivePricingDecision): NonNullable<GrokDecision['offer']> {
+  return {...offer, price_usd: Number(adaptive.approved_price_cents) / 100, price: undefined, gig_id: adaptive.gig_id || undefined}
 }
 
 export function enforceCompanionEscalation(
@@ -1363,8 +1370,10 @@ export async function maybeAutoReply(opts: {
         docSummary,
       ].join('\n')
 
+      const budgetLimitExplanation = firstBudgetLimitExplanation({pricing, adaptive, companion, latestClientText: String(latestClientText || ''), frustrated, budgetGapAlreadyExplained, legalEvidenceMissing, highStakes})
       let decision: GrokDecision
-      try {
+      if (budgetLimitExplanation) decision = {reply: budgetLimitExplanation, escalate: false, offer: null}
+      else try {
         if (opts.runtime) await opts.runtime.markStage('model_generation')
         const raw = await callGrokChat({
           system: systemWithContext,
@@ -1438,12 +1447,9 @@ export async function maybeAutoReply(opts: {
         Boolean(adaptive?.negotiation.counter_cents)
 
       if (adaptive && adaptiveAuthorized && adaptive.approved_price_cents) {
-        const approvedCents = Math.round(Number(adaptive.approved_price_cents))
         if (decision.offer) {
           // The server owns the figure: never let the model's number through.
-          decision.offer.price_usd = approvedCents / 100
-          decision.offer.price = undefined
-          if (!decision.offer.gig_id && adaptive.gig_id) decision.offer.gig_id = adaptive.gig_id
+          decision.offer = applyAdaptiveOfferAuthority(decision.offer, adaptive)
         } else if (!decision.escalate && (buyIntent || containsPriceSuggestion(replyText))) {
           const synthesized = synthesizeOfferFromQuote(adaptive)
           if (synthesized) decision.offer = synthesized
@@ -1518,12 +1524,12 @@ export async function maybeAutoReply(opts: {
       const polish = await polishWithRegeneration(
         {
           reply: replyText,
-          posture: companion?.posture ?? null,
+          posture: budgetLimitExplanation ? 'EDUCATE' : companion?.posture ?? null,
           allowedAmountsCents: allowedAmounts,
           approvedPriceCents: adaptive?.approved_price_cents ?? approvedOffer?.priceCents ?? null,
           currency: pricing.currency,
           previousAiBodies: priorAiBodies,
-          includes: adaptive?.client_safe.includes || [],
+          includes: budgetLimitExplanation ? [] : adaptive?.client_safe.includes || [],
           escalationReply: lowBudgetEscalationReply(providerLabel),
         },
         async (reasons) => {
@@ -1612,6 +1618,8 @@ export async function maybeAutoReply(opts: {
       }
 
       const shouldEscalate = Boolean(decision.escalate || providerReview)
+      const escalationAt = new Date().toISOString()
+      if (shouldEscalate && memory) memory = withProviderAttentionRequested(memory, escalationAt)
       const nextMode: AiMode = shouldEscalate ? 'paused' : aiMode
       const nextMeta = {
         ai_mode: nextMode,
@@ -1656,7 +1664,7 @@ export async function maybeAutoReply(opts: {
           ai_pricing_approval_pending: false,
         } : {}),
         ...(approvedPricingRequest ? { ai_pricing_approval_pending: false } : {}),
-        ...(shouldEscalate ? { ai_escalated_at: new Date().toISOString(), ai_escalation_reason: providerReview ? 'pricing_provider_review' : 'model_escalation' } : {}),
+        ...(shouldEscalate ? { ai_provider_attention_requested: true, ai_provider_attention_requested_at: escalationAt, ai_escalated_at: escalationAt, ai_escalation_reason: providerReview ? 'pricing_provider_review' : 'model_escalation' } : {}),
       }
       const commitRpc = offerPersistence?.inquiry_seed
         ? offerPersistence.approval
