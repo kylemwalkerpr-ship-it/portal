@@ -443,15 +443,29 @@ async function postJson(
   attempts = 1,
   signal?: AbortSignal,
   remainingMs?: () => number,
+  diagnostic?: { model: string; authMode: MessengerGrokAuth['authMode']; inputChars: number },
 ): Promise<{ response: Response; text: string }> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const startedAt = Date.now()
+    const record = (status: number | null, outputPresent: boolean, timedOut: boolean) => {
+      if (!diagnostic) return
+      console.info('[yqaa-messenger-attempt]', {
+        protocol: url.endsWith('/responses') ? 'responses' : 'chat', attempt: attempt + 1,
+        model: diagnostic.model.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 80),
+        authMode: diagnostic.authMode, inputChars: diagnostic.inputChars,
+        elapsedMs: Math.max(0, Date.now() - startedAt), remainingMs: remainingMs ? Math.max(0, remainingMs()) : null,
+        status, category: timedOut ? 'timeout' : status === null ? 'network' : status === 401 || status === 403 ? 'authentication' : status === 429 ? 'rate_limit' : status >= 500 ? 'server_error' : status >= 200 && status < 300 ? outputPresent ? 'ok' : 'invalid_output' : 'rejected',
+        cancelled: Boolean(signal?.aborted || timedOut), outputPresent,
+      })
+    }
     try {
       if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
       const remaining = remainingMs ? remainingMs() : timeoutMs
       if (remaining <= 0) throw new DOMException('Aborted', 'AbortError')
       const attemptBudget = Math.min(timeoutMs, remaining)
       const { response, text } = await fetchYqaaJsonWithTimeout(url, init, attemptBudget, signal)
+      record(response.status, Boolean(url.endsWith('/responses') ? parseResponsesContent(text) : parseChatContent(text)), false)
       if (response.ok || !TRANSIENT_STATUS.has(response.status) || attempt === attempts - 1) {
         return { response, text }
       }
@@ -459,6 +473,7 @@ async function postJson(
       if (remainingMs && remainingMs() <= retryDelay) break
       await wait(retryDelay)
     } catch (err) {
+      record(null, false, err instanceof Error && /AbortError|TimeoutError/.test(err.name))
       lastError = err
       if (err instanceof Error && err.name === 'AbortError') throw err
       if (attempt === attempts - 1) throw err
@@ -504,6 +519,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
       2,
       args.signal,
       args.remainingMs,
+      {model: auth.model, authMode: auth.authMode, inputChars: args.system.length + args.user.length},
     )
     responseStatus = result.response.status
     if (AUTH_FAILURE_STATUS.has(result.response.status)) {
@@ -527,6 +543,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
         1,
         args.signal,
         args.remainingMs,
+        {model: auth.model, authMode: auth.authMode, inputChars: args.system.length + args.user.length},
       )
       responseStatus = result.response.status
     }
@@ -558,6 +575,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
       1,
       args.signal,
       args.remainingMs,
+      {model: auth.model, authMode: auth.authMode, inputChars: args.system.length + args.user.length},
     )
     chatStatus = result.response.status
     if (result.response.ok) {

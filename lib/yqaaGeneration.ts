@@ -55,7 +55,7 @@ export function classifyYqaaProviderFailure(error: unknown): YqaaFallbackEvidenc
 
 async function generateWithProvider(provider: YqaaProvider, system: string, turns: SystemAssistantTurn[], signal?: AbortSignal, timeoutMs?: number): Promise<{ text: string; model: string }> {
   if (provider === 'grok') {
-    const result = await callSystemSuperGrok(system, turns, { signal, timeoutMs })
+    const result = await callSystemSuperGrok(system, turns, { signal, timeoutMs, onAttempt: (event) => console.info('[yqaa-provider-attempt]', event) })
     return { text: result.text, model: result.model }
   }
   const adapter = adapterFor(DEEPSEEK_V41_FLASH_PIN as CommissionedProviderPin, {
@@ -110,33 +110,38 @@ export async function generateYqaaAnswer(system: string, turns: SystemAssistantT
       const evidence = classifyYqaaProviderFailure(error)
       if (!evidence.eligible) throw error
 
-      // A transient Grok timeout is common on evidence-heavy live-research
-      // turns. Give the commissioned primary one compact recovery attempt before
-      // crossing providers. This also keeps YQAA operational when the optional
-      // DeepSeek credential has not been provisioned.
-      try {
-        const recoveryBudget = Math.min(COMPACT_RECOVERY_RESERVE_MS, remainingMs())
-        if (recoveryBudget <= 0) throw error
-        const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns, controller.signal, recoveryBudget)
-        return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
-      } catch (recoveryError) {
-        if (controller.signal.aborted) throw recoveryError
-        const recoveryEvidence = classifyYqaaProviderFailure(recoveryError)
-        if (!selection.fallback || !recoveryEvidence.eligible) throw recoveryError
-
-        // The commissioned DeepSeek adapter is vault-aware, but YQAA normally
-        // reaches Grok without initializing the Content Studio vault. Hydrate it
-        // only now, then execute DeepSeek only when a real first-party credential
-        // exists. Never turn a missing optional fallback key into the visitor's
-        // final error when the actual failure was Grok.
-        const fallbackBudget = remainingMs()
-        if (fallbackBudget <= 0 || controller.signal.aborted) throw recoveryError
-        await waitForAbortable(refreshAiVault(), controller.signal)
-        if (controller.signal.aborted || remainingMs() <= 0) throw recoveryError
-        if (!resolveDeepseekFirstPartyApiKey()) throw recoveryError
-        const generated = await generateWithProvider(selection.fallback, system, turns, controller.signal, remainingMs())
-        return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: recoveryEvidence }
+      // Determine whether the already-commissioned fallback is usable BEFORE
+      // spending the recovery reserve. Otherwise a slow compact retry consumes
+      // all remaining time and the configured fallback can never run.
+      let fallbackAvailable = false
+      if (selection.fallback) {
+        const hydrationSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.min(1_000, Math.max(1, remainingMs())))])
+        try {
+          await waitForAbortable(refreshAiVault(), hydrationSignal)
+          fallbackAvailable = Boolean(resolveDeepseekFirstPartyApiKey())
+        } catch {
+          if (controller.signal.aborted) throw error
+          // Optional vault failure must not replace the primary failure.
+        }
       }
+      if (fallbackAvailable && selection.fallback && remainingMs() > 0) {
+        try {
+          const generated = await generateWithProvider(selection.fallback, system, turns, controller.signal, remainingMs())
+          return { ...generated, provider: selection.fallback, fallback: true, failureEvidence: evidence }
+        } catch (fallbackError) {
+          if (controller.signal.aborted) throw fallbackError
+          // A present optional key can still be billing-rejected. Preserve
+          // primary recovery if that rejection leaves time in the reserve.
+          console.info('[yqaa-fallback-attempt]', classifyYqaaProviderFailure(fallbackError))
+        }
+      }
+
+      // Preserve one compact primary recovery when no optional credential is
+      // available. Missing fallback configuration is never the final error.
+      const recoveryBudget = Math.min(COMPACT_RECOVERY_RESERVE_MS, remainingMs())
+      if (recoveryBudget <= 0 || controller.signal.aborted) throw error
+      const recovered = await generateWithProvider('grok', compactGrokRecoverySystem(system), turns, controller.signal, recoveryBudget)
+      return { ...recovered, provider: 'grok', fallback: false, failureEvidence: evidence }
     }
   } finally {
     clearTimeout(timer)

@@ -185,11 +185,7 @@ describe('system-wide assistant model routing', () => {
       })),
     }))
 
-    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ output_text: 'Grounded answer' }),
-    }))
+    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit): Promise<any> => new Response(JSON.stringify({ output_text: 'Grounded answer' }), { status: 200 }))
     global.fetch = fetchMock as any
 
     const { callSystemSuperGrok } = await import('@/lib/superGrokAssistant')
@@ -214,7 +210,7 @@ describe('system-wide assistant model routing', () => {
       apiKey:'test-only',baseURL:'https://system-ai.example/v1',model:'grok-test-model',authMode:'supergrok',
     }),6_500))) }))
     const fetchMock = jest.fn((_url:string,init:RequestInit) => new Promise((resolve,reject) => {
-      const timer=setTimeout(()=>resolve({ok:true,status:200,text:async()=>JSON.stringify({output_text:'Completed after cold auth'})}),13_500)
+      const timer=setTimeout(()=>resolve(new Response(JSON.stringify({output_text:'Completed after cold auth'}),{status:200})),13_500)
       init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
     }))
     global.fetch=fetchMock as any
@@ -234,7 +230,7 @@ describe('system-wide assistant model routing', () => {
       apiKey:'test-only',baseURL:'https://system-ai.example/v1',model:'grok-test-model',authMode:'supergrok',
     })) }))
     const fetchMock = jest.fn((_url: string, init: RequestInit) => new Promise((resolve, reject) => {
-      const timer = setTimeout(() => resolve({ok:true,status:200,text:async()=>JSON.stringify({output_text:'Completed answer'})}), 10_500)
+      const timer = setTimeout(() => resolve(new Response(JSON.stringify({output_text:'Completed answer'}),{status:200})), 10_500)
       init.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})
     }))
     global.fetch=fetchMock as any
@@ -262,11 +258,7 @@ describe('system-wide assistant model routing', () => {
     timeout.name = 'AbortError'
     const fetchMock = jest.fn()
       .mockRejectedValueOnce(timeout)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ choices: [{ message: { content: 'Recovered answer' } }] }),
-      })
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: 'Recovered answer' } }] }),{status:200}))
     global.fetch = fetchMock as any
 
     const { callSystemSuperGrok } = await import('@/lib/superGrokAssistant')

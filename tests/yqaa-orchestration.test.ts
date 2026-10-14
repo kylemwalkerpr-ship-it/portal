@@ -299,7 +299,7 @@ describe('YQAA provider pin and fallback policy', () => {
     expect(classifyYqaaProviderFailure(new Error('DeepSeek is not configured')).kind).toBe('configuration')
   })
 
-  it('retries Grok once with a compact prompt before crossing providers after an eligible transient failure', async () => {
+  it('retries Grok once with a compact prompt when optional fallback has no credential', async () => {
     jest.resetModules()
     const callSystemSuperGrok = jest.fn()
       .mockRejectedValueOnce(new Error('request timed out'))
@@ -310,7 +310,7 @@ describe('YQAA provider pin and fallback policy', () => {
     jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrok }))
     jest.doMock('@/lib/contentAiRegistry', () => ({
       DEEPSEEK_V41_FLASH_PIN: 'deepseek-v41-flash',
-      resolveDeepseekFirstPartyApiKey: jest.fn(() => 'configured-deepseek'),
+      resolveDeepseekFirstPartyApiKey: jest.fn(() => ''),
       adapterFor: jest.fn(() => ({ complete: adapterComplete })),
     }))
     jest.doMock('@/lib/contentAiProviderCore', () => ({ refreshAiVault }))
@@ -327,7 +327,7 @@ describe('YQAA provider pin and fallback policy', () => {
       expect(callSystemSuperGrok.mock.calls[1][2].timeoutMs).toBeLessThanOrEqual(9_000)
       expect(String(callSystemSuperGrok.mock.calls[1][0])).toContain('Recovery prompt compacted')
       expect(String(callSystemSuperGrok.mock.calls[1][0])).toContain('LIVE-EVIDENCE-END')
-      expect(refreshAiVault).not.toHaveBeenCalled()
+      expect(refreshAiVault).toHaveBeenCalledTimes(1)
       expect(adapterComplete).not.toHaveBeenCalled()
     } finally {
       clock.mockRestore()
@@ -339,7 +339,7 @@ describe('YQAA provider pin and fallback policy', () => {
     }
   })
 
-  it('hydrates and uses DeepSeek only after both Grok attempts fail and a real credential exists', async () => {
+  it('hydrates and uses DeepSeek after the primary fails and a real credential exists', async () => {
     jest.resetModules()
     const callSystemSuperGrok = jest.fn(async () => { throw new Error('request timed out') })
     const adapterComplete = jest.fn(async () => ({ text: 'Fallback answer', model: 'deepseek-flash', provider: 'deepseek-v41-flash' }))
@@ -354,7 +354,7 @@ describe('YQAA provider pin and fallback policy', () => {
       const { generateYqaaAnswer } = await import('@/lib/yqaaGeneration')
       const result = await generateYqaaAnswer('public system', [{ role: 'user', content: 'question' }])
       expect(result).toMatchObject({ text: 'Fallback answer', provider: 'deepseek-v41-flash', fallback: true, failureEvidence: { kind: 'timeout', eligible: true } })
-      expect(callSystemSuperGrok).toHaveBeenCalledTimes(2)
+      expect(callSystemSuperGrok).toHaveBeenCalledTimes(1)
       expect(refreshAiVault).toHaveBeenCalledTimes(1)
       expect(resolveDeepseekFirstPartyApiKey).toHaveBeenCalledTimes(1)
       expect(adapterComplete).toHaveBeenCalledTimes(1)

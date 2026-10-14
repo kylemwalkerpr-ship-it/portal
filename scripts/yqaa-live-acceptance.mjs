@@ -10,6 +10,7 @@ import releaseIdentityModule from './yqaa-release-identity.cjs'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
 import registryModule from './yqaa-fixture-registry.cjs'
+import acceptanceAssertions from './yqaa-acceptance-assertions.cjs'
 
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = registryModule
 
@@ -163,14 +164,16 @@ async function publicGenerationProbe() {
   const modelCategory = match?.[1] || 'missing'
   // Consume and discard the response. The receipt stores only HTTP status,
   // the bounded model category, and latency; never prompt or response text.
-  await response.json().catch(() => null)
+  const payload = await response.json().catch(() => null)
+  const substantive = typeof payload?.reply === 'string' && payload.reply.trim().length >= 100 && /(?:questions?|ask|provider|service)/i.test(payload.reply)
   const latencyMs = Date.now() - startedAt
   receipt.public_generation = {
     status: response.status,
     model_category: modelCategory,
+    substantive_output_present: substantive,
     latency_ms: latencyMs,
   }
-  const ok = response.status === 200 && modelCategory === 'ok'
+  const ok = response.status === 200 && modelCategory === 'ok' && substantive
   receipt.checks.push({ name: 'public YQAA generation probe', status: ok ? 'passed' : 'failed', detail: `HTTP ${response.status}; model=${modelCategory}; ${latencyMs} ms` })
   console.log(`${ok ? 'PASS' : 'FAIL'} public YQAA generation probe: HTTP ${response.status}; model=${modelCategory}`)
   return ok
@@ -608,14 +611,22 @@ const scenarios = [
 ]
 
 async function messengerSmoke() {
-  for (const [categoryIndex, category] of categories.entries()) {
+  let currentScenarioIndex = 0
+  return acceptanceAssertions.runIndependentCategories(categories, {
+    signal: runController.signal,
+    negotiation: async (category) => {
+    currentScenarioIndex = 0
+    const categoryIndex = categories.indexOf(category)
     const fixture = fixtureThreads.find((thread) => thread.category === category.id && thread.scenario === 'negotiation')
     if (!fixture) throw new Error(`${category.id}/negotiation: continuous fixture mapping is missing.`)
     const conversationId = fixture.id
     const auth = await authenticatedPage(fixture.clerkUserId, '/messenger')
     clientPage = auth.page
     let quoteCents = null
+    let quoteScopeHash = null
+    try {
     for (let index = 0; index < MAX_TURNS; index++) {
+      currentScenarioIndex = index
       const baseScenario = scenarios[index]
       const scenario = { ...baseScenario, text: baseScenario.text?.replaceAll('%REQUEST%', category.request).replaceAll('%FULL_REQUEST%', category.fullRequest).replaceAll('%NARROW_REQUEST%', category.narrowRequest) }
       const label = `${category.id}/${scenario.name}`
@@ -638,6 +649,7 @@ async function messengerSmoke() {
       const quote = [...quotes].reverse().find((item) => Number.isFinite(Number(item.cents)) && Number(item.cents) > 0)
       if (!quote) throw new Error(`${label}: no quote produced in server conversation memory; refusing to invent one.`)
       quoteCents = Number(quote.cents)
+      quoteScopeHash = quote.scope_hash
       const counterCents = Math.max(1, Math.round(quoteCents * 0.9))
       const quoteDollars = (quoteCents / 100).toFixed(2)
       const counterDollars = (counterCents / 100).toFixed(2)
@@ -671,7 +683,6 @@ async function messengerSmoke() {
     if (scenario.name === 'orientation' && !/(canada|study|checklist|documents|clarif|service)/i.test(reply.body)) throw new Error('orientation: response did not address the stated context.')
     if (scenario.name === 'budget' && !/(budget|cad|450|price|scope|cost)/i.test(reply.body)) throw new Error('budget: response did not address budget or scope.')
     if (scenario.name === 'scope_narrowing' && !/(checklist|scope|organ|exclude|form)/i.test(reply.body)) throw new Error('scope_narrowing: response did not preserve the narrowed scope.')
-    if (scenario.name === 'counter' && !/(counter|reduc|adjust|review|provider|negotia|price|cad)/i.test(reply.body)) throw new Error('counter: response did not address the actual server quote counter.')
     if (scenario.name === 'lowball' && !/(budget|narrow|scope|provider|fit|offer|realistic|cannot|can.t|not able)/i.test(reply.body)) throw new Error('lowball: response did not address the stated budget and viable options.')
     if (scenario.name === 'frustration' && !/(understand|sorry|clear|plain|next|frustrat|included)/i.test(reply.body)) throw new Error('frustration: response did not address the request for a plain explanation.')
     if (/(internal floor|reference mean|pricing floor|minimum price is|revenue-safe floor)/i.test(lower)) throw new Error(`${label}: reply exposed internal floor language.`)
@@ -688,6 +699,7 @@ async function messengerSmoke() {
     }
     if (scenario.name === 'budget' && (Number(memory.budget?.maxCents || memory.negotiation?.budget_latest?.maxCents || 0) < 1 || !current.ai_last_pricing_status)) throw new Error(`${label}: server memory did not retain client budget and pricing state.`)
     if (scenario.name === 'counter') {
+      if (!acceptanceAssertions.counterofferAcknowledged(String(reply.body), { quoteCents, counterCents: Math.max(1, Math.round(quoteCents * 0.9)), scopeHash: quoteScopeHash, metadata: current })) throw new Error(`${label}: reply and authorized server state did not acknowledge the actual counter.`)
       if (!(memory.negotiation?.quotes_made || []).some((item) => Number(item.cents) === quoteCents)) throw new Error(`${label}: server memory did not retain the actual quote used for the counter.`)
       if (!(memory.negotiation?.client_counters || []).some((item) => Number(item.cents) === Math.max(1, Math.round(quoteCents * 0.9)))) throw new Error(`${label}: server memory did not retain the counter derived from its quote.`)
     }
@@ -704,10 +716,21 @@ async function messengerSmoke() {
     receipt.scenarios.push({ category: category.id, name: scenario.name, status: 'passed', latency_ms: latency, http_status: sent.status, reply_length_bucket: reply.body.length < 160 ? 'short' : reply.body.length < 600 ? 'medium' : 'long' })
     console.log(`PASS ${label}: YQAA reply recorded (${latency} ms)`)
     }
-    await auth.context.close()
-    clientPage = null
-    await attentionSmoke(category)
-  }
+    } finally {
+      await auth.context.close()
+      clientPage = null
+    }
+    },
+    attention: attentionSmoke,
+    onFailure: (category, name, error) => {
+      const failedName = name === 'negotiation' ? scenarios[currentScenarioIndex].name : name
+      receipt.scenarios.push({ category: category.id, name: failedName, status: 'failed', failure: safeFailure(error) })
+      if (name === 'negotiation') {
+        for (const scenario of scenarios.slice(currentScenarioIndex + 1, MAX_TURNS)) receipt.scenarios.push({ category: category.id, name: scenario.name, status: 'not_reached', reason: 'negotiation_prerequisite_failed' })
+      }
+      console.log(`FAIL ${category.id}/${failedName}: ${safeFailure(error)}`)
+    },
+  })
 }
 
 async function attentionSmoke(category) {
@@ -715,6 +738,7 @@ async function attentionSmoke(category) {
   if (!fixture) throw new Error(`${category.id}/provider_attention: isolated fixture mapping is missing.`)
   const auth = await authenticatedPage(fixture.clerkUserId, '/messenger')
   clientPage = auth.page
+  try {
   const conversationId = fixture.id
   const sent = await api(clientPage, `/api/messages/conversations/${conversationId}`, { method: 'POST', body: { body: scenarios.find((s) => s.name === 'provider_attention').text } })
   check(`${category.id}/provider_attention: request accepted`, sent.status === 200 && typeof sent.data.message?.id === 'string')
@@ -738,8 +762,10 @@ async function attentionSmoke(category) {
   const memory = state.ai_memory || {}
   check(`${category.id}/provider_attention: attention persisted`, memory.provider_attention?.pending === true || state.ai_provider_attention_requested === true)
   receipt.scenarios.push({ category: category.id, name: 'provider_attention', status: 'passed', latency_ms: Date.now() - started, reply_length_bucket: !reply ? 'no_reply' : reply.body.length < 160 ? 'short' : reply.body.length < 600 ? 'medium' : 'long' })
-  await auth.context.close()
-  clientPage = null
+  } finally {
+    await auth.context.close()
+    clientPage = null
+  }
 }
 
 async function cleanup() {
@@ -886,8 +912,9 @@ async function runAcceptance() {
   await launchOwnedBrowser()
   await loadAndVerifyFixtures()
   await providerUiChecks()
-  await messengerSmoke()
+  const messengerOk = await messengerSmoke()
   await assertLiveIdentity()
+  if (!messengerOk) throw new Error('One or more independent Messenger scenarios failed.')
   if (!publicGenerationOk) throw new Error('Public generation gate failed; DM results do not clear full acceptance.')
   receipt.status = 'passed'
   receipt.mode = 'full_acceptance'

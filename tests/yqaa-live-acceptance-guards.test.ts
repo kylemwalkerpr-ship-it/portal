@@ -37,7 +37,7 @@ describe('manual YQAA live acceptance safety guards', () => {
   test('receipt path matches workflow upload and success rechecks deployment identity', () => {
     expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
     expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')
-    expect(harness).toMatch(/await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+if \(!publicGenerationOk\) throw new Error\([^\n]+\);?\s+receipt.status = 'passed'/)
+    expect(harness).toMatch(/const messengerOk = await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+if \(!messengerOk\)[^\n]+\s+if \(!publicGenerationOk\) throw new Error\([^\n]+\);?\s+receipt.status = 'passed'/)
   })
 
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
