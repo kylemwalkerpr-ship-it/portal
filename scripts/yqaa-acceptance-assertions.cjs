@@ -39,7 +39,11 @@ function counterofferAcknowledged(body, { quoteCents, counterCents, scopeHash, m
   if (!amounts.includes(counterCents)) return false
   // Require a disposition tied to this monetary proposal, not a generic pricing keyword.
   const latestScopedQuote = [...quotes].reverse().find(quote => quote.scope_hash === scopeHash)
-  const affirmative = String(body || '').split(/(?<=[!?])\s+|\.(?!\d)\s*/).filter(sentence => !/\?|\b(?:not|never|cannot|(?:can|could|would|will|won|don|didn|isn|wasn|aren|hasn|haven)[’']t|unable|unapproved|might|maybe|could|would|may|probably|possibly|perhaps|potentially|tentatively|subject to|as long as|so long as|if|unless|assuming|once|until|after|provided|depending|pending)\b/i.test(sentence))
+  // A pending, committed client-visible offer is already authorized. A
+  // terminal invitation for the client to accept it is not provider approval.
+  const hasCurrentOffer = currentCommittedOffer(committedOffer, { metadata, counterCents, scopeHash, priceCents: Number(latestScopedQuote?.cents) })
+  const dispositionBody = hasCurrentOffer ? String(body).replace(/\bif (?:it|that|this) (?:still )?(?:works|fits)(?: for you| your budget)?(?=[.!?]|$)/gi, '') : String(body)
+  const affirmative = dispositionBody.split(/(?<=[!?])\s+|\.(?!\d)\s*/).filter(sentence => !/\?|\b(?:not|never|cannot|(?:can|could|would|will|won|don|didn|isn|wasn|aren|hasn|haven)[’']t|unable|unapproved|might|maybe|could|would|may|probably|possibly|perhaps|potentially|tentatively|subject to|as long as|so long as|if|unless|assuming|once|until|after|provided|depending|pending)\b/i.test(sentence))
   // Bind the disposition directly to the amount; incidental scope/total words cannot qualify.
   const firmPrice = /\b(?:(?:i|we)\s+(?:can|will)\s+(?:offer|send|lock|hold|keep|do|put)\s+(?:(?:it|this|that|this scope|this work|the scope|the work|the price|the quote|the total|the offer)\s+)?(?:together\s+)?(?:through\s+)?(?:in\s+)?(?:at|for)\s+|(?:i|we)\s+(?:can|will)\s+(?:keep|hold)\s+(?:this|that|the)\s+(?:narrowed\s+)?(?:scope|work|quote|price)\s+(?:as-is\s*)?(?:—[^—.!?]{1,240}—\s*)?(?:at|for)\s+|(?:the\s+)?figure\s+(?:i|we)\s+can\s+put\s+(?:on\s+the\s+offer|in\s+front\s+of\s+you)\s+is\s+|(?:approved|quoted)\s+(?:total|price|amount)\s+(?:is|remains?|stays?)\s+|(?:total|price|quote|scope|work)\s+(?:still\s+)?(?:remains?|stays?|is|comes to)\s+)((?:\$\s*|USD\s+)\d+(?:,\d{3})*(?:\.\d{1,2})?)(?!\d|\.\d)/gi
   // A following fragment can qualify the price too; inspect the entire reply for authority conditions.
