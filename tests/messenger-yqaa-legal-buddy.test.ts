@@ -7,7 +7,7 @@ import {
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
   insufficientEvidenceOrientationReply,
-  canContinueGroundedOrientation,
+  canUseSafeFirstLegalOrientation,
   counterNeedsProviderReviewReply,
   explicitCounterReviewDraft,
   loadMessengerLegalEvidence,
@@ -69,21 +69,24 @@ describe('legal-buddy evidence wiring', () => {
 })
 
 describe('legal-buddy escalation reply', () => {
-  test('grounded general orientation can continue after a Jev-only handoff recommendation', () => {
+  test('first general legal-orientation reply stays useful unless a hard safety gate applies', () => {
     const request = {
-      hasGroundedEvidence: true,
+      isFirstYqaaReply: true,
+      isLegalOrientation: true,
       highStakes: false,
       frustrated: false,
       explicitProviderReviewRequest: false,
       budgetGapAlreadyExplained: false,
-      commerceIntent: false,
+      explicitBuyIntent: false,
       companionReasons: ['jev_requires_handoff'],
     }
-    expect(canContinueGroundedOrientation(request)).toBe(true)
-    expect(canContinueGroundedOrientation({ ...request, hasGroundedEvidence: false })).toBe(false)
-    expect(canContinueGroundedOrientation({ ...request, highStakes: true })).toBe(false)
-    expect(canContinueGroundedOrientation({ ...request, explicitProviderReviewRequest: true })).toBe(false)
-    expect(canContinueGroundedOrientation({ ...request, companionReasons: ['jev_requires_handoff', 'client_frustration_or_exit'] })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation(request)).toBe(true)
+    expect(canUseSafeFirstLegalOrientation({ ...request, isFirstYqaaReply: false })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation({ ...request, isLegalOrientation: false })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation({ ...request, highStakes: true })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation({ ...request, explicitProviderReviewRequest: true })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation({ ...request, explicitBuyIntent: true })).toBe(false)
+    expect(canUseSafeFirstLegalOrientation({ ...request, companionReasons: ['jev_requires_handoff', 'client_frustration_or_exit'] })).toBe(false)
   })
 
   test('empathetic handoff names the provider and never leaks floors', () => {
@@ -95,11 +98,13 @@ describe('legal-buddy escalation reply', () => {
   })
 
   test('thin legal retrieval stays useful and personal for a low-risk orientation request', () => {
-    const reply = insufficientEvidenceOrientationReply({
-      latestClientText: 'I have plans to move to Beaver Harbor in a few years and want to compare permanent residency options. My fiancé is working on ancestry forms and his father is a citizen in Canada.',
-      recentClientContext: 'Hello, my name is Taylor. I want a cost-effective way to understand marriage and permanent residency options.',
+    const firstTurn = 'Hello Mrs. Foley! My name is Taylor and I have plans to move to Beaver Harbor in the new few years. I believe I have a couple of options available as far as permanent residency status. I was hoping to maybe get some insight as the best way to do this and the most cost effective. I will have a home and utilities paid for when I do get there and I have a safety net option of marriage due to my fiance. He is working on his ancestry forms and his father is already a citizen in CA. I am very new and happened to find you via the provinces public directory.'
+    const args = {
+      latestClientText: firstTurn,
+      recentClientContext: '',
       providerLabel: 'Ms Foley',
-    })
+    }
+    const reply = insufficientEvidenceOrientationReply(args)
     const { usefulFirstOrientation } = require('../scripts/yqaa-incident-quality.cjs')
     expect(reply).toContain('Taylor')
     expect(reply).toContain('Beaver Harbor')
@@ -107,8 +112,13 @@ describe('legal-buddy escalation reply', () => {
     expect(reply).toMatch(/marriage|family connection/i)
     expect(reply).toMatch(/compare|prepare/i)
     expect(reply).toContain('Where are you a citizen now, and where do you expect to apply?')
+    expect(reply).not.toMatch(/rough budget range|concrete offer|I’m an AI/i)
     expect(reply).not.toMatch(/I’ve asked Ms Foley|I have asked Ms Foley|verified Marketplace pricing|insufficient evidence/i)
     expect(usefulFirstOrientation(reply)).toBe(true)
+
+    const disclosed = insufficientEvidenceOrientationReply({ ...args, disclose: true })
+    expect(disclosed).toMatch(/^Hi Taylor — I’m \*\*YQAA\*\*, an AI assistant here to help you get oriented\./)
+    expect(usefulFirstOrientation(disclosed)).toBe(true)
   })
 
   test('rates and a stated budget get a scoped next step without inventing a price', () => {
@@ -118,7 +128,8 @@ describe('legal-buddy escalation reply', () => {
       providerLabel: 'Ms Foley',
     })
     expect(rates).toContain('Taylor')
-    expect(rates).toMatch(/comparing the residency routes/i)
+    expect(rates).toMatch(/That’s a fair question/i)
+    expect(rates).toMatch(/map your routes.*prepare an application/i)
     expect(rates).not.toMatch(/budget|\$\s*\d|\bUSD\s+\d/i)
 
     const budget = insufficientEvidenceOrientationReply({
