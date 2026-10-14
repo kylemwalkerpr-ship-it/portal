@@ -26,6 +26,15 @@ describe('counteroffer acceptance evidence', () => {
     expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $154.',state)).toBe(false)
     expect(counterofferAcknowledged('I hear you on $139.50. The figure I can put on the offer is $155 if the provider approves.',state)).toBe(false)
   })
+  test.each([
+    'I hear you wanting $139.50. For that narrowed packet I can keep the offer at $155 on YouSafe.',
+    'I hear you wanting $139.50. The on-platform figure I can put in front of you is $155.',
+  ])('recognizes direct saved offer disposition: %s', (body) => {
+    expect(counterofferAcknowledged(body, state)).toBe(true)
+    expect(counterofferAcknowledged(body.replace('$155', '$154'), state)).toBe(false)
+    expect(counterofferAcknowledged(body + ' Provider approval is required.', state)).toBe(false)
+    expect(counterofferAcknowledged(body.replace('I can', 'I could'), state)).toBe(false)
+  })
   test('recognizes the natural lock-it-at disposition tied to the exact saved quote and counter', () => {
     expect(counterofferAcknowledged('I hear you wanting $139.50 for the same three-document checklist. For that narrowed work, I can lock it at $155 on-platform.', state)).toBe(true)
     expect(counterofferAcknowledged('I can lock it at $154. I hear your $139.50 proposal.', state)).toBe(false)
