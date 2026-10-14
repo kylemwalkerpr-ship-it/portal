@@ -34,6 +34,12 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(quiet).toContain('verifyOwnedConversation(conversations?.[0], thread, CURRENT_RUN_MARKER)')
   })
 
+  test('category fixture setup failures do not masquerade as orientation failures', () => {
+    expect(harness).toContain('let currentScenarioIndex = -1')
+    expect(harness).toContain("currentScenarioIndex < 0 ? 'fixture_setup' : scenarios[currentScenarioIndex].name")
+    expect(harness).toContain('scenarios.slice(currentScenarioIndex + 1, MAX_TURNS)')
+  })
+
   test('receipt path matches workflow upload and success rechecks deployment identity', () => {
     expect(harness).toContain("path.join(process.env.RUNNER_TEMP || path.resolve('artifacts'), 'yqaa-live-acceptance')")
     expect(workflow).toContain('yqaa-live-acceptance/yqaa-live-acceptance-receipt.json')

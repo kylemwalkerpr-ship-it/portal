@@ -611,11 +611,11 @@ const scenarios = [
 ]
 
 async function messengerSmoke() {
-  let currentScenarioIndex = 0
+  let currentScenarioIndex = -1
   return acceptanceAssertions.runIndependentCategories(categories, {
     signal: runController.signal,
     negotiation: async (category) => {
-    currentScenarioIndex = 0
+    currentScenarioIndex = -1
     const categoryIndex = categories.indexOf(category)
     const fixture = fixtureThreads.find((thread) => thread.category === category.id && thread.scenario === 'negotiation')
     if (!fixture) throw new Error(`${category.id}/negotiation: continuous fixture mapping is missing.`)
@@ -723,7 +723,7 @@ async function messengerSmoke() {
     },
     attention: attentionSmoke,
     onFailure: (category, name, error) => {
-      const failedName = name === 'negotiation' ? scenarios[currentScenarioIndex].name : name
+      const failedName = name === 'negotiation' ? (currentScenarioIndex < 0 ? 'fixture_setup' : scenarios[currentScenarioIndex].name) : name
       receipt.scenarios.push({ category: category.id, name: failedName, status: 'failed', failure: safeFailure(error) })
       if (name === 'negotiation') {
         for (const scenario of scenarios.slice(currentScenarioIndex + 1, MAX_TURNS)) receipt.scenarios.push({ category: category.id, name: scenario.name, status: 'not_reached', reason: 'negotiation_prerequisite_failed' })
