@@ -527,7 +527,7 @@ async function authenticatedPage(clerkUserId, landing) {
     for (let i = 0; i < 80; i++) {
       const root = window.Clerk
       if (root?.loaded && root?.client && root?.setActive) break
-      await releaseIdentityModule.abortableDelay(250,runController.signal)
+      await new Promise((resolve) => setTimeout(resolve, 250))
     }
     const root = window.Clerk
     if (!root?.loaded || !root?.setActive) return { ok: false, category: 'clerk_not_loaded' }
@@ -540,7 +540,7 @@ async function authenticatedPage(clerkUserId, landing) {
       for (let i = 0; i < 40; i++) {
         userId = root.user?.id || (await root.session?.user)?.id || null
         if (userId) break
-        await releaseIdentityModule.abortableDelay(250,runController.signal)
+        await new Promise((resolve) => setTimeout(resolve, 250))
       }
       if (userId !== expectedUserId) return { ok: false, category: 'clerk_identity_mismatch' }
       return { ok: true }

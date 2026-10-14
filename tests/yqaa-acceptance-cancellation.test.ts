@@ -26,3 +26,16 @@ describe('acceptance cancellation and settlement',()=>{
   expect(jest.getTimerCount()).toBe(0)
  })
 })
+
+ describe('serialized Clerk browser sign-in',()=>{
+ it('runs its readiness waits without Node-only bindings',async()=>{
+ const fs=require('node:fs'),path=require('node:path')
+ const source=fs.readFileSync(path.join(__dirname,'../scripts/yqaa-live-acceptance.mjs'),'utf8')
+ const body=source.split('const result = await page.evaluate(async ({ ticket, expectedUserId }) => {')[1].split('}, { ticket: token.token, expectedUserId: clerkUserId })')[0]
+ const root:any={loaded:false,client:{signIn:{create:async()=>({createdSessionId:'session_fixture'})}},setActive:async()=>{},user:{id:'user_fixture'}}
+ const windowFixture={Clerk:root}
+ const setTimeoutFixture=(resolve:()=>void)=>{root.loaded=true;resolve();return 0}
+ const invoke=new Function('window','setTimeout',`return async ({ticket,expectedUserId})=>{${body}}`)(windowFixture,setTimeoutFixture)
+ await expect(invoke({ticket:'synthetic_ticket',expectedUserId:'user_fixture'})).resolves.toEqual({ok:true})
+ })
+ })
