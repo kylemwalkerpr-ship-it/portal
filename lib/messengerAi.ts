@@ -68,7 +68,7 @@ import {
 } from '@/lib/yqaaCompanionDecision'
 import { COMPANION_CHANNEL_CAPABILITIES, runCompanionOrchestrator } from '@/lib/yqaaDecisionOrchestrator'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
-import { polishWithRegeneration } from '@/lib/yqaaCompanionPolish'
+import { polishWithRegeneration, polishCompanionReply, type PolishInput, type PolishResult } from '@/lib/yqaaCompanionPolish'
 import {
   requestCompanionJev,
   sanitizeYqaaPublicQuestion,
@@ -420,6 +420,23 @@ function parseDecision(raw: string): GrokDecision {
       offer: null,
     }
   }
+}
+
+/** A mandatory reply is already decided; avoid a provider draft that would be discarded. */
+export async function resolveMessengerDraft(args: { handoff: GrokDecision | null; budgetReply: string | null; generate: () => Promise<string> }): Promise<GrokDecision> {
+  if (args.handoff) return args.handoff
+  if (args.budgetReply) return { reply: args.budgetReply, escalate: false, offer: null }
+  return parseDecision(await args.generate())
+}
+
+/** Mandatory handoffs never need a new model draft or a paid-scope fallback. */
+export async function polishMessengerDraft(args: { input: PolishInput; mandatoryHandoff: boolean; budget?: PricingAuthority['budget']; regenerate: (reasons: string[]) => Promise<string | null> }): Promise<PolishResult> {
+  if (!args.mandatoryHandoff) return polishWithRegeneration(args.input, args.regenerate)
+  const amounts = new Set(args.input.allowedAmountsCents || [])
+  for (const amount of [args.budget?.minCents, args.budget?.maxCents]) {
+    if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) amounts.add(Math.round(amount))
+  }
+  return polishCompanionReply({ ...args.input, allowedAmountsCents: [...amounts], approvedPriceCents: null, clientCounterCents: null, includes: [], regenerated: true })
 }
 
 function wait(ms: number) {
@@ -1393,20 +1410,26 @@ export async function maybeAutoReply(opts: {
         docSummary,
       ].join('\n')
 
+      const insufficientEvidenceHandoff = legalEvidenceMissing || Boolean(companion?.reasons.some(
+        (reason) => reason === 'legal_evidence_missing' || reason === 'jev_requires_handoff' || reason === 'jev_evidence_insufficient',
+      ))
       const budgetLimitExplanation = firstBudgetLimitExplanation({pricing, adaptive, companion, latestClientText: String(latestClientText || ''), frustrated, budgetGapAlreadyExplained, legalEvidenceMissing, highStakes})
       let decision: GrokDecision
-      if (budgetLimitExplanation) decision = {reply: budgetLimitExplanation, escalate: false, offer: null}
-      else try {
-        if (opts.runtime) await opts.runtime.markStage('model_generation')
-        const raw = await callGrokChat({
+      try {
+        const handoff = insufficientEvidenceHandoff
+          ? {reply: insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || '')), escalate: true, offer: null}
+          : null
+        decision = await resolveMessengerDraft({ handoff, budgetReply: budgetLimitExplanation, generate: async () => {
+          if (opts.runtime) await opts.runtime.markStage('model_generation')
+          return callGrokChat({
           system: systemWithContext,
           user: userPrompt,
           conversationId: opts.conversationId,
           signal: opts.runtime?.signal,
           remainingMs: opts.runtime?.providerRemainingMs,
-        })
+          })
+        }})
         if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
-        decision = parseDecision(raw)
       } catch (err) {
         if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
         const failure = providerFailureCategory(err)
@@ -1427,9 +1450,7 @@ export async function maybeAutoReply(opts: {
 
       // Model output cannot clear a server-required escalation or issue an offer
       // on a handoff turn, regardless of the model's parsed `escalate` value.
-      const insufficientEvidenceHandoff = legalEvidenceMissing || Boolean(companion?.reasons.some(
-        (reason) => reason === 'legal_evidence_missing' || reason === 'jev_requires_handoff' || reason === 'jev_evidence_insufficient',
-      ))
+
       decision = enforceCompanionEscalation(decision, companion || (legalEvidenceMissing ? { escalate: true } : null))
       if (insufficientEvidenceHandoff) {
         replyText = insufficientEvidenceHandoffReply(providerLabel, pricing.budget, String(latestClientText || ''))
@@ -1548,8 +1569,9 @@ export async function maybeAutoReply(opts: {
 
       // ── Polish stage (rules first; one regeneration; then a safe template) ──
       const allowedAmounts = companionAllowedAmounts(adaptive, approvedOffer)
-      const polish = await polishWithRegeneration(
-        {
+      const polish = await polishMessengerDraft({
+        mandatoryHandoff: insufficientEvidenceHandoff, budget: pricing.budget,
+        input: {
           reply: replyText,
           posture: budgetLimitExplanation ? 'EDUCATE' : companion?.posture ?? null,
           allowedAmountsCents: allowedAmounts,
@@ -1560,7 +1582,7 @@ export async function maybeAutoReply(opts: {
           includes: budgetLimitExplanation ? [] : adaptive?.client_safe.includes || [],
           escalationReply: lowBudgetEscalationReply(providerLabel),
         },
-        async (reasons) => {
+        regenerate: async (reasons) => {
           try {
             const raw = await callGrokChat({
               system: `${systemWithContext}\n\n# POLISH — REGENERATE\nYour previous draft was rejected by the server for: ${reasons.join('; ')}. Rewrite it using ONLY the server-approved numbers, no internal pricing language, and a natural human tone.`,
@@ -1576,7 +1598,7 @@ export async function maybeAutoReply(opts: {
             return null
           }
         },
-      )
+      })
       replyText = polish.reply
       if (polish.escalate) {
         decision.escalate = true

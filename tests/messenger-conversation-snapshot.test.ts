@@ -1,0 +1,8 @@
+import { refreshConversationAfterMessageRead } from '@/lib/messengerConversationSnapshot'
+const initial={id:'thread',participant_a:'client',participant_b:'provider',metadata:{ai_disclosed:false}}
+const reply={metadata:{ai_generated:true,ai_typing:false,yqaa_trigger_message_id:'trigger'}}
+function database(row:any,error:any=null) {const single=jest.fn(async()=>({data:row,error}));const chain:any={select:jest.fn(()=>chain),eq:jest.fn(()=>chain),single};return {from:jest.fn(()=>chain),single}}
+test('a reply committed between conversation and message reads refreshes disclosure and attention from stored state',async()=>{const fresh={...initial,metadata:{ai_disclosed:true,ai_mode:'paused',ai_provider_attention_requested:true}};const db=database(fresh);expect(await refreshConversationAfterMessageRead(db,initial,[reply],'client')).toEqual(fresh);expect(db.single).toHaveBeenCalledTimes(1)})
+test('a typing bubble alone does not imply disclosure or trigger another read',async()=>{const db=database(null);expect(await refreshConversationAfterMessageRead(db,initial,[{metadata:{ai_generated:true,ai_typing:true}}],'client')).toBe(initial);expect(db.from).not.toHaveBeenCalled()})
+test.each([null,{...initial,participant_a:'other'},{...initial,id:'wrong'}])('a refresh cannot change conversation or participants',async(row)=>{await expect(refreshConversationAfterMessageRead(database(row),initial,[reply],'client')).rejects.toThrow()})
+test('database failure cannot fabricate completed disclosure',async()=>{await expect(refreshConversationAfterMessageRead(database(null,{message:'private error'}),initial,[reply],'client')).rejects.toThrow('Conversation snapshot unavailable')})

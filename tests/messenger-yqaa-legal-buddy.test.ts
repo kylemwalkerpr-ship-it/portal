@@ -1,6 +1,8 @@
 import {
   enforceCompanionEscalation,
   applyPricingGuardDecision,
+  resolveMessengerDraft,
+  polishMessengerDraft,
   applyAdaptiveOfferAuthority,
   providerFailureCategory,
   insufficientEvidenceHandoffReply,
@@ -138,4 +140,25 @@ test('a prose price blocked by missing market data cannot claim a review without
 test('an ordinary missing-budget question clears the offer without requesting a human', () => {
  const guard=guardMessengerOffer({pricing:{status:'need_budget',budget:null,currency:'usd'} as any})
  expect(applyPricingGuardDecision({reply:'It costs $150.',escalate:false,offer:{title:'Unsafe'}},guard)).toMatchObject({escalate:false,offer:null})
+})
+
+test('mandatory evidence handoff commits useful reply without waiting for a draft that would be discarded',async()=>{
+ const generate=jest.fn(async()=>{throw new Error('provider_timeout')})
+ const handoff={reply:insufficientEvidenceHandoffReply('Avery',undefined,'I am moving next year'),escalate:true,offer:null}
+ expect(await resolveMessengerDraft({handoff,budgetReply:'budget answer',generate})).toEqual(handoff)
+ expect(generate).not.toHaveBeenCalled()
+})
+test('ordinary conversation still uses and parses the provider draft',async()=>{const generate=jest.fn(async()=>JSON.stringify({reply:'Here is the checklist.',escalate:false,offer:null}));expect(await resolveMessengerDraft({handoff:null,budgetReply:null,generate})).toMatchObject({reply:'Here is the checklist.',escalate:false});expect(generate).toHaveBeenCalledTimes(1)})
+test('mandatory handoff with stored budget and no adaptive pricing stays deterministic through polishing',async()=>{
+ const budget={maxCents:45000,minCents:null,currency:'cad',sourceText:'',messageId:null,confidence:'explicit'} as any
+ const generate=jest.fn(async()=>{throw new Error('provider_timeout')})
+ const handoff={reply:insufficientEvidenceHandoffReply('Avery',budget,'I am moving next year'),escalate:true,offer:null}
+ const draft=await resolveMessengerDraft({handoff,budgetReply:null,generate})
+ const polished=await polishMessengerDraft({input:{reply:draft.reply,allowedAmountsCents:[],approvedPriceCents:15500,includes:['Paid scope']},mandatoryHandoff:true,budget,regenerate:generate})
+ expect(polished.reply).toContain('CAD 450.00')
+ expect(polished.reply).toContain('documents')
+ expect(polished.reply).toContain('reply is still pending')
+ expect(polished.reply).not.toContain('Paid scope')
+ expect(draft).toMatchObject({escalate:true,offer:null})
+ expect(generate).not.toHaveBeenCalled()
 })

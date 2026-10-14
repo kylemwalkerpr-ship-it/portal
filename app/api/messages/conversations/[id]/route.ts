@@ -12,6 +12,7 @@ import {
 } from '@/lib/messengerAi'
 import { scheduleClientAutoReply } from '@/lib/messengerClientAutoReply'
 import { fillMissingProfileAvatars } from '@/lib/messaging/profileAvatars'
+import { refreshConversationAfterMessageRead } from '@/lib/messengerConversationSnapshot'
 import { buildMessengerAttentionDisplay } from '@/lib/messengerAttentionDisplay'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -46,7 +47,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const counterpartId = conv.participant_a === profileId ? conv.participant_b : conv.participant_a
 
   let pricingApproval: any = null
-  const metadata = (conv as any).metadata || {}
+  let metadata = (conv as any).metadata || {}
   if (['attorney', 'consultant'].includes(auth.role) && metadata.ai_pricing_approval_request_id) {
     try {
       const { data } = await db.from('yqaa_pricing_approvals')
@@ -91,6 +92,13 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .eq('profile_id', counterpartId)
       .maybeSingle(),
   ])
+
+  try {
+    conv = await refreshConversationAfterMessageRead(db, conv, messagesRes.data || [], profileId)
+    metadata = (conv as any).metadata || {}
+  } catch {
+    return Response.json({ error: 'Conversation state is temporarily unavailable' }, { status: 503 })
+  }
 
   const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
   const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
