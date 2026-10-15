@@ -12,9 +12,11 @@ import { chromium } from '@playwright/test'
 import registryModule from './yqaa-fixture-registry.cjs'
 import acceptanceAssertions from './yqaa-acceptance-assertions.cjs'
 import incidentQuality from './yqaa-incident-quality.cjs'
+import ownedOffers from './yqaa-owned-offers.cjs'
 import browserNavigation from './yqaa-browser-navigation.cjs'
 
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation, fixtureProviderRole } = registryModule
+const { loadOwnedThreadOffers, cancelOwnedThreadOffers } = ownedOffers
 
 const BASE = 'https://portal.yousafeconsultancy.com'
 const MAX_TURNS = 6
@@ -887,7 +889,7 @@ async function cleanup() {
       if (paused?.[0]?.metadata?.ai_mode !== 'paused') throw new Error('AI pause could not be verified')
       const [messages, offers] = await Promise.all([
         dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${thread.id}`),
-        dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}`),
+        loadOwnedThreadOffers(dbRequest, thread),
       ])
       quietSnapshots.set(thread.id, { messageIds: new Set((messages || []).map((row) => row.id)), offerIds: new Set((offers || []).map((row) => row.id)) })
     } catch {
@@ -902,7 +904,7 @@ async function cleanup() {
         if (!snapshot) throw new Error('AI pause snapshot missing')
         const [messages, offers, conversations] = await Promise.all([
           dbRequest(`conversation_messages?select=id,metadata&conversation_id=eq.${thread.id}`),
-          dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}`),
+          loadOwnedThreadOffers(dbRequest, thread),
           dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${thread.id}`),
         ])
         const lateReplies = (messages || []).filter((row) => !snapshot.messageIds.has(row.id) && row.metadata?.ai_generated)
@@ -931,9 +933,8 @@ async function cleanup() {
           await verifyOwnedFixtureProfile(thread.providerProfileId, thread.providerClerkUserId, fixtureProviderRole(thread))
           const ownedRows = await dbRequest(`conversations?select=id,participant_a,participant_b,context_kind,context_id,status,metadata&id=eq.${thread.id}`)
           verifyOwnedConversation(ownedRows?.[0], thread, CURRENT_RUN_MARKER)
-          await dbRequest(`offers?chat_id=eq.${thread.id}&status=eq.pending`, { method: 'PATCH', prefer: 'return=minimal', body: { status: 'cancelled', updated_at: new Date().toISOString() } })
-          const pending = await dbRequest(`offers?select=id,status&chat_id=eq.${thread.id}&status=eq.pending`)
-          return { category: thread.category, scenario: thread.scenario, pending_offers_remaining: Array.isArray(pending) ? pending.length : null }
+          const pending = await cancelOwnedThreadOffers(dbRequest, thread)
+          return { category: thread.category, scenario: thread.scenario, pending_offers_remaining: pending.length }
         } catch { return { category: thread.category, scenario: thread.scenario, pending_offers_remaining: 'verification_failed' } }
       })(),
     ])

@@ -4,6 +4,7 @@ import path from 'node:path'
 const root = path.resolve(__dirname, '..')
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/yqaa-live-acceptance.yml'), 'utf8')
 const harness = fs.readFileSync(path.join(root, 'scripts/yqaa-live-acceptance.mjs'), 'utf8')
+const ownedOfferSource = fs.readFileSync(path.join(root, 'scripts/yqaa-owned-offers.cjs'), 'utf8')
 const { registerOwnedGig, registerOwnedConversation, providerForThread, assertFreshParticipantPair, verifyOwnedConversation } = require('../scripts/yqaa-fixture-registry.cjs')
 
 describe('manual YQAA live acceptance safety guards', () => {
@@ -295,7 +296,8 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toContain('function safeFailure')
     expect(harness).toContain("replace(/(__clerk_ticket=)")
     expect(harness).toContain("body: { status: 'archived'")
-    expect(harness).toContain("status: 'cancelled'")
+    expect(ownedOfferSource).toContain("status: 'cancelled'")
+    expect(ownedOfferSource).not.toMatch(/method:\s*['"]DELETE/)
     expect(harness).toContain('ai_paused_reason: \'acceptance_cleanup\'')
     expect(harness).toContain('late_ai_replies: lateReplies.length')
     expect(harness).toContain('new_offers_after_pause: newOffers.length')
@@ -305,7 +307,8 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(workflow).toContain('timeout-minutes: 45')
     expect(harness).toContain("archive_action: 'guarded_owner_scoped_database_update'")
     expect(harness).toContain('conversation_status: archivedRows?.[0]?.status || \'missing\'')
-    expect(harness).toContain('pending_offers_remaining: Array.isArray(pending) ? pending.length : null')
+    expect(harness).toContain('cancelOwnedThreadOffers(dbRequest, thread)')
+    expect(harness).toContain('pending_offers_remaining: pending.length')
     expect(harness).not.toMatch(/\.delete\(/)
     expect(harness).not.toMatch(/console\.(log|error)\([^\n]*(token|secret|reply\.body)/i)
   })
