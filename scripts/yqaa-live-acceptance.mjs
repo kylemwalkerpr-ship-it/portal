@@ -603,6 +603,9 @@ async function api(page, route, { method = 'GET', body } = {}) {
     ...(body === undefined ? {} : { data: body }),
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     timeout: 10_000,
+    // Playwright retries ECONNRESET only. A single read retry is safe; an
+    // uncertain POST/PATCH must never be replayed by the acceptance runner.
+    maxRetries: method === 'GET' ? 1 : 0,
   })
   const data = await response.json().catch(() => ({}))
   return { status: response.status(), data }
