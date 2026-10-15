@@ -17,6 +17,7 @@ import {
   deleteAiSetting,
   getAiSettings,
   setAiSetting,
+  type AiSettings,
 } from '@/lib/aiKeyVault'
 import {
   XAI_PUBLIC_API_BASE_URL,
@@ -124,7 +125,7 @@ function formBody(fields: Record<string, string>): string {
   return new URLSearchParams(fields).toString()
 }
 
-async function postForm(url: string, fields: Record<string, string>): Promise<{
+async function postForm(url: string, fields: Record<string, string>, signal?: AbortSignal): Promise<{
   status: number
   json: Record<string, unknown>
   text: string
@@ -137,6 +138,7 @@ async function postForm(url: string, fields: Record<string, string>): Promise<{
       'User-Agent': 'YouSafe-ContentStudio/1.0 (SuperGrok OAuth)',
     },
     body: formBody(fields),
+    signal,
   })
   const text = await res.text()
   let json: Record<string, unknown> = {}
@@ -185,19 +187,25 @@ function tokensFromResponse(json: Record<string, unknown>, now = Date.now()): To
 async function persistTokens(
   tokens: TokenSet,
   updatedBy = 'admin',
-  options: { replaceRefresh?: boolean } = {},
+  options: { replaceRefresh?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> {
-  await setAiSetting(SETTING.access, tokens.access_token, updatedBy)
+  const saveSetting = (key: string, value: string) => options.signal
+    ? setAiSetting(key, value, updatedBy, { signal: options.signal })
+    : setAiSetting(key, value, updatedBy)
+  const removeSetting = (key: string) => options.signal
+    ? deleteAiSetting(key, { signal: options.signal })
+    : deleteAiSetting(key)
+  await saveSetting(SETTING.access, tokens.access_token)
   if (tokens.refresh_token) {
-    await setAiSetting(SETTING.refresh, tokens.refresh_token, updatedBy)
+    await saveSetting(SETTING.refresh, tokens.refresh_token)
   } else if (options.replaceRefresh) {
     // A reconnect is an account replacement, not an overlay. Never allow a
     // previous account's refresh token to survive beneath a new access token.
-    await deleteAiSetting(SETTING.refresh)
+    await removeSetting(SETTING.refresh)
   }
-  await setAiSetting(SETTING.expires, String(tokens.expires_at), updatedBy)
-  await setAiSetting(SETTING.type, tokens.token_type || 'Bearer', updatedBy)
-  await deleteAiSetting(SETTING.pending)
+  await saveSetting(SETTING.expires, String(tokens.expires_at))
+  await saveSetting(SETTING.type, tokens.token_type || 'Bearer')
+  await removeSetting(SETTING.pending)
 }
 
 export async function getSuperGrokStatus(): Promise<SuperGrokStatus> {
@@ -322,12 +330,12 @@ export async function pollSuperGrokDeviceLogin(updatedBy = 'admin'): Promise<{
   return { connected: true, pending: false }
 }
 
-export async function refreshSuperGrokToken(refreshToken: string): Promise<TokenSet> {
+export async function refreshSuperGrokToken(refreshToken: string, signal?: AbortSignal): Promise<TokenSet> {
   const { status, json, text } = await postForm(`${xaiOAuthIssuer()}/oauth2/token`, {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: xaiOAuthClientId(),
-  })
+  }, signal)
   if (status >= 400) {
     const message = asString(json.error_description) || asString(json.error) || text.slice(0, 240)
     throw new Error(`SuperGrok token refresh failed (${status}): ${message}`)
@@ -387,8 +395,14 @@ export async function forceRefreshSuperGrokAccessToken(): Promise<SuperGrokAcces
   }
 }
 
-export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | null> {
-  const settings = await getAiSettings(true)
+export async function ensureSuperGrokAccessToken(options: {
+  settings?: AiSettings
+  signal?: AbortSignal
+} = {}): Promise<SuperGrokAccess | null> {
+  const settings = options.settings ?? await getAiSettings(true, {
+    signal: options.signal,
+    throwOnError: true,
+  })
   const access = settings.xai_oauth_access_token?.trim() || ''
   const refresh = settings.xai_oauth_refresh_token?.trim() || ''
   const expiresAt = Number(settings.xai_oauth_expires_at || 0)
@@ -398,18 +412,16 @@ export async function ensureSuperGrokAccessToken(): Promise<SuperGrokAccess | nu
   }
   if (!refresh) {
     // Expired access with no refresh — do not keep minting 403s from a
-    // previous SuperGrok session. Let XAI_API_KEY / vault take over.
+    // previous SuperGrok session. YQAA does not fall back to metered API keys.
     return null
   }
   try {
-    const tokens = await refreshSuperGrokToken(refresh)
-    await persistTokens(tokens, 'oauth-refresh')
+    const tokens = await refreshSuperGrokToken(refresh, options.signal)
+    await persistTokens(tokens, 'oauth-refresh', { signal: options.signal })
     return { accessToken: tokens.access_token, expiresAt: tokens.expires_at, authMode: 'supergrok' }
   } catch (err) {
-    console.warn(
-      '[superGrok] refresh failed — not reusing the stale access token',
-      err instanceof Error ? err.message : err,
-    )
+    if (options.signal?.aborted) throw options.signal.reason || err
+    console.warn('[superGrok] refresh failed — not reusing the stale access token')
     return null
   }
 }

@@ -1,16 +1,16 @@
 /**
  * supabase-key.test.ts
  *
- * Locks the legacy-eyJ / sb_secret_ key detection + the safe anon fallback so
- * supabase reads work with either key format (the newer sb_secret_ service
- * role is rejected by supabase-js v2, so callers fall back to the legacy anon
- * JWT against open-RLS tables).
+ * Locks legacy JWT / sb_secret_ detection, service-role selection, and the
+ * SDK's API-key-only handling for modern secret keys.
  */
+import { createClient } from '@supabase/supabase-js'
 import {
   classifySupabaseKey,
   isLegacyJwtKey,
   isSecretKey,
   resolveSupabaseKey,
+  supabaseAuthMode,
   type SupabaseKeyFormat,
 } from '@/lib/supabaseKey'
 
@@ -77,8 +77,18 @@ describe('resolveSupabaseKey', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: LEGACY_SR, anonKey: LEGACY_ANON })).toBe(LEGACY_SR)
   })
 
-  it('falls back to the legacy anon key when the service role is the new sb_secret_ format', () => {
-    expect(resolveSupabaseKey({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON })).toBe(LEGACY_ANON)
+  it('uses a modern secret service-role key instead of downgrading to anon', () => {
+    expect(resolveSupabaseKey({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON })).toBe(SECRET_SR)
+    expect(resolveSupabaseKey({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON, allowAnonFallback: false })).toBe(SECRET_SR)
+    expect(supabaseAuthMode({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON })).toBe('service-role')
+  })
+
+  it('prefers the modern key during migration when both modern and legacy keys are set', () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = SECRET_SR
+    process.env.SUPABASE_SERVICE_ROLE_JWT = LEGACY_SR
+
+    expect(resolveSupabaseKey()).toBe(SECRET_SR)
+    expect(supabaseAuthMode()).toBe('service-role')
   })
 
   it('returns the anon key when no service-role key is set', () => {
@@ -86,18 +96,34 @@ describe('resolveSupabaseKey', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: undefined, anonKey: LEGACY_ANON })).toBe(LEGACY_ANON)
   })
 
-  it('returns the secret-format service role as a last resort (so the caller surfaces the real error)', () => {
+  it('uses the secret-format service role when no anon key is available', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: SECRET_SR, anonKey: null })).toBe(SECRET_SR)
   })
 
-  it('prefers the secret-format service role over a secret-format anon as a last resort', () => {
-    // Neither is a legacy JWT, so the service role wins (it is the more
-    // privileged key; the caller surfaces the real supabase-js error).
+  it('prefers the service-role secret over a secret-format anon key', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: SECRET_SR, anonKey: 'sb_secret_anon' })).toBe(SECRET_SR)
   })
 
   it('returns null when no key is available', () => {
     expect(resolveSupabaseKey({ serviceRoleKey: null, anonKey: null })).toBe(null)
     expect(resolveSupabaseKey({ serviceRoleKey: '', anonKey: '' })).toBe(null)
+  })
+
+  it('accepts modern secret keys in the installed supabase-js client', async () => {
+    let capturedHeaders: Headers | undefined
+    const client = createClient('https://example.supabase.co', SECRET_SR, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: {
+        fetch: async (_input, init) => {
+          capturedHeaders = new Headers(init?.headers)
+          return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })
+        },
+      },
+    })
+
+    const { error } = await client.from('profiles').select('id').limit(1)
+
+    expect(capturedHeaders?.get('apikey')).toBe(SECRET_SR)
+    expect(error).toBeNull()
   })
 })

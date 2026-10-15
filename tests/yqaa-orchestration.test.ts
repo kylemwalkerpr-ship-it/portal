@@ -297,6 +297,34 @@ describe('YQAA provider pin and fallback policy', () => {
     expect(classifyYqaaProviderFailure(new Error('Assistant model unavailable after bounded recovery (responses=408 request timeout; chat=408 request timeout)')).kind).toBe('timeout')
     expect(classifyYqaaProviderFailure(new Error('Assistant model unavailable after bounded recovery (responses=409 conflict; chat=409 conflict)')).eligible).toBe(true)
     expect(classifyYqaaProviderFailure(new Error('DeepSeek is not configured')).kind).toBe('configuration')
+    const authLookupFailure = Object.assign(new Error('private database pool details'), { name: 'AssistantAuthResolutionError' })
+    expect(classifyYqaaProviderFailure(authLookupFailure)).toMatchObject({ kind: 'configuration', eligible: false })
+  })
+
+  it('does not spend recovery budget or try another provider after auth settings fail', async () => {
+    jest.resetModules()
+    const authFailure = Object.assign(new Error('SuperGrok authentication is temporarily unavailable'), { name: 'AssistantAuthResolutionError' })
+    const callSystemSuperGrok = jest.fn(async () => { throw authFailure })
+    const refreshAiVault = jest.fn(async () => ['DEEPSEEK_API_KEY'])
+    const resolveDeepseekFirstPartyApiKey = jest.fn(() => 'synthetic-fallback-key')
+    jest.doMock('@/lib/superGrokAssistant', () => ({ callSystemSuperGrok }))
+    jest.doMock('@/lib/contentAiRegistry', () => ({ DEEPSEEK_V41_FLASH_PIN: 'deepseek-v41-flash', resolveDeepseekFirstPartyApiKey, adapterFor: jest.fn() }))
+    jest.doMock('@/lib/contentAiProviderCore', () => ({ refreshAiVault }))
+    process.env.YQAA_PRIMARY_PROVIDER = 'grok'
+    process.env.YQAA_FALLBACK_PROVIDER = 'deepseek-v41-flash'
+    try {
+      const { generateYqaaAnswer } = await import('@/lib/yqaaGeneration')
+      await expect(generateYqaaAnswer('public system', [{ role: 'user', content: 'question' }])).rejects.toMatchObject({ name: 'AssistantAuthResolutionError' })
+      expect(callSystemSuperGrok).toHaveBeenCalledTimes(1)
+      expect(refreshAiVault).not.toHaveBeenCalled()
+      expect(resolveDeepseekFirstPartyApiKey).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.YQAA_PRIMARY_PROVIDER
+      delete process.env.YQAA_FALLBACK_PROVIDER
+      jest.dontMock('@/lib/superGrokAssistant')
+      jest.dontMock('@/lib/contentAiRegistry')
+      jest.dontMock('@/lib/contentAiProviderCore')
+    }
   })
 
   it('retries Grok once with a compact prompt when optional fallback has no credential', async () => {

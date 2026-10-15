@@ -1,4 +1,4 @@
-const { counterofferAcknowledged, orientationAddressesContext, exactSyntheticCounterApproval, runIndependentCategories } = require('../scripts/yqaa-acceptance-assertions.cjs')
+const { counterofferAcknowledged, orientationAddressesContext, containsMechanicalOrientationCopy, exactSyntheticCounterApproval, runIndependentCategories } = require('../scripts/yqaa-acceptance-assertions.cjs')
 
 describe('category-aware YQAA orientation', () => {
   test.each([
@@ -12,6 +12,12 @@ describe('category-aware YQAA orientation', () => {
   test('rejects unrelated or unknown category vocabulary', () => {
     expect(orientationAddressesContext('academic-writing', 'I can help organize your university documents.')).toBe(false)
     expect(orientationAddressesContext('unknown', 'I can help with your essay.')).toBe(false)
+  })
+
+  test('rejects the robotic opening and Marketplace-price fallback', () => {
+    expect(containsMechanicalOrientationCopy('I’m YQAA, an AI assistant. I can help you through this one step at a time.')).toBe(true)
+    expect(containsMechanicalOrientationCopy('I don’t have enough verified Marketplace pricing for this exact scope.')).toBe(true)
+    expect(containsMechanicalOrientationCopy('Let’s compare the residence routes and the documents you may need.')).toBe(false)
   })
 })
 

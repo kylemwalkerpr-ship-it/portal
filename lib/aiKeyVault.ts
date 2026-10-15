@@ -254,10 +254,8 @@ export interface AiSettings {
 }
 
 function sb() {
-  // Supabase now issues `sb_secret_...` keys, but supabase-js v2 only
-  // accepts legacy JWT keys. Use the centralized resolver so the vault panel
-  // and runtime overlay do not fail silently when the service key format
-  // changes; the legacy service/anon key is selected when available.
+  // Use the centralized resolver so the vault panel and runtime overlay
+  // consistently prefer a modern secret API key or legacy service-role JWT.
   const key = resolveSupabaseKey()
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key!)
 }
@@ -294,15 +292,21 @@ export async function getVaultKeys(force = false): Promise<VaultKeyRow[]> {
   return vaultCache
 }
 
-export async function getAiSettings(force = false): Promise<AiSettings> {
+export async function getAiSettings(
+  force = false,
+  options: { signal?: AbortSignal; throwOnError?: boolean } = {},
+): Promise<AiSettings> {
   if (!force && settingsCache && Date.now() - settingsCacheAt < VAULT_TTL_MS) {
     return settingsCache
   }
-  const { data, error } = await sb()
+  let query = sb()
     .from('ai_settings')
     .select('key, value')
+  if (options.signal) query = query.abortSignal(options.signal)
+  const { data, error } = await query
   if (error) {
-    console.warn('[aiKeyVault] settings read failed', error.message)
+    console.warn('[aiKeyVault] settings read failed')
+    if (options.throwOnError && !settingsCache) throw new Error('AI settings are temporarily unavailable')
     return settingsCache ?? {}
   }
   const out: AiSettings = {}
@@ -535,21 +539,30 @@ export async function listLegacyVaultRows(): Promise<LegacyVaultRow[]> {
     }))
 }
 
-export async function setAiSetting(key: string, value: string, updatedBy = 'admin'): Promise<void> {
+export async function setAiSetting(
+  key: string,
+  value: string,
+  updatedBy = 'admin',
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
   if (!key.trim()) throw new Error('Setting key required')
-  const { error } = await sb()
+  let query = sb()
     .from('ai_settings')
     .upsert(
       { key: key.trim(), value: String(value).trim(), updated_by: updatedBy, updated_at: new Date().toISOString() },
       { onConflict: 'key' },
     )
+  if (options.signal) query = query.abortSignal(options.signal)
+  const { error } = await query
   if (error) throw new Error(error.message)
   settingsCache = null
 }
 
-export async function deleteAiSetting(key: string): Promise<void> {
+export async function deleteAiSetting(key: string, options: { signal?: AbortSignal } = {}): Promise<void> {
   if (!key.trim()) throw new Error('Setting key required')
-  const { error } = await sb().from('ai_settings').delete().eq('key', key.trim())
+  let query = sb().from('ai_settings').delete().eq('key', key.trim())
+  if (options.signal) query = query.abortSignal(options.signal)
+  const { error } = await query
   if (error) throw new Error(error.message)
   settingsCache = null
 }

@@ -9,6 +9,7 @@
  * - Human Take over / admin intervention pauses AI
  */
 import { firstBudgetLimitExplanation } from '@/lib/messengerBudgetContinuation'
+import type { AiSettings } from '@/lib/aiKeyVault'
 import { replayProviderPublicProfile } from '@/lib/messengerProviderVoice'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
@@ -84,6 +85,7 @@ const DEBOUNCE_MS = 8_000
 const REPLY_COOLDOWN_MS = 4_000
 const RESPONSES_TIMEOUT_MS = 18_000
 const CHAT_TIMEOUT_MS = 10_000
+const AUTH_RESOLUTION_TIMEOUT_MS = 7_000
 // Main work27s + independent diagnostics2s stays below the30s background lifetime.
 export const DM_AUTOREPLY_RUNTIME_BUDGET_MS = YQAA_DM_AUTOREPLY_RUNTIME_BUDGET_MS
 const AUTH_CACHE_TTL_MS = 120_000
@@ -108,6 +110,7 @@ export type MessengerProviderFailure = 'provider_timeout' | 'provider_auth' | 'p
 
 export function providerFailureCategory(err: unknown): MessengerProviderFailure {
   const text = String(err instanceof Error ? `${err.name} ${err.message}` : err).toLowerCase()
+  if (/messengerauthresolutionerror|assistantauthresolutionerror/.test(text)) return 'provider_unavailable'
   if (/abort|timed?\s*out|timeout|deadline|etimedout/.test(text)) return 'provider_timeout'
   const status = text.match(/(?:^|\D)(400|401|403|408|409|422|425|429|5\d\d)(?:\D|$)/)?.[1]
   if (status === '408') return 'provider_timeout'
@@ -125,7 +128,7 @@ type DmAutoReplyRuntime = {
   triggerMessageId: string | null
   remainingMs(): number
   providerRemainingMs(): number
-  markStage(stage: string): Promise<void>
+  markStage(stage: string): Promise<boolean>
 }
 
 export function normalizeAiMode(raw: unknown): AiMode {
@@ -191,7 +194,7 @@ async function recordAiDiagnostic(
   expectedRunTriggerMessageId?: string | null,
   startRun = false,
   abortSignal?: AbortSignal,
-) {
+): Promise<boolean> {
   try {
     let query = db.rpc('patch_yqaa_runtime_diagnostic', {
       p_conversation_id: conversationId,
@@ -200,10 +203,12 @@ async function recordAiDiagnostic(
       p_start_run: startRun,
     })
     if (abortSignal && typeof query.abortSignal === 'function') query = query.abortSignal(abortSignal)
-    const { error } = await query
+    const { data, error } = await query
     if (error) throw error
+    return data === true
   } catch (err) {
     console.warn('[messengerAi] recordAiDiagnostic failed')
+    return false
   }
 }
 
@@ -211,55 +216,84 @@ export type MessengerGrokAuth = {
   apiKey: string
   baseURL: string
   model: string
-  authMode: 'supergrok' | 'vault' | 'env'
+  authMode: 'supergrok'
 }
 
-export async function resolveMessengerGrokAuth(): Promise<MessengerGrokAuth> {
-  let vaultOverlay: Record<string, string> = {}
+export class MessengerAuthResolutionError extends Error {
+  constructor() {
+    super('SuperGrok authentication is temporarily unavailable')
+    this.name = 'MessengerAuthResolutionError'
+  }
+}
+
+async function resolveMessengerGrokAuthInternal(signal?: AbortSignal): Promise<MessengerGrokAuth> {
+  signal?.throwIfAborted()
+  let settings: AiSettings
   try {
-    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
-    vaultOverlay = await buildVaultEnvOverrides(false)
+    const { getAiSettings } = await import('@/lib/aiKeyVault')
+    settings = await getAiSettings(false, { signal, throwOnError: true })
   } catch (err) {
-    console.warn('[messengerAi] AI Key Vault overlay unavailable')
+    if (signal?.aborted) throw signal.reason || err
+    throw new MessengerAuthResolutionError()
   }
 
-  const model =
-    process.env.MESSENGER_AI_MODEL?.trim() ||
-    vaultOverlay.XAI_MODEL?.trim() ||
-    process.env.XAI_MODEL?.trim() ||
-    XAI_DEFAULT_MODEL
-  const baseURL = (
-    vaultOverlay.XAI_BASE_URL?.trim() ||
-    process.env.XAI_BASE_URL?.trim() ||
-    XAI_API_BASE_DEFAULT
-  ).replace(/\/+$/, '')
-
   try {
-    const oauth = await ensureSuperGrokAccessToken()
+    const oauth = await ensureSuperGrokAccessToken({ settings, signal })
     if (oauth?.accessToken) {
-      // Same public API YQAA already uses. Never inherit a vault/env
-      // XAI_BASE_URL that still points at the Portal CLI self-shim.
-      return { apiKey: oauth.accessToken, baseURL: XAI_API_BASE_DEFAULT, model, authMode: 'supergrok' }
+      // YQAA uses the subscription session only. Developer API keys are
+      // metered separately and are deliberately not a recovery credential.
+      return { apiKey: oauth.accessToken, baseURL: XAI_API_BASE_DEFAULT, model: XAI_DEFAULT_MODEL, authMode: 'supergrok' }
     }
   } catch (err) {
-    console.warn('[messengerAi] SuperGrok OAuth unavailable')
+    if (signal?.aborted) throw signal.reason || err
+    throw new MessengerAuthResolutionError()
   }
 
-  const vaultKey = vaultOverlay.XAI_API_KEY?.trim() || ''
-  if (vaultKey) return { apiKey: vaultKey, baseURL, model, authMode: 'vault' }
-
-  const apiKey = process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
-  if (!apiKey) {
-    throw new Error(
-      'Grok is not configured for messenger AI. Connect SuperGrok in Content Studio (primary), or set XAI_API_KEY / GROK_API_KEY as fallback.',
-    )
-  }
-  return { apiKey, baseURL, model, authMode: 'env' }
+  throw new MessengerAuthResolutionError()
 }
 
-async function resolveGrokAuth(force = false): Promise<MessengerGrokAuth> {
+export async function resolveMessengerGrokAuth(options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<MessengerGrokAuth> {
+  const controller = new AbortController()
+  const abortFromParent = () => controller.abort(options.signal?.reason || new DOMException('Aborted', 'AbortError'))
+  if (options.signal?.aborted) abortFromParent()
+  else options.signal?.addEventListener('abort', abortFromParent, { once: true })
+  let timedOut = false
+  const requestedTimeout = options.timeoutMs ?? AUTH_RESOLUTION_TIMEOUT_MS
+  const timeoutMs = Number.isFinite(requestedTimeout)
+    ? Math.max(1, Math.min(AUTH_RESOLUTION_TIMEOUT_MS, requestedTimeout))
+    : AUTH_RESOLUTION_TIMEOUT_MS
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new DOMException('YQAA auth settings lookup timed out', 'TimeoutError'))
+  }, timeoutMs)
+  let rejectOnAbort: () => void = () => {}
+  try {
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => reject(controller.signal.reason || new DOMException('Aborted', 'AbortError'))
+      if (controller.signal.aborted) rejectOnAbort()
+      else controller.signal.addEventListener('abort', rejectOnAbort, { once: true })
+    })
+    return await Promise.race([resolveMessengerGrokAuthInternal(controller.signal), aborted])
+  } catch (err) {
+    if (options.signal?.aborted) throw options.signal.reason || err
+    if (timedOut) throw new MessengerAuthResolutionError()
+    throw err
+  } finally {
+    clearTimeout(timer)
+    controller.signal.removeEventListener('abort', rejectOnAbort)
+    options.signal?.removeEventListener('abort', abortFromParent)
+  }
+}
+
+async function resolveGrokAuth(force = false, signal?: AbortSignal, remainingMs?: () => number): Promise<MessengerGrokAuth> {
   if (!force && authCache && authCache.expiresAt > Date.now()) return authCache.value
-  const value = await resolveMessengerGrokAuth()
+  signal?.throwIfAborted()
+  const remaining = remainingMs?.()
+  const authBudget = Number.isFinite(remaining)
+    ? Math.max(1, Math.min(AUTH_RESOLUTION_TIMEOUT_MS, Number(remaining)))
+    : AUTH_RESOLUTION_TIMEOUT_MS
+  const value = await resolveMessengerGrokAuth({ signal, timeoutMs: authBudget })
+  signal?.throwIfAborted()
   authCache = { value, expiresAt: Date.now() + AUTH_CACHE_TTL_MS }
   return value
 }
@@ -272,6 +306,7 @@ IDENTITY:
 - A role label is not evidence of licensure or availability. Do not describe the provider as licensed, available, present, or reviewing unless verified current evidence supplies that fact. Provider attention remains requested/pending until a real human reply; when availability is unconfirmed, point to official support.
 - First reply only (or after genuine identity confusion): disclose naturally that you are YQAA and AI-powered. Do NOT repeat that disclosure every turn.
 - Never expose the underlying model/provider/authentication stack.
+- Do not use stock reassurance such as “one step at a time,” “happy to keep this moving,” or “whenever you want a concrete offer.” For a first orientation, respond to one detail they shared, offer one useful point, then ask one focused question.
 
 PROVIDER-AWARE CONVERSATION:
 - You have your own consistent character: attentive, calm, practical, and warm. Speak naturally as this provider’s personal assistant, while keeping your own disclosed YQAA identity. Never impersonate the provider, claim to be human, or invent personal experiences.
@@ -451,6 +486,16 @@ export function canUseSafeFirstLegalOrientation(args: {
     !args.explicitBuyIntent && hardReasons.length === 0
 }
 
+/** First-turn legal orientation must contain useful, grounded substance and avoid canned bot phrasing. */
+export function usefulFirstLegalOrientationReply(reply: string): boolean {
+  const text = String(reply || '').replace(/\*\*/g, '').trim()
+  if (!text || /I don[’']t have enough reliable information here to answer that safely/i.test(text)) return false
+  if (/\b(?:one step at a time|happy to keep this moving|whenever you want a concrete offer|rough budget range in USD|I don[’']t have enough verified Marketplace pricing)\b/i.test(text)) return false
+  const relevant = /\b(pathways?|sponsorship|residen(?:ce|cy)|citizenship|immigration|marriage|documents?|jurisdiction)\b/i.test(text)
+  const actionable = /\b(gather|organize|prepare|check|clarify|compare|confirm|which|whether|do you mean|start by)\b/i.test(text)
+  return text.length >= 160 && relevant && actionable
+}
+
 /** Honest provider-review response for an explicit counter the server cannot authorize. */
 export function counterNeedsProviderReviewReply(counterCents: number, currency: string, providerLabel = 'the provider') {
   const code = /^[a-z]{3}$/i.test(String(currency || '')) ? String(currency).toUpperCase() : 'USD'
@@ -605,7 +650,7 @@ async function postJson(
 }
 
 async function callGrokChat(args: { system: string; user: string; conversationId: string; signal?: AbortSignal; remainingMs?: () => number }): Promise<string> {
-  let auth = await resolveGrokAuth()
+  let auth = await resolveGrokAuth(false, args.signal, args.remainingMs)
   const headers = () => ({
     Authorization: `Bearer ${auth.apiKey}`,
     'Content-Type': 'application/json',
@@ -643,7 +688,7 @@ async function callGrokChat(args: { system: string; user: string; conversationId
     responseStatus = result.response.status
     if (AUTH_FAILURE_STATUS.has(result.response.status)) {
       authCache = null
-      auth = await resolveGrokAuth(true)
+      auth = await resolveGrokAuth(true, args.signal, args.remainingMs)
       result = await postJson(
         `${auth.baseURL}/responses`,
         {
@@ -1699,7 +1744,7 @@ export async function maybeAutoReply(opts: {
       // ── Polish stage (rules first; one regeneration; then a safe template) ──
       const allowedAmounts = companionAllowedAmounts(adaptive, approvedOffer)
       const polish = await polishMessengerDraft({
-        mandatoryHandoff: insufficientEvidenceHandoff || counterReviewRequired, budget: pricing.budget,
+        mandatoryHandoff: insufficientEvidenceHandoff || counterReviewRequired || safeFirstLegalOrientation, budget: pricing.budget,
         input: {
           reply: replyText,
           posture: budgetLimitExplanation ? 'EDUCATE' : replyCompanion?.posture ?? null,
@@ -1743,9 +1788,21 @@ export async function maybeAutoReply(opts: {
       }
 
       if (!replyText) return { replied: false, skipped: 'empty_reply', aiMode }
+      if (safeFirstLegalOrientation && !decision.escalate && !providerReview && !usefulFirstLegalOrientationReply(replyText)) {
+        replyText = insufficientEvidenceOrientationReply({
+          latestClientText: String(latestClientText || ''),
+          recentClientContext: msgs.filter((message: any) => message.sender_id === client.id).slice(-8).map((message: any) => String(message.body || '')).join('\n'),
+          providerLabel,
+          budget: pricing.budget,
+          disclose: !disclosed,
+        })
+        decision.reply = replyText
+        decision.offer = null
+        approvedOffer = null
+      }
       if (!disclosed && !/ai-powered|ai assistant|artificial intelligence|i[’']?m an ai|i am an ai|automated assistant/i.test(replyText)) {
         const introducedName = msgs.filter((message: any) => message.sender_id === client.id).map((message: any) => String(message.body || '')).join('\n').match(/\bmy name is\s+([a-z][a-z’'-]{1,39})\b/i)?.[1]
-        replyText = `Hi${introducedName ? ` ${introducedName}` : ''} — I’m **YQAA**, YouSafe’s Quick Assistance Agent. I’m an AI, and I can help you work through this one step at a time.\n\n${replyText}`
+        replyText = `Hi${introducedName ? ` ${introducedName}` : ''} — I’m **YQAA**, YouSafe’s AI assistant. I’m here to help you sort out the options and the next useful step.\n\n${replyText}`
       }
 
       await clearTypingBubble(db, typingId)
@@ -1859,7 +1916,9 @@ export async function maybeAutoReply(opts: {
       // commit. The failure receipt is written by scheduleAutoReply if the
       // commit misses the runtime deadline.
       if (opts.runtime) opts.runtime.stage = 'atomic_reply_commit'
-      if (opts.runtime?.signal.aborted) return { replied: false, skipped: 'runtime_deadline', aiMode }
+      if (opts.runtime?.signal.aborted || (opts.runtime && opts.runtime.remainingMs() <= 0)) {
+        return { replied: false, skipped: 'runtime_deadline', aiMode }
+      }
       const rpc = db.rpc(opts.runtime ? 'commit_yqaa_reply_with_runtime_deadline' : commitRpc, {
         p_conversation_id: opts.conversationId,
         p_trigger_message_id: triggerMessageId,
@@ -1887,6 +1946,12 @@ export async function maybeAutoReply(opts: {
         ? rpc.abortSignal(opts.runtime.signal)
         : rpc
       const { data: committedReply, error: commitError } = await pendingCommit
+      if (committedReply?.runtime_deadline_exceeded === true || commitError?.message === 'YQAA reply runtime deadline exceeded') {
+        return { replied: false, skipped: 'runtime_deadline', aiMode }
+      }
+      if (committedReply?.paused === true || commitError?.message === 'YQAA was paused before the reply commit') {
+        return { replied: false, skipped: 'paused', aiMode }
+      }
       if (commitError || !committedReply?.reply_message_id) {
           console.error('[messengerAi] atomic reply commit failed', 'atomic_persistence_failure')
         return { replied: false, skipped: 'persistence_failed', aiMode }
@@ -1919,24 +1984,28 @@ export function scheduleAutoReply(conversationId: string, triggerMessageId?: str
     remainingMs: () => deadline.remainingMs(),
     providerRemainingMs: () => deadline.providerRemainingMs(),
     async markStage(stage: string) {
-      if (runtime.signal.aborted || !runTriggerMessageId) return
+      if (runtime.signal.aborted) return false
       runtime.stage = stage
-      await recordAiDiagnostic(createSupabaseAdminClient(), conversationId, {
+      if (!runTriggerMessageId) return true
+      const accepted = await recordAiDiagnostic(createSupabaseAdminClient(), conversationId, {
         ai_last_run_status: 'running',
         ai_last_run_stage: stage,
         ai_last_run_started_at: runtime.startedAt,
       }, runTriggerMessageId, !runStarted, runtime.signal)
+      if (!runStarted && !accepted) return false
       runStarted = true
+      return true
     },
     startedAt: new Date().toISOString(),
   }
 
   const work = deadline.race((async () => {
-    await runtime.markStage('queued')
+    const claimed = await runtime.markStage('queued')
+    if (!claimed) return { replied: false, skipped: 'run_claim_not_acquired' }
     return maybeAutoReply({ conversationId, triggerMessageId, runtime })
   })())
     .then(async (result) => {
-      if (result?.replied) return result
+      if (result?.replied || result?.skipped === 'run_claim_not_acquired') return result
       const skip = result?.skipped
       if (!runTriggerMessageId) return result
       const diagnosticAbort = AbortSignal.timeout(YQAA_DM_DIAGNOSTIC_BUDGET_MS)

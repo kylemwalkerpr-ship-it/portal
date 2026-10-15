@@ -8,6 +8,7 @@ import {
   insufficientEvidenceHandoffReply,
   insufficientEvidenceOrientationReply,
   canUseSafeFirstLegalOrientation,
+  usefulFirstLegalOrientationReply,
   counterNeedsProviderReviewReply,
   explicitCounterReviewDraft,
   loadMessengerLegalEvidence,
@@ -119,6 +120,8 @@ describe('legal-buddy escalation reply', () => {
     const disclosed = insufficientEvidenceOrientationReply({ ...args, disclose: true })
     expect(disclosed).toMatch(/^Hi Taylor — I’m \*\*YQAA\*\*, an AI assistant here to help you get oriented\./)
     expect(usefulFirstOrientation(disclosed)).toBe(true)
+    expect(usefulFirstLegalOrientationReply(reply)).toBe(true)
+    expect(usefulFirstLegalOrientationReply('I’m YQAA, an AI assistant. I can help you work through this one step at a time. Happy to keep this moving. We can compare your residency routes and prepare documents to get started.')).toBe(false)
   })
 
   test('rates and a stated budget get a scoped next step without inventing a price', () => {
@@ -220,6 +223,7 @@ test('an unapproved explicit counter is acknowledged without waiting on provider
  })
 
  test.each([['model_provider_401','provider_auth'],['model_provider_400','provider_rejected'],['model_provider_408','provider_timeout'],['model_provider_429','provider_rate_limited'],['model_provider_503','provider_unavailable'],['Messenger provider attempt timed out','provider_timeout']])('classifies finite model failure%s without exposing error text',(message,category)=>{expect(providerFailureCategory(new Error(message))).toBe(category)})
+ test('classifies a SuperGrok settings lookup failure as unavailable without calling it a model timeout',()=>{const error=Object.assign(new Error('SuperGrok authentication is temporarily unavailable'),{name:'MessengerAuthResolutionError'});expect(providerFailureCategory(error)).toBe('provider_unavailable')})
 
  test('budget handoff never claims unverified licensure or an already-present provider',()=>{
  const reply=lowBudgetEscalationReply('Synthetic Provider')

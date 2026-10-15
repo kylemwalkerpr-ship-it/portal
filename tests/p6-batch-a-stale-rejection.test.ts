@@ -1140,10 +1140,13 @@ describe('K) apply requires genuine service-role authority', () => {
   const LEGACY_ANON = 'eyJhbGciOiJIUzI1NiJ9.anon'
   const SECRET_SR = 'sb_secret_current_dashboard_format'
 
-  it('accepts service-role mode with a usable legacy JWT only', () => {
+  it('accepts service-role mode with a legacy JWT or modern secret API key', () => {
     expect(
       decideP6BatchAApplyAuthority({ authMode: 'service-role', key: LEGACY_SR }),
     ).toEqual({ ok: true, key: LEGACY_SR })
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: SECRET_SR }),
+    ).toEqual({ ok: true, key: SECRET_SR })
   })
 
   it('refuses the anon/degraded fallback the read path is allowed to use', () => {
@@ -1153,12 +1156,12 @@ describe('K) apply requires genuine service-role authority', () => {
     expect(decideP6BatchAApplyAuthority({ authMode: 'missing', key: null }).ok).toBe(false)
   })
 
-  it('refuses a secret-format or blank key even in service-role mode', () => {
-    expect(
-      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: SECRET_SR }).ok,
-    ).toBe(false)
+  it('refuses a blank or unrecognized key even in service-role mode', () => {
     expect(
       decideP6BatchAApplyAuthority({ authMode: 'service-role', key: '   ' }).ok,
+    ).toBe(false)
+    expect(
+      decideP6BatchAApplyAuthority({ authMode: 'service-role', key: 'unrecognized-key' }).ok,
     ).toBe(false)
   })
 
@@ -1166,10 +1169,10 @@ describe('K) apply requires genuine service-role authority', () => {
     expect(
       resolveP6BatchAApplyAuthority({ serviceRoleKey: LEGACY_SR, anonKey: LEGACY_ANON }),
     ).toEqual({ ok: true, key: LEGACY_SR })
-    // The exact production trap: new-format service key + usable legacy anon.
+    // Modern service keys remain service-role keys even with an anon key present.
     expect(
       resolveP6BatchAApplyAuthority({ serviceRoleKey: SECRET_SR, anonKey: LEGACY_ANON }).ok,
-    ).toBe(false)
+    ).toBe(true)
     expect(
       resolveP6BatchAApplyAuthority({ serviceRoleKey: null, anonKey: LEGACY_ANON }).ok,
     ).toBe(false)

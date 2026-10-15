@@ -21,10 +21,32 @@ alter table public.inquiries add column if not exists status text;
 \ir ../../supabase/migrations/20261013170000_yqaa_provider_controls_offer_authority.sql
 \ir ../../supabase/migrations/20261013230000_yqaa_runtime_diagnostics_and_atomic_inquiry.sql
 \ir ../../supabase/migrations/20261014090000_yqaa_reply_runtime_deadline.sql
+\ir ../../supabase/migrations/20261014230000_yqaa_runtime_retry_backoff.sql
 
-insert into public.profiles(id,role,status,full_name) values ('00000000-0000-4000-8000-000000000001','client','active','Local runtime client'),('00000000-0000-4000-8000-000000000002','attorney','active','Local runtime provider') on conflict(id) do nothing;
+insert into public.profiles(id,clerk_user_id,email,role,status,full_name) values ('00000000-0000-4000-8000-000000000001','yqaa-runtime-client','runtime-client@example.invalid','client','active','Local runtime client'),('00000000-0000-4000-8000-000000000002','yqaa-runtime-provider','runtime-provider@example.invalid','attorney','active','Local runtime provider') on conflict(id) do nothing;
 
 select set_config('request.jwt.claim.role', 'service_role', true);
+
+do $test$
+declare
+  v_function regprocedure;
+begin
+  foreach v_function in array array[
+    'public.commit_yqaa_reply(uuid,uuid,jsonb,jsonb,jsonb)'::regprocedure,
+    'public.commit_yqaa_reply_with_pricing_approval(uuid,uuid,jsonb,jsonb,jsonb)'::regprocedure,
+    'public.resolve_yqaa_pricing_approval(uuid,uuid,integer,uuid,text)'::regprocedure,
+    'public.enforce_yqaa_reply_runtime_deadline()'::regprocedure
+  ] loop
+    if position('''40001''' in pg_get_functiondef(v_function)) > 0 then
+      raise exception 'permanent business rejection still uses retryable serialization code: %', v_function;
+    end if;
+    if has_function_privilege('anon', v_function, 'execute')
+       or has_function_privilege('authenticated', v_function, 'execute') then
+      raise exception 'migration exposed a service-only function: %', v_function;
+    end if;
+  end loop;
+end;
+$test$;
 
 do $test$
 declare
@@ -39,6 +61,7 @@ declare
   v_reply_count_before integer;
   v_reply_count_after integer;
   v_offer jsonb;
+  v_deadline_result jsonb;
 begin
   select c.id into v_client from public.profiles c
    where lower(c.role) in ('client','student')
@@ -67,9 +90,49 @@ begin
 
   select public.patch_yqaa_runtime_diagnostic(
     v_conversation, v_trigger_old,
-    '{"ai_last_run_status":"running","ai_last_run_stage":"queued"}', true
+    jsonb_build_object(
+      'ai_last_run_status', 'running',
+      'ai_last_run_stage', 'queued',
+      'ai_last_run_started_at', clock_timestamp()
+    ), true
   ) into v_started;
   if v_started is distinct from true then raise exception 'first scheduled run did not acquire its trigger'; end if;
+
+  select public.patch_yqaa_runtime_diagnostic(
+    v_conversation, v_trigger_old,
+    jsonb_build_object(
+      'ai_last_run_status', 'running',
+      'ai_last_run_stage', 'queued',
+      'ai_last_run_started_at', clock_timestamp()
+    ), true
+  ) into v_started;
+  if v_started is distinct from false then raise exception 'duplicate active trigger acquired a second run'; end if;
+
+  update public.conversations set metadata = metadata || jsonb_build_object(
+    'ai_last_run_status', 'failed', 'ai_last_run_finished_at', clock_timestamp()
+  ) where id = v_conversation;
+  select public.patch_yqaa_runtime_diagnostic(
+    v_conversation, v_trigger_old,
+    jsonb_build_object(
+      'ai_last_run_status', 'running',
+      'ai_last_run_stage', 'queued',
+      'ai_last_run_started_at', clock_timestamp()
+    ), true
+  ) into v_started;
+  if v_started is distinct from false then raise exception 'failed trigger bypassed its retry backoff'; end if;
+
+  update public.conversations set metadata = metadata || jsonb_build_object(
+    'ai_last_run_finished_at', clock_timestamp() - interval '61 seconds'
+  ) where id = v_conversation;
+  select public.patch_yqaa_runtime_diagnostic(
+    v_conversation, v_trigger_old,
+    jsonb_build_object(
+      'ai_last_run_status', 'running',
+      'ai_last_run_stage', 'queued',
+      'ai_last_run_started_at', clock_timestamp()
+    ), true
+  ) into v_started;
+  if v_started is distinct from true then raise exception 'failed trigger could not retry after its backoff'; end if;
 
   -- Human pause races after the run starts. The diagnostic patch must merge
   -- against the locked current row and cannot write the stale `auto` snapshot.
@@ -123,8 +186,8 @@ begin
       '{"ai_last_run_status":"completed"}'::jsonb
     );
     raise exception 'paused reply RPC unexpectedly committed';
-  exception when sqlstate '40001' then
-    null;
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'YQAA was paused before the reply commit' then raise; end if;
   end;
   select count(*) into v_count_after from public.inquiries
    where client_profile_id = v_client and target_attorney_profile_id = v_provider;
@@ -150,8 +213,8 @@ begin
       '{"ai_last_run_status":"completed"}'::jsonb
     );
     raise exception 'expired reply transaction unexpectedly committed';
-  exception when sqlstate '40001' then
-    null;
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'YQAA reply runtime deadline exceeded' then raise; end if;
   end;
   select count(*) into v_count_after from public.inquiries
    where client_profile_id = v_client and target_attorney_profile_id = v_provider;
@@ -159,6 +222,27 @@ begin
    where conversation_id = v_conversation and trigger_message_id = v_trigger_new;
   if v_count_after <> v_count_before or v_reply_count_after <> v_reply_count_before then
     raise exception 'expired reply left a durable inquiry or reply commit';
+  end if;
+
+  select public.commit_yqaa_reply_with_runtime_deadline(
+    v_conversation,
+    v_trigger_new,
+    jsonb_build_object('sender_id', v_provider, 'body', 'expired before RPC'),
+    null,
+    '{}'::jsonb,
+    clock_timestamp() - interval '1 second',
+    'commit_yqaa_reply'
+  ) into v_deadline_result;
+  if v_deadline_result->>'runtime_deadline_exceeded' is distinct from 'true'
+     or v_deadline_result->>'reply_message_id' is not null then
+    raise exception 'expired runtime wrapper did not return a classified no-op';
+  end if;
+  select count(*) into v_count_after from public.inquiries
+   where client_profile_id = v_client and target_attorney_profile_id = v_provider;
+  select count(*) into v_reply_count_after from public.yqaa_reply_commits
+   where conversation_id = v_conversation and trigger_message_id = v_trigger_new;
+  if v_count_after <> v_count_before or v_reply_count_after <> v_reply_count_before then
+    raise exception 'expired runtime wrapper wrote a reply or inquiry';
   end if;
 end
 $test$;
