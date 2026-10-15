@@ -22,6 +22,7 @@ async function setup(opts: {
   evidenceHang?: boolean
   evidenceDelayMs?: number
   webHang?: boolean
+  webDelayMs?: number
   supportHang?: boolean
   decisionRecordHang?: boolean
 } = {}) {
@@ -42,7 +43,10 @@ async function setup(opts: {
     })
     : opts.webError
     ? async () => { throw new Error('web unavailable') }
-    : async () => opts.web ?? [])
+    : async () => {
+      if (opts.webDelayMs) await new Promise<void>(resolve => setTimeout(resolve, opts.webDelayMs))
+      return opts.web ?? []
+    })
   const generateYqaaAnswer = jest.fn(async (_system?: string, _turns?: unknown, input?: { signal?: AbortSignal }) => {
     if (opts.generationHang) return await new Promise<any>((_resolve, reject) => input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), { once: true }))
     if (opts.generationFailure) {
@@ -228,16 +232,43 @@ describe('YQAA final evidence ladder', () => {
     jest.useFakeTimers()
     const flow = await setup({ confidence: 0.2, jev: [weakJev()], webHang: true })
     const pending = flow.ask('Please compare general public service information for me')
-    await jest.advanceTimersByTimeAsync(6_501)
+    await jest.advanceTimersByTimeAsync(25_501)
     const result = await pending
     jest.useRealTimers()
     const webSignal = (flow.researchYqaaPublicWeb.mock.calls as any[][])[0][2].signal as AbortSignal
     expect(webSignal.aborted).toBe(true)
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
     expect(result.status).toBe(200)
-    expect(result.headers.get('Server-Timing')).toMatch(/web;dur=6000;desc="timeout"/)
+    expect(result.headers.get('Server-Timing')).toMatch(/web;dur=25000;desc="timeout"/)
     expect(result.headers.get('Server-Timing')).toMatch(/model;dur=\d+;desc="ok"/)
     expect(result.body.reply).toContain('General answer from evidence.')
+  })
+
+  test('a subscription search finishing after twenty seconds contributes cited evidence', async () => {
+    jest.useFakeTimers()
+    const official = { ...kbChunk('official-web'), sourceKey: 'xai:web_search', sourceUrl: 'https://www.uscis.gov/opt' }
+    const flow = await setup({ webDelayMs: 20_000, web: [official], jev: [clearJev(), clearJev()] })
+    const pending = flow.ask('What is the latest official OPT guidance?')
+    await jest.advanceTimersByTimeAsync(20_501)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(result.headers.get('Server-Timing')).toMatch(/web;dur=20000;desc="ok"/)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  test('slow knowledge retrieval reduces the search allowance and preserves synthesis time', async () => {
+    jest.useFakeTimers()
+    const flow = await setup({ confidence: 0.2, evidenceDelayMs: 10_000, webHang: true, jev: [weakJev()] })
+    const pending = flow.ask('Please compare general public service information for me')
+    await jest.advanceTimersByTimeAsync(30_501)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(result.headers.get('Server-Timing')).toMatch(/web;dur=20000;desc="timeout"/)
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+    expect((flow.researchYqaaPublicWeb.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
   })
 
   test('failure timing names completed and failed stages without echoing request text', async () => {

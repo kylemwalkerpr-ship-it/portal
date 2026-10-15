@@ -474,7 +474,7 @@ export async function callSystemSuperGrokWebSearch(
       body: JSON.stringify({
         model: selectedAuth.model,
         input: [
-          { role: 'system', content: 'Research this public general question using web search. Use primary/official sources for regulated or YMYL topics. Summarize only verifiable facts from the requested jurisdiction. Cite source URLs. Do not give personalized legal advice or infer private facts.' },
+          { role: 'system', content: 'Make one focused web search for this public general question. Use primary/official sources for regulated or YMYL topics. Return at most two short, verifiable facts from the requested jurisdiction, each with its source URL. Do not do follow-up searches or write a full answer; a separate step writes the reply. Do not give personalized legal advice or infer private facts.' },
           { role: 'user', content: question },
         ],
         tools: [{ type: 'web_search', ...(allowedDomains?.length ? { filters: { allowed_domains: allowedDomains.slice(0, 5) } } : {}) }],
@@ -484,7 +484,7 @@ export async function callSystemSuperGrokWebSearch(
         tool_choice: 'required',
         include: ['web_search_call.action.sources'],
         reasoning: { effort: 'low' },
-        max_output_tokens: 900,
+        max_output_tokens: 300,
         store: false,
       }),
     },
