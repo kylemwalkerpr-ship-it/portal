@@ -2,6 +2,18 @@ describe('YQAA xAI web-search transport', () => {
   const originalFetch = global.fetch
   const originalKey = process.env.XAI_API_KEY
 
+  test('keeps the factual sentence when live citations follow a bare source URL', async () => {
+    const { parseSystemWebSearchResponse } = await import('@/lib/superGrokAssistant')
+    const url = 'https://www.uscis.gov/opt'
+    const fact = 'Eligible F-1 students may apply for OPT employment authorization.'
+    const text = `${fact} ${url}[[1]](${url})`
+    const parsed = parseSystemWebSearchResponse(JSON.stringify({ output: [
+      { type: 'web_search_call', action: { sources: [{ type: 'url', url }] } },
+      { type: 'message', content: [{ type: 'output_text', text, annotations: [{ type: 'url_citation', url, start_index: text.indexOf('[[1]]') }] }] },
+    ] }))
+    expect(parsed.sources).toEqual([expect.objectContaining({ url, snippet: fact })])
+  })
+
   afterEach(() => {
     global.fetch = originalFetch
     if (originalKey === undefined) delete process.env.XAI_API_KEY

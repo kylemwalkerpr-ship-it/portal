@@ -13,9 +13,16 @@ const OFFICIAL_DOMAINS: Record<string, string[]> = {
 const ORIGIN_JURISDICTION: Record<string, string> = {
   australia: 'Australia', canada: 'Canada', uk: 'United Kingdom', usa: 'United States',
 }
+const REGULATED_QUERY = /\b(legal|law|visa|immigrat|permit|housing|tenant|landlord|evict|regulat|rule|requirement|eligib|tax|health|medical|current|latest|today)\w*/i
 
 export function yqaaNeedsFreshWebResearch(query: string): boolean {
   return /\b(?:latest|current|currently|today|recent|recently|newest|up[- ]to[- ]date|as of|right now|search (?:the )?web|search online|look (?:it )?up|check (?:the )?web|verify online)\b/i.test(String(query || ''))
+}
+
+/** A question checklist needs general guidance, not a live factual lookup. */
+export function yqaaIsEvergreenProviderGuidance(query: string): boolean {
+  return !yqaaNeedsFreshWebResearch(query) && !REGULATED_QUERY.test(query) &&
+    /\bwhat questions\b.*\b(?:ask|before)\b/i.test(query) && /\b(?:providers?|services?)\b/i.test(query)
 }
 
 function scopedOfficialDomains(query: string, jurisdiction: string | null): string[] | undefined {
@@ -31,7 +38,7 @@ function scopedOfficialDomains(query: string, jurisdiction: string | null): stri
 
 export function yqaaResearchScope(query: string, hostname?: string | null) {
   const jurisdiction = explicitYqaaJurisdiction(query) || ORIGIN_JURISDICTION[yqaaOriginSite(hostname) || ''] || null
-  const regulated = /\b(legal|law|visa|immigrat|permit|housing|tenant|landlord|evict|regulat|rule|requirement|eligib|tax|health|medical|current|latest|today)\w*/i.test(query)
+  const regulated = REGULATED_QUERY.test(query)
   return {
     jurisdiction,
     officialOnly: regulated,

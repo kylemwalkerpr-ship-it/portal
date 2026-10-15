@@ -370,7 +370,10 @@ export type SystemWebSearchSource = {
 }
 
 function sentenceBefore(text: string, index: number): string {
+  // Some live responses put a bare source URL between the factual sentence
+  // and its annotation. That URL alone is not the cited factual excerpt.
   const before = text.slice(Math.max(0, index - 900), Math.max(0, index))
+    .replace(/(?:\s*https:\/\/[^\s]+)+\s*$/, '').trimEnd()
   return before.split(/(?<=[.!?])\s+/).at(-1)?.trim() || before.trim()
 }
 

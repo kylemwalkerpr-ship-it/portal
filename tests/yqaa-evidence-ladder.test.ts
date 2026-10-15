@@ -96,6 +96,22 @@ async function setup(opts: {
 }
 
 describe('YQAA final evidence ladder', () => {
+  test('a general provider question checklist does not wait for an unrelated live search', async () => {
+    const flow = await setup({ confidence: 0.2, jev: [weakJev()] })
+    const result = await flow.ask('For a public service listing, what questions should someone ask before choosing a provider?')
+    expect(result.status).toBe(200)
+    expect(flow.researchYqaaPublicWeb).not.toHaveBeenCalled()
+    expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    'What questions should I ask a provider about the latest requirements?',
+    'What questions should I ask a provider about visa eligibility?',
+  ])('current and regulated provider questions still require research: %s', async query => {
+    const flow = await setup({ confidence: 0.2, jev: [weakJev()] })
+    await flow.ask(query)
+    expect(flow.researchYqaaPublicWeb).toHaveBeenCalledTimes(1)
+  })
   test('freshness-sensitive latest OPT question forces official web research even with a high-confidence fresh KB', async () => {
     const official = { ...kbChunk('official-web'), id: 'opt-web', sourceKey: 'xai:web_search',
       sourceUrl: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students',
@@ -138,9 +154,9 @@ describe('YQAA final evidence ladder', () => {
     const result = await flow.ask('What are the latest OPT updates for F-1 students?')
     expect(result.status).toBe(200)
     expect(result.body.provider).toBe('system-ai-live-evidence')
-    expect(result.body.reply).toContain('Live web research succeeded')
+    expect(result.body.reply).toContain('Here’s what I found')
     expect(result.body.reply).toContain(official.sourceUrl)
-    expect(result.body.reply).toContain('model-synthesis issue')
+    expect(result.body.reply).not.toMatch(/model-synthesis|answer-synthesis|retry the question/i)
     expect(result.body.reply).not.toMatch(/can(?:not|'t) search|web access.*unavailable/i)
     expect(result.body.handoff).toBeUndefined()
     expect(flow.escalateToSupport).not.toHaveBeenCalled()
@@ -269,6 +285,21 @@ describe('YQAA final evidence ladder', () => {
     expect(result.headers.get('Server-Timing')).toMatch(/web;dur=20000;desc="timeout"/)
     expect(flow.generateYqaaAnswer).toHaveBeenCalledTimes(1)
     expect((flow.researchYqaaPublicWeb.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
+  })
+
+  test('slow synthesis returns verified cited facts before the request deadline', async () => {
+    jest.useFakeTimers()
+    const official = { ...kbChunk('official-web'), sourceKey: 'xai:web_search', sourceUrl: 'https://www.uscis.gov/opt' }
+    const flow = await setup({ webDelayMs: 20_000, web: [official], generationHang: true, jev: [clearJev(), clearJev()] })
+    const pending = flow.ask('What is the latest official OPT guidance?')
+    await jest.advanceTimersByTimeAsync(41_501)
+    const result = await pending
+    jest.useRealTimers()
+    expect(result.status).toBe(200)
+    expect(result.body.reply).toContain(official.sourceUrl)
+    expect(result.body.reply).toContain('Here’s what I found')
+    expect(result.body.reply).not.toMatch(/model|synthesis|internal|retry/i)
+    expect((flow.generateYqaaAnswer.mock.calls as any[][])[0][2].signal.aborted).toBe(true)
   })
 
   test('failure timing names completed and failed stages without echoing request text', async () => {
