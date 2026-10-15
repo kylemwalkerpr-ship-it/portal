@@ -36,7 +36,11 @@ const VIEWER_CONTEXT_BUDGET_MS = 1_500
 const PUBLIC_YQAA_DEADLINE_MS = 42_000
 const KNOWLEDGE_STAGE_BUDGET_MS = 12_000
 const JEV_STAGE_BUDGET_MS = 1_500
-const WEB_STAGE_BUDGET_MS = 6_000
+// Subscription searches measured 18–21s in production. Leave synthesis time
+// inside the existing whole-request deadline rather than guaranteeing that
+// every successful search is cancelled at six seconds.
+const WEB_STAGE_BUDGET_MS = 25_000
+const WEB_SYNTHESIS_RESERVE_MS = 12_000
 const CONTEXT_STAGE_BUDGET_MS = 500
 const MODEL_STAGE_BUDGET_MS = YQAA_GENERATION_BUDGET_MS
 
@@ -440,7 +444,8 @@ export async function POST(req: Request) {
         (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
       const webStage = startStage('web')
       try {
-        const webChunks = await runBoundedStage(deadline, 'web', WEB_STAGE_BUDGET_MS, (signal) =>
+        const webBudgetMs = Math.max(1, Math.min(WEB_STAGE_BUDGET_MS, deadline.remainingMs() - WEB_SYNTHESIS_RESERVE_MS))
+        const webChunks = await runBoundedStage(deadline, 'web', webBudgetMs, (signal) =>
           researchYqaaPublicWeb(lastUser.content, inquiryOrigin.hostname, { signal }),
         )
         finishStage(webStage, webChunks.length ? 'ok' : 'failed')
