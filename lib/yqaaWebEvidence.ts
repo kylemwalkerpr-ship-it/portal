@@ -70,15 +70,11 @@ export function buildYqaaVerifiedWebDigest(
     const url = String(chunk.sourceUrl || chunk.source)
     const title = compactExcerpt(chunk.title || new URL(url).hostname, 220)
     const excerpt = compactExcerpt(chunk.body, 260)
-    return `- **${title}** — [${new URL(url).hostname}](${url})${excerpt ? `\n  Retrieved evidence: ${excerpt}${String(chunk.body || '').replace(/\\s+/g, ' ').trim().length > 260 ? '…' : ''}` : ''}`
+    return `- **${title}** — [${new URL(url).hostname}](${url})${excerpt ? `\n  ${excerpt}${String(chunk.body || '').replace(/\\s+/g, ' ').trim().length > 260 ? '…' : ''}` : ''}`
   }).join('\n')
   return [
-    '**Live web research succeeded.** I retrieved current public sources for this request, but the answer-synthesis model did not complete reliably enough for me to turn them into a confident narrative answer.',
-    '',
-    'Rather than invent or overstate anything, here are the live sources and the bounded evidence I verified:',
+    'Here’s what I found in the public sources:',
     sources,
-    '',
-    'You can retry the question for a synthesized YQAA answer. This is a model-synthesis issue, not a web-access limitation.',
   ].join('\n')
 }
 

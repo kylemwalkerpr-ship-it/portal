@@ -82,7 +82,6 @@ export type AiMode = 'auto' | 'paused' | 'off'
 const PROVIDER_ROLES = new Set(['attorney', 'consultant'])
 const CLIENT_ROLES = new Set(['client', 'student'])
 const DEBOUNCE_MS = 8_000
-const REPLY_COOLDOWN_MS = 4_000
 const RESPONSES_TIMEOUT_MS = 18_000
 const CHAT_TIMEOUT_MS = 10_000
 const AUTH_RESOLUTION_TIMEOUT_MS = 7_000
@@ -1261,9 +1260,9 @@ export async function maybeAutoReply(opts: {
     if (!opts.force && lastMsg.sender_id !== client.id) return { replied: false, skipped: 'last_not_client', aiMode }
 
     const meta = conv.metadata || {}
-    if (meta.ai_last_reply_at && Date.now() - new Date(String(meta.ai_last_reply_at)).getTime() < REPLY_COOLDOWN_MS) {
-      return { replied: false, skipped: 'cooldown', aiMode }
-    }
+    // A new client turn is eligible even immediately after an AI reply.
+    // Durable trigger commits, pending locks, and trigger debounce above
+    // prevent duplicates without silently dropping a genuine follow-up.
 
     const lastAi = [...msgs].reverse().find((m: any) => m?.metadata?.ai_generated && !m?.metadata?.ai_typing)
     if (lastAi && lastMsg.created_at && lastAi.created_at >= lastMsg.created_at) {

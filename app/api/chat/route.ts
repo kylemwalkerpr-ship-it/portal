@@ -22,7 +22,7 @@ import { createYqaaDeadline, YqaaDeadlineError } from '@/lib/yqaaDeadline'
 import { persistYqaaDecisionRecord } from '@/lib/yqaaDecisionRecord'
 import { COMPANION_CHANNEL_CAPABILITIES, runCompanionOrchestrator } from '@/lib/yqaaDecisionOrchestrator'
 import { loadYqaaEvidence } from '@/lib/yqaaKnowledgeDb'
-import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch } from '@/lib/yqaaWebResearch'
+import { researchYqaaPublicWeb, yqaaNeedsFreshWebResearch, yqaaIsEvergreenProviderGuidance } from '@/lib/yqaaWebResearch'
 import {
   buildYqaaLiveResearchContext,
   buildYqaaVerifiedWebDigest,
@@ -441,7 +441,8 @@ export async function POST(req: Request) {
     let webResearchStatus: 'skipped' | 'verified' | 'retrieved' | 'insufficient' | 'failed' = 'skipped'
     const freshnessRequiresWeb = yqaaNeedsFreshWebResearch(lastUser.content)
     if (safety.reason !== 'high_stakes_handoff' &&
-        (freshnessRequiresWeb || !safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)) {
+        (freshnessRequiresWeb || (!yqaaIsEvergreenProviderGuidance(lastUser.content) &&
+          (!safety.answer || evidencePack.retrievalConfidence < 0.7 || !evidencePack.freshEnough)))) {
       const webStage = startStage('web')
       try {
         const webBudgetMs = Math.max(1, Math.min(WEB_STAGE_BUDGET_MS, deadline.remainingMs() - WEB_SYNTHESIS_RESERVE_MS))
@@ -573,7 +574,12 @@ export async function POST(req: Request) {
     try {
       // generateYqaaAnswer already performs the commissioned compact Grok
       // recovery and only crosses to DeepSeek when a real credential exists.
-      result = await runBoundedStage(deadline, 'model', MODEL_STAGE_BUDGET_MS, (signal) =>
+      // Verified evidence can still answer the question if synthesis stalls.
+      // Reserve time to return that evidence before the whole-request timer.
+      const synthesisBudgetMs = verifiedLiveResearch
+        ? Math.max(1, Math.min(MODEL_STAGE_BUDGET_MS, deadline.remainingMs() - 1_000))
+        : MODEL_STAGE_BUDGET_MS
+      result = await runBoundedStage(deadline, 'model', synthesisBudgetMs, (signal) =>
         generateYqaaAnswer(systemKnowledge, cleaned, { signal }),
       )
       finishStage(modelStage)
