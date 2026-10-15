@@ -5,15 +5,10 @@
  *   · legacy JWT  — `eyJ…` (the classic `service_role` / `anon` JWTs)
  *   · new secret  — `sb_secret_…` (the newer dashboard-issued format)
  *
- * `@supabase/supabase-js` v2 only accepts the legacy `eyJ…` JWT; it rejects
- * the `sb_secret_…` format with "Unregistered API key" because PostgREST on
- * the project isn't provisioned for it. So a local `.env.local` that carries
- * the new-format service key breaks every server-side read unless the code
- * detects the format and falls back to the legacy anon key (which is still an
- * `eyJ…` JWT and works against open-RLS tables such as `content_jobs`).
- *
- * This module centralizes that detection + the safe fallback so call sites
- * don't each re-derive `key.startsWith('eyJ')` ad hoc.
+ * The installed `@supabase/supabase-js` version supports both formats. A
+ * secret API key is a server-side service-role credential. Keep it as
+ * service-role authority instead of silently downgrading admin reads to the
+ * public anon key.
  */
 
 export type SupabaseKeyFormat = 'legacy-jwt' | 'secret' | 'missing' | 'unknown'
@@ -27,12 +22,12 @@ export function classifySupabaseKey(key: string | null | undefined): SupabaseKey
   return 'unknown'
 }
 
-/** True when the key is the legacy `eyJ…` JWT format supabase-js v2 accepts. */
+/** True when the key is in the legacy JWT format. */
 export function isLegacyJwtKey(key: string | null | undefined): boolean {
   return classifySupabaseKey(key) === 'legacy-jwt'
 }
 
-/** True when the key is the new `sb_secret_…` format supabase-js v2 rejects. */
+/** True when the key is a modern secret API key. */
 export function isSecretKey(key: string | null | undefined): boolean {
   return classifySupabaseKey(key) === 'secret'
 }
@@ -41,12 +36,11 @@ export function isSecretKey(key: string | null | undefined): boolean {
  * Pick the best key a supabase-js v2 client can actually use.
  *
  * Prefers, in order:
- *   1. `SUPABASE_SERVICE_ROLE_JWT` — an explicitly-provided legacy `eyJ…`
- *      service-role JWT. Set this alongside a new-format
- *      `SUPABASE_SERVICE_ROLE_KEY` to keep full service-role access (no RLS
- *      bypass via the anon key).
- *   2. a legacy `eyJ…` `SUPABASE_SERVICE_ROLE_KEY`
- *   3. the anon key — **only** as a last resort, and only when the caller
+ *   1. A modern `sb_secret_…` value in `SUPABASE_SERVICE_ROLE_KEY`, so it
+ *      takes precedence during migration while a legacy key remains set.
+ *   2. `SUPABASE_SERVICE_ROLE_JWT` — an explicitly-provided legacy JWT.
+ *   3. a legacy JWT in `SUPABASE_SERVICE_ROLE_KEY`.
+ *   4. the anon key — **only** as a last resort, and only when the caller
  *      opts in via `allowAnonFallback`. Anonymous fallback means every
  *      "admin" DB call runs as the PUBLIC anon role against open-RLS tables,
  *      which is a security and data-integrity risk — never do it silently.
@@ -76,6 +70,12 @@ function envNonEmpty(...names: string[]): string {
   return ''
 }
 
+function configuredServiceRoleKey(): string {
+  const apiKey = envNonEmpty('SUPABASE_SERVICE_ROLE_KEY')
+  if (isSecretKey(apiKey)) return apiKey
+  return envNonEmpty('SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY')
+}
+
 export function resolveSupabaseKey(opts?: {
   serviceRoleKey?: string | null
   anonKey?: string | null
@@ -83,23 +83,23 @@ export function resolveSupabaseKey(opts?: {
 }): string | null {
   const sr =
     opts?.serviceRoleKey ??
-    envNonEmpty('SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY')
+    configuredServiceRoleKey()
   const anon = opts?.anonKey ?? envNonEmpty('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 
-  if (isLegacyJwtKey(sr)) return sr
+  if (isLegacyJwtKey(sr) || isSecretKey(sr)) return sr
 
   if (isLegacyJwtKey(anon)) {
     if (opts?.allowAnonFallback === false) return null
     if (sr) {
-      // Service-role key present but unusable (new `sb_secret_…` format).
+      // A configured but unrecognized server key cannot establish service-role authority.
       console.warn(
-        '[supabaseKey] SUPABASE_SERVICE_ROLE_KEY is in the new sb_secret_ format which supabase-js v2 rejects — falling back to the ANON key. Set SUPABASE_SERVICE_ROLE_JWT (legacy service-role JWT) to restore service-role access; anonymous fallback exposes open-RLS tables.',
+        '[supabaseKey] Configured Supabase service-role key format is unrecognized; falling back to the ANON key. Anonymous fallback exposes open-RLS tables.',
       )
     }
     return anon
   }
 
-  // Last resort: return whatever we have (even a secret-format key) so the
+  // Last resort: return whatever we have (even an unrecognized key) so the
   // caller surfaces the real supabase-js error instead of a bare undefined.
   return sr || anon || null
 }
@@ -115,9 +115,9 @@ export function supabaseAuthMode(opts?: {
 }): SupabaseAuthMode {
   const sr =
     opts?.serviceRoleKey ??
-    envNonEmpty('SUPABASE_SERVICE_ROLE_JWT', 'SUPABASE_SERVICE_ROLE_KEY')
+    configuredServiceRoleKey()
   const anon = opts?.anonKey ?? envNonEmpty('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-  if (isLegacyJwtKey(sr)) return 'service-role'
+  if (isLegacyJwtKey(sr) || isSecretKey(sr)) return 'service-role'
   if (isLegacyJwtKey(anon)) return 'degraded-anon'
   return sr || anon ? 'degraded-anon' : 'missing'
 }

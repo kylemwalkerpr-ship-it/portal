@@ -2,17 +2,16 @@
  * P6 Batch A — apply-authority decision (dependency-light, pure decision).
  *
  * Writes to `seo_interlinks` require GENUINE service-role authority. The
- * repository-wide `resolveSupabaseKey()` deliberately falls back to the legacy
- * anon key for READ paths (the newer `sb_secret_…` service key is rejected by
- * supabase-js v2, and open-RLS tables still read under the anon JWT). A write
- * path must NEVER inherit that fallback: the P6 least-privilege grants make an
+ * repository-wide `resolveSupabaseKey()` can fall back to the legacy anon key
+ * for explicitly permitted READ paths. A write path must NEVER inherit that
+ * fallback: the P6 least-privilege grants make an
  * anon-scoped UPDATE fail with a DB error, and any future grant/RLS change
  * could turn a degraded client into a silent partial success instead.
  *
  * Apply therefore requires BOTH:
  *   1. `supabaseAuthMode() === 'service-role'`, and
  *   2. `resolveSupabaseKey({ allowAnonFallback: false })` returning a usable
- *      legacy `eyJ…` JWT.
+ *      legacy JWT or modern `sb_secret_…` service-role API key.
  *
  * `decideP6BatchAApplyAuthority` is a pure function over an injected
  * mode/key/classification so tests can pin the decision without any secret;
@@ -22,6 +21,7 @@
 
 import {
   isLegacyJwtKey,
+  isSecretKey,
   resolveSupabaseKey,
   supabaseAuthMode,
   type SupabaseAuthMode,
@@ -38,8 +38,8 @@ export type P6BatchAApplyAuthorityDecision =
   | { ok: false; error: string }
 
 /**
- * Pure decision: genuine service-role mode AND a usable legacy service-role
- * JWT, or a refusal. A degraded/anon fallback key is NEVER accepted.
+ * Pure decision: genuine service-role mode AND a usable service-role key, or
+ * a refusal. A degraded/anon fallback key is NEVER accepted.
  */
 export function decideP6BatchAApplyAuthority(
   input: P6BatchAApplyAuthorityInput,
@@ -51,11 +51,11 @@ export function decideP6BatchAApplyAuthority(
     }
   }
   const key = typeof input.key === 'string' ? input.key.trim() : ''
-  if (!key || !isLegacyJwtKey(key)) {
+  if (!key || (!isLegacyJwtKey(key) && !isSecretKey(key))) {
     return {
       ok: false,
       error:
-        'resolveSupabaseKey({ allowAnonFallback: false }) did not return a usable legacy eyJ… service-role JWT',
+        'resolveSupabaseKey({ allowAnonFallback: false }) did not return a usable service-role API key',
     }
   }
   return { ok: true, key }

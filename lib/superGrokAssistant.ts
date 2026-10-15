@@ -1,7 +1,5 @@
 import { resolveMessengerGrokAuth, type MessengerGrokAuth } from '@/lib/messengerAi'
-import { XAI_API_BASE_DEFAULT } from '@/lib/xaiSuperGrokOAuth'
 import { fetchYqaaJsonWithTimeout } from '@/lib/yqaaDeadline'
-import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 export type SystemAssistantTurn = {
   role: 'user' | 'assistant'
@@ -58,29 +56,52 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(`${label} timed out after ${timeoutMs}ms`)
-          error.name = 'AbortError'
-          reject(error)
-        }, timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timer) clearTimeout(timer)
+class AssistantAuthResolutionError extends Error {
+  constructor() {
+    super('Assistant authentication is temporarily unavailable')
+    this.name = 'AssistantAuthResolutionError'
   }
 }
 
-async function resolveCachedAuth(force = false): Promise<MessengerGrokAuth> {
+async function resolveCachedAuth(force = false, parentSignal?: AbortSignal, requestedTimeoutMs = AUTH_TIMEOUT_MS): Promise<MessengerGrokAuth> {
   if (!force && authCache && authCache.expiresAt > Date.now()) return authCache.value
-  const value = await withTimeout(resolveMessengerGrokAuth(), AUTH_TIMEOUT_MS, 'Assistant auth resolution')
-  authCache = { value, expiresAt: Date.now() + AUTH_CACHE_TTL_MS }
-  return value
+  parentSignal?.throwIfAborted()
+  const controller = new AbortController()
+  const abortFromParent = () => controller.abort(parentSignal?.reason || new DOMException('Aborted', 'AbortError'))
+  if (parentSignal?.aborted) abortFromParent()
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true })
+  let timedOut = false
+  const requestedTimeout = Number.isFinite(requestedTimeoutMs) ? requestedTimeoutMs : AUTH_TIMEOUT_MS
+  const authTimeoutMs = Math.max(1, Math.min(AUTH_TIMEOUT_MS, requestedTimeout))
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new DOMException('Assistant authentication deadline reached', 'TimeoutError'))
+  }, authTimeoutMs)
+  let rejectOnAbort: () => void = () => {}
+  try {
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => reject(controller.signal.reason || new DOMException('Aborted', 'AbortError'))
+      if (controller.signal.aborted) rejectOnAbort()
+      else controller.signal.addEventListener('abort', rejectOnAbort, { once: true })
+    })
+    const value = await Promise.race([
+      resolveMessengerGrokAuth({ signal: controller.signal }),
+      aborted,
+    ])
+    parentSignal?.throwIfAborted()
+    authCache = { value, expiresAt: Date.now() + AUTH_CACHE_TTL_MS }
+    return value
+  } catch (err) {
+    if (parentSignal?.aborted) throw parentSignal.reason || err
+    if (timedOut || controller.signal.aborted || (err instanceof Error && err.name === 'MessengerAuthResolutionError')) {
+      throw new AssistantAuthResolutionError()
+    }
+    throw new AssistantAuthResolutionError()
+  } finally {
+    clearTimeout(timer)
+    controller.signal.removeEventListener('abort', rejectOnAbort)
+    parentSignal?.removeEventListener('abort', abortFromParent)
+  }
 }
 
 function headersFor(auth: MessengerGrokAuth): Record<string, string> {
@@ -231,7 +252,7 @@ async function callSystemSuperGrokAttempt(
   const remainingMs = () => deadlineAt === null ? Number.POSITIVE_INFINITY : Math.max(0, deadlineAt - Date.now())
   const boundedTimeout = (defaultMs: number) => Math.max(1, Math.min(defaultMs, remainingMs()))
   options.signal?.throwIfAborted()
-  let auth = await withTimeout(resolveCachedAuth(), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth resolution')
+  let auth = await resolveCachedAuth(false, options.signal, boundedTimeout(AUTH_TIMEOUT_MS))
   options.signal?.throwIfAborted()
   const messages = [
     { role: 'system', content: system },
@@ -254,7 +275,7 @@ async function callSystemSuperGrokAttempt(
 
     if (AUTH_FAILURE_STATUS.has(response.response.status)) {
       authCache = null
-      auth = await withTimeout(resolveCachedAuth(true), boundedTimeout(AUTH_TIMEOUT_MS), 'Assistant auth refresh')
+      auth = await resolveCachedAuth(true, options.signal, boundedTimeout(AUTH_TIMEOUT_MS))
       options.signal?.throwIfAborted()
       response = await callResponses(auth, messages, options.signal, boundedTimeout(responseBudget), observer('responses'))
       responsesStatus = response.response.status
@@ -274,6 +295,7 @@ async function callSystemSuperGrokAttempt(
     }
   } catch (err) {
     if (options.signal?.aborted) throw err
+    if (err instanceof AssistantAuthResolutionError) throw err
     responsesDiagnostic = err instanceof Error && /AbortError|TimeoutError/.test(err.name) ? 'timeout' : 'network'
   }
 
@@ -414,48 +436,6 @@ export function parseSystemWebSearchResponse(raw: string): {
   return { text, citations: [...citationSet], webSearchCalls, sources: [...sources.values()] }
 }
 
-function directXaiWebAuth(current: MessengerGrokAuth): MessengerGrokAuth | null {
-  let apiKey = ''
-  let model = ''
-  try {
-    const workerEnv = getCloudflareContext().env as CloudflareEnv & {
-      XAI_API_KEY?: string
-      GROK_API_KEY?: string
-      XAI_MODEL?: string
-    }
-    apiKey = workerEnv.XAI_API_KEY?.trim() || workerEnv.GROK_API_KEY?.trim() || ''
-    model = workerEnv.XAI_MODEL?.trim() || ''
-  } catch {
-    // Local/test execution can fall back to Node-style server env.
-  }
-  apiKey ||= process.env.XAI_API_KEY?.trim() || process.env.GROK_API_KEY?.trim() || ''
-  model ||= process.env.XAI_MODEL?.trim() || ''
-  if (!apiKey || apiKey === current.apiKey) return null
-  return {
-    apiKey,
-    baseURL: XAI_API_BASE_DEFAULT,
-    model: model || current.model,
-    authMode: 'env',
-  }
-}
-
-async function vaultXaiWebAuth(current: MessengerGrokAuth): Promise<MessengerGrokAuth | null> {
-  try {
-    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
-    const overlay = await withTimeout(buildVaultEnvOverrides(false), AUTH_TIMEOUT_MS, 'Assistant vault auth resolution')
-    const apiKey = overlay.XAI_API_KEY?.trim() || ''
-    if (!apiKey || apiKey === current.apiKey) return null
-    return {
-      apiKey,
-      baseURL: XAI_API_BASE_DEFAULT,
-      model: overlay.XAI_MODEL?.trim() || current.model,
-      authMode: 'vault',
-    }
-  } catch {
-    return null
-  }
-}
-
 export function safeWebSearchResponseMeta(raw: string) {
   try {
     const data = JSON.parse(raw) as Record<string, any>
@@ -478,13 +458,14 @@ export function safeWebSearchResponseMeta(raw: string) {
   }
 }
 
-/** One bounded xAI Responses web call with current-schema source extraction and independent credential failover. */
+/** One bounded xAI Responses web call using the connected subscription session. */
 export async function callSystemSuperGrokWebSearch(
   question: string,
   allowedDomains?: string[],
   options: { signal?: AbortSignal } = {},
 ): Promise<{ text: string; citations: string[]; webSearchCalls: number; sources: SystemWebSearchSource[] }> {
-  let resolvedAuth = await resolveCachedAuth()
+  let resolvedAuth = await resolveCachedAuth(false, options.signal)
+  if (resolvedAuth.authMode !== 'supergrok') throw new AssistantAuthResolutionError()
   const request = (selectedAuth: MessengerGrokAuth) => postJsonWithRetry(
     `${selectedAuth.baseURL}/responses`,
     {
@@ -520,18 +501,6 @@ export async function callSystemSuperGrokWebSearch(
     } catch { return null }
   }
 
-  const vaultAuth = await vaultXaiWebAuth(resolvedAuth)
-  const directAuth = directXaiWebAuth(resolvedAuth)
-  // Server-side search is an API-billed tool. Follow the estate's credential
-  // precedence for developer keys first, then retain SuperGrok/OAuth as an
-  // independent recovery lane. Deduplicate identical credentials.
-  const rawCandidates: MessengerGrokAuth[] = [vaultAuth, directAuth, resolvedAuth].filter(Boolean) as MessengerGrokAuth[]
-  const seenKeys = new Set<string>()
-  const candidates = rawCandidates.filter((candidate) => {
-    if (seenKeys.has(candidate.apiKey)) return false
-    seenKeys.add(candidate.apiKey)
-    return true
-  })
   const diagnostics: Array<{
     authMode: string
     status: number | 'network'
@@ -539,37 +508,23 @@ export async function callSystemSuperGrokWebSearch(
     meta?: ReturnType<typeof safeWebSearchResponseMeta>
   }> = []
 
-  for (let index = 0; index < candidates.length; index += 1) {
-    if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError')
-    let selectedAuth = candidates[index]
-    try {
-      let result = await request(selectedAuth)
-      if (AUTH_FAILURE_STATUS.has(result.response.status) && selectedAuth.apiKey === resolvedAuth.apiKey) {
-        authCache = null
-        resolvedAuth = await resolveCachedAuth(true)
-        selectedAuth = resolvedAuth
-        result = await request(selectedAuth)
-      }
-      const parsed = parseIfUsable(result)
-      if (parsed) return parsed
-      diagnostics.push({
-        authMode: selectedAuth.authMode,
-        status: result.response.status,
-        meta: safeWebSearchResponseMeta(result.text),
-      })
-    } catch (err) {
-      if (options.signal?.aborted) throw err
-      diagnostics.push({
-        authMode: selectedAuth.authMode,
-        status: 'network',
-        reason: err instanceof Error ? err.message.slice(0, 120) : 'request failed',
-      })
-    }
+  if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError')
+  let result = await request(resolvedAuth)
+  if (AUTH_FAILURE_STATUS.has(result.response.status)) {
+    authCache = null
+    resolvedAuth = await resolveCachedAuth(true, options.signal)
+    if (resolvedAuth.authMode !== 'supergrok') throw new AssistantAuthResolutionError()
+    result = await request(resolvedAuth)
   }
+  const parsed = parseIfUsable(result)
+  if (parsed) return parsed
+  diagnostics.push({
+    authMode: resolvedAuth.authMode,
+    status: result.response.status,
+    meta: safeWebSearchResponseMeta(result.text),
+  })
 
   console.warn('[system-assistant] web research transport exhausted', {
-    vaultKeyConfigured: Boolean(vaultAuth),
-    workerKeyConfigured: Boolean(directAuth),
     attempts: diagnostics,
   })
   const last = diagnostics.at(-1)

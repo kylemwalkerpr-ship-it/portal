@@ -34,18 +34,20 @@ describe('resolveMessengerGrokAuth preference', () => {
     process.env = { ...originalEnv }
     jest.resetModules()
     jest.clearAllMocks()
+    jest.useRealTimers()
   })
 
-  it('prefers SuperGrok OAuth over vault and env keys', async () => {
-    process.env.XAI_API_KEY = 'env-should-not-win'
-    process.env.GROK_API_KEY = 'env-alias-should-not-win'
+  it('uses one settings read and only the connected SuperGrok session', async () => {
+    process.env.XAI_API_KEY = 'synthetic-metered-worker-key'
+    process.env.GROK_API_KEY = 'synthetic-metered-alias-key'
 
-    jest.doMock('@/lib/aiKeyVault', () => ({
-      buildVaultEnvOverrides: jest.fn(async () => ({
-        XAI_API_KEY: 'vault-should-not-win',
-        XAI_MODEL: 'grok-from-vault',
-      })),
-    }))
+    const settings = {
+      xai_oauth_access_token: 'synthetic-stored-token',
+      xai_oauth_expires_at: String(Date.now() + 60_000),
+    }
+    const getAiSettings = jest.fn(async () => settings)
+    const buildVaultEnvOverrides = jest.fn(async () => ({ XAI_API_KEY: 'synthetic-vault-key' }))
+    jest.doMock('@/lib/aiKeyVault', () => ({ getAiSettings, buildVaultEnvOverrides }))
     jest.doMock('@/lib/xaiSuperGrokOAuth', () => ({
       ensureSuperGrokAccessToken: jest.fn(async () => ({
         accessToken: 'oauth-token-mock',
@@ -61,18 +63,16 @@ describe('resolveMessengerGrokAuth preference', () => {
     expect(auth.authMode).toBe('supergrok')
     expect(auth.apiKey).toBe('oauth-token-mock')
     expect(auth.baseURL).toBe('https://api.x.ai/v1')
+    expect(auth.model).toBe('grok-4.6')
+    expect(getAiSettings).toHaveBeenCalledTimes(1)
+    expect(buildVaultEnvOverrides).not.toHaveBeenCalled()
   })
 
-  it('falls back to vault key when OAuth is absent', async () => {
-    delete process.env.XAI_API_KEY
-    delete process.env.GROK_API_KEY
-
-    jest.doMock('@/lib/aiKeyVault', () => ({
-      buildVaultEnvOverrides: jest.fn(async () => ({
-        XAI_API_KEY: 'vault-key-mock',
-        XAI_BASE_URL: 'https://api.x.ai/v1',
-      })),
-    }))
+  it('fails closed when SuperGrok is absent, even if metered keys are present', async () => {
+    process.env.XAI_API_KEY = 'synthetic-metered-worker-key'
+    process.env.GROK_API_KEY = 'synthetic-metered-alias-key'
+    const buildVaultEnvOverrides = jest.fn(async () => ({ XAI_API_KEY: 'synthetic-vault-key' }))
+    jest.doMock('@/lib/aiKeyVault', () => ({ getAiSettings: jest.fn(async () => ({})), buildVaultEnvOverrides }))
     jest.doMock('@/lib/xaiSuperGrokOAuth', () => ({
       ensureSuperGrokAccessToken: jest.fn(async () => null),
       XAI_API_BASE_DEFAULT: 'https://api.x.ai/v1',
@@ -80,28 +80,42 @@ describe('resolveMessengerGrokAuth preference', () => {
     }))
 
     const { resolveMessengerGrokAuth } = await import('@/lib/messengerAi')
-    const auth = await resolveMessengerGrokAuth()
-    expect(auth.authMode).toBe('vault')
-    expect(auth.apiKey).toBe('vault-key-mock')
+    await expect(resolveMessengerGrokAuth()).rejects.toMatchObject({ name: 'MessengerAuthResolutionError' })
+    expect(buildVaultEnvOverrides).not.toHaveBeenCalled()
   })
 
-  it('falls back to env only when OAuth and vault are empty', async () => {
-    process.env.XAI_API_KEY = 'env-key-mock'
-    delete process.env.GROK_API_KEY
-
-    jest.doMock('@/lib/aiKeyVault', () => ({
-      buildVaultEnvOverrides: jest.fn(async () => ({})),
-    }))
+  it('classifies a settings-pool failure as auth resolution, without key fallback', async () => {
+    process.env.XAI_API_KEY = 'synthetic-metered-worker-key'
+    const buildVaultEnvOverrides = jest.fn(async () => ({ XAI_API_KEY: 'synthetic-vault-key' }))
+    jest.doMock('@/lib/aiKeyVault', () => ({ getAiSettings: jest.fn(async () => { throw new Error('synthetic settings pool timeout') }), buildVaultEnvOverrides }))
     jest.doMock('@/lib/xaiSuperGrokOAuth', () => ({
-      ensureSuperGrokAccessToken: jest.fn(async () => null),
+      ensureSuperGrokAccessToken: jest.fn(),
       XAI_API_BASE_DEFAULT: 'https://api.x.ai/v1',
       XAI_DEFAULT_MODEL: 'grok-4.6',
     }))
 
     const { resolveMessengerGrokAuth } = await import('@/lib/messengerAi')
-    const auth = await resolveMessengerGrokAuth()
-    expect(auth.authMode).toBe('env')
-    expect(auth.apiKey).toBe('env-key-mock')
+    await expect(resolveMessengerGrokAuth()).rejects.toMatchObject({ name: 'MessengerAuthResolutionError' })
+    expect(buildVaultEnvOverrides).not.toHaveBeenCalled()
+  })
+
+  it('aborts a hanging settings read within the bounded auth allowance', async () => {
+    jest.useFakeTimers()
+    let settingsSignal: AbortSignal | undefined
+    jest.doMock('@/lib/aiKeyVault', () => ({
+      getAiSettings: jest.fn(async (_force: boolean, options: { signal?: AbortSignal }) => {
+        settingsSignal = options.signal
+        return new Promise(() => {})
+      }),
+    }))
+    jest.doMock('@/lib/xaiSuperGrokOAuth', () => ({ ensureSuperGrokAccessToken: jest.fn() }))
+
+    const { resolveMessengerGrokAuth } = await import('@/lib/messengerAi')
+    const work = resolveMessengerGrokAuth({ timeoutMs: 25 })
+    const rejected = expect(work).rejects.toMatchObject({ name: 'MessengerAuthResolutionError' })
+    await jest.advanceTimersByTimeAsync(25)
+    await rejected
+    expect(settingsSignal?.aborted).toBe(true)
   })
 })
 

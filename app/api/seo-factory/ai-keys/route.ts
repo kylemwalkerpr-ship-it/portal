@@ -36,10 +36,8 @@ export async function GET() {
     const legacyProviders = await listLegacyVaultRows()
     const settings = await getAiSettings(true)
     // Runtime hydration truth — not "did the panel save" but "will the
-    // generation runtime see vault keys". The Worker overlay fails when the
-    // service key is the sb_secret_ format (supabase-js v2 rejects it) AND
-    // ai_provider_keys denies the anon fallback — pasted keys then sit in
-    // the DB while the runtime silently falls back to env secrets/Grok.
+    // generation runtime see vault keys". Modern secret API keys are supported
+    // by the installed SDK, so a failure here reflects actual query/auth state.
     let overlayNames: string[] = []
     let overlayOk = true
     try {

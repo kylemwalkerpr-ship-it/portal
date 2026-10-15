@@ -49,8 +49,8 @@ export function getSupabaseAdminClient(): ReturnType<typeof createSupabaseAdminC
 }
 
 /**
- * True when the deployed service-role key is usable by supabase-js v2
- * (legacy JWT). When false, every "admin" client actually runs as the anon
+ * True when the configured legacy JWT or modern secret API key establishes
+ * service-role authority. When false, an allowed fallback runs as the anon
  * key against open-RLS tables — surface this in status endpoints.
  */
 export function isServiceRoleAchieved(): boolean {

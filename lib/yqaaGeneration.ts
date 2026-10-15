@@ -43,7 +43,8 @@ export function classifyYqaaProviderFailure(error: unknown): YqaaFallbackEvidenc
   const statusMatch = message.match(/(?:status\s*[=:]?\s*|responses=|chat=)(\d{3})/i)
   const status = statusMatch ? Number(statusMatch[1]) : null
   let kind: YqaaFailureKind = 'other'
-  if (status === 408 || /AbortError|TimeoutError/i.test(errorName) || /AbortError|timed? ?out|timeout/i.test(message)) kind = 'timeout'
+  if (/^(?:AssistantAuthResolutionError|MessengerAuthResolutionError)$/.test(errorName)) kind = 'configuration'
+  else if (status === 408 || /AbortError|TimeoutError/i.test(errorName) || /AbortError|timed? ?out|timeout/i.test(message)) kind = 'timeout'
   else if (status === 401 || status === 403 || /unauthorized|forbidden|auth/i.test(message)) kind = 'authentication'
   else if (status === 429 || /rate.?limit|too many requests/i.test(message)) kind = 'rate_limit'
   else if ((status !== null && (status === 409 || status === 425 || status >= 500)) || /unavailable|capacity|overload/i.test(message)) kind = 'server_error'

@@ -201,6 +201,19 @@ describe('lib/marketplaceBuildAuthority — genuine service-role authority', () 
     expect(() => assertMarketplaceServiceRoleAuthority('unit')).toThrow(/role is "anon"/)
   })
 
+  it('accepts a modern secret API key as service-role authority without decoding it as JWT', () => {
+    const serviceSecret = 'sb_secret_marketplace_test'
+    setAuthEnv({
+      NEXT_PHASE: MARKETPLACE_PRODUCTION_BUILD_PHASE,
+      SUPABASE_SERVICE_ROLE_JWT: legacyJwt('anon'),
+      SUPABASE_SERVICE_ROLE_KEY: serviceSecret,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
+    })
+
+    expect(resolveSupabaseKey()).toBe(serviceSecret)
+    expect(() => assertMarketplaceBuildServiceRoleAuthority('unit')).not.toThrow()
+  })
+
   it('treats a blank SUPABASE_SERVICE_ROLE_JWT (unset GitHub secret) as absent', () => {
     // GitHub Actions defines an empty string for unset secrets: it must not
     // shadow a usable legacy SUPABASE_SERVICE_ROLE_KEY and downgrade the

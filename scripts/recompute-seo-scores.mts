@@ -26,10 +26,8 @@ import { auditContent } from '../lib/seoFactory/audit'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-// resolveSupabaseKey(): the new-format service secret (sb_secret_…) is not
-// registered for PostgREST on this project, so fall back to the JWT anon key
-// — the content_jobs RLS policy is open (USING true / WITH CHECK true), so
-// reads AND writes work.
+// resolveSupabaseKey() accepts modern secret API keys and legacy service-role
+// JWTs, preferring service-role authority over any anon fallback.
 const supabaseKey = resolveSupabaseKey()
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')

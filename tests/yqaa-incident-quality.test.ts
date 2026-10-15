@@ -6,6 +6,12 @@ describe('incident first-turn quality', () => {
   test('accepts useful bounded orientation with a focused clarification instead of an eligibility claim', () => {
     expect(usefulFirstOrientation('I’m YQAA, an AI assistant. It makes sense to compare the routes before spending on a full service. You can organize the residence and relationship documents you already have, then ask which public pathway requirements need checking. I cannot determine personal eligibility from this chat. When you say CA, do you mean Canada?')).toBe(true)
   })
+  test.each([
+    'I’m YQAA, an AI assistant. I can help you work through this one step at a time. Happy to keep exploring options with you. Whenever you want a concrete offer, a rough budget range in USD helps me match you with the right scope. It makes sense to compare the residency documents and pathways first, so you can prepare for the next step.',
+    'I don’t have enough verified Marketplace pricing for this exact scope to send a safe quote yet. I’ll keep the scope here and have the provider confirm the price rather than guessing. We can compare residency pathways and prepare documents first.',
+  ])('rejects mechanically phrased orientation: %s', (reply) => {
+    expect(usefulFirstOrientation(reply)).toBe(false)
+  })
 })
 
 test('recognizes the unchanged incident budget wording without assuming a currency', () => { expect(moneyValues('I could maybe do 50 dollars to 100 at most for a consult')).toEqual([50, 100]) })

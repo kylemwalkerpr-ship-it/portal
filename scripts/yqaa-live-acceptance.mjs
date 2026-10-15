@@ -724,6 +724,7 @@ async function messengerSmoke() {
     }
     if (scenario.name === 'orientation' && !/(yqaa|ai-powered|artificial intelligence|i am an ai|i’m an ai|automated assistant)/i.test(reply.body)) throw new Error(`${label}: actual response did not disclose AI identity.`)
     const lower = reply.body.toLowerCase()
+    if (scenario.name === 'orientation' && acceptanceAssertions.containsMechanicalOrientationCopy(reply.body)) throw new Error(`${label}: response used canned, mechanical orientation wording.`)
     if (scenario.name === 'orientation' && !acceptanceAssertions.orientationAddressesContext(category.id, reply.body)) throw new Error(`${label}: response did not address the ${category.id} context.`)
     if (scenario.name === 'budget' && !/(budget|cad|450|price|scope|cost)/i.test(reply.body)) throw new Error('budget: response did not address budget or scope.')
     if (scenario.name === 'scope_narrowing' && !/(checklist|scope|organ|exclude|form)/i.test(reply.body)) throw new Error('scope_narrowing: response did not preserve the narrowed scope.')

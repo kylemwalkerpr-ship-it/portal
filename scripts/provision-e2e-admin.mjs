@@ -66,13 +66,16 @@ const fail = (msg) => {
 if (!CLERK_SECRET_KEY) fail('CLERK_SECRET_KEY missing (set it in .env.local)')
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) fail('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing (set in .env.local)')
 
-// The stored service-role key can go stale (rotated / re-issued in the
-// dashboard — e.g. a new-format sb_secret_* that isn't registered for the
-// project). Self-heal: when it's rejected, re-issue via the Management API
+// The stored service-role key can go stale when rotated in the dashboard.
+// Self-heal: when it is rejected, re-issue via the Management API
 // using the project's access token (SUPABASE_ACCESS_TOKEN).
 async function resolveServiceRoleKey() {
+  const headers = { apikey: SERVICE_ROLE_KEY }
+  if (!SERVICE_ROLE_KEY.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${SERVICE_ROLE_KEY}`
+  }
   const probe = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&limit=1`, {
-    headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    headers,
   })
   if (probe.ok) return SERVICE_ROLE_KEY
   if (!SUPABASE_ACCESS_TOKEN) return SERVICE_ROLE_KEY // let the real write surface the error

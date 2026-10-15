@@ -10,9 +10,8 @@ import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey } from '../lib/supabaseKey'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-// resolveSupabaseKey(): the new-format service secret (sb_secret_…) may not be
-// accepted by supabase-js for this project, so fall back to the anon key — the
-// RLS policy on content_jobs is open (USING true), so reads work either way.
+// resolveSupabaseKey() accepts modern secret API keys and legacy service-role
+// JWTs, preferring service-role authority over any anon fallback.
 const supabaseKey = resolveSupabaseKey()
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL + key)')

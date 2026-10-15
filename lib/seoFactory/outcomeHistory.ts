@@ -190,9 +190,8 @@ export async function buildOutcomeHistoryFromLiveGsc(opts?: {
   // ── 1. Merged jobs with a stored engine report ───────────────────────────
   let jobs: OutcomeJobRow[] = []
   try {
-    // Read-only query — resolveSupabaseKey() accepts the legacy `eyJ…`
-    // service-role JWT, else falls back to the anon key (handles the newer
-    // `sb_secret_…` key format that supabase-js v2 rejects).
+    // Read-only query — resolveSupabaseKey() accepts a modern secret API key
+    // or legacy service-role JWT, with anon fallback only when explicitly allowed.
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       resolveSupabaseKey()!,

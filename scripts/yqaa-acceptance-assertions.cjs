@@ -15,6 +15,10 @@ function orientationAddressesContext(categoryId, body) {
   return Boolean(vocabulary && vocabulary.test(String(body || '')))
 }
 
+function containsMechanicalOrientationCopy(body) {
+  return /\b(?:one step at a time|happy to keep this moving|whenever you want a concrete offer|rough budget range in USD|I don[’']t have enough verified Marketplace pricing|I don[’']t have enough reliable information here to answer that safely)\b/i.test(String(body || ''))
+}
+
 /** Approval follow-through is permitted only for this run's hidden provider fixture and exact counter scope. */
 function exactSyntheticCounterApproval(metadata, { triggerMessageId, counterCents, scopeHash, runMarker, providerRole }) {
   return typeof triggerMessageId === 'string' && triggerMessageId.length > 0 &&
@@ -211,4 +215,4 @@ async function runIndependentCategories(categories, { negotiation, attention, on
   }
   return passed
 }
-module.exports = { moneyCents, currentCommittedOffer, counterofferAcknowledged, orientationAddressesContext, exactSyntheticCounterApproval, runIndependentCategories }
+module.exports = { moneyCents, currentCommittedOffer, counterofferAcknowledged, orientationAddressesContext, containsMechanicalOrientationCopy, exactSyntheticCounterApproval, runIndependentCategories }

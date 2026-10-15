@@ -46,6 +46,11 @@ describe('manual YQAA live acceptance safety guards', () => {
     expect(harness).toMatch(/const messengerOk = await messengerSmoke\(\);?\s+await assertLiveIdentity\(\);?\s+if \(!messengerOk\)[^\n]+\s+if \(!publicGenerationOk\) throw new Error\([^\n]+\);?\s+receipt.status = 'passed'/)
   })
 
+  test('orientation scenario rejects mechanically phrased copy', () => {
+    expect(harness).toContain('acceptanceAssertions.containsMechanicalOrientationCopy(reply.body)')
+    expect(harness).toContain('response used canned, mechanical orientation wording')
+  })
+
   test('a verified gig is registered for cleanup before tier setup can fail', async () => {
     const cleanupRegistry: Array<{ gigId: string; profileId: string; clerkUserId: string }> = []
     const verifiedGig = { gigId: 'owned-gig-1', profileId: 'owned-profile-1', clerkUserId: 'owned-user-1' }

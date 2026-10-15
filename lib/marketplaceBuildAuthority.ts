@@ -23,7 +23,8 @@
  *     reuses `supabaseAuthMode()` + key classification from
  *     `lib/supabaseKey.ts` and additionally rejects a legacy JWT whose `role`
  *     claim is not `service_role` (e.g. the anon key pasted into
- *     `SUPABASE_SERVICE_ROLE_JWT`).
+ *     `SUPABASE_SERVICE_ROLE_JWT`). Modern `sb_secret_…` keys are accepted as
+ *     service-role credentials without attempting to decode them as JWTs.
  *   · `assertMarketplaceEstateNonEmpty()` / its build-only variant — a
  *     positive, non-empty estate assertion for enumerations where zero rows
  *     can only mean the build lost its DB authority.
@@ -55,6 +56,10 @@ export function isMarketplaceProductionBuild(): boolean {
  * strings, which must not shadow a usable legacy service-role key).
  */
 function configuredServiceRoleKey(): string {
+  const apiKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (typeof apiKey === 'string' && apiKey.trim() !== '' && classifySupabaseKey(apiKey) === 'secret') {
+    return apiKey.trim()
+  }
   for (const candidate of [
     process.env.SUPABASE_SERVICE_ROLE_JWT,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -71,7 +76,8 @@ export function marketplaceAuthorityMode(): SupabaseAuthMode {
 
 /**
  * `role` claim of the configured legacy service-role JWT when it is a
- * decodable `eyJ…` token, else `null`. Never returns (or logs) key material.
+ * decodable `eyJ…` token, else `null`. Modern secret keys are not JWTs.
+ * Never returns (or logs) key material.
  */
 function legacyServiceRoleClaim(): string | null {
   const key = configuredServiceRoleKey()
@@ -110,7 +116,7 @@ export function assertMarketplaceServiceRoleAuthority(scope: string): void {
   const mode = marketplaceAuthorityMode()
   if (mode !== 'service-role') {
     throw new Error(
-      `[marketplace/build-supply] ${scope} requires genuine service-role DB authority; refusing to bake an anonymous-scoped Marketplace estate (${describeMarketplaceBuildAuthority()}). Provide a legacy eyJ service-role key via SUPABASE_SERVICE_ROLE_JWT (preferred) or SUPABASE_SERVICE_ROLE_KEY for the build.`,
+      `[marketplace/build-supply] ${scope} requires genuine service-role DB authority; refusing to bake an anonymous-scoped Marketplace estate (${describeMarketplaceBuildAuthority()}). Provide a Supabase secret API key or legacy service-role JWT via SUPABASE_SERVICE_ROLE_KEY (or the legacy SUPABASE_SERVICE_ROLE_JWT) for the build.`,
     )
   }
   const role = legacyServiceRoleClaim()
