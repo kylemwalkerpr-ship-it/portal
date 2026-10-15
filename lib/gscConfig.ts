@@ -7,7 +7,7 @@
  * the table has RLS on with no policies, so it's server-only.
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { isLegacyJwtKey } from '@/lib/supabaseKey'
+import { supabaseAuthMode } from '@/lib/supabaseKey'
 
 export interface GscConfig {
   clientId: string | null
@@ -21,16 +21,9 @@ export interface GscConfig {
 
 export async function getGscConfig(): Promise<GscConfig> {
   let row: any = null
-  // The newer `sb_secret_…` service-role key isn't accepted by supabase-js v2
-  // ("Unregistered API key"), so skip the server-only gsc_connection read and
-  // fall straight through to the GSC_* env vars. Only a legacy `eyJ…` JWT
-  // (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_JWT) can read that row
-  // (see isLegacyJwtKey). This keeps an env-configured deployment (or local
-  // machine with the new key format) working via GSC_SERVICE_ACCOUNT_JSON +
-  // GSC_SITE_URL without a doomed DB round-trip.
-  const canReadGscRow =
-    isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_JWT) ||
-    isLegacyJwtKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
+  // Both modern secret API keys and legacy service-role JWTs can read the
+  // protected connection row. Anonymous fallback cannot establish authority.
+  const canReadGscRow = supabaseAuthMode() === 'service-role'
   if (canReadGscRow) {
     try {
       const db = createSupabaseAdminClient()
@@ -80,7 +73,7 @@ export async function saveGscConnection(fields: {
   })
   if (error) {
     throw new Error(
-      `saveGscConnection failed (${error.message}). If SUPABASE_SERVICE_ROLE_KEY is the new sb_secret_ format, set SUPABASE_SERVICE_ROLE_JWT (legacy service-role JWT) so in-app GSC connections can persist.`,
+      `saveGscConnection failed (${error.message}). Verify the configured Supabase server credential has service-role access.`,
     )
   }
 }
