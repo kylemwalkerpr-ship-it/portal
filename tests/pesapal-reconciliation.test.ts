@@ -52,6 +52,60 @@ function dbFixture() {
   return { db: db as any, getAttempt: () => attempt }
 }
 
+function catalogueRetryDbFixture() {
+  let attempt: Record<string, any> = {
+    id: 'attempt-catalogue', gateway: 'pesapal', merchant_reference: 'ys:catalogue', provider_tracking_id: 'track-catalogue',
+    profile_id: 'client-1', source_type: 'catalogue', source_id: 'cart-1',
+    source_payload: { items: [{ serviceId: 'service-1', quantity: 2, amountCents: 300 }] },
+    status: 'submitted', amount_minor: 600, currency: 'USD', charge_amount_minor: 600,
+    charge_currency: 'USD', base_amount_usd_minor: 600, poll_count: 0,
+    updated_at: '2026-10-16T10:00:00.000Z',
+  }
+  const rows: Record<string, any[]> = { order_items: [] }
+  const db = {
+    from: jest.fn((table: string) => {
+      let action = 'select'
+      let payload: any
+      const filters: Array<[string, unknown]> = []
+      const builder: any = {
+        select: () => { if (action !== 'update') action = 'select'; return builder },
+        update: (value: any) => { action = 'update'; payload = value; return builder },
+        insert: (value: any) => { action = 'insert'; payload = value; return builder },
+        delete: () => { action = 'delete'; return builder },
+        eq: (column: string, value: unknown) => { filters.push([column, value]); return builder },
+        maybeSingle: async () => execute(),
+        then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) => execute().then(resolve, reject),
+      }
+      async function execute() {
+        const matchesAttempt = filters.every(([column, value]) => attempt[column] === value)
+        if (table === 'payment_attempts') {
+          if (!matchesAttempt) return { data: null, error: null }
+          if (action === 'update') attempt = { ...attempt, ...payload }
+          return { data: { ...attempt }, error: null }
+        }
+        if (table === 'orders') {
+          if (action === 'insert') return { data: null, error: { message: 'duplicate key value violates unique constraint' } }
+          return { data: { id: attempt.id }, error: null }
+        }
+        if (table === 'order_items') {
+          if (action === 'select') return { data: rows.order_items.filter((row) => filters.every(([column, value]) => row[column] === value)), error: null }
+          if (action === 'delete') {
+            rows.order_items = rows.order_items.filter((row) => !filters.every(([column, value]) => row[column] === value))
+            return { data: null, error: null }
+          }
+          if (action === 'insert') {
+            rows.order_items.push(...(Array.isArray(payload) ? payload : [payload]))
+            return { data: null, error: null }
+          }
+        }
+        throw new Error(`Unexpected ${action} on ${table}`)
+      }
+      return builder
+    }),
+  }
+  return { db: db as any, getAttempt: () => attempt, getOrderItems: () => rows.order_items }
+}
+
 const paidStatus: HostedStatusResult = {
   status: 'completed', statusCode: 1, amountCents: 550, currency: 'USD',
   merchantReference: 'ys:ref-1', confirmationCode: 'confirm-1', paymentMethod: 'Card',
@@ -88,5 +142,16 @@ describe('Pesapal transaction reconciliation', () => {
     })
     expect(wrongAmount.httpStatus).toBe(409)
     expect(createPaidOrder).not.toHaveBeenCalled()
+  })
+
+  test('repairs missing catalogue order items after a partial fulfillment retry', async () => {
+    const { db, getAttempt, getOrderItems } = catalogueRetryDbFixture()
+    const provider = { getTransactionStatus: jest.fn(async () => ({ ...paidStatus, amountCents: 600, merchantReference: 'ys:catalogue' })) } as any
+
+    const result = await reconcilePesapalPayment({ db, provider, trackingId: 'track-catalogue', merchantReference: 'ys:catalogue' })
+
+    expect(result).toMatchObject({ status: 'completed', confirmed: true, orderId: 'attempt-catalogue' })
+    expect(getOrderItems()).toEqual([{ order_id: 'attempt-catalogue', service_id: 'service-1', quantity: 2, unit_price: 300 }])
+    expect(getAttempt().status).toBe('completed')
   })
 })

@@ -117,14 +117,32 @@ async function fulfillCatalogue(db: Db, attempt: PesapalAttempt, verified: Hoste
     if (error) {
       const existing = await db.from('orders').select('id').eq('id', orderId).maybeSingle()
       if (!existing.data?.id) throw new Error(error.message || 'Could not create the service order.')
-    } else {
-      const { error: itemsError } = await db.from('order_items').insert(services.map((item: any) => ({
-        order_id: orderId,
-        service_id: item.serviceId,
-        quantity: Number(item.quantity),
-        unit_price: Number(item.amountCents),
-      })))
-      if (itemsError && !/duplicate|unique/i.test(itemsError.message || '')) throw new Error(itemsError.message)
+    }
+
+    // An earlier fulfillment attempt can create the order and then fail while
+    // writing its items. On retry, repair the deterministic order's items
+    // before marking the payment complete.
+    const expectedItems = services.map((item: any) => ({
+      order_id: orderId,
+      service_id: String(item.serviceId),
+      quantity: Number(item.quantity),
+      unit_price: Number(item.amountCents),
+    }))
+    const { data: existingItems, error: readItemsError } = await db.from('order_items')
+      .select('order_id, service_id, quantity, unit_price').eq('order_id', orderId)
+    if (readItemsError) throw new Error(readItemsError.message || 'Could not verify service order items.')
+
+    const normalized = (rows: any[]) => rows.map((row) => ({
+      order_id: String(row.order_id),
+      service_id: String(row.service_id),
+      quantity: Number(row.quantity),
+      unit_price: Number(row.unit_price),
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    if (JSON.stringify(normalized(existingItems || [])) !== JSON.stringify(normalized(expectedItems))) {
+      const { error: deleteItemsError } = await db.from('order_items').delete().eq('order_id', orderId)
+      if (deleteItemsError) throw new Error(deleteItemsError.message || 'Could not repair service order items.')
+      const { error: insertItemsError } = await db.from('order_items').insert(expectedItems)
+      if (insertItemsError) throw new Error(insertItemsError.message || 'Could not create service order items.')
     }
   }
 
