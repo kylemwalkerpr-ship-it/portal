@@ -1,3 +1,5 @@
+'use client'
+
 import { notFound } from 'next/navigation'
 import Checkout from '@/components/checkout/Checkout'
 import type { AvailablePaymentMethod, CheckoutState } from '@/components/checkout/useCheckout'
