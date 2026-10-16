@@ -70,6 +70,10 @@ export async function credit(
     })
     .single()
 
+  if (error?.code === '23505' && reference) {
+    const existing = await db().from('wallet_transactions').select('*').eq('reference', reference).maybeSingle()
+    if (existing.data) return existing.data as WalletTransaction
+  }
   if (error) throw new Error(`Wallet credit failed: ${error.message}`)
   return data as WalletTransaction
 }
@@ -173,8 +177,9 @@ export async function refundToWallet(
   profileId: string,
   amountCents: number,
   description: string,
-  opts?: { reference?: string; metadata?: Record<string, unknown>; orderCapCents?: number }
+  opts: { reference: string; metadata?: Record<string, unknown>; orderCapCents?: number }
 ): Promise<WalletTransaction> {
+  if (!opts?.reference?.trim()) throw new Error('Refund reference is required.')
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     throw new Error('Refund amount must be a positive integer (cents).')
   }

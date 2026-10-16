@@ -306,7 +306,7 @@ export async function POST(req: Request) {
           auth.profileId,
           resolved.totalCents,
           `Refund: failed checkout for ${resolved.title}`,
-          `refund:${tx.id}`,
+          `autorefund:${sourceId}:${tx.id}`,
           { reason: 'order_creation_failed', debitTxId: tx.id },
         )
       } catch (refundErr) {

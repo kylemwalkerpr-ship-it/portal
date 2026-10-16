@@ -136,7 +136,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         // Reversing the wallet debit we just made, so the cap is that exact
         // charge (works even if the wallet was funded by comps rather than a
         // genuine deposit).
-        await refundToWallet(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, { orderCapCents: total, metadata: { offerId: offer.id, reason: 'order_create_failed' } })
+        await refundToWallet(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, { reference: `autorefund:${offer.id}:${debitTx.id}`, orderCapCents: total, metadata: { offerId: offer.id, debitTxId: debitTx.id, reason: 'order_create_failed' } })
       } catch (refundErr) {
         console.error('[offers/accept] CRITICAL: refund after failed order also failed:', refundErr)
       }
