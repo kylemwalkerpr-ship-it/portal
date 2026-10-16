@@ -444,8 +444,8 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
     return (
       <div>
         {error && !Object.values(fieldErrors).some(Boolean) && <div role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>{error}</div>}
-        <div style={{ display: 'grid', gap: 12 }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<div id={fieldIds.number} className={fieldClassName} style={containerStyle} role="group" aria-label="Card number" aria-invalid={Boolean(fieldErrors.number)} aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`} /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small id={`${fieldIds.number}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<div id={fieldIds.number} className={fieldClassName} style={containerStyle} role="group" aria-label="Card number" aria-invalid={Boolean(fieldErrors.number)} aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`} /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small id={`${fieldIds.number}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry<div id={fieldIds.exp} className={fieldClassName} style={containerStyle} role="group" aria-label="Expiry" aria-invalid={Boolean(fieldErrors.exp)} aria-describedby={`${fieldIds.exp}-help${fieldErrors.exp ? ` ${fieldIds.exp}-error` : ''}`} /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>MM/YY as printed on your card.</small>{fieldErrors.exp && <small id={`${fieldIds.exp}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.exp}</small>}</label>
             <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<div id={fieldIds.cvv} className={fieldClassName} style={containerStyle} role="group" aria-label="Security code" aria-invalid={Boolean(fieldErrors.cvv)} aria-describedby={`${fieldIds.cvv}-help${fieldErrors.cvv ? ` ${fieldIds.cvv}-error` : ''}`} /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small>{fieldErrors.cvv && <small id={`${fieldIds.cvv}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.cvv}</small>}</label>
@@ -463,8 +463,8 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             {error}
           </div>
         )}
-        <div style={{ display: 'grid', gap: 12 }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<input
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<input
             id={fieldIds.number}
             className={fieldClassName}
             style={containerStyle}

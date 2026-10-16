@@ -45,7 +45,7 @@
 .selected { border:2px solid var(--ys-indigo,#272852); background:linear-gradient(110deg,rgb(39 40 82 / 5%),#fff 65%); padding:11px 15px; }
 .methodGlyph { display:grid; flex:0 0 44px; width:44px; height:30px; place-items:center; border-radius:10px; background:var(--checkout-soft); color:var(--checkout-accent); font-size:21px; }
 .cardBrands { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.brandIcon { display:inline-flex; width:44px; height:28px; border-radius:4px; opacity:.7; transition:opacity 140ms ease,transform 140ms ease; }
+.brandIcon { display:inline-flex; width:44px; height:28px; border-radius:4px; opacity:1; transition:opacity 140ms ease,transform 140ms ease; }
 .brandIcon svg { width:44px; height:28px; display:block; }
 .brandActive { opacity:1; transform:translateY(-1px); }
 .brandDimmed { opacity:.28; }
@@ -60,6 +60,7 @@
 .cardFields input { min-height:48px; padding:11px 13px; border:1px solid #9AA5B4; border-radius:10px; color:var(--checkout-ink); font:inherit; background:#fff; }
 .cardFields input:focus-visible { outline:3px solid var(--ys-gold,#7A5000); outline-offset:2px; }
 .mockFields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.mockFields label:first-child { grid-column:1/-1; }
 .mockFields span { min-height:48px; display:flex; align-items:center; padding:10px 12px; border:1px solid var(--checkout-rule); border-radius:10px; background:#fff; color:var(--checkout-muted); font-size:13px; }
 .mockFields span:first-child,.mockFields small { grid-column:1/-1; }
 .mockFields small { color:var(--checkout-muted); font-size:13px; }
