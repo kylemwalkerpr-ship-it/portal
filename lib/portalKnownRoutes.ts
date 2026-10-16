@@ -11,8 +11,11 @@
 export const PORTAL_KNOWN_TOP_SEGMENTS: ReadonlySet<string> = new Set([
   // app/ route directories
   'account',
+  'admin',
   'api',
+  'checkout',
   'dashboard',
+  'dev',
   'marketplace',
   'onboarding',
   'payhip-product',

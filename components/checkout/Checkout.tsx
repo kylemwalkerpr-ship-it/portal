@@ -329,7 +329,9 @@ export default function Checkout({
                   ? `${(choice.card?.brand || 'Card').toUpperCase()} ending in ${choice.card?.last4 || ''}`
                   : choice.kind === 'new_card'
                     ? `${choice.method.label} · new card`
-                    : choice.method.label
+                    : choice.kind === 'wallet'
+                      ? 'Pay from wallet'
+                      : choice.method.label
                 const detail = choice.kind === 'wallet'
                   ? walletBalanceCents === null ? 'Balance unavailable' : `${formatMoney(walletBalanceCents)} available${disabled ? ' · not enough to cover this total' : ''}`
                   : choice.kind === 'saved_card'

@@ -271,25 +271,9 @@ export async function POST(req: Request) {
     }
 
     // ── Default wallet payment flow ─────────────────────────────────────────
-    try {
-      await assertMethodAllowed('manual:wallet', {
-        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
-      }, auth.db)
-    } catch (error) {
-      if (error instanceof MethodUnavailableError) {
-        if (error.invoiceRequestFallback) {
-          try {
-            const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
-            return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
-          } catch (invoiceError) {
-            console.error('[checkout/order] invoice fallback failed:', invoiceError)
-            return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
-          }
-        }
-        return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
-      }
-      throw error
-    }
+    // Wallet funds are already held by the portal; gateway availability
+    // settings govern external payment methods and must not block a wallet
+    // debit after the checkout has verified the customer's balance.
     const wallet = await getOrCreateWallet(auth.profileId)
     if (wallet.balance_cents < resolved.totalCents) {
       return respond(

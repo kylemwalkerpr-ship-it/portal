@@ -770,18 +770,21 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
       `}</style>
 
       {checkoutOpen && gig && selectedTier && (
-        <Checkout
-          title="Confirm your order"
-          amountUsdCents={Number(selectedTier.price || 0)}
-          purpose="order"
-          description={`${selectedTier.name || selectedTier.tier || 'Selected package'} · ${gig.title}`}
-          source={{ sourceType: 'gig', sourceId: gig.id, tierId: selectedTierId }}
-          savedCards={savedCards}
-          walletBalanceCents={walletCents}
-          variant="gig"
-          onSubmit={handleOrder}
-          onClose={() => setCheckoutOpen(false)}
-        />
+        // Wallet copy is rendered by the shared Checkout option as “Pay from wallet”.
+        <div className="ys-gig-checkout">
+          <Checkout
+            title="Confirm your order"
+            amountUsdCents={Number(selectedTier.price || 0)}
+            purpose="order"
+            description={`${selectedTier.name || selectedTier.tier || 'Selected package'} · ${gig.title}`}
+            source={{ sourceType: 'gig', sourceId: gig.id, tierId: selectedTierId }}
+            savedCards={savedCards}
+            walletBalanceCents={walletCents}
+            variant="gig"
+            onSubmit={handleOrder}
+            onClose={() => setCheckoutOpen(false)}
+          />
+        </div>
       )}
 
       <ChatSidePane
