@@ -12,7 +12,8 @@
  * The wallet debit happens LAST — after all DB writes succeed.
  */
 import { fail, ok } from '@/lib/apiEnvelope'
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { getManifest } from '@/lib/templatePdfManifests'
@@ -24,8 +25,10 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ sessionId: string }> },
 ) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return fail(buyerError.error, buyerError.status)
 
   const { sessionId } = await context.params
   if (!sessionId) return fail('Session ID required.', 400)

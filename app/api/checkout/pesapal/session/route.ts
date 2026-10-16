@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getPaymentProvider } from '@/lib/payments'
 import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
@@ -46,7 +47,8 @@ async function fxSnapshotIfNeeded(sourceCurrency: string, displayCurrency: strin
 export async function POST(request: Request) {
   const auth = await requirePortalUser()
   if ('error' in auth) return jsonError(auth.error, auth.status)
-  if (auth.role !== 'client') return jsonError('Only clients can start checkout.', 403)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return jsonError(buyerError.error, buyerError.status)
 
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return jsonError('A checkout request is required.', 400)

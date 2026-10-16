@@ -1,6 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, centsToDollars } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { debit, getOrCreateWallet, refundToWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
@@ -14,7 +15,8 @@ import { marketplaceOrdersHref } from '@/lib/orderLinks'
 async function handler(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
-  if (auth.role !== 'client') return fail('Only students can accept offers.', 403)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return fail(buyerError.error, buyerError.status)
 
   const { id } = await context.params
 

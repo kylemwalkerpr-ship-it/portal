@@ -1,6 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { createPaidOrder, resolveCheckoutItem } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
@@ -8,7 +9,8 @@ import { creditEarning } from '@/lib/earnings'
 export async function POST(req: Request, context: { params: Promise<{ id: string; tierId: string }> }) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
-  if (auth.role !== 'client') return fail('Only students can purchase gigs.', 403)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return fail(buyerError.error, buyerError.status)
   const { id, tierId } = await context.params
 
   try {

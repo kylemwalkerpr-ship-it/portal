@@ -2,6 +2,7 @@ import { getClerkUserId } from '@/lib/auth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { createPaidOrder, resolveCheckoutItem, type CheckoutSourceType } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
@@ -57,7 +58,8 @@ export async function POST(req: Request) {
   try {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
-  if (auth.role !== 'client') return Response.json({ error: 'Only students can check out.' }, { status: 403 })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
 
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useUser } from '@clerk/nextjs'
+import { useUser, useClerk } from '@clerk/nextjs'
+import { openYsSignIn } from '@/lib/auth/ysAuthModal'
 import { useCart } from '@/components/cart/CartProvider'
 import { getTemplatePack } from '@/lib/template-packs'
 import Checkout, { type CheckoutResult, type CheckoutSelection } from '@/components/checkout/Checkout'
@@ -49,6 +50,8 @@ function CartPageInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { isSignedIn, user } = useUser()
+  const clerk = useClerk()
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
 
   const [walletBalanceCents, setWalletBalanceCents] = useState<number | null>(null)
   const [savedCards, setSavedCards] = useState<SavedCard[]>([])
@@ -75,6 +78,12 @@ function CartPageInner() {
 
   useEffect(() => {
     if (!isSignedIn) return
+    try {
+      if (sessionStorage.getItem('ys_pending_cart_checkout') === '1') {
+        sessionStorage.removeItem('ys_pending_cart_checkout')
+        setCheckoutOpen(true)
+      }
+    } catch {}
     fetch('/api/wallet/balance', { credentials: 'same-origin' })
       .then((response) => response.json().catch(() => ({})))
       .then((data) => setWalletBalanceCents(Number(data.balanceCents ?? 0)))
@@ -258,6 +267,12 @@ function CartPageInner() {
           </div>
 
           <div>
+            {!isSignedIn ? <button type="button" onClick={() => {
+              try { sessionStorage.setItem('ys_pending_cart_checkout', '1') } catch {}
+              openYsSignIn(clerk, { returnTo: typeof window !== 'undefined' ? window.location.href : '/cart', intent: 'client', source: 'market_cart_checkout' })
+            }}>Checkout</button> : !checkoutOpen ? <button type="button" onClick={() => setCheckoutOpen(true)}>Checkout</button> : null}
+            {!isSignedIn ? <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ys-inkSoft, #526072)' }}>Sign in or create a buyer account to continue.</p> : null}
+            {isSignedIn && checkoutOpen ? (
             <Checkout
               title="Checkout"
               amountUsdCents={subtotalCents}
@@ -272,7 +287,9 @@ function CartPageInner() {
               variant="cart"
               onSubmit={handleCheckout}
               onCancel={() => router.back()}
+              onClose={() => setCheckoutOpen(false)}
             />
+            ) : null}
           </div>
         </>
       )}

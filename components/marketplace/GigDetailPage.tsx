@@ -30,6 +30,8 @@ import { getCategoryById, getSubcategoryById } from '@/lib/categories'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { trackAttributionCta } from '@/lib/attribution/client'
 import Checkout, { type CheckoutResult, type CheckoutSelection } from '@/components/checkout/Checkout'
+import { useUser, useClerk } from '@clerk/nextjs'
+import { openYsSignIn } from '@/lib/auth/ysAuthModal'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -266,6 +268,8 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
   const [checkoutBusy, setCheckoutBusy] = React.useState(false)
   const [walletCents, setWalletCents] = React.useState<number | null>(null)
   const [savedCards, setSavedCards] = React.useState<any[]>([])
+  const { isSignedIn } = useUser()
+  const clerk = useClerk()
 
   const { execute: gatedOrder, modal: orderModal } = useGatedAction('order', { gigId: gig?.id, tierId: selectedTierId })
   const { execute: gatedChat, modal: chatModal } = useGatedAction('chat', { gigId: gig?.id, providerId: gig?.provider_id })
@@ -339,6 +343,11 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
   const idemKeyRef = React.useRef<string | null>(null)
 
   const openCheckout = () => {
+    if (!isSignedIn) {
+      try { sessionStorage.setItem('ys_pending_gig_checkout', JSON.stringify({ gigId: gig?.id, packageId: selectedTierId, extras: [] })) } catch {}
+      openYsSignIn(clerk, { returnTo: typeof window !== 'undefined' ? window.location.href : '/', intent: 'client', source: 'market_gig_checkout' })
+      return
+    }
     setCheckoutOpen(true)
     // P10: this is the CTA step of the chain (organic landing → CTA → service →
     // paid order). Consent-gated and deduped per CTA per UTC day; a denied
@@ -355,6 +364,23 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
       .then((d) => setSavedCards(Array.isArray(d.cards) ? d.cards : []))
       .catch(() => setSavedCards([]))
   }
+
+  const handleOrderClick = () => {
+    if (!isSignedIn) openCheckout()
+    else gatedOrder(openCheckout)
+  }
+
+  React.useEffect(() => {
+    if (!isSignedIn || !gig?.id || typeof window === 'undefined') return
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('ys_pending_gig_checkout') || 'null')
+      if (pending?.gigId === gig.id) {
+        sessionStorage.removeItem('ys_pending_gig_checkout')
+        if (pending.packageId && (gig.tiers || []).some((tier: any) => tier.id === pending.packageId)) setSelectedTierId(pending.packageId)
+        setCheckoutOpen(true)
+      }
+    } catch { sessionStorage.removeItem('ys_pending_gig_checkout') }
+  }, [isSignedIn, gig?.id, gig?.tiers])
 
   const handleOrder = async (selection: CheckoutSelection): Promise<CheckoutResult> => {
     if (!selectedTierId || !gig || checkoutBusy) return { status: 409, message: 'This checkout is already in progress.' }
@@ -724,11 +750,14 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
             {selectedTier && (
               <OrderCTA
                 selectedTier={selectedTier}
-                onOrder={() => gatedOrder(openCheckout)}
+                onOrder={handleOrderClick}
                 onSave={() => gatedSave(handleSave)}
                 onShare={handleShare}
                 isSaved={isSaved}
               />
+            )}
+            {selectedTier && !isSignedIn && (
+              <p className="ys-buyer-gate-note" style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ys-inkSoft, #526072)' }}>Sign in or create a buyer account to continue.</p>
             )}
           </aside>
         </div>

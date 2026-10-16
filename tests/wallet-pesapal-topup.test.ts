@@ -1,4 +1,4 @@
-jest.mock('@/lib/student', () => ({ getCurrentStudent: jest.fn() }))
+jest.mock('@/lib/portalAuth', () => ({ requirePortalUser: jest.fn() }))
 jest.mock('@/lib/supabase', () => ({ createSupabaseAdminClient: jest.fn() }))
 jest.mock('@/lib/payments', () => ({ getPaymentProvider: jest.fn() }))
 jest.mock('@/lib/payments/availability', () => ({ assertMethodAllowed: jest.fn(), MethodUnavailableError: class extends Error {} }))
@@ -8,7 +8,7 @@ jest.mock('@/lib/platformConfig', () => ({ getPlatformSettings: jest.fn(async ()
 
 import { resolveWalletTopupQuote } from '@/lib/payments/walletTopup'
 import { POST as postCardTopup } from '@/app/api/wallet/topup/route'
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
 
 describe('Pesapal wallet top-up quote', () => {
   const rates = { USD: 1.1, GBP: 0.85, CAD: 1.5, AUD: 1.65 }
@@ -17,7 +17,7 @@ describe('Pesapal wallet top-up quote', () => {
     expect(resolveWalletTopupQuote(500, 'USD').baseAmountUsdMinor).toBe(500)
   })
   test('card top-up route rejects 499 cents before payment processing', async () => {
-    ;(getCurrentStudent as jest.Mock).mockResolvedValue({ profile: { id: 'student-1', email: 'buyer@example.test', full_name: 'Buyer' } })
+    ;(requirePortalUser as jest.Mock).mockResolvedValue({ role: 'client', profileId: 'student-1', db: {}, profile: { id: 'student-1', email: 'buyer@example.test', full_name: 'Buyer' } })
     const response = await postCardTopup(new Request('https://portal.example/api/wallet/topup', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

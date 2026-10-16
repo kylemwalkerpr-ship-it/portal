@@ -11,6 +11,25 @@
   border: 1px solid color-mix(in srgb, var(--checkout-rule) 70%, transparent); border-radius: 24px;
   box-shadow: 0 24px 72px rgb(15 23 42 / 10%); font-family: var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, sans-serif;
 }
+.header { margin-bottom:12px; }
+.modal .header h2,.offer .header h2,.gig .header h2 { font-size:30px; }
+.modal .summary,.offer .summary,.gig .summary { padding:12px 16px 10px 18px; border-radius:13px; }
+.modal .summaryLine,.offer .summaryLine,.gig .summaryLine { margin-top:7px; }
+.modal .summaryTotal,.offer .summaryTotal,.gig .summaryTotal { margin-top:8px; padding-top:7px; font-size:16px; }
+.modal .summaryTotal strong,.offer .summaryTotal strong,.gig .summaryTotal strong { font-size:24px; }
+.modal .trustRow,.offer .trustRow,.gig .trustRow { margin-top:9px; padding:8px 10px; }
+.modal .methodsHeading,.offer .methodsHeading,.gig .methodsHeading { margin-top:10px; }
+.modal .methods,.offer .methods,.gig .methods { gap:7px; margin-top:8px; }
+.checkout .method { min-height:58px; padding:8px 12px; }
+.checkout .selected { padding:7px 11px; }
+.checkout .methodCopy strong { font-size:16px; }
+.checkout .actions { position:sticky; bottom:-20px; z-index:2; margin:12px -20px -20px; padding:10px 20px max(10px, env(safe-area-inset-bottom)); border-top:1px solid var(--checkout-rule); background:rgb(255 255 255 / 96%); }
+.checkout .cancel { min-height:44px; padding:8px 4px; text-decoration:none; }
+.checkout .primary { min-height:48px; padding:10px 16px; }
+.checkout .summaryTitle { font-size:14px; }
+.checkout .summaryLine,.checkout .summaryTotal { font-size:16px; }
+.cardFields label { font-size:16px; }
+.cardFields input { font-size:16px; }
 .header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; }
 .header h2 { margin:0; font-family:var(--font-cormorant), 'Cormorant Garamond', Georgia, serif; font-size:clamp(30px,4vw,42px); font-weight:600; letter-spacing:-.025em; line-height:1.05; }
 .header p { margin:8px 0 0; color:var(--checkout-muted); font-size:15px; line-height:1.5; }
@@ -127,3 +146,29 @@
   .mockFields input { width:100%; box-sizing:border-box; }
 }
 @media(prefers-reduced-motion:reduce) { .method,.brandIcon { transition:none; } }
+
+/* Compact modal layout overrides are kept after the shared page checkout rules. */
+.modal,.offer,.gig { width:min(100%,500px); max-height:calc(100vh - 32px); overflow:auto; padding:20px; border-radius:18px; }
+.modal .header,.offer .header,.gig .header { margin-bottom:12px; }
+.modal .header h2,.offer .header h2,.gig .header h2 { font-size:30px; }
+.modal .summary,.offer .summary,.gig .summary { padding:12px 16px 10px 18px; border-radius:13px; }
+.modal .summaryLine,.offer .summaryLine,.gig .summaryLine { margin-top:7px; }
+.modal .summaryTotal,.offer .summaryTotal,.gig .summaryTotal { margin-top:8px; padding-top:7px; font-size:16px; }
+.modal .summaryTotal strong,.offer .summaryTotal strong,.gig .summaryTotal strong { font-size:24px; }
+.modal .trustRow,.offer .trustRow,.gig .trustRow { margin-top:9px; padding:8px 10px; }
+.modal .methodsHeading,.offer .methodsHeading,.gig .methodsHeading { margin-top:10px; }
+.modal .methods,.offer .methods,.gig .methods { gap:7px; margin-top:8px; }
+.checkout .method { min-height:58px; padding:8px 12px; }
+.checkout .selected { padding:7px 11px; }
+.checkout .methodCopy strong { font-size:16px; }
+.checkout .actions { position:sticky; bottom:-20px; z-index:2; margin:12px -20px -20px; padding:10px 20px max(10px, env(safe-area-inset-bottom)); border-top:1px solid var(--checkout-rule); background:rgb(255 255 255 / 96%); }
+.checkout .cancel { min-height:44px; padding:8px 4px; text-decoration:none; }
+.checkout .primary { min-height:48px; padding:10px 16px; }
+.checkout .summaryTitle { font-size:14px; }
+.checkout .summaryLine,.checkout .summaryTotal { font-size:16px; }
+.cardFields label,.cardFields input { font-size:16px; }
+@media(max-width:640px) {
+  .checkout .actions { flex-direction:row; align-items:center; gap:8px; }
+  .checkout .primary { width:auto; min-width:0; }
+  .checkout .cancel { width:auto; align-self:center; }
+}

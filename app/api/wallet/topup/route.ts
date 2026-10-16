@@ -6,7 +6,8 @@
  *
  * On successful charge → wallet.credit() with the transaction reference.
  */
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { getPaymentProvider } from '@/lib/payments'
 import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
 import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
@@ -21,8 +22,10 @@ import {
 } from '@/lib/idempotency'
 
 export async function POST(req: Request) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
 
   // Master switch — card top-ups can be temporarily disabled platform-wide.
   // Authoritative gate; the UI also hides the form, but this protects the

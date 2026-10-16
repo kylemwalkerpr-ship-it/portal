@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getPaymentProvider } from '@/lib/payments'
 import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
@@ -9,8 +10,10 @@ import { resolveWalletTopupQuote } from '@/lib/payments/walletTopup'
 import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey } from '@/lib/idempotency'
 
 export async function POST(req: Request) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return Response.json({ error: 'Invalid JSON body.' }, { status: 400 }) }
   const amountCents = Number(body.amountCents)

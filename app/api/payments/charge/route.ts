@@ -3,6 +3,7 @@ import { getPaymentProvider } from '@/lib/payments'
 import { TEMPLATE_PACKS, getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey, recordPaymentIncident } from '@/lib/idempotency'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { bindBusinessEvent } from '@/lib/attribution/engine'
@@ -48,9 +49,8 @@ export async function POST(request: NextRequest) {
   if ('error' in auth) {
     return Response.json({ ok: false, message: auth.error }, { status: auth.status })
   }
-  if (auth.role !== 'client') {
-    return Response.json({ ok: false, message: 'Only students can charge' }, { status: 403 })
-  }
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ ok: false, message: buyerError.error }, { status: buyerError.status })
 
   let body: ChargeBody
   try {
