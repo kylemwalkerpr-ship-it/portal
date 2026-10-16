@@ -221,8 +221,8 @@ export async function POST(request: Request) {
       amountCents: chargeAmountCents,
       currency: chargeCurrency,
       description,
-      callbackUrl: `${origin}/checkout/pesapal/return`,
-      cancellationUrl: `${origin}/checkout/pesapal/return?cancelled=1`,
+      callbackUrl: `${origin}/checkout/return`,
+      cancellationUrl: `${origin}/checkout/return?cancelled=1`,
       notificationId: process.env.PESAPAL_IPN_ID || '',
       customer: {
         email,

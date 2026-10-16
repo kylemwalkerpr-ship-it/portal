@@ -9,6 +9,7 @@ import { useCheckout } from './useCheckout'
 import styles from './checkout.module.css'
 import CardBrandIcons from './CardBrandIcons'
 import { supportedBrandsByProvider } from '@/lib/payments/registry'
+import type { DetectedCardBrand } from '@/lib/payments/inputMask'
 
 export interface CheckoutSavedCard {
   id: string
@@ -69,6 +70,10 @@ function formatMoney(cents: number, currency = 'USD') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
 }
 
+function buyerSafeMessage(message: string) {
+  return /pesapal|\bnmi\b|payhip/i.test(message) ? 'We could not complete this payment. Please contact support before trying again.' : message
+}
+
 function currencyGlyph(currency: string) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).formatToParts(1).find((part) => part.type === 'currency')?.value || currency
 }
@@ -125,6 +130,8 @@ export default function Checkout({
   const [error, setError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null)
   const [hostedUrl, setHostedUrl] = useState<string | null>(null)
+  const [detectedBrand, setDetectedBrand] = useState<DetectedCardBrand>('unknown')
+  const [handoffUrl, setHandoffUrl] = useState<string | null>(null)
   const [email, setEmail] = useState(customer?.email || '')
   const [name, setName] = useState(customer?.name || '')
   const cardFieldsRef = useRef<CardFieldsHandle>(null)
@@ -144,6 +151,10 @@ export default function Checkout({
   const busy = visibleState === 'submitting' || visibleState === 'redirecting'
   const walletAvailable = walletBalanceCents !== null && walletBalanceCents >= amountUsdCents
   const ratesAvailable = ['GBP', 'CAD', 'AUD'].filter((currency) => Number.isFinite(rates[currency]) && rates[currency] > 0)
+
+  useEffect(() => {
+    if (previewState && selected?.kind === 'new_card' && selected.method.mode === 'inline-token') setDetectedBrand('visa')
+  }, [previewState, selected?.key, selected?.kind, selected?.method.mode])
 
   useEffect(() => {
     if (!['modal', 'gig'].includes(variant)) return
@@ -174,7 +185,7 @@ export default function Checkout({
       setSelectedKey(nextChoices.find((choice) => choice.method.isDefault)?.key || nextChoices[0]?.key || '')
       return
     }
-    setError(message)
+    setError(buyerSafeMessage(message))
     setState('failed')
   }
 
@@ -210,13 +221,8 @@ export default function Checkout({
           await finishWithError(data?.error?.message || data?.error || 'Could not open hosted checkout.', response.status, data?.error?.code || data?.code)
           return
         }
-        if (mobile) {
-          setState('redirecting')
-          window.location.assign(data.redirectUrl)
-          return
-        }
-        setHostedUrl(String(data.redirectUrl))
-        setState('pending')
+        setHandoffUrl(String(data.redirectUrl))
+        setState('redirecting')
         return
       }
 
@@ -243,8 +249,8 @@ export default function Checkout({
       }
       if (result?.status && result.status >= 400) throw new Error(result.message || 'Payment could not be completed.')
       if (result.url) {
+        setHandoffUrl(result.url)
         setState('redirecting')
-        window.location.assign(result.url)
         return
       }
       setReceipt(result || {})
@@ -262,6 +268,12 @@ export default function Checkout({
     setState('cancelled')
     setError('You closed hosted checkout. If you approved a payment, wait for confirmation before trying again.')
   }
+
+  useEffect(() => {
+    if (!handoffUrl || previewState) return
+    const timer = window.setTimeout(() => window.location.assign(handoffUrl), 1800)
+    return () => window.clearTimeout(timer)
+  }, [handoffUrl, previewState])
 
   const content = (
     <section
@@ -281,7 +293,11 @@ export default function Checkout({
       </header>
 
       <div className={styles.summary}>
-        <div><span>Total</span><strong>{formatMoney(amountUsdCents, 'USD')} USD</strong></div>
+        <div className={styles.summaryTitle}><span>Order summary</span><span>USD</span></div>
+        {!summaryDetails && <div className={styles.summaryLine}><span>{title}</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>}
+        {description && <p className={styles.summaryDescription}>{description}</p>}
+        {summaryDetails && <div className={styles.summaryDetails}>{summaryDetails}</div>}
+        <div className={styles.summaryTotal}><span>Total due</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>
         <p>Prices are based on USD. Local currency amounts are estimates.</p>
         {ratesAvailable.length > 0 && (
           <ul className={styles.estimates} aria-label="Estimated local prices">
@@ -292,8 +308,7 @@ export default function Checkout({
         )}
       </div>
 
-      {summaryDetails && <div className={styles.description}>{summaryDetails}</div>}
-      {description && <p className={styles.description}>{description}</p>}
+      <div className={styles.trustRow}><span className={styles.lockMark} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><span><strong>Secured by YouSafe</strong><small>Your payment details are protected throughout checkout.</small></span></div>
 
       {visibleState === 'receipt' ? (
         <div className={styles.state} role="status">
@@ -309,7 +324,12 @@ export default function Checkout({
           <button type="button" className={styles.secondary} onClick={cancelHosted}>Close checkout</button>
         </div>
       ) : visibleState === 'redirecting' ? (
-        <div className={styles.state} role="status" aria-live="polite"><h3>Opening secure checkout</h3><p>You’re being redirected to complete your payment.</p></div>
+        <div className={styles.handoff} role="status" aria-live="polite">
+          <div className={styles.handoffBrand}><img src="/logo.svg" width="128" height="32" alt="YouSafe" /><span className={styles.handoffLock} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span></div>
+          <h3>Finishing securely</h3><strong className={styles.handoffAmount}>{formatMoney(amountUsdCents, 'USD')}</strong>
+          <p>Your secure payment page is ready. We’ll continue automatically in a moment.</p>
+          <a href={handoffUrl || '#checkout-preview'} onClick={handoffUrl ? undefined : (event) => event.preventDefault()} className={styles.manualContinue}>Continue now</a>
+        </div>
       ) : visibleState === 'cancelled' ? (
         <div className={styles.state} role="status"><h3>Checkout closed</h3><p>{error || previewMessage || 'You can choose a payment method to try again.'}</p><button type="button" className={styles.secondary} onClick={() => { setState('idle'); setError(null) }}>Return to payment methods</button></div>
       ) : (
@@ -333,16 +353,16 @@ export default function Checkout({
                     ? `${choice.method.label} · new card`
                     : choice.kind === 'wallet'
                       ? 'Pay from wallet'
-                      : choice.method.label
+                    : buyerSafeMessage(choice.method.label)
                 const detail = choice.kind === 'wallet'
                   ? walletBalanceCents === null ? 'Balance unavailable' : `${formatMoney(walletBalanceCents)} available${disabled ? ' · not enough to cover this total' : ''}`
                     : choice.kind === 'saved_card'
-                    ? `${choice.method.label} · saved securely`
+                    ? `${buyerSafeMessage(choice.method.label)} · saved securely`
                     : choice.kind === 'new_card'
                       ? 'Card details stay with the secure payment fields'
                       : choice.method.mode === 'hosted-redirect'
                         ? 'You’ll finish securely on our payment page'
-                        : choice.method.label
+                        : buyerSafeMessage(choice.method.label)
                 return (
                   <button
                     type="button"
@@ -354,7 +374,7 @@ export default function Checkout({
                     disabled={disabled}
                     onClick={() => { setSelectedKey(choice.key); setError(null); setState('idle') }}
                   >
-                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []} /> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
+                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []} activeBrand={detectedBrand} /> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
                     <span className={styles.methodCopy}><strong>{label}</strong><small>{detail}</small></span>
                     <span className={styles.radioMark} aria-hidden="true" />
                   </button>
@@ -365,25 +385,26 @@ export default function Checkout({
 
           {selected?.method.mode === 'hosted-redirect' && !customer?.email && (
             <div className={styles.cardFields}>
-                <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required aria-describedby={`${checkoutId}-email-help`} /><small id={`${checkoutId}-email-help`}>We’ll send your payment receipt here.</small></label>
+                <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required aria-invalid={Boolean(error && !email.trim())} aria-describedby={`${checkoutId}-email-help`} /><small id={`${checkoutId}-email-help`}>We’ll send your payment receipt here.</small></label>
             </div>
           )}
 
           {selected?.kind === 'new_card' && selected.method.mode === 'inline-token' && (
             <div className={styles.cardFields}>
-              {!customer?.name && <label>Name<input type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} /></label>}
-              <CardBrandIcons brands={selected.method.supportedBrands || supportedBrandsByProvider[selected.method.provider] || []} />
+              {!customer?.name && <label>Name<input type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} aria-describedby={`${checkoutId}-name-help`} /><small id={`${checkoutId}-name-help`}>Enter the name shown on your card.</small></label>}
+              <CardBrandIcons brands={selected.method.supportedBrands || supportedBrandsByProvider[selected.method.provider] || []} activeBrand={detectedBrand} />
               <p className={styles.fieldHelp}>Your card details are encrypted and handled securely.</p>
               {previewState ? (
                 <div className={styles.mockFields} aria-label="Mock card fields">
-                  <span>Card number ·•••• •••• ••••</span><span>Expiry · MM / YY</span><span>Security code · CVV</span>
-                  <small>Preview only · no card details are collected</small>
+                  <span>Card number · 4242 4242 4242 4242</span><span>Expiry · 08 / 29</span><span>Security code · •••</span>
+                  <small>Preview only · sample Visa number, no card details are collected</small>
                 </div>
               ) : (
                 <CardFields
                   ref={cardFieldsRef}
                   gateway={selected.method.provider}
                   onError={setError}
+                  onBrandDetected={setDetectedBrand}
                   onToken={(token) => { lastTokenRef.current = token; setError(null) }}
                 />
               )}
@@ -391,15 +412,17 @@ export default function Checkout({
           )}
 
           {(methodsError || error || visibleState === 'failed' || visibleState === 'method_unavailable') && (
-            <div className={styles.error} role="alert" aria-live="assertive">{error || methodsError || previewMessage || 'Payment could not be completed.'}</div>
+            <div className={styles.error} role="alert" aria-live="assertive">{buyerSafeMessage(error || methodsError || previewMessage || 'Payment could not be completed.')}</div>
           )}
 
           {visibleState === 'method_unavailable' && <p className={styles.repick}>Available methods have been refreshed. Choose another option to continue.</p>}
 
+          <div className={styles.actions}>
+          {onClose && <button type="button" className={styles.cancel} onClick={onClose} disabled={busy}>Cancel</button>}
           <button type="button" className={styles.primary} onClick={submit} disabled={busy || methodsLoading || !selected}>
             {visibleState === 'submitting' ? 'Processing…' : selected?.kind === 'wallet' ? `Pay ${formatMoney(amountUsdCents)} from wallet` : selected?.kind === 'saved_card' ? `Pay with ${selected.card?.brand || 'saved card'} ending ${selected.card?.last4}` : selected?.kind === 'invoice' ? 'Request an invoice' : selected?.method.mode === 'hosted-redirect' ? 'Continue to secure checkout' : `Pay ${formatMoney(amountUsdCents)} USD`}
           </button>
-          {onClose && <button type="button" className={styles.cancel} onClick={onClose} disabled={busy}>Cancel</button>}
+          </div>
         </>
       )}
 

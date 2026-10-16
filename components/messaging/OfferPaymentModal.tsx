@@ -11,6 +11,7 @@ export interface OfferPaymentModalProps {
   open: boolean
   onClose: () => void
   onPaid?: (orderId?: string) => void
+  previewData?: OfferCheckoutData
 }
 
 interface OfferCheckoutData {
@@ -31,7 +32,7 @@ function openOrderInApp(orderId: string) {
   window.location.assign(`/dashboard?goto=orders&orderId=${encodeURIComponent(orderId)}`)
 }
 
-export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPaymentModalProps) {
+export function OfferPaymentModal({ offerId, open, onClose, onPaid, previewData }: OfferPaymentModalProps) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [checkout, setCheckout] = useState<OfferCheckoutData | null>(null)
@@ -42,6 +43,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
 
   useEffect(() => {
     if (!open) return
+    if (previewData) { setCheckout(previewData); setLoading(false); setLoadError(null); return }
     const controller = new AbortController()
     setLoading(true)
     setLoadError(null)
@@ -59,7 +61,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
 
     return () => controller.abort()
-  }, [open, offerId])
+  }, [open, offerId, previewData])
 
   useEffect(() => {
     if (!open) return
@@ -125,7 +127,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
   }
 
   return (
-    <div ref={dialogRef} className="ys-offer-checkout-frame" role="dialog" aria-modal="true" aria-label="Pay for offer" tabIndex={-1}>
+    <div ref={dialogRef} className="ys-offer-checkout-frame" data-preview={previewData ? 'true' : undefined} role="dialog" aria-modal={previewData ? undefined : true} aria-label="Pay for offer" tabIndex={-1}>
       {loading ? (
         <div className="ys-offer-checkout-loading" role="status" aria-live="polite">Loading offer details…</div>
       ) : loadError ? (
@@ -148,16 +150,18 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
           onClose={onClose}
         />
       ) : null}
-      <p className="ys-offer-checkout-terms">
+      <p className="ys-offer-checkout-terms" data-preview={previewData ? 'true' : undefined}>
         By placing this order you agree to the <a href={TERMS_URL} target="_blank" rel="noreferrer">Terms of Service</a> and <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer">Refund Policy</a>.
       </p>
       <style jsx>{`
         .ys-offer-checkout-frame { position: fixed; inset: 0; z-index: 899; display: grid; place-items: center; padding: 16px; background: rgb(15 23 42 / 52%); }
+        .ys-offer-checkout-frame[data-preview="true"] { position: relative; inset: auto; z-index: auto; display: block; padding: 0; background: transparent; }
         .ys-offer-checkout-loading, .ys-offer-checkout-error { width: min(100%, 520px); padding: 28px; border-radius: 16px; background: var(--ys-vellum, #fff); color: var(--ys-ink, #0f172a); font-family: var(--font-inter), Inter, sans-serif; }
         .ys-offer-checkout-loading { min-height: 140px; display: grid; place-items: center; }
         .ys-offer-checkout-error p { color: var(--ys-inkMid, #334155); line-height: 1.5; }
         .ys-offer-checkout-error button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--ys-indigo, #111827); color: white; font: inherit; }
         .ys-offer-checkout-terms { position: fixed; z-index: 905; bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; width: min(calc(100% - 32px), 600px); transform: translateX(-50%); margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--ys-vellum, #fff); color: var(--ys-inkSoft, #526072); text-align: center; font: 12px/1.45 var(--font-inter), Inter, sans-serif; }
+        .ys-offer-checkout-terms[data-preview="true"] { position: static; width: auto; transform: none; margin-top: 10px; text-align: left; }
         .ys-offer-checkout-terms a { color: var(--ys-ink, #0f172a); text-underline-offset: 2px; }
         @media (max-width: 640px) { .ys-offer-checkout-frame { padding: 8px 8px 54px; } }
         @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

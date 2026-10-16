@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const provider = getPaymentProvider('pesapal')
     if (!provider.createHostedSession) return finish({ error: 'Card payment is temporarily unavailable.' }, 503)
     const origin = new URL(req.url).origin
-    const session = await provider.createHostedSession({ merchantReference: reference, amountCents: quote.chargeAmountMinor, currency: quote.chargeCurrency, description: 'YouSafe wallet top-up', callbackUrl: `${origin}/checkout/pesapal/return`, cancellationUrl: `${origin}/checkout/pesapal/return?cancelled=1`, notificationId: process.env.PESAPAL_IPN_ID || '', customer: { email, name, countryCode: profile.country_code || undefined } })
+    const session = await provider.createHostedSession({ merchantReference: reference, amountCents: quote.chargeAmountMinor, currency: quote.chargeCurrency, description: 'YouSafe wallet top-up', callbackUrl: `${origin}/checkout/return`, cancellationUrl: `${origin}/checkout/return?cancelled=1`, notificationId: process.env.PESAPAL_IPN_ID || '', customer: { email, name, countryCode: profile.country_code || undefined } })
     const { error } = await db.from('payment_attempts').update({ provider_tracking_id: session.trackingId, status: 'submitted', updated_at: new Date().toISOString() }).eq('id', inserted.data.id)
     if (error) throw error
     return finish({ redirectUrl: session.redirectUrl, orderTrackingId: session.trackingId, merchantReference: reference }, 200)

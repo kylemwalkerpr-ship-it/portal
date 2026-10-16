@@ -18,8 +18,8 @@ function sessionRequest() {
     amountCents: 750,
     currency: 'USD',
     description: 'A legal consultation '.repeat(8),
-    callbackUrl: 'https://portal.test/checkout/pesapal/return',
-    cancellationUrl: 'https://portal.test/checkout/pesapal/return?cancelled=1',
+    callbackUrl: 'https://portal.test/checkout/return',
+    cancellationUrl: 'https://portal.test/checkout/return?cancelled=1',
     notificationId: 'test-ipn-id',
     customer: { email: 'buyer@example.test', name: 'Taylor Buyer', phone: '+15555550123', countryCode: 'US' },
   }

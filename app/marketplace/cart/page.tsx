@@ -263,6 +263,7 @@ function CartPageInner() {
               amountUsdCents={subtotalCents}
               purpose="catalogue_checkout"
               description="Template purchases are priced in USD."
+              summaryDetails={<div style={{ display: 'grid', gap: 9 }}>{items.map((item) => <div key={item.slug} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, lineHeight: 1.45 }}><span>{item.name} × {item.quantity}</span><strong style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((item.priceUsdCents * item.quantity) / 100)}</strong></div>)}</div>}
               source={{ sourceType: 'catalogue', items: items.map((item) => ({ slug: item.slug, quantity: item.quantity })) }}
               customer={{ email: user?.primaryEmailAddress?.emailAddress || '', name: user?.fullName || '' }}
               savedCards={savedCards}

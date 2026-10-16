@@ -23,6 +23,8 @@ import StudentDocuments from './student-documents'
 import StudentTemplateFiller from '../student/StudentTemplateFiller'
 import CardFields from '@/components/payments/CardFields'
 import Checkout from '@/components/checkout/Checkout'
+import CardBrandIcons from '@/components/checkout/CardBrandIcons'
+import { formatCurrencyAmount } from '@/lib/payments/inputMask'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -788,6 +790,7 @@ function TopUpDialog({ onClose, onSuccess }) {
   // notice instead of the charge form. Server enforces this regardless.
   const [topupEnabled, setTopupEnabled] = React.useState(true);
   const [hostedTopup, setHostedTopup] = React.useState(false);
+  const [hostedTopupBrands, setHostedTopupBrands] = React.useState([]);
   const [topupName, setTopupName] = React.useState('');
   const [topupEmail, setTopupEmail] = React.useState('');
   const [topupPhone, setTopupPhone] = React.useState('');
@@ -801,7 +804,7 @@ function TopUpDialog({ onClose, onSuccess }) {
 
   React.useEffect(() => {
     fetch('/api/payments/methods?purpose=wallet_topup&currency=USD&amountUsd=5')
-      .then(r => r.json()).then(d => setHostedTopup((d.methods || []).some(m => m.mode === 'hosted-redirect' && m.id === 'card'))).catch(() => setHostedTopup(false));
+      .then(r => r.json()).then(d => { const method = (d.methods || []).find(m => m.mode === 'hosted-redirect' && m.id === 'card'); setHostedTopup(Boolean(method)); setHostedTopupBrands(method?.supportedBrands || []); }).catch(() => { setHostedTopup(false); setHostedTopupBrands([]); });
   }, []);
 
   const handleHostedTopup = async () => {
@@ -864,7 +867,11 @@ function TopUpDialog({ onClose, onSuccess }) {
     } finally { setSubmitting(false); }
   };
 
-  const brandColor = b => ({ visa: '#1a1f71', mastercard: '#eb001b', amex: '#007bc1' }[b] ?? C.textMuted);
+  const normalizedBrand = b => {
+    const brand = String(b || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (brand === 'americanexpress') return 'amex';
+    return ['visa', 'mastercard', 'amex', 'discover', 'jcb', 'unionpay'].includes(brand) ? brand : 'unknown';
+  };
 
   return (
     <div
@@ -873,7 +880,7 @@ function TopUpDialog({ onClose, onSuccess }) {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: C.surface, borderRadius: '16px', padding: '28px', maxWidth: '460px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        style={{ background: 'linear-gradient(145deg, #fff, #f7f5ef)', border: '1px solid rgba(196,160,83,.35)', borderRadius: '22px', padding: 'clamp(20px, 5vw, 32px)', maxWidth: '560px', width: '100%', maxHeight: 'calc(100dvh - 32px)', overflow: 'auto', boxShadow: '0 24px 72px rgba(15,23,42,.24)' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
@@ -904,26 +911,27 @@ function TopUpDialog({ onClose, onSuccess }) {
             <div style={{ marginBottom: '20px' }}>
               <label htmlFor="wallet-topup-amount" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</label>
               <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 700, color: C.textMuted }}>$</span>
                 <input
                   id="wallet-topup-amount"
                   type="text"
                   inputMode="decimal"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
+                  value={amount ? formatCurrencyAmount(amount, 'USD') : ''}
+                  onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
                   placeholder="$0.00"
                   aria-describedby="wallet-topup-amount-help"
-                  style={{ width: '100%', padding: '12px 14px 12px 28px', fontSize: '18px', fontWeight: 600, background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  aria-invalid={Boolean(amount && !validAmount)}
+                  style={{ width: '100%', padding: '12px 14px', fontSize: '18px', fontWeight: 600, background: '#fff', border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontFamily: 'inherit', boxSizing: 'border-box' }}
                 />
               </div>
-              <div id="wallet-topup-amount-help" style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Minimum $1.00. Choose a preset or enter an amount.</div>
+              <div id="wallet-topup-amount-help" style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>Minimum $1.00. Choose a preset or enter an amount.</div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {PRESETS.map(p => (
                   <button
                     key={p}
                     onClick={() => setAmount(String(p))}
+                    aria-pressed={amount === String(p)}
                     style={{
-                      padding: '6px 14px', borderRadius: '20px', border: `1px solid ${amount === String(p) ? C.cyan : C.border}`,
+                      minHeight: '42px', padding: '6px 16px', borderRadius: '999px', border: `1px solid ${amount === String(p) ? C.cyan : C.border}`,
                       background: amount === String(p) ? `${C.cyan}15` : C.surface2, color: amount === String(p) ? C.cyan : C.textMuted,
                       fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
                     }}
@@ -959,9 +967,7 @@ function TopUpDialog({ onClose, onSuccess }) {
                         onChange={() => setSelectedCardId(card.id)}
                         style={{ accentColor: C.cyan }}
                       />
-                      <div style={{ width: '36px', height: '24px', borderRadius: '4px', background: brandColor(card.brand), color: '#fff', fontSize: '9px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {(card.brand || 'card').slice(0, 4).toUpperCase()}
-                      </div>
+                      {normalizedBrand(card.brand) !== 'unknown' && <CardBrandIcons brands={[normalizedBrand(card.brand)]} activeBrand={normalizedBrand(card.brand)} />}
                       <div style={{ flex: 1, fontSize: '14px' }}>
                         •••• {card.last4} <span style={{ color: C.textMuted, fontSize: '12px' }}>· {card.exp_month}/{card.exp_year}</span>
                       </div>
@@ -975,21 +981,21 @@ function TopUpDialog({ onClose, onSuccess }) {
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '16px' }}>⚠ {errMsg}</div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <Btn variant="primary" size="md" onClick={handleSubmit} disabled={!canSubmit} fullWidth>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px' }}>
+              <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
+              <Btn variant="primary" size="md" onClick={handleSubmit} disabled={!canSubmit}>
                 {submitting ? 'Charging…' : validAmount ? `Charge $${amountNum.toFixed(2)}` : 'Enter an amount'}
               </Btn>
-              <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
             </div>
             {hostedTopup && <div style={{ marginTop: '18px', padding: '16px', borderRadius: '12px', background: C.surface2, border: `1px solid ${C.border2}` }}>
               <div style={{ fontWeight: 700, color: C.text, marginBottom: '4px' }}>Card payment</div>
               <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '14px' }}>You’ll finish securely on our payment page.</div>
-              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Name<input autoComplete="name" value={topupName} onChange={e => setTopupName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
-              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Email address<input type="email" autoComplete="email" value={topupEmail} onChange={e => setTopupEmail(e.target.value)} aria-describedby="wallet-topup-email-help" style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
-              <div id="wallet-topup-email-help" style={{ fontSize: '12px', color: C.textMuted, marginTop: '-7px', marginBottom: '10px' }}>We’ll send your payment receipt here.</div>
-              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>Phone (optional)<input type="tel" autoComplete="tel" value={topupPhone} onChange={e => setTopupPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
-              <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '12px' }} aria-label="Secure payment"><span aria-hidden="true">🔒 </span>Your details are protected with secure encryption.</div>
-              <button onClick={handleHostedTopup} disabled={!validAmount || !topupEmail.trim() || submitting} style={{ minHeight: '46px', padding: '11px 18px', borderRadius: '9px', border: 0, background: C.text, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Opening secure payment…' : 'Continue to secure payment'}</button>
+              {hostedTopupBrands.length > 0 && <CardBrandIcons brands={hostedTopupBrands} />}
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Name<input autoComplete="name" value={topupName} onChange={e => setTopupName(e.target.value)} aria-describedby="wallet-topup-name-help" style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-name-help" style={{ color: C.textMuted, fontWeight: 400 }}>Enter the name for your payment receipt.</small></label>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Email address<input type="email" autoComplete="email" value={topupEmail} onChange={e => setTopupEmail(e.target.value)} aria-describedby="wallet-topup-email-help" aria-invalid={Boolean(errMsg && !topupEmail.trim())} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-email-help" style={{ color: C.textMuted, fontWeight: 400 }}>We’ll send your payment receipt here.</small></label>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Phone (optional)<input type="tel" autoComplete="tel" value={topupPhone} onChange={e => setTopupPhone(e.target.value)} aria-describedby="wallet-topup-phone-help" style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-phone-help" style={{ color: C.textMuted, fontWeight: 400 }}>Add a number if you’d like it included with your receipt.</small></label>
+              <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr', alignItems: 'center', columnGap: '10px', marginBottom: '14px', padding: '12px', border: '1px solid rgba(15,23,42,.08)', borderRadius: '12px', background: 'rgba(255,255,255,.72)' }} aria-label="Secured by YouSafe"><span aria-hidden="true" style={{ display: 'grid', width: '36px', height: '36px', placeItems: 'center', borderRadius: '12px 12px 12px 4px', background: 'var(--ys-indigo, #272852)', color: '#fff' }}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><strong style={{ fontSize: '14px' }}>Secured by YouSafe</strong><small style={{ gridColumn: '2', color: C.textMuted }}>Your payment details are protected.</small></div>
+              <button onClick={handleHostedTopup} disabled={!validAmount || !topupEmail.trim() || submitting} style={{ display: 'block', minHeight: '50px', marginLeft: 'auto', padding: '12px 22px', borderRadius: '11px', border: 0, background: 'var(--ys-indigo, #272852)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Preparing payment…' : 'Continue to secure payment'}</button>
             </div>}
           </>
         )}

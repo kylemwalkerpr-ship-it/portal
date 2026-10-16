@@ -776,7 +776,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
             title="Confirm your order"
             amountUsdCents={Number(selectedTier.price || 0)}
             purpose="order"
-            description={`${selectedTier.name || selectedTier.tier || 'Selected package'} · ${gig.title}`}
+            summaryDetails={<div style={{ display: 'grid', gap: 7, fontSize: 14, lineHeight: 1.45 }}><strong>{gig.title}</strong><span>{selectedTier.name || selectedTier.tier || 'Selected package'}</span></div>}
             source={{ sourceType: 'gig', sourceId: gig.id, tierId: selectedTierId }}
             savedCards={savedCards}
             walletBalanceCents={walletCents}

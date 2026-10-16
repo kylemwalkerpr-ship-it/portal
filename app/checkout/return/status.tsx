@@ -5,10 +5,11 @@ import styles from '@/components/checkout/checkout.module.css'
 
 type ReturnStatus = { status?: string; confirmed?: boolean; message?: string }
 
-export default function PesapalReturnStatus({ trackingId, merchantReference, cancelled }: { trackingId: string; merchantReference: string; cancelled: boolean }) {
-  const [status, setStatus] = useState<ReturnStatus | null>(null)
+export default function CheckoutReturnStatus({ trackingId, merchantReference, cancelled, previewStatus }: { trackingId: string; merchantReference: string; cancelled: boolean; previewStatus?: ReturnStatus }) {
+  const [status, setStatus] = useState<ReturnStatus | null>(previewStatus || null)
 
   useEffect(() => {
+    if (previewStatus) return
     if (!trackingId || !merchantReference) {
       setStatus({ status: cancelled ? 'cancelled' : 'pending', message: cancelled ? 'Checkout was closed before confirmation.' : 'Waiting for your payment reference.' })
       return
@@ -22,16 +23,18 @@ export default function PesapalReturnStatus({ trackingId, merchantReference, can
         setStatus(payload)
       })
       .catch(() => setStatus({ status: 'pending', message: 'We could not check this payment yet. Do not retry until support confirms the result.' }))
-  }, [trackingId, merchantReference, cancelled])
+  }, [trackingId, merchantReference, cancelled, previewStatus])
 
   const confirmed = status?.confirmed === true
-  const title = confirmed ? 'Payment confirmed' : status?.status === 'failed' || status?.status === 'reversed' ? 'Payment not completed' : cancelled ? 'Checkout closed' : 'Confirming…'
-  const message = /pesapal|\bnmi\b|payhip/i.test(status?.message || '') ? 'We could not confirm your payment yet. Please contact support before trying again.' : status?.message || 'Checking your payment status. Keep this page open while we confirm it.'
+  const failed = status?.status === 'failed' || status?.status === 'reversed'
+  const title = confirmed ? 'Payment confirmed' : failed ? 'Payment not completed' : cancelled ? 'Checkout closed' : 'Confirming…'
+  const message = confirmed ? 'Your payment is confirmed and your order is ready.' : failed ? 'The payment was not completed. You can return to your dashboard for help.' : cancelled ? 'Checkout was closed before confirmation.' : 'We’re checking your payment. Keep this page open while we confirm it.'
 
   return (
     <main className={styles.returnPage}>
       <section className={styles.returnCard} role="status" aria-live="polite">
         <div className={styles.returnMark} aria-hidden="true">{confirmed ? '✓' : '…'}</div>
+        <img src="/logo.svg" width="128" height="32" alt="YouSafe" />
         <h1>{title}</h1>
         <p>{message}</p>
         {!confirmed && status?.status !== 'failed' && status?.status !== 'reversed' && status?.status !== 'cancelled' && <p className={styles.stubNotice}>If this page remains pending, contact support before starting another payment.</p>}
