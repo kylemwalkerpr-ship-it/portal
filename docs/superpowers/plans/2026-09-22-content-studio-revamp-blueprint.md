@@ -1,8 +1,8 @@
 # Content Studio Revamp Implementation Blueprint
 
-**Version CS-2026.09.23.8 / blueprint 1.1 · A0.1 documentation-integrity/executor-policy correction; implementation blocked.**
+**Version CS-2026.09.23.9 / blueprint 1.1 · executor-policy schema update; implementation blocked.**
 
-> Execution policy under contract `2026.09.23.7-rdc1`: Sol → Luna family through `RDC_CODEX_CLI`, with a task-selected supported effort after exact model/effort re-resolution, recorded rationale and verified selected-effort access. Sol owns architecture, task boundaries, independent review and merge. One writer per conflict domain; a distinct reviewer inspects the candidate. Native nested tools and separate CLI sessions are distinct, and a CLI session is not a native child. No automatic provider-family fallback. Use scoped implementation packets after the canonical program and A0 entry gates; this documentation update itself commissions no runtime, migration or deployment.
+> Current executor policy: Sol supervises; local Codex CLI 0.156.1 runs via RDC on model ID `gpt-6-luna`. At every admission, refresh the model catalog and explicitly probe the selected effort; choose the lowest supported effort sufficient for task risk/complexity and record rationale and verified access. Five strict read-only one-shot probes returned OK/exit 0 for low through max on 2026-09-23; a catalog refresh timed out once while explicit invocation succeeded. These are capability observations, not future guarantees. Do not silently substitute model/family/effort; unavailable capability is `BLOCKED_CAPABILITY`. Native subagents require verified native availability plus exact model/effort support; otherwise use RDC-launched separate CLI sessions (`nativeChild=false`). Sol owns scope, approval, review and Git integration; verify permitted GitHub/Supabase/Cloudflare calls within the executor, while capability remains distinct from authorization. Preserve dirty/diverged/other-owned worktrees; never force reset. Reviewed scoped PRs and required checks precede official Actions deployment. Merging a documentation PR also triggers the Worker deployment; disclose that release consequence and follow the authorized merge/deploy path. Implementation remains blocked.
 
 **Goal:** build an evidence-governed SEO operating system that chooses useful interventions across YouSafe's estate, publishes safely, directs readers to relevant Marketplace supply and measures mature outcomes.
 
@@ -10,11 +10,11 @@
 
 **Tech stack:** existing TypeScript/Next.js/OpenNext control UI; Supabase/Postgres private control state; Modal Python orchestration with pinned Node domain executables; TypeSafe Jev over HTTPS; existing GitHub Actions deployment. Current versions, extensions, credentials, account limits and exact workflow IDs are discovered in A0 and committed as verified non-secret configuration.
 
-**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.23.8. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
+**Normative spec:** `docs/superpowers/specs/2026-09-22-content-studio-revamp-architecture.md`, CS-2026.09.23.9. This blueprint is its implementation companion, not a second architecture. Registry interfaces are defined in the spec and imported/generated, never independently rewritten here.
 
 ## 1. Authority, evidence and start condition
 
-Read in order: current authorization, applicable AGENTS.md, Supervisor Arc 33465, SEO Brief 34332, current main parity matrix, canonical architecture, this blueprint, then only the current packet's source files. The audit read main `4b0a310f22a43e532c2f16ce08df3897d760caf4`: P0–P8 recorded PASS; P9/P10/P11 IN_PROGRESS; P12/P13 PENDING. P9 has zero verified wins; P10's deployed instrumentation is not its real-outcome gate. Re-pin on execution start; do not reuse this snapshot as a live unlock.
+Read in order: current authorization, applicable AGENTS.md, Supervisor Arc 33465, SEO Brief 34332, current main parity matrix, canonical architecture, this blueprint, then only the current packet's source files. Historical blueprint audit snapshot: main `4b0a310f22a43e532c2f16ce08df3897d760caf4` recorded P0–P8 PASS; P9/P10/P11 IN_PROGRESS; P12/P13 PENDING. Current dated release evidence is the A0.1 PR #283 merge at `22c685e38d46367eec18332f264b7f1480d8305e`, workflow 35822388398 success, Worker `b5e39685-baa2-4789-acfa-10e7f990d2ad`, build `LU03P9-X1WyePB7inlqsO`, production health PASS, and exact-main smoke 4/4. These facts do not admit broader implementation; P9–P11 stay IN_PROGRESS, P12–P13 PENDING, and Worker CPU UNVERIFIED. P9 has zero verified wins; P10's deployed instrumentation is not its real-outcome gate. Re-pin on execution start; do not reuse this snapshot as a live unlock.
 
 - [ ] Sol verifies the canonical SEO program has closed its remaining gates and explicitly opens Studio implementation.
 - [ ] A0.1–A0.7 produce the evidence listed below; downstream packets wait for their actual dependencies.
@@ -489,7 +489,7 @@ Target tests live in `tests/content-studio-v3/` and `tests/sql/`; target worker 
 
 ~~~typescript
 interface ImplementationPacket {
-  packetId: string; revision: number; architectureVersion: "CS-2026.09.23.8";
+  packetId: string; revision: number; architectureVersion: "CS-2026.09.23.9";
   architectureSha256: string; blueprintSha256: string;
   executorPolicy: ExecutorPolicy; phaseEvidenceRefs: string[]; // canonical schema, no local copy
   workerBudgetEvidenceRefs: string[]; independentReviewerAgentId: string | null;
@@ -503,7 +503,7 @@ interface ImplementationPacket {
 }
 ~~~
 
-Packet examples use the canonical `ExecutorPolicy` from the architecture/schema: Luna family, exact model re-resolved at admission, advertised and environment-verified effort catalogs, task-selected `selectedEffort` plus `selectionRationale`, `selectedEffortAccess: "VERIFIED"`, `transport: "RDC_CODEX_CLI"`, explicit native-nested versus separate-CLI orchestration, `automaticFallback: false`, `maxConcurrentAgents <= 3`, `writerConflictDomain: "ONE_WRITER"`, `reviewerIdentity: "DISTINCT_EXECUTOR"`, and `mergeAuthority: "GPT_SOL"`. The selected effort must be a member of the verified catalog; catalog advertisement alone never admits a packet.
+Packet examples use canonical `ExecutorPolicy` v3: current model re-resolved at admission; advertised and explicitly probed supported efforts recorded as capability evidence; `effortSelection.mode: "LOWEST_SUFFICIENT_PER_TASK_ADMISSION"`; each packet separately records its supported `selectedEffort`, rationale and verified access. Catalog advertisement alone never admits a packet. Transport, native versus separate CLI orchestration, no fallback, concurrency, one-writer boundary, distinct reviewer and Sol merge authority remain required.
 
 The packet is a scoped work instruction, not a permission escalation. A timeout first reconciles the existing Codex agent/job/worktree/PR state; it does not spawn a duplicate executor. Independent parallel tasks use disjoint worktrees/conflict domains only when explicitly granted. Heavy implementation/tests stay with the authorized executor; Sol owns architecture, steering, independent review and final merge decisions. Models/accounts are probed, not assumed available.
 
@@ -520,7 +520,7 @@ This document supplies the topology, schemas, method boundaries, source consumpt
 The architecture/blueprint become an implementable release plan only when the canonical program and A0 gates are satisfied, the packet contains actual verified configuration, and Sol accepts its evidence. Publication/ranking/conversion outcomes remain separately measured. No production code was changed by authoring this blueprint.
 
 
-## 15. v8 Worker, runtime and executor implementation delta
+## 15. v9 Worker, runtime and executor implementation delta
 
 Use architecture §§6.7–6.9, 7.2.1 and 8.1.1 as normative additions. The delivery contract is `docs/superpowers/specs/2026-09-23-content-studio-delivery.schema.json`; the dated phase snapshot and current executor policy are `2026-09-23-content-studio-delivery-state.json` alongside it. These are documentation/configuration contracts, not applied migrations.
 
@@ -531,7 +531,7 @@ Use architecture §§6.7–6.9, 7.2.1 and 8.1.1 as normative additions. The deli
 | Phase evidence events + current projection | project+phase; immutable source/proof refs; separate code/deployment/program status; never writable as an alternate gate |
 | StudioRunEnvelope → existing run authority | project+run 1:1, actor issuer/subject server-derived, unique actor-scoped command key + request hash; no parallel generic job scheduler |
 | studio_run_events → existing sequenced domain events where available | unique(project,run,sequence), append+projection transaction, gap replay, redacted detail artifact; do not reuse transport delivery receipts as progress |
-| executor policy in ImplementationPacket | Luna family, task-selected verified effort, `RDC_CODEX_CLI`, no automatic fallback, exact model/effort admission evidence, explicit orchestration mode, disjoint writer paths, distinct reviewer |
+| executor policy in ImplementationPacket | local Codex CLI 0.156.1 via RDC, `gpt-6-luna`, per-task lowest-sufficient verified effort, no silent substitution/fallback, explicit orchestration mode, disjoint writer paths, distinct reviewer |
 | route budget evidence registry | build/route/auth cohort/cache/key state, telemetry source/window/count/coverage, CPU p95/p99/max, resource outcomes, bytes/subrequests, release verdict |
 
 No `actor_email` in Queue messages or permission keys. Canonical schemas generate validator/types/UI projections in A1. Legacy Run/content lifecycle decoders remain readable. Do not silently rename production tables to these logical names.
@@ -553,14 +553,14 @@ Modal/Postgres outbox is the default. A Queue option gets its own capability rec
 | T27 | Sequenced event replay detects gaps, rejects cross-project reads, shows real terminal/cancel state after browser close; no false published badge | A2.4/A5.2 |
 | T28 | If Queue enabled: crash at send/ack/DB boundaries, duplicate delivery, expired retention, DLQ/redrive and quota exhaustion remain recoverable with one authority and real cost | Queue canary |
 | T29 | Code PASS + gate IN_PROGRESS remains blocked for dependent publication/CREATE; user-confirmed code evidence is labelled; no phase reset or fake external proof | A1.1/A1.2 |
-| T30 | Packet admits the Luna family only after exact model re-resolution, task-selected supported effort, rationale and selected-effort verification; unavailable capability blocks, writer/reviewer IDs differ, shared schema conflicts serialize, separate CLI is not a native child, and provider-family substitution is rejected | Every refactor packet |
+| T30 | Packet admits the current GPT-6 Luna model only after catalog refresh, explicit selected-effort probe, lowest-sufficient task choice, rationale and selected-effort verification; unavailable capability blocks, writer/reviewer IDs differ, shared schema conflicts serialize, separate CLI is not a native child, and provider-family substitution is rejected | Every refactor packet |
 
 Performance must include auth and framework overhead, max supported input, per-cohort statistics and telemetry coverage. An observed request ≥10ms or resource-limit outcome holds Free-plan promotion. Lower payload/work bounds or change the measured runtime boundary; never skip auth or rely on provider burst tolerance. Keep error1027/request quotas and error1102/resource outcomes separate. Local timing and a green unit suite do not certify Cloudflare CPU.
 
-### 15.4 Sol/Luna operating contract
+### 15.4 Sol/executor operating contract
 
-Sol re-resolves the available Luna model ID and advertised effort catalog at every packet admission, selects the lowest supported effort adequate for the task, records the rationale and verifies access to that selected effort. Initial concurrency ≤3 and no more than available slots; one writer per conflict domain; dependencies serialize. A separate reviewer can use the same Luna family but must be a distinct executor and independently inspect evidence; Sol remains responsible for acceptance and merge. Runtime generation/Jev/Modal provider bindings are not replaced with interactive coding subagents.
+Sol safely reconciles local `main` and `origin/main` (fetch, fast-forward and parity checks) before task work, preserving dirty/diverged/other-owned worktrees without force reset. At every packet admission Sol re-resolves the current `gpt-6-luna` model catalog and explicitly probes the selected effort, then selects the lowest supported effort sufficient for task risk/complexity, records rationale and verifies access. Never silently substitute model/family/effort; unavailable GPT-6 Luna or selected effort is `BLOCKED_CAPABILITY`. Initial concurrency ≤3 and no more than available slots; one writer per conflict domain; dependencies serialize. A separate reviewer can use the same Luna family but must be a distinct executor and independently inspect evidence; Sol remains responsible for acceptance and merge. Runtime generation/Jev/Modal provider bindings are not replaced with interactive coding subagents.
 
-Each packet names objective, base SHA, worktree, allowed/excluded paths, predecessor evidence, exact model+selected effort, advertised and verified effort catalogs, `RDC_CODEX_CLI` transport, native-nested versus separate-CLI orchestration, tests, CPU evidence requirements, publication authority, review owner and next checkpoint. If the selected Luna model or effort cannot be verified, report `BLOCKED_CAPABILITY` and do not switch provider families. Preserve current external sessions and jobs. User-facing updates distinguish code ready, deployed, externally verified and program closed.
+Each packet names objective, base SHA, worktree, allowed/excluded paths, predecessor evidence, exact model+selected effort, current catalog and explicit selected-effort probe evidence, `RDC_CODEX_CLI` transport, native-nested versus separate-CLI orchestration, tests, CPU evidence requirements, publication authority, review owner and next checkpoint. If GPT-6 Luna or the selected effort cannot be verified, report `BLOCKED_CAPABILITY` and do not silently switch model, family or effort. Preserve current external sessions and jobs. User-facing updates distinguish code ready, deployed, externally verified and program closed.
 
 The prior kickoff handoff's unconditional A0 operational probes while the global program gate remained closed were inconsistent with v6. Corrected handoff begins with source/document/readiness reconciliation; operational A0 and code wait for applicable entry authorization. A narrowly scoped exception must be explicit and preserve every publication/SEO gate.
