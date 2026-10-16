@@ -209,10 +209,12 @@ export async function createPaidOrder(
   db: Db,
   item: CheckoutItem,
   opts: {
-    paymentMethod: 'wallet' | 'saved_card' | 'new_card'
+    paymentMethod: 'wallet' | 'saved_card' | 'new_card' | 'pesapal'
     actorId?: string | null
     acceptedAt?: string
     skipSourceUpdate?: boolean
+    /** Verified provider transaction reference, used to make hosted fulfillment replay-safe. */
+    transactionId?: string | null
     /**
      * P10: opaque first-party attribution token for THIS request (read from the
      * httpOnly cookie by the calling route). Optional and never trusted for the
@@ -222,6 +224,11 @@ export async function createPaidOrder(
     attributionToken?: string | null
   },
 ) {
+  if (opts.transactionId) {
+    const { data: existing } = await db.from('orders').select('id')
+      .eq('gateway', 'pesapal').eq('transaction_id', opts.transactionId).maybeSingle()
+    if (existing?.id) return existing
+  }
   // Idempotency: don't duplicate by offer ids
   if (item.offerId) {
     const { data: existing } = await db.from('orders').select('id').eq('offer_id', item.offerId).maybeSingle()
@@ -275,6 +282,7 @@ export async function createPaidOrder(
     terms_accepted_at: acceptedAt,
     refund_policy_accepted_at: acceptedAt,
     payment_method: opts.paymentMethod,
+    ...(opts.transactionId ? { transaction_id: opts.transactionId, gateway: 'pesapal' } : {}),
     ...(identity || {}),
   }
 

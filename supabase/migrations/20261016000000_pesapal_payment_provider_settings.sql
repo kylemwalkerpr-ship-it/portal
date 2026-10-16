@@ -63,9 +63,12 @@ create table public.payment_attempts (
   template_order_id text,
   wallet_topup_id uuid,
   profile_id uuid not null references public.profiles(id),
+  source_type text not null,
+  source_id text not null,
+  source_payload jsonb not null default '{}'::jsonb,
   purpose text not null check (purpose in ('order', 'template', 'wallet_topup', 'offer', 'template_fill')),
   status text not null default 'created' check (status in (
-    'created', 'submitted', 'pending', 'completed', 'failed', 'invalid', 'cancelled', 'expired',
+    'created', 'submitted', 'pending', 'processing', 'completed', 'failed', 'invalid', 'cancelled', 'expired',
     'refund_requested', 'refunded', 'refund_rejected', 'reversed'
   )),
   amount_minor bigint not null check (amount_minor > 0),

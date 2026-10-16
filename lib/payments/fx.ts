@@ -1,4 +1,8 @@
 export type EcbRates = Record<string, number>
+export type EcbRateSnapshot = { rates: EcbRates; fetchedAt: string; source: 'ECB' }
+
+const ECB_DAILY_XML_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+const ECB_SOURCE = 'https://www.ecb.europa.eu/stats/eurofxref/'
 
 export type FxQuote = {
   baseAmountUsdMinor: number
@@ -30,6 +34,85 @@ export function ecbCrossRate(base: string, quote: string, rates: EcbRates): numb
 export function roundHalfUp(value: number): number {
   if (!Number.isFinite(value)) throw new Error('Cannot round a non-finite payment amount.')
   return Math.floor(value + 0.5)
+}
+
+/** Convert a two-decimal minor-unit amount using the ECB reference rate, with no markup. */
+export function convertMinorUnits(amountMinor: number, from: string, to: string, rates: EcbRates): number {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new Error('Amount must be a non-negative integer in minor units.')
+  const rate = ecbCrossRate(from, to, rates)
+  return roundHalfUp(amountMinor * rate)
+}
+
+/** Parse the ECB daily reference-rate XML response for deterministic tests and route use. */
+export function parseEcbDailyRates(xml: string): EcbRateSnapshot {
+  const date = xml.match(/<Cube\s+time="(\d{4}-\d{2}-\d{2})"\s*\/?\s*>/i)?.[1]
+  if (!date) throw new Error('ECB response did not contain a reference date.')
+  const rates: EcbRates = {}
+  for (const match of xml.matchAll(/<Cube\s+currency="([A-Z]{3})"\s+rate="([0-9.]+)"\s*\/?\s*>/gi)) {
+    const rate = Number(match[2])
+    if (Number.isFinite(rate) && rate > 0) rates[match[1].toUpperCase()] = rate
+  }
+  if (!rates.USD || !rates.GBP || !rates.CAD || !rates.AUD) {
+    throw new Error('ECB response is missing a required USD, GBP, CAD, or AUD rate.')
+  }
+  return { rates, fetchedAt: `${date}T16:00:00.000Z`, source: 'ECB' }
+}
+
+/** Fetch the public ECB daily reference rates. Next.js caches the result for one hour. */
+export async function fetchEcbDailyRates(fetcher: typeof fetch = fetch): Promise<EcbRateSnapshot> {
+  const response = await fetcher(ECB_DAILY_XML_URL, { cache: 'force-cache', next: { revalidate: 3600 } } as RequestInit)
+  if (!response.ok) throw new Error('ECB reference rates are temporarily unavailable.')
+  return parseEcbDailyRates(await response.text())
+}
+
+export function estimateDisplayAmountUsdMinor(baseAmountUsdMinor: number, displayCurrency: string, rates: EcbRates) {
+  return convertMinorUnits(baseAmountUsdMinor, 'USD', displayCurrency, rates)
+}
+
+export type PesapalCurrencyQuote = {
+  baseAmountUsdMinor: number
+  chargeAmountMinor: number
+  chargeCurrency: 'USD' | 'GBP'
+  displayAmountMinor: number
+  displayCurrency: 'USD' | 'GBP' | 'CAD' | 'AUD'
+  sourceCurrency: 'USD' | 'GBP' | 'CAD' | 'AUD'
+  fxRateToUsd: number
+  fxRateToDisplay: number
+}
+
+/** Resolve a source amount to Pesapal settlement and a no-markup display estimate. */
+export function resolvePesapalCurrencyQuote(args: {
+  amountMinor: number
+  sourceCurrency: string
+  displayCurrency?: string
+  rates?: EcbRates
+}): PesapalCurrencyQuote {
+  if (!Number.isSafeInteger(args.amountMinor) || args.amountMinor <= 0) throw new Error('Amount must be a positive integer in minor units.')
+  const sourceCurrency = args.sourceCurrency.toUpperCase()
+  const displayCurrency = (args.displayCurrency || 'USD').toUpperCase()
+  if (!ALLOWED_CURRENCIES.has(sourceCurrency)) throw new Error(`Unsupported source currency: ${sourceCurrency}.`)
+  if (!ALLOWED_CURRENCIES.has(displayCurrency)) throw new Error(`Unsupported display currency: ${displayCurrency}.`)
+  const rates = args.rates || {}
+  const baseAmountUsdMinor = sourceCurrency === 'USD'
+    ? args.amountMinor
+    : convertMinorUnits(args.amountMinor, sourceCurrency, 'USD', rates)
+  const chargeCurrency: 'USD' | 'GBP' = sourceCurrency === 'GBP' ? 'GBP' : 'USD'
+  const chargeAmountMinor = chargeCurrency === sourceCurrency ? args.amountMinor : baseAmountUsdMinor
+  const displayAmountMinor = displayCurrency === sourceCurrency
+    ? args.amountMinor
+    : displayCurrency === 'USD'
+      ? baseAmountUsdMinor
+      : convertMinorUnits(baseAmountUsdMinor, 'USD', displayCurrency, rates)
+  return {
+    baseAmountUsdMinor,
+    chargeAmountMinor,
+    chargeCurrency,
+    displayAmountMinor,
+    displayCurrency: displayCurrency as PesapalCurrencyQuote['displayCurrency'],
+    sourceCurrency: sourceCurrency as PesapalCurrencyQuote['sourceCurrency'],
+    fxRateToUsd: sourceCurrency === 'USD' ? 1 : ecbCrossRate(sourceCurrency, 'USD', rates),
+    fxRateToDisplay: displayCurrency === 'USD' ? 1 : ecbCrossRate('USD', displayCurrency, rates),
+  }
 }
 
 export function makeFxQuote(args: {

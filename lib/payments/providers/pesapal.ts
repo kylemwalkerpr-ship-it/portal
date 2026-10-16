@@ -14,7 +14,10 @@ import type {
 } from '../types'
 
 const LIVE_API = 'https://pay.pesapal.com/v3'
+const SANDBOX_API = 'https://cybqa.pesapal.com/pesapalv3'
 const MERCHANT_REFERENCE_RE = /^[A-Za-z0-9\-_.:]{1,50}$/
+
+export type PesapalIpnMethod = 'GET' | 'POST'
 
 type PesapalEnvironment = {
   PESAPAL_CONSUMER_KEY?: string
@@ -24,6 +27,11 @@ type PesapalEnvironment = {
 }
 
 type PesapalFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+type PesapalProvider = PaymentProvider &
+  Required<Pick<PaymentProvider, 'createHostedSession' | 'getTransactionStatus'>> & {
+    registerIpn(url: string, method: PesapalIpnMethod): Promise<Record<string, unknown>>
+    getIpnList(): Promise<unknown>
+  }
 
 function messageFrom(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== 'object') return fallback
@@ -64,18 +72,17 @@ export function createPesapalProvider(options: {
   env?: PesapalEnvironment
   fetcher?: PesapalFetch
   now?: () => number
-} = {}): PaymentProvider & Required<Pick<PaymentProvider, 'createHostedSession' | 'getTransactionStatus'>> {
+} = {}): PesapalProvider {
   const env = options.env ?? process.env
   const fetcher = options.fetcher ?? fetch
   const now = options.now ?? Date.now
-  const baseUrl = LIVE_API
+  const environment = String(env.PESAPAL_ENV || 'live').trim().toLowerCase()
+  if (!['live', 'sandbox'].includes(environment)) throw new Error('PESAPAL_ENV must be either live or sandbox.')
+  const baseUrl = environment === 'sandbox' ? SANDBOX_API : LIVE_API
   let tokenCache: { token: string; expiresAt: number } | null = null
   let tokenPromise: Promise<string> | null = null
 
   function credentials() {
-    if (env.PESAPAL_ENV && env.PESAPAL_ENV.toLowerCase() !== 'live') {
-      throw new Error('Only the live Pesapal environment is supported.')
-    }
     const consumerKey = env.PESAPAL_CONSUMER_KEY
     const consumerSecret = env.PESAPAL_CONSUMER_SECRET
     if (!consumerKey || !consumerSecret) throw new Error('Pesapal is not configured.')
@@ -116,6 +123,29 @@ export function createPesapalProvider(options: {
     return fetcher(`${baseUrl}${path}`, { ...init, headers })
   }
 
+  async function registerIpn(url: string, method: PesapalIpnMethod) {
+    if (method !== 'GET' && method !== 'POST') throw new Error('Pesapal IPN method must be GET or POST.')
+    const notificationUrl = new URL(url)
+    if (notificationUrl.protocol !== 'https:' || notificationUrl.username || notificationUrl.password) {
+      throw new Error('Pesapal IPN URL must be a public HTTPS URL.')
+    }
+    const response = await request('/api/URLSetup/RegisterIPN', {
+      method: 'POST',
+      body: JSON.stringify({ url: notificationUrl.toString(), ipn_notification_type: method }),
+    })
+    return readJson(response, 'Pesapal IPN registration failed.')
+  }
+
+  async function getIpnList() {
+    const response = await request('/api/URLSetup/GetIpnList', { method: 'GET' })
+    const payload: unknown = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(messageFrom(payload, 'Pesapal IPN list is unavailable.'))
+    if (!Array.isArray(payload) && (!payload || typeof payload !== 'object')) {
+      throw new Error('Pesapal returned an invalid IPN list.')
+    }
+    return payload
+  }
+
   const unsupported = (feature: string) => new Error(`Pesapal does not support ${feature} in hosted checkout.`)
 
   return {
@@ -137,7 +167,7 @@ export function createPesapalProvider(options: {
       if (!MERCHANT_REFERENCE_RE.test(req.merchantReference)) throw new Error('Pesapal merchant reference is invalid.')
       if (!Number.isSafeInteger(req.amountCents) || req.amountCents <= 0) throw new Error('Pesapal amount must be positive.')
       const currency = req.currency.toUpperCase()
-      if (!['USD', 'GBP', 'CAD', 'AUD'].includes(currency)) throw new Error('Pesapal currency is not supported.')
+      if (!['USD', 'GBP'].includes(currency)) throw new Error('Pesapal only settles USD or GBP.')
       if (!req.customer.email) throw new Error('A customer email is required for Pesapal checkout.')
 
       const billingAddress: Record<string, string> = { email_address: req.customer.email }
@@ -163,14 +193,16 @@ export function createPesapalProvider(options: {
       const response = await request('/api/Transactions/SubmitOrderRequest', { method: 'POST', body: JSON.stringify(payload) })
       const result = await readJson(response, 'Pesapal could not start checkout.')
       const redirectUrl = new URL(requiredString(result.redirect_url, 'redirect URL'))
-      if (redirectUrl.protocol !== 'https:' || redirectUrl.hostname !== 'pay.pesapal.com') {
+      if (redirectUrl.protocol !== 'https:' || redirectUrl.hostname !== new URL(baseUrl).hostname) {
         throw new Error('Pesapal returned an unexpected checkout URL.')
       }
+      const returnedReference = typeof result.merchant_reference === 'string' && result.merchant_reference
+        ? result.merchant_reference : req.merchantReference
+      if (returnedReference !== req.merchantReference) throw new Error('Pesapal returned a mismatched merchant reference.')
       return {
         redirectUrl: redirectUrl.toString(),
         trackingId: requiredString(result.order_tracking_id, 'tracking id'),
-        merchantReference: typeof result.merchant_reference === 'string' && result.merchant_reference
-          ? result.merchant_reference : req.merchantReference,
+        merchantReference: returnedReference,
       }
     },
 
@@ -191,6 +223,9 @@ export function createPesapalProvider(options: {
         createdAt: typeof result.created_date === 'string' ? result.created_date : null,
       }
     },
+
+    registerIpn,
+    getIpnList,
 
     async refund(confirmationCode: string, amountCents?: number, refundOptions?: RefundOptions): Promise<RefundResult> {
       if (!refundOptions?.username?.trim()) {
@@ -223,3 +258,13 @@ export function createPesapalProvider(options: {
 }
 
 export const pesapalProvider = createPesapalProvider()
+
+/** Register an HTTPS callback URL with the configured live or sandbox account. */
+export function registerIpn(url: string, method: PesapalIpnMethod) {
+  return pesapalProvider.registerIpn(url, method)
+}
+
+/** List IPN URLs registered with the configured live or sandbox account. */
+export function getIpnList() {
+  return pesapalProvider.getIpnList()
+}

@@ -41,7 +41,8 @@ describe('Pesapal hosted provider', () => {
       const url = String(input)
       calls.push({ url, init })
       if (url.endsWith('/api/Auth/RequestToken')) return jsonResponse({ token: 'short-lived-token', expiryDate: '2026-10-16T12:05:00Z' })
-      return jsonResponse({ order_tracking_id: 'tracking-1', merchant_reference: 'ys:order-42:attempt-1', redirect_url: 'https://pay.pesapal.com/checkout/1' })
+      const submitted = JSON.parse(String(init?.body))
+      return jsonResponse({ order_tracking_id: 'tracking-1', merchant_reference: submitted.id, redirect_url: 'https://pay.pesapal.com/checkout/1' })
     })
     const provider = createPesapalProvider({ env, fetcher, now: () => now })
 
@@ -127,10 +128,47 @@ describe('Pesapal hosted provider', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
 
-  it('does not make requests outside the approved live environment', async () => {
-    const fetcher = jest.fn()
+  it('uses sandbox endpoints and accepts only the cybqa redirect host when sandbox is selected', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const fetcher = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      return url.endsWith('/api/Auth/RequestToken')
+        ? jsonResponse({ token: 'sandbox-token', expiryDate: '2026-10-16T12:05:00Z' })
+        : jsonResponse({ order_tracking_id: 'tracking-sandbox', merchant_reference: sessionRequest().merchantReference, redirect_url: 'https://cybqa.pesapal.com/pesapalv3/checkout/1' })
+    })
     const provider = createPesapalProvider({ env: { ...env, PESAPAL_ENV: 'sandbox' }, fetcher })
-    await expect(provider.createHostedSession!(sessionRequest())).rejects.toThrow('Only the live Pesapal environment is supported.')
+    const result = await provider.createHostedSession!(sessionRequest())
+    expect(result.redirectUrl).toBe('https://cybqa.pesapal.com/pesapalv3/checkout/1')
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://cybqa.pesapal.com/pesapalv3/api/Auth/RequestToken',
+      'https://cybqa.pesapal.com/pesapalv3/api/Transactions/SubmitOrderRequest',
+    ])
+  })
+
+  it('registers GET or POST IPNs and returns the registered IPN list', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const fetcher = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      if (url.endsWith('/api/Auth/RequestToken')) return jsonResponse({ token: 'ipn-token' })
+      if (url.endsWith('/api/URLSetup/RegisterIPN')) return jsonResponse({ ipn_id: 'registered-ipn' })
+      return jsonResponse([{ ipn_id: 'registered-ipn', url: 'https://portal.test/api/webhooks/pesapal/ipn' }])
+    })
+    const provider = createPesapalProvider({ env, fetcher })
+    await expect(provider.registerIpn('https://portal.test/api/webhooks/pesapal/ipn', 'GET')).resolves.toMatchObject({ ipn_id: 'registered-ipn' })
+    await expect(provider.registerIpn('https://portal.test/api/webhooks/pesapal/ipn', 'POST')).resolves.toMatchObject({ ipn_id: 'registered-ipn' })
+    await expect(provider.getIpnList()).resolves.toEqual([{ ipn_id: 'registered-ipn', url: 'https://portal.test/api/webhooks/pesapal/ipn' }])
+    const registerCalls = calls.filter((call) => call.url.endsWith('/api/URLSetup/RegisterIPN'))
+    expect(registerCalls.map((call) => JSON.parse(String(call.init?.body)).ipn_notification_type)).toEqual(['GET', 'POST'])
+    expect(calls.some((call) => call.url.endsWith('/api/URLSetup/GetIpnList'))).toBe(true)
+  })
+
+  it('allows only USD and GBP settlement currencies', async () => {
+    const fetcher = jest.fn()
+    const provider = createPesapalProvider({ env, fetcher })
+    await expect(provider.createHostedSession!({ ...sessionRequest(), currency: 'CAD' })).rejects.toThrow('only settles USD or GBP')
+    await expect(provider.createHostedSession!({ ...sessionRequest(), currency: 'AUD' })).rejects.toThrow('only settles USD or GBP')
     expect(fetcher).not.toHaveBeenCalled()
   })
 })

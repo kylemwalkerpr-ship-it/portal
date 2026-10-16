@@ -9,7 +9,7 @@ import { isPaymentSettingsOwner, parsePaymentSettingsPatch, type PaymentSettings
 import { sendPaymentSettingsAlert } from '@/lib/payments/adminNotifications'
 
 const ANONYMOUS_ACTOR = '00000000-0000-0000-0000-000000000000'
-const OPEN_STATUSES = ['created', 'submitted', 'pending', 'refund_requested']
+const OPEN_STATUSES = ['created', 'submitted', 'pending', 'processing', 'refund_requested']
 
 function changesWithBeforeAfter(currentSettings: Awaited<ReturnType<typeof getPaymentSettings>>, patch: PaymentSettingsPatch) {
   return {

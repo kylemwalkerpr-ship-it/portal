@@ -1,7 +1,7 @@
 import { PAYMENT_CAPABILITIES, getMethodCapability, getProviderCapability, isSupportedCurrency } from '@/lib/payments/registry'
 import { createVersionedSettingsCache, type PaymentSettingsSnapshot } from '@/lib/payments/settings'
 import { resolveAvailableMethods } from '@/lib/payments/availability'
-import { ecbCrossRate, isFxQuoteExpired, makeFxQuote, resolveChargeCurrency, roundHalfUp } from '@/lib/payments/fx'
+import { convertMinorUnits, ecbCrossRate, fetchEcbDailyRates, isFxQuoteExpired, makeFxQuote, resolveChargeCurrency, resolvePesapalCurrencyQuote, roundHalfUp } from '@/lib/payments/fx'
 import { isPaymentSettingsOwner, parsePaymentSettingsOwnerIds } from '@/lib/payments/adminSettings'
 
 const OWNER_ID = 'd90e74a5-b4cf-4f3e-81ed-9ef71e7235a7'
@@ -122,6 +122,25 @@ describe('ECB currency quotes', () => {
     expect(resolveChargeCurrency('CAD', ['USD', 'GBP'])).toEqual({ chargeCurrency: 'USD', usesUsdFallback: true })
     expect(resolveChargeCurrency('AUD', ['USD'])).toEqual({ chargeCurrency: 'USD', usesUsdFallback: true })
     expect(resolveChargeCurrency('GBP', ['USD', 'GBP'])).toEqual({ chargeCurrency: 'GBP', usesUsdFallback: false })
+  })
+
+  it('uses ECB rates without markup for Pesapal settlement and display estimates', () => {
+    const rates = { USD: 1.2, GBP: 0.8, CAD: 1.6, AUD: 1.8 }
+    expect(convertMinorUnits(10_000, 'CAD', 'USD', rates)).toBe(7_500)
+    const cad = resolvePesapalCurrencyQuote({ amountMinor: 10_000, sourceCurrency: 'CAD', displayCurrency: 'CAD', rates })
+    expect(cad).toMatchObject({ baseAmountUsdMinor: 7_500, chargeAmountMinor: 7_500, chargeCurrency: 'USD', displayAmountMinor: 10_000 })
+    const gbp = resolvePesapalCurrencyQuote({ amountMinor: 4_000, sourceCurrency: 'GBP', displayCurrency: 'CAD', rates })
+    expect(gbp).toMatchObject({ baseAmountUsdMinor: 6_000, chargeAmountMinor: 4_000, chargeCurrency: 'GBP', displayAmountMinor: 8_000 })
+    const belowMinimum = resolvePesapalCurrencyQuote({ amountMinor: 660, sourceCurrency: 'CAD', rates })
+    expect(belowMinimum.baseAmountUsdMinor).toBe(495)
+  })
+
+  it('fetches and parses the ECB daily rate feed through an injected fetcher', async () => {
+    const xml = '<Cube time="2026-10-16"><Cube currency="USD" rate="1.20"/><Cube currency="GBP" rate="0.80"/><Cube currency="CAD" rate="1.60"/><Cube currency="AUD" rate="1.80"/></Cube>'
+    const fetcher = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(xml, { status: 200 }))
+    const snapshot = await fetchEcbDailyRates(fetcher as unknown as typeof fetch)
+    expect(snapshot).toMatchObject({ source: 'ECB', fetchedAt: '2026-10-16T16:00:00.000Z', rates: { USD: 1.2, GBP: 0.8, CAD: 1.6, AUD: 1.8 } })
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml')
   })
 })
 
