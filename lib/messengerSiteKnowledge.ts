@@ -13,6 +13,9 @@ export interface KnowledgeChunk {
   title: string
   body: string
   source: string
+  site?: string
+  sourceUrl?: string
+  repository?: string
   score?: number
 }
 
@@ -36,6 +39,50 @@ const KB_DIR_CANDIDATES = [
 
 /** In-process cache of curated KB files (mtime-insensitive for v1). */
 let cachedChunks: KnowledgeChunk[] | null = null
+let cachedCoreChunks: KnowledgeChunk[] | null = null
+
+const CORE_FILES = new Set([
+  'network-authority.md', 'brand-identity.md', 'platform.md',
+  'offers-orders-escrow.md', 'policies-ymyl.md', 'faq.md',
+])
+
+const SITE_BY_HOST: Record<string, string> = {
+  'yousafeconsultancy.com': 'main',
+  'www.yousafeconsultancy.com': 'main',
+  'usa.yousafeconsultancy.com': 'usa',
+  'ca.yousafeconsultancy.com': 'canada',
+  'uk.yousafeconsultancy.com': 'uk',
+  'au.yousafeconsultancy.com': 'australia',
+  'legal.yousafeconsultancy.com': 'caseworks',
+  'market.yousafeconsultancy.com': 'market',
+  'portal.yousafeconsultancy.com': 'market',
+  'support.yousafeconsultancy.com': 'support',
+}
+
+export function knowledgeSiteForHost(hostname?: string | null): string | null {
+  return SITE_BY_HOST[String(hostname || '').toLowerCase()] || null
+}
+
+function explicitQuerySites(query: string): string[] {
+  const q = String(query || '')
+  const matches: string[] = []
+  if (/\b(australia|australian|subclass\s*(?:500|485))\b/i.test(q)) matches.push('australia')
+  if (/\b(canada|canadian|ircc|pgwp)\b/i.test(q)) matches.push('canada')
+  if (/\b(united kingdom|britain|british|ukvi|\buk\b)\b/i.test(q)) matches.push('uk')
+  if (/\b(united states|america|american|uscis|\busa\b|\bu\.?s\.?\b)\b/i.test(q)) matches.push('usa')
+  return matches
+}
+
+function trustedKnowledgeUrl(value: unknown, site: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || knowledgeSiteForHost(url.hostname) !== site) return undefined
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
 
 function splitMarkdownSections(raw: string, fileId: string, source: string): KnowledgeChunk[] {
   const text = String(raw || '').trim()
@@ -61,8 +108,9 @@ function splitMarkdownSections(raw: string, fileId: string, source: string): Kno
  * Load curated site KB from disk. Safe for Workers / Next: missing dir → [].
  * Exported for unit tests.
  */
-export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
-  if (!dirOverride && cachedChunks) return cachedChunks
+export function loadCuratedKbChunks(dirOverride?: string, coreOnly = false): KnowledgeChunk[] {
+  if (!dirOverride && coreOnly && cachedCoreChunks) return cachedCoreChunks
+  if (!dirOverride && !coreOnly && cachedChunks) return cachedChunks
   const dirs = dirOverride ? [dirOverride] : KB_DIR_CANDIDATES
   const chunks: KnowledgeChunk[] = []
   for (const dir of dirs) {
@@ -70,14 +118,14 @@ export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
       if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue
       const files = fs
         .readdirSync(dir)
-        .filter((f) => /\.(md|txt|json)$/i.test(f))
+        .filter((f) => coreOnly ? CORE_FILES.has(f) : /\.(md|txt|json)$/i.test(f))
         .sort()
       for (const file of files) {
         const full = path.join(dir, file)
         const raw = fs.readFileSync(full, 'utf8')
         if (/\.json$/i.test(file)) {
           try {
-            const parsed = JSON.parse(raw) as Array<{ id?: string; title?: string; body?: string }>
+            const parsed = JSON.parse(raw) as Array<{ id?: string; title?: string; body?: string; site?: string; sourceUrl?: string; repository?: string }>
             if (Array.isArray(parsed)) {
               for (const row of parsed) {
                 if (!row?.body) continue
@@ -86,6 +134,9 @@ export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
                   title: String(row.title || file),
                   body: String(row.body).slice(0, 4000),
                   source: `content/messenger-kb/${file}`,
+                  site: typeof row.site === 'string' && Object.values(SITE_BY_HOST).includes(row.site) ? row.site : undefined,
+                  sourceUrl: trustedKnowledgeUrl(row.sourceUrl, row.site),
+                  repository: typeof row.repository === 'string' ? row.repository : undefined,
                 })
               }
             }
@@ -106,13 +157,17 @@ export function loadCuratedKbChunks(dirOverride?: string): KnowledgeChunk[] {
       )
     }
   }
-  if (!dirOverride) cachedChunks = chunks
+  if (!dirOverride) {
+    if (coreOnly) cachedCoreChunks = chunks
+    else cachedChunks = chunks
+  }
   return chunks
 }
 
 /** Reset in-process KB cache (tests). */
 export function resetMessengerKbCache(): void {
   cachedChunks = null
+  cachedCoreChunks = null
 }
 
 const STOP = new Set([
@@ -130,8 +185,13 @@ export function tokenizeQuery(q: string): string[] {
 }
 
 /** Simple keyword relevance — no embeddings required for v1. */
-export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): KnowledgeChunk[] {
+export function rankChunks(
+  chunks: KnowledgeChunk[], query: string, limit = 6,
+  origin?: { hostname?: string | null; pathname?: string | null },
+): KnowledgeChunk[] {
   const tokens = tokenizeQuery(query)
+  const explicitSites = explicitQuerySites(query)
+  const originSite = knowledgeSiteForHost(origin?.hostname)
   if (!chunks.length) return []
   if (!tokens.length) {
     // Prefer platform + escrow + faq when query is empty / tiny.
@@ -154,13 +214,25 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
     }
     // Light boosts for always-useful safety docs.
     if (/brand|identity|escrow|offer|payment|ymyl|policy|platform/i.test(c.id + c.title)) score += 0.5
+    // A named destination beats the current page's country. Origin is a soft
+    // preference, so cross-site questions can still retrieve the right page.
+    if (c.site && explicitSites.length) {
+      score += explicitSites.includes(c.site) ? 6 : -3
+    } else if (c.site && originSite === c.site) {
+      score += 3
+    }
+    if (c.sourceUrl && origin?.pathname && originSite === c.site) {
+      try {
+        if (new URL(c.sourceUrl).pathname === origin.pathname) score += 3
+      } catch { /* validated at load; tolerate synthetic test chunks */ }
+    }
     return { ...c, score }
   })
   scored.sort((a, b) => (b.score || 0) - (a.score || 0))
   const top: KnowledgeChunk[] = scored.filter((c) => (c.score || 0) > 0).slice(0, limit)
   // Always include at least a core pack so the model stays site-aware.
   if (top.length < 3) {
-    const core = rankChunks(chunks, '', Math.max(limit, 4))
+    const core = rankChunks(chunks.filter((c) => !c.site), '', Math.max(limit, 4))
     const seen = new Set(top.map((c) => c.id))
     for (const c of core) {
       if (seen.has(c.id)) continue
@@ -169,6 +241,38 @@ export function rankChunks(chunks: KnowledgeChunk[], query: string, limit = 6): 
     }
   }
   return top.slice(0, limit)
+}
+
+/** Both public chat and provider DMs select from this same public estate. */
+export function selectYqaaKnowledge(opts: {
+  query: string
+  deep: boolean
+  hostname?: string | null
+  pathname?: string | null
+  kbDir?: string
+  limit?: number
+}): KnowledgeChunk[] {
+  const all = loadCuratedKbChunks(opts.kbDir, !opts.deep)
+  const limit = opts.limit ?? 8
+  const pinned = all.filter((chunk) => /brand-identity|network-authority/i.test(chunk.source))
+  const ranked = rankChunks(all, opts.query, limit, { hostname: opts.hostname, pathname: opts.pathname })
+  const selected: KnowledgeChunk[] = []
+  const seen = new Set<string>()
+  for (const chunk of [...pinned.slice(0, 2), ...ranked]) {
+    if (seen.has(chunk.id)) continue
+    seen.add(chunk.id)
+    selected.push(chunk)
+    if (selected.length >= limit) break
+  }
+  return selected
+}
+
+export function shouldUseDeepNetworkKnowledge(query: string): boolean {
+  const q = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!q) return false
+  if (/^(hi|hello|hey|hiya|good (morning|afternoon|evening)|thanks|thank you)[!.?\s]*$/.test(q)) return false
+  if (/\b(who are you|what is yousafe|tell me about (?:yousafe|this company)|about yousafe consultancy|how does yousafe work)\b/.test(q)) return false
+  return /\b(visa|immigration|study permit|student visa|f-?1|pgwp|work permit|sponsorship|sponsor|refusal|appeal|asylum|removal|deport|citizenship|green card|permanent residence|pr\b|subclass\s*\d+|genuine student|admission|university|college|statement of purpose|\bsop\b|credential|wes\b|resume|cv\b|job search|housing|tenant|tenancy|landlord|deposit|legal|lawyer|attorney|court|deadline|canada|australia|united kingdom|\buk\b|united states|\busa?\b|price|pricing|cost|package|service)\b/i.test(q)
 }
 
 function clip(s: unknown, n: number): string {
@@ -295,23 +399,22 @@ export async function buildMessengerSiteKnowledge(opts: {
   provider?: { id: string; role?: string; full_name?: string | null; email?: string | null } | null
   latestUserMessage?: string
   kbDir?: string
+  originHostname?: string | null
+  originPathname?: string | null
 }): Promise<SiteKnowledgePack> {
-  const all = loadCuratedKbChunks(opts.kbDir)
-  const ranked = rankChunks(all, opts.latestUserMessage || '', 6)
+  const query = opts.latestUserMessage || ''
+  const merged = selectYqaaKnowledge({
+    query,
+    deep: shouldUseDeepNetworkKnowledge(query),
+    hostname: opts.originHostname,
+    pathname: opts.originPathname,
+    kbDir: opts.kbDir,
+    limit: 8,
+  })
 
   let providerContext: ProviderGigContext | null = null
   if (opts.db && opts.provider?.id) {
     providerContext = await loadProviderGigContext(opts.db, opts.provider)
-  }
-
-  // Always pin brand-identity so the model keeps the YQAA persona even on tiny queries.
-  const brand = all.filter((c) => /brand-identity/i.test(c.id) || /brand-identity/i.test(c.source))
-  const merged: KnowledgeChunk[] = []
-  const seen = new Set<string>()
-  for (const c of [...brand, ...(ranked.length ? ranked : all.slice(0, 5))]) {
-    if (seen.has(c.id)) continue
-    seen.add(c.id)
-    merged.push(c)
   }
 
   const parts: string[] = [

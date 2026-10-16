@@ -1,11 +1,8 @@
 import { fetchLiveKnowledge } from '@/lib/liveKnowledge'
-import { buildMessengerSiteKnowledge, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
+import { selectYqaaKnowledge, type KnowledgeChunk } from '@/lib/messengerSiteKnowledge'
 import { matchMarketplaceIntent } from '@/lib/assistantMarketplaceIntent'
 import { buildAuthoritativeNetworkContext } from '@/lib/assistantNetworkAuthority'
-import {
-  rankAssistantCoreKnowledge,
-  shouldUseDeepNetworkKnowledge,
-} from '@/lib/assistantFastKnowledge'
+import { shouldUseDeepNetworkKnowledge } from '@/lib/assistantFastKnowledge'
 
 export type AssistantOrigin = {
   surface: string
@@ -140,12 +137,15 @@ export async function buildCentralAssistantKnowledge(opts: {
 }): Promise<string> {
   const deepNetwork = shouldUseDeepNetworkKnowledge(opts.latestUserMessage)
   const authorityContext = buildAuthoritativeNetworkContext(opts.latestUserMessage)
-  const curatedPromise: Promise<KnowledgeChunk[]> = deepNetwork
-    ? buildMessengerSiteKnowledge({
-        db: opts.db,
-        latestUserMessage: opts.latestUserMessage,
-      }).then(pack => pack.chunks).catch(() => [])
-    : Promise.resolve(rankAssistantCoreKnowledge(opts.latestUserMessage, 6))
+  const curatedPromise: Promise<KnowledgeChunk[]> = Promise.resolve().then(() =>
+    selectYqaaKnowledge({
+      query: opts.latestUserMessage,
+      deep: deepNetwork,
+      hostname: opts.origin.hostname,
+      pathname: opts.origin.pathname,
+      limit: 8,
+    }),
+  ).catch(() => [])
 
   const [curatedChunks, liveKnowledge] = await Promise.all([
     curatedPromise,
