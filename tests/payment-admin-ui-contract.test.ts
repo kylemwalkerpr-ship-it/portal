@@ -20,4 +20,18 @@ describe('payment provider admin UI accessibility and viewport contract', () => 
     expect(css).toContain('.methodTable tbody tr { display: grid;')
     expect(css).toContain('.providerRow { grid-template-columns: 1fr;')
   })
+
+  it('routes the legacy page to the payment provider Settings tab', () => {
+    const page = fs.readFileSync('app/admin/payments/providers/page.tsx', 'utf8')
+    expect(page).toContain("redirect('/dashboard/admin/settings?tab=payments')")
+  })
+
+  it('registers a persistent Payment providers tab and requires a reason before saving', () => {
+    const settings = fs.readFileSync('components/design/admin.jsx', 'utf8')
+    const component = fs.readFileSync('components/admin/payments/ProvidersPage.tsx', 'utf8')
+    expect(settings).toContain("{ id: 'payments', label: 'Payment providers', icon: '💳' }")
+    expect(settings).toContain('TABS.some(x => x.id === t)')
+    expect(component).toContain('!reason.trim()')
+    expect(component).toContain('placeholder="Required for the audit log"')
+  })
 })

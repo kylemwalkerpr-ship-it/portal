@@ -20,6 +20,7 @@ const AdminContentStudio = React.lazy(() => import('./admin-content-studio'))
 const AdminGscDashboard = React.lazy(() => import('./admin-gsc-dashboard'))
 const AdminYqaaLearning = React.lazy(() => import('./admin-yqaa-learning'))
 const AdminMasterMessenger = React.lazy(() => import('../messaging/AdminMasterMessenger'))
+const PaymentProvidersSettings = React.lazy(() => import('../admin/payments/ProvidersPage'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -1976,6 +1977,7 @@ function AdminApp({ onLogout }) {
 const Settings = () => {
     const TABS = [
       { id: 'financial', label: 'Financial', icon: '💰' },
+      { id: 'payments', label: 'Payment providers', icon: '💳' },
       { id: 'escrow',    label: 'Escrow & policy', icon: '🔒' },
       { id: 'platform',  label: 'Platform info', icon: '🏛' },
       { id: 'appearance', label: 'Appearance', icon: '🎨' },
@@ -2150,6 +2152,8 @@ const Settings = () => {
       </>)}
 
       {/* Escrow tab */}
+      {tab === 'payments' && <PaymentProvidersSettings embedded setActionNotice={setActionNotice} />}
+
       {tab === 'escrow' && (<>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Escrow Rules</div>

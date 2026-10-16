@@ -2,6 +2,7 @@
 
 import React from 'react'
 import styles from './providers-page.module.css'
+import { Card, C, Btn } from '@/components/design/shared'
 
 type MethodSettings = {
   provider: string
@@ -165,7 +166,7 @@ function payloadError(payload: any) {
   return payload?.error?.message || payload?.error || 'Payment settings could not be saved.'
 }
 
-export default function ProvidersPage() {
+export default function ProvidersPage({ embedded = false, setActionNotice }: { embedded?: boolean; setActionNotice?: (message: string) => void }) {
   const [saved, setSaved] = React.useState<Snapshot | null>(null)
   const [draft, setDraft] = React.useState<Snapshot | null>(null)
   const [methodOrder, setMethodOrder] = React.useState<string[]>([])
@@ -322,7 +323,8 @@ export default function ProvidersPage() {
       })
       const payload = await response.json()
       if (!response.ok || payload?.error) throw new Error(payloadError(payload))
-      setNotice('Payment settings saved.')
+      if (setActionNotice) setActionNotice('Payment settings saved.')
+      else setNotice('Payment settings saved.')
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Payment settings could not be saved.')
@@ -332,14 +334,14 @@ export default function ProvidersPage() {
   }
 
   if (loading && !draft) {
-    return <main className={styles.page}><div className={styles.loadingBlock} aria-label="Loading payment settings"><span /><span /><span /></div></main>
+    return embedded ? <Card><div style={{ fontSize: 12, color: C.textMuted }}>Loading payment provider settings…</div></Card> : <main className={styles.page}><div className={styles.loadingBlock} aria-label="Loading payment settings"><span /><span /><span /></div></main>
   }
   if (!draft || !saved) {
-    return <main className={styles.page}>
+    return <>{embedded ? <Card><div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Payment providers</div><div style={{ fontSize: 12, color: C.textMuted, marginBottom: 16 }}>Configure payment providers and checkout methods.</div>{error && <div role="alert">{error}</div>}<Btn variant="primary" size="sm" onClick={() => void refresh()}>Try again</Btn></Card> : <main className={styles.page}>
       <header className={styles.pageHeader}><a className={styles.backLink} href="/dashboard/admin/financials">Back to admin console</a><h1>Payment providers</h1><p>Manage the methods available for portal checkout.</p></header>
       {error && <div className={styles.alertError} role="alert">{error}</div>}
       <button className={styles.secondaryButton} type="button" onClick={() => void refresh()}>Try again</button>
-    </main>
+    </main>}</>
   }
 
   const rows = flattenMethods(draft.providers)
@@ -349,8 +351,8 @@ export default function ProvidersPage() {
   const dirtyDiff = diffSettings(saved, draft)
   const hasAnyMethodOrderChange = dirtyDiff.methodChanges.some((change) => change.priority !== undefined)
 
-  return <main className={styles.page}>
-    <header className={styles.pageHeader}>
+  const content = <>
+    {!embedded && <header className={styles.pageHeader}>
       <a className={styles.backLink} href="/dashboard/admin/financials">Back to admin console</a>
       <div className={styles.headerRow}>
         <div>
@@ -364,13 +366,13 @@ export default function ProvidersPage() {
         <strong>{draft.providers.find((provider) => provider.settings.is_default)?.label || 'No default selected'}</strong>
         <span className={styles.version}>Settings version {draft.version}</span>
       </div>
-    </header>
+    </header>}
 
     {!draft.canManage && <div className={styles.alertInfo} role="status">You can view payment settings. Only the configured owner admin can change them.</div>}
     {error && <div className={styles.alertError} role="alert">{error}</div>}
-    {notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
+    {!embedded && notice && <div className={styles.alertSuccess} role="status">{notice}</div>}
 
-    <section className={styles.section} aria-labelledby="providers-heading">
+    <Card><section className={styles.section} aria-labelledby="providers-heading">
       <div className={styles.sectionHeading}>
         <div><h2 id="providers-heading">Providers</h2><p>Turn on new payments, set owner testing access and review provider health.</p></div>
       </div>
@@ -435,9 +437,9 @@ export default function ProvidersPage() {
           </article>
         })}
       </div>
-    </section>
+    </section></Card>
 
-    <section className={styles.section} aria-labelledby="methods-heading">
+    <Card><section className={styles.section} aria-labelledby="methods-heading">
       <div className={styles.sectionHeading}>
         <div><h2 id="methods-heading">Payment methods</h2><p>Drag to set checkout priority. On smaller screens, use the move buttons.</p></div>
         {hasAnyMethodOrderChange && <span className={styles.orderChanged}>Priority order changed</span>}
@@ -488,9 +490,9 @@ export default function ProvidersPage() {
         </table>
       </div>
       <p className={styles.tableNote}>The global minimum is US$5 equivalent. Method limits use USD cents and are checked against server pricing.</p>
-    </section>
+    </section></Card>
 
-    <section className={styles.section} aria-labelledby="global-heading">
+    <Card><section className={styles.section} aria-labelledby="global-heading">
       <div className={styles.sectionHeading}><div><h2 id="global-heading">Global checkout defaults</h2><p>Currency routing remains off until the owner enables it.</p></div></div>
       <div className={styles.globalFields}>
         <label className={styles.checkControl}>
@@ -502,9 +504,9 @@ export default function ProvidersPage() {
           <span className={styles.fieldHint}>Shown in the quoted total. Default: 0 bps.</span>
         </label>
       </div>
-    </section>
+    </section></Card>
 
-    <section className={styles.section} aria-labelledby="audit-heading">
+    <Card><section className={styles.section} aria-labelledby="audit-heading">
       <div className={styles.sectionHeading}><div><h2 id="audit-heading">Change history</h2><p>Recent changes and rejected attempts, with actor, reason and before/after values.</p></div><span className={styles.auditCount}>{draft.audit.length} entries</span></div>
       {draft.audit.length === 0 ? <div className={styles.emptyState}>No payment settings changes have been recorded.</div> : <div className={styles.auditList}>
         {draft.audit.map((entry) => <details key={entry.id} className={styles.auditEntry}>
@@ -512,13 +514,17 @@ export default function ProvidersPage() {
           <div className={styles.auditDetail}><p><strong>Reason:</strong> {entry.reason || 'No reason recorded'}</p><div className={styles.auditDiff}><div><span>Before</span><pre>{JSON.stringify(entry.before, null, 2) ?? 'null'}</pre></div><div><span>After</span><pre>{JSON.stringify(entry.after, null, 2) ?? 'null'}</pre></div></div></div>
         </details>)}
       </div>}
-    </section>
+    </section></Card>
 
     <form className={styles.saveBar} onSubmit={save}>
       <label className={styles.reasonLabel}>Reason for change
         <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} disabled={!draft.canManage || saving} placeholder="Required for the audit log" />
       </label>
-      <button className={styles.saveButton} type="submit" disabled={!draft.canManage || !hasChanges || !reason.trim() || saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+      {embedded ? <Btn variant="primary" size="sm" type="submit" disabled={!draft.canManage || !hasChanges || !reason.trim() || saving}>{saving ? 'Saving…' : 'Save changes'}</Btn> : <button className={styles.saveButton} type="submit" disabled={!draft.canManage || !hasChanges || !reason.trim() || saving}>{saving ? 'Saving…' : 'Save changes'}</button>}
     </form>
-  </main>
+  </>
+  return embedded ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <Card><div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Payment providers</div><div style={{ fontSize: 12, color: C.textMuted, marginBottom: 16 }}>Choose which payment methods new checkouts can use. Existing payments stay tied to their original provider.</div><div style={{ fontSize: 12, color: C.textMuted }}>Default card provider: <strong>{draft.providers.find((provider) => provider.settings.is_default)?.label || 'No default selected'}</strong> · Settings version {draft.version}</div></Card>
+    {content}
+  </div> : <main className={styles.page}>{content}</main>
 }
