@@ -3,6 +3,7 @@
 import React from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { T, F } from './tokens'
+import { rememberMarketJurisdiction } from '@/lib/marketJurisdiction'
 
 interface Props {
   active: 'all' | 'us' | 'uk' | 'ca' | 'au'
@@ -45,7 +46,13 @@ export function JurisdictionDropdown({ active }: Props) {
 
   const handleSelect = (value: Props['active']) => {
     setOpen(false)
+    // Persist the explicit choice (cookie) before navigating, so "All
+    // jurisdictions" also sticks and is not replaced by an older stored value.
+    rememberMarketJurisdiction(value)
     const params = new URLSearchParams(searchParams?.toString() ?? '')
+    // A new jurisdiction is a new result set: drop multi-select and the page.
+    params.delete('jurisdiction')
+    params.delete('page')
     if (value === 'all') {
       params.delete('country')
     } else {
