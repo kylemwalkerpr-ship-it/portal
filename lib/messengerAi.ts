@@ -817,11 +817,18 @@ async function findInquiryThread(
   conversationContextId: string | null,
 ): Promise<string | null> {
   if (conversationContextId) {
-    const { data } = await db.from('inquiries').select('id').eq('id', conversationContextId).maybeSingle()
+    // The admin client bypasses RLS. A context ID alone is not authority to
+    // attach another customer's inquiry to this participant pair's offer.
+    const { data, error } = await db.from('inquiries').select('id')
+      .eq('id', conversationContextId)
+      .eq('client_profile_id', clientProfileId)
+      .eq('target_attorney_profile_id', attorneyProfileId)
+      .maybeSingle()
+    if (error) throw error
     if (data?.id) return data.id
   }
 
-  const { data: existing } = await db
+  const { data: existing, error } = await db
     .from('inquiries')
     .select('id')
     .eq('client_profile_id', clientProfileId)
@@ -829,6 +836,7 @@ async function findInquiryThread(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
+  if (error) throw error
   if (existing?.id) return existing.id
   return null
 }
@@ -1233,7 +1241,9 @@ export async function maybeAutoReply(opts: {
     if (!lastMsg) return { replied: false, skipped: 'empty_thread', aiMode }
     const triggerMessageId = opts.triggerMessageId || (lastMsg.sender_id === client.id ? lastMsg.id : null)
     const triggerMessage = triggerMessageId ? msgs.find((message: any) => message.id === triggerMessageId) : null
-    if (!triggerMessage || triggerMessage.sender_id !== client.id) {
+    if (!triggerMessage || triggerMessage.sender_id !== client.id ||
+        triggerMessage.metadata?.ai_generated || triggerMessage.metadata?.ai_assistant ||
+        triggerMessage.metadata?.ai_typing) {
       return { replied: false, skipped: 'invalid_trigger_message', aiMode }
     }
 
