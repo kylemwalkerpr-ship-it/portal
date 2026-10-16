@@ -3,6 +3,15 @@ import type { getSupabaseAdminClient } from '@/lib/supabase'
 
 type Db = ReturnType<typeof getSupabaseAdminClient>
 
+export async function sendPesapalMismatchAlert(args: { db: Db; profileId: string; trackingId: string; merchantReference: string }): Promise<void> {
+  const context = { gateway: 'pesapal', tracking_id: args.trackingId, merchant_reference: args.merchantReference }
+  try {
+    await sendEmail({ to: 'kylemwalker.pr@gmail.com', subject: 'Pesapal wallet top-up mismatch', html: `<p>A Pesapal wallet top-up did not match the stored payment attempt.</p><p><strong>Profile:</strong> ${escapeHtml(args.profileId)}<br><strong>Tracking ID:</strong> ${escapeHtml(args.trackingId)}<br><strong>Reference:</strong> ${escapeHtml(args.merchantReference)}</p>` })
+  } catch {
+    await args.db.from('payment_incidents').insert({ profile_id: args.profileId, kind: 'pesapal_wallet_topup_mismatch', gateway: 'pesapal', transaction_id: args.trackingId, amount_cents: null, context })
+  }
+}
+
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
 }

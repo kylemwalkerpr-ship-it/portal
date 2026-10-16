@@ -787,6 +787,7 @@ function TopUpDialog({ onClose, onSuccess }) {
   // Master switch — when the platform has card top-ups disabled, show a
   // notice instead of the charge form. Server enforces this regardless.
   const [topupEnabled, setTopupEnabled] = React.useState(true);
+  const [pesapalTopup, setPesapalTopup] = React.useState(false);
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -794,6 +795,22 @@ function TopUpDialog({ onClose, onSuccess }) {
       .then(d => { if (d && d.topupEnabled === false) setTopupEnabled(false); })
       .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    fetch('/api/payments/methods?purpose=wallet_topup&currency=USD&amountUsd=5')
+      .then(r => r.json()).then(d => setPesapalTopup((d.methods || []).some(m => m.provider === 'pesapal'))).catch(() => setPesapalTopup(false));
+  }, []);
+
+  const handlePesapalTopup = async () => {
+    if (!validAmount || submitting) return;
+    setSubmitting(true); setErrMsg(null);
+    try {
+      const response = await fetch('/api/wallet/topup/pesapal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountCents: Math.round(amountNum * 100), idempotencyKey: crypto.randomUUID() }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not start Pesapal checkout.');
+      window.location.assign(result.redirectUrl);
+    } catch (error) { setErrMsg(error.message); setSubmitting(false); }
+  };
 
   React.useEffect(() => {
     fetch('/api/wallet/payment-methods')
@@ -959,6 +976,7 @@ function TopUpDialog({ onClose, onSuccess }) {
               </Btn>
               <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
             </div>
+            {pesapalTopup && <button onClick={handlePesapalTopup} disabled={!validAmount || submitting} style={{ width: '100%', marginTop: '10px', padding: '12px', borderRadius: '10px', border: `1px solid ${C.border2}`, background: C.surface2, color: C.text, cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Opening Pesapal…' : 'Pay with Pesapal'}</button>}
             <div style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
               🔒 Charged securely via NMI. Funds added to your wallet for future orders.
             </div>

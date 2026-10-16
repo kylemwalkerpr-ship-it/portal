@@ -3,6 +3,8 @@ import { creditEarning } from '@/lib/earnings'
 import { recordPaymentIncident } from '@/lib/idempotency'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import type { PaymentProvider, HostedStatusResult } from './types'
+import { credit } from '@/lib/wallet'
+import { sendPesapalMismatchAlert } from './adminNotifications'
 
 type Db = ReturnType<typeof createSupabaseAdminClient>
 type PesapalAttempt = {
@@ -187,6 +189,10 @@ export async function reconcilePesapalPayment(args: {
     verified.amountCents !== Number(stored.charge_amount_minor ?? stored.amount_minor) ||
     String(verified.currency || '').toUpperCase() !== currency
   ) {
+    if ((attempt as any).purpose === 'wallet_topup') {
+      await db.from('payment_attempts').update({ status: 'invalid', last_status_raw: { mismatch: true }, updated_at: new Date().toISOString() }).eq('id', (attempt as any).id)
+      await sendPesapalMismatchAlert({ db, profileId: String((attempt as any).profile_id), trackingId, merchantReference: stored.merchant_reference })
+    }
     return { httpStatus: 409, status: 'invalid', confirmed: false, message: 'Pesapal payment details did not match the pending checkout.' }
   }
 
@@ -251,7 +257,16 @@ export async function reconcilePesapalPayment(args: {
   }
 
   try {
-    const fulfilled = stored.source_type === 'catalogue'
+    if (stored.purpose === 'wallet_topup') {
+      try {
+        await credit(stored.profile_id, Number(stored.charge_amount_minor ?? stored.amount_minor), 'Pesapal wallet top-up', `pesapal:${trackingId}`, { kind: 'topup', provider: 'pesapal', merchant_reference: stored.merchant_reference, order_tracking_id: trackingId })
+      } catch (error: any) {
+        if (error?.code !== '23505' && !/duplicate key|unique constraint/i.test(String(error?.message || ''))) throw error
+      }
+    }
+    const fulfilled = stored.purpose === 'wallet_topup'
+      ? { orderId: null, templateOrderId: null }
+      : stored.source_type === 'catalogue'
       ? await fulfillCatalogue(db, stored, verified)
       : await fulfillOrder(db, stored, verified)
     const completedAt = new Date().toISOString()

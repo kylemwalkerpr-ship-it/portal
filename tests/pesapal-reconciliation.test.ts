@@ -1,9 +1,11 @@
 jest.mock('@/lib/checkoutOrders', () => ({ createPaidOrder: jest.fn(async () => ({ id: 'order-1' })) }))
 jest.mock('@/lib/earnings', () => ({ creditEarning: jest.fn(async () => {}) }))
 jest.mock('@/lib/idempotency', () => ({ recordPaymentIncident: jest.fn(async () => {}) }))
+jest.mock('@/lib/wallet', () => ({ credit: jest.fn(async () => ({ id: 'wallet-tx-1' })) }))
 
 import { createPaidOrder } from '@/lib/checkoutOrders'
 import { reconcilePesapalPayment } from '@/lib/payments/pesapalReconciliation'
+import { credit } from '@/lib/wallet'
 import type { HostedStatusResult } from '@/lib/payments/types'
 
 const item = {
@@ -153,5 +155,22 @@ describe('Pesapal transaction reconciliation', () => {
     expect(result).toMatchObject({ status: 'completed', confirmed: true, orderId: 'attempt-catalogue' })
     expect(getOrderItems()).toEqual([{ order_id: 'attempt-catalogue', service_id: 'service-1', quantity: 2, unit_price: 300 }])
     expect(getAttempt().status).toBe('completed')
+  })
+
+  test('credits a matching completed wallet top-up once with a tracking reference', async () => {
+    let attempt: any = { id: 'wallet-attempt', gateway: 'pesapal', purpose: 'wallet_topup', merchant_reference: 'ys:wallet:one', provider_tracking_id: 'wallet-track', profile_id: 'student-1', source_type: 'wallet_topup', source_id: 'student-1', source_payload: {}, status: 'submitted', amount_minor: 500, currency: 'USD', charge_amount_minor: 500, charge_currency: 'USD', updated_at: '2026-10-16T10:00:00Z' }
+    const db: any = { from: () => {
+      let action = 'select'; let patch: any = {}; const filters: any[] = []
+      const builder: any = { select: () => builder, update: (p: any) => { action = 'update'; patch = p; return builder }, eq: (k: string, v: any) => { filters.push([k,v]); return builder }, maybeSingle: async () => execute(), then: (resolve: any) => execute().then(resolve) }
+      async function execute() { if (!filters.every(([k,v]) => attempt[k] === v)) return { data: null, error: null }; if (action === 'update') attempt = { ...attempt, ...patch }; return { data: { ...attempt }, error: null } }
+      return builder
+    } }
+    const provider = { getTransactionStatus: jest.fn(async () => ({ ...paidStatus, amountCents: 500, merchantReference: 'ys:wallet:one' })) } as any
+    const args = { db, provider, trackingId: 'wallet-track', merchantReference: 'ys:wallet:one' }
+    expect(await reconcilePesapalPayment(args)).toMatchObject({ status: 'completed', confirmed: true })
+    expect(await reconcilePesapalPayment(args)).toMatchObject({ noOp: true })
+    expect(credit).toHaveBeenCalledTimes(1)
+    expect(credit).toHaveBeenCalledWith('student-1', 500, 'Pesapal wallet top-up', 'pesapal:wallet-track', expect.objectContaining({ kind: 'topup', provider: 'pesapal' }))
+    expect(createPaidOrder).not.toHaveBeenCalled()
   })
 })
