@@ -102,6 +102,15 @@ describe('Pesapal hosted provider', () => {
     expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain('orderTrackingId=tracking%20%2F%20id')
   })
 
+  it('treats an unpaid order (status 0 + payment_details_not_found) as pending, not invalid', async () => {
+    const fetcher = jest.fn(async (input: RequestInfo | URL) => String(input).endsWith('/api/Auth/RequestToken')
+      ? jsonResponse({ token: 't', expiryDate: '2026-10-16T12:05:00Z' })
+      : jsonResponse({ status_code: 0, payment_status_description: 'INVALID', amount: 5, currency: 'USD', merchant_reference: 'ys-1',
+          error: { error_type: 'api_error', code: 'payment_details_not_found', message: 'Pending Payment' } }))
+    const result = await createPesapalProvider({ env, fetcher }).getTransactionStatus!('tid')
+    expect(result.status).toBe('pending')
+  })
+
   it('sends a single async refund request in currency units', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetcher = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

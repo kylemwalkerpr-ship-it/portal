@@ -52,6 +52,11 @@ function requiredString(value: unknown, label: string): string {
   return value.trim()
 }
 
+function isPendingPayment(result: Record<string, unknown>): boolean {
+  const error = result.error && typeof result.error === 'object' ? result.error as Record<string, unknown> : null
+  return Number(result.status_code) === 0 && error?.code === 'payment_details_not_found'
+}
+
 function statusFromCode(value: unknown): HostedStatusResult['status'] {
   switch (Number(value)) {
     case 0: return 'invalid'
@@ -212,7 +217,9 @@ export function createPesapalProvider(options: {
       const result = await readJson(response, 'Pesapal transaction status is unavailable.')
       const statusCode = Number.isFinite(Number(result.status_code)) ? Number(result.status_code) : null
       return {
-        status: statusFromCode(result.status_code),
+        // Pesapal answers an unpaid order with status_code 0 plus error code
+        // payment_details_not_found ("Pending Payment"); that is not a terminal INVALID.
+        status: isPendingPayment(result) ? 'pending' : statusFromCode(result.status_code),
         statusCode,
         amountCents: amountToCents(result.amount),
         currency: typeof result.currency === 'string' ? result.currency.toUpperCase() : null,
