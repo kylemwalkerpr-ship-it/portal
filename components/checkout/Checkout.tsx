@@ -376,7 +376,7 @@ export default function Checkout({
                     disabled={disabled}
                     onClick={() => { setSelectedKey(choice.key); setError(null); setState('idle') }}
                   >
-                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []} activeBrand={detectedBrand} /> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
+                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []}/> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
                     <span className={styles.methodCopy}><strong>{label}</strong><small>{detail}</small></span>
                     <span className={styles.radioMark} aria-hidden="true" />
                   </button>
