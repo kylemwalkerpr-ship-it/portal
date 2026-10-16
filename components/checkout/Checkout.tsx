@@ -45,6 +45,8 @@ export interface CheckoutProps {
   purpose?: string
   description?: string
   summaryDetails?: ReactNode
+  orderTitle?: string
+  orderDescription?: string
   source?: { sourceType: string; sourceId?: string; tierId?: string; items?: Array<{ slug?: string; serviceId?: string; quantity: number }> }
   customer?: { email: string; name?: string; phone?: string }
   savedCards?: CheckoutSavedCard[]
@@ -107,6 +109,8 @@ export default function Checkout({
   purpose = 'order',
   description,
   summaryDetails,
+  orderTitle,
+  orderDescription,
   source,
   customer,
   savedCards = [],
@@ -295,12 +299,12 @@ export default function Checkout({
       </header>
 
       <div className={styles.summary}>
-        <div className={styles.summaryTitle}><span>Order summary</span><span>USD</span></div>
-        {!summaryDetails && <div className={styles.summaryLine}><span>{title}</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>}
-        {description && <p className={styles.summaryDescription}>{description}</p>}
-        {summaryDetails && <div className={styles.summaryDetails}>{summaryDetails}</div>}
-        <div className={styles.summaryTotal}><span>Total due</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>
-        <p>Prices are based on USD. Local currency amounts are estimates.</p>
+        {['gig', 'offer', 'cart', 'modal'].includes(variant)
+          ? <div className={styles.summaryLine}><span>{orderTitle || title}</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>
+          : <><div className={styles.summaryTitle}><span>Order summary</span><span>USD</span></div>{!summaryDetails && <div className={styles.summaryLine}><span>{title}</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>}</>}
+        {(orderDescription || description) && <p className={styles.summaryDescription}>{orderDescription || description}</p>}
+        {summaryDetails && !(orderTitle && orderDescription && ['gig', 'offer', 'cart', 'modal'].includes(variant)) && <div className={`${styles.summaryDetails} ${['gig', 'offer', 'cart', 'modal'].includes(variant) ? styles.compactSummaryDetails : ''}`}>{summaryDetails}</div>}
+        {!['gig', 'offer', 'cart', 'modal'].includes(variant) && <div className={styles.summaryTotal}><span>Total due</span><strong>{formatMoney(amountUsdCents, 'USD')}</strong></div>}
         {ratesAvailable.length > 0 && (
           <ul className={styles.estimates} aria-label="Estimated local prices">
             {ratesAvailable.map((code) => (
@@ -308,6 +312,7 @@ export default function Checkout({
             ))}
           </ul>
         )}
+        {ratesAvailable.length > 0 && <p className={styles.fxFootnote}>Prices are based on USD. Local currency amounts are estimates.</p>}
       </div>
 
       <div className={styles.trustRow}><span className={styles.lockMark} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><span><strong>Secured by YouSafe</strong><small>Your payment details are protected throughout checkout.</small></span></div>

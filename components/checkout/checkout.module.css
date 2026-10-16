@@ -167,6 +167,21 @@
 .checkout .summaryTitle { font-size:14px; }
 .checkout .summaryLine,.checkout .summaryTotal { font-size:16px; }
 .cardFields label,.cardFields input { font-size:16px; }
+.compactSummaryDetails { margin-top:2px; font-size:16px; }
+.compactSummaryDetails > div { display:flex !important; grid-template-columns:none; align-items:center; gap:8px !important; min-width:0; white-space:nowrap; }
+.compactSummaryDetails > div > * { overflow:hidden; text-overflow:ellipsis; }
+.compactSummaryDetails > div > span { color:var(--checkout-muted); }
+.gig .summaryDescription,.offer .summaryDescription,.modal .summaryDescription,.cart .summaryDescription { overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; white-space:nowrap; font-size:16px; }
+.fxFootnote { margin:4px 0 0; color:var(--checkout-muted); font-size:12px; line-height:1.25; }
+.gig .trustRow,.offer .trustRow,.modal .trustRow,.cart .trustRow { min-height:38px; padding:6px 9px; gap:8px; }
+.gig .trustRow > span:last-child,.offer .trustRow > span:last-child,.modal .trustRow > span:last-child,.cart .trustRow > span:last-child { display:flex; align-items:center; gap:7px; min-width:0; white-space:nowrap; }
+.gig .trustRow strong,.offer .trustRow strong,.modal .trustRow strong,.cart .trustRow strong,
+.gig .trustRow small,.offer .trustRow small,.modal .trustRow small,.cart .trustRow small { font-size:16px; line-height:1.2; }
+.ys-market-checkout-preview { min-height:100vh; }
+.ys-preview-order-cta { width:min(380px,calc(100vw - 32px)); margin:80px auto; padding:20px; border:1px solid var(--ys-rule); border-radius:16px; background:var(--ys-vellum); color:var(--ys-ink); }
+.ys-preview-order-price { margin-bottom:14px; font-size:24px; font-weight:700; }
+.ys-preview-order-button { width:100%; min-height:48px; border:0; border-radius:999px; background:var(--ys-indigo); color:#fff; font:inherit; font-size:16px; }
+.ys-preview-order-cta .ys-buyer-gate-note { margin:8px 0 0; color:var(--ys-inkSoft); font-size:16px; }
 @media(max-width:640px) {
   .checkout .actions { flex-direction:row; align-items:center; gap:8px; }
   .checkout .primary { width:auto; min-width:0; }
