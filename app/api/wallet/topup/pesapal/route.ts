@@ -4,15 +4,9 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getPaymentProvider } from '@/lib/payments'
 import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
 import { getPaymentSettings } from '@/lib/payments/settings'
-import { fetchEcbDailyRates, resolvePesapalCurrencyQuote } from '@/lib/payments/fx'
+import { fetchEcbDailyRates } from '@/lib/payments/fx'
+import { resolveWalletTopupQuote } from '@/lib/payments/walletTopup'
 import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey } from '@/lib/idempotency'
-
-export function resolveWalletTopupQuote(amountCents: number, currency: string, rates?: Record<string, number>) {
-  if (!Number.isSafeInteger(amountCents) || amountCents < 500) throw new Error('Minimum top-up is $5.00.')
-  const normalized = currency.toUpperCase()
-  if (!['USD', 'GBP', 'CAD', 'AUD'].includes(normalized)) throw new Error('Unsupported currency.')
-  return resolvePesapalCurrencyQuote({ amountMinor: amountCents, sourceCurrency: normalized, displayCurrency: normalized, rates })
-}
 
 export async function POST(req: Request) {
   const auth = await getCurrentStudent()

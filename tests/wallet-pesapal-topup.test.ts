@@ -6,7 +6,7 @@ jest.mock('@/lib/payments/settings', () => ({ getPaymentSettings: jest.fn() }))
 jest.mock('@/lib/idempotency', () => ({ claimIdempotencyKey: jest.fn(), completeIdempotencyKey: jest.fn(), extractIdempotencyKey: jest.fn() }))
 jest.mock('@/lib/platformConfig', () => ({ getPlatformSettings: jest.fn(async () => ({ wallet_topup_enabled: true })) }))
 
-import { resolveWalletTopupQuote } from '@/app/api/wallet/topup/pesapal/route'
+import { resolveWalletTopupQuote } from '@/lib/payments/walletTopup'
 import { POST as postCardTopup } from '@/app/api/wallet/topup/route'
 import { getCurrentStudent } from '@/lib/student'
 
