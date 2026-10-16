@@ -48,6 +48,7 @@ import {
 import { loadKnowledgeFeed } from './knowledge'
 import { loadPlansDashboard } from './planner'
 import type { FunnelActionKind } from './rankingModel'
+import type { P11CommandContext } from './p11AuditCommand'
 import {
   P11_AUDIT_CONTRACT_VERSION,
   P11_PROMPT_ID,
@@ -102,6 +103,8 @@ export interface VisibilityAuditOptions {
   maxEngines?: number
   /** Live progress callback for streaming surfaces (phase, message, detail). */
   onProgress?: (phase: string, message: string, detail?: string) => void
+  /** Internal durable command context; authenticated audit entrypoints always supply this. */
+  command?: P11CommandContext
 }
 
 /** Per-engine cap — content drafting allows 180s; an audit ping must not. */
@@ -522,13 +525,22 @@ export function resolveAuditEngines(maxEngines = 3): CommissionedProviderPin[] {
   return out
 }
 
-/** Run one structured audit for a query against a single engine (exclusive pin). */
+/** Run one structured audit for a query against one provider attempt. */
+export class ExistingP11ProviderClaimError extends Error {
+  constructor() {
+    super('Existing provider claim blocks invocation; command cannot complete as a fresh audit')
+    this.name = 'ExistingP11ProviderClaimError'
+  }
+}
+
 async function auditQueryEngine(
   query: string,
   pin: string,
   target: StrategicAuditTarget | null = null,
   registryRows: OwnershipRow[] = [],
   configured = true,
+  providerAttempt?: { command: P11CommandContext; ordinal: number; claimPin?: string },
+  callOptions?: { exclusive?: boolean },
 ): Promise<EngineAudit> {
   if (!configured) {
     return {
@@ -568,10 +580,21 @@ async function auditQueryEngine(
     citationClassifications: [],
     competitorCitedUrls: [],
   })
+  if (providerAttempt) {
+    let ownsClaim = false
+    try {
+      ownsClaim = await providerAttempt.command.claimProvider(providerAttempt.ordinal, providerAttempt.claimPin || pin)
+    } catch (e) {
+      throw new Error('Unable to persist provider claim before invocation: ' + (e instanceof Error ? e.message : 'unknown'))
+    }
+    if (!ownsClaim) {
+      throw new ExistingP11ProviderClaimError()
+    }
+  }
+  let engineAudit: EngineAudit
   try {
     const ai = await generateContentText({
-      aiProvider: pin,
-      exclusive: true,
+      ...(callOptions?.exclusive === false ? {} : { aiProvider: pin, exclusive: true as const }),
       skipQualityContract: true,
       strictTimeout: true,
       timeoutMs: AUDIT_ENGINE_TIMEOUT_MS,
@@ -614,7 +637,7 @@ async function auditQueryEngine(
     const normalizedCitedUrls = classifications.length
       ? classifications.map((entry) => entry.normalizedUrl).filter((url): url is string => Boolean(url))
       : rawCitedUrls
-    return {
+    engineAudit = {
       engine: ai.provider || pin,
       model: ai.model || null,
       ok: !parseFailed,
@@ -633,8 +656,17 @@ async function auditQueryEngine(
       competitorCitedUrls: [...new Set(competitorEntries.map((entry) => entry.normalizedUrl || entry.rawUrl))],
     }
   } catch (e) {
+    if (providerAttempt) {
+      // A provider/parsing failure is terminal only after its durable claim
+      // outcome is written. Persistence errors intentionally propagate.
+      await providerAttempt.command.finishProviderClaim(providerAttempt.ordinal, providerAttempt.claimPin || pin, 'failed', null, e instanceof Error ? e.message : 'provider failure')
+    }
     return fail(['engine_error: ' + (e instanceof Error ? e.message.slice(0, 120) : 'unknown')])
   }
+  // Keep this transition outside the provider/parsing catch: if a successful
+  // outcome cannot be persisted, do not attempt a second terminal transition.
+  if (providerAttempt) await providerAttempt.command.finishProviderClaim(providerAttempt.ordinal, providerAttempt.claimPin || pin, 'completed', engineAudit)
+  return engineAudit
 }
 
 /** Aggregate per-engine audits into one per-query VisibilityAuditResult. */
@@ -781,6 +813,8 @@ async function auditStrategicTarget(
   target: StrategicAuditTarget,
   registryRows: OwnershipRow[],
   maxEngines: number,
+  command?: P11CommandContext,
+  queryOrdinal = 0,
 ): Promise<VisibilityAuditResult> {
   const startedAt = new Date().toISOString()
   const candidates = auditEngineCandidates().slice(0, Math.max(1, Math.min(3, maxEngines)))
@@ -791,7 +825,7 @@ async function auditStrategicTarget(
     } catch {
       configured = false
     }
-    return auditQueryEngine(target.query, candidate.pin, target, registryRows, configured)
+    return auditQueryEngine(target.query, candidate.pin, target, registryRows, configured, command ? { command, ordinal: queryOrdinal } : undefined)
   }))
   const result = aggregateEngineAudits(target.query, engines)
   if (target.jurisdiction !== 'GLOBAL' && target.jurisdiction !== 'UNKNOWN') result.country = target.jurisdiction
@@ -891,22 +925,27 @@ export function buildCitationActions(evidence: {
 const DEFAULT_AUDIT_ENGINE_LABEL = commissionedProvider(LANE_DEFAULT_PIN).pin
 
 /**
- * Run one audit for a single query across the multi-engine matrix. Never
- * throws — returns a partial record with per-engine failures on error.
+ * Run one audit for a single query across the multi-engine matrix. Legacy
+ * callers receive partial results; durable command callers also receive claim
+ * and persistence errors so the command cannot be falsely completed.
  */
-export async function auditQuery(query: string, engineLabel: string = DEFAULT_AUDIT_ENGINE_LABEL, model: string | null = null, maxEngines = 2): Promise<VisibilityAuditResult> {
+export async function auditQuery(query: string, engineLabel: string = DEFAULT_AUDIT_ENGINE_LABEL, model: string | null = null, maxEngines = 2, command?: P11CommandContext, queryOrdinal = 0): Promise<VisibilityAuditResult> {
   const empty: VisibilityAuditResult = {
     query, engine: engineLabel, model, cited: false, citedUrls: [], brandMentions: [],
     competitorDomains: [], snippet: '', rawScore: 0, shareOfVoice: null, measurementState: 'unavailable', stage: null, country: null,
     engines: [], topCompetitor: null, actions: [],
   }
   let pins: string[] = resolveAuditEngines(Math.max(1, Math.min(3, maxEngines)))
+  let unpinnedFallback = false
   if (!pins.length) {
     // No commissioned engine configured — run the un-pinned lane default once
     // so the audit still produces something on estates with a minimal
     // provider set. The core records `pinSource:'lane_default'`; nothing
     // retired can be selected here.
-    try {
+    if (command) {
+      pins = [LANE_DEFAULT_PIN]
+      unpinnedFallback = true
+    } else try {
       const ai = await generateContentText({
         system: AUDIT_SYSTEM_PROMPT,
         prompt: query,
@@ -921,7 +960,15 @@ export async function auditQuery(query: string, engineLabel: string = DEFAULT_AU
       return empty
     }
   }
-  const engineAudits = await Promise.all(pins.map((pin) => auditQueryEngine(query, pin)))
+  const engineAudits = await Promise.all(pins.map((pin) => auditQueryEngine(
+    query,
+    pin,
+    null,
+    [],
+    true,
+    command ? { command, ordinal: queryOrdinal, ...(unpinnedFallback ? { claimPin: 'lane-default-unpinned' } : {}) } : undefined,
+    unpinnedFallback ? { exclusive: false } : undefined,
+  )))
   if (!engineAudits.length) return empty
   return aggregateEngineAudits(query, engineAudits)
 }
@@ -983,9 +1030,9 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
 
   const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
   const audits: VisibilityAuditResult[] = []
-  const runId = globalThis.crypto.randomUUID()
+  const runId = opts.command?.runId ?? globalThis.crypto.randomUUID()
 
-  for (const item of work) {
+  for (const [queryOrdinal, item] of work.entries()) {
     const { query, target } = item
     opts.onProgress?.(
       'audit',
@@ -993,7 +1040,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
       target?.authoritativeOwnerUrl,
     )
     const result = target
-      ? await auditStrategicTarget(target, registryRows, maxEngines)
+      ? await auditStrategicTarget(target, registryRows, maxEngines, opts.command, queryOrdinal)
       : blockedP11Result(query)
     audits.push(result)
     const p11 = result.p11
@@ -1007,7 +1054,7 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
     const successfulEngines = result.engines.filter((attempt) => attempt.ok && (attempt.status == null || attempt.status === 'success'))
     try {
       const supabase = getSupabaseAdminClient()
-      await supabase.from('seo_llm_visibility').insert({
+      const persisted = await supabase.from('seo_llm_visibility').insert({
         query: result.query,
         engine: result.engine,
         model: result.model,
@@ -1030,6 +1077,8 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
         engines_json: result.engines,
         audit_contract_version: p11?.contractVersion ?? P11_AUDIT_CONTRACT_VERSION,
         run_id: runId,
+        command_id: opts.command?.commandId ?? null,
+        query_ordinal: opts.command ? queryOrdinal : null,
         ownership_row_id: p11?.target?.ownershipRowId ?? null,
         query_family: p11?.target?.queryFamily ?? null,
         strategic_intent: p11?.target?.strategicIntent ?? null,
@@ -1050,8 +1099,10 @@ export async function runVisibilityAudits(opts: VisibilityAuditOptions = {}): Pr
         started_at: p11?.startedAt ?? new Date().toISOString(),
         completed_at: p11?.completedAt ?? new Date().toISOString(),
       })
+      if (persisted.error) throw new Error(`Observation persistence failed: ${persisted.error.message}`)
     } catch {
-      // Storage remains best-effort; a failed insert must not rewrite the audit truth.
+      // Durable commands must fail closed if the observation cannot be stored.
+      if (opts.command) throw new Error('Observation persistence failed; provider claims prevent automatic reinvocation')
     }
   }
 
@@ -1453,6 +1504,7 @@ export async function runFanOutVisibilityAudits(opts: {
   maxPerPlan?: number
   maxAudits?: number
   engineLabel?: string
+  command?: P11CommandContext
 } = {}): Promise<FanOutAuditRunResult> {
   const engine = opts.engineLabel || DEFAULT_AUDIT_ENGINE_LABEL
   const empty: FanOutAuditRunResult = { audits: [], clusters: 0, cited: 0, total: 0, attempted: 0, failed: 0, shareOfVoice: null, measurementState: 'unavailable', byCluster: {} }
@@ -1468,8 +1520,8 @@ export async function runFanOutVisibilityAudits(opts: {
     const audits: VisibilityAuditResult[] = []
     const byCluster: Record<string, { cited: number; total: number }> = {}
     const supabase = getSupabaseAdminClient()
-    for (const fq of queries) {
-      const result = await auditQuery(fq.query, engine)
+    for (const [queryOrdinal, fq] of queries.entries()) {
+      const result = await auditQuery(fq.query, engine, null, 2, opts.command, queryOrdinal)
       audits.push(result)
       if (!failedAuditResult(result)) {
         const cell = byCluster[fq.clusterId] || { cited: 0, total: 0 }
@@ -1478,7 +1530,7 @@ export async function runFanOutVisibilityAudits(opts: {
         byCluster[fq.clusterId] = cell
       }
       try {
-        await supabase.from('seo_llm_visibility').insert({
+        const persisted = await supabase.from('seo_llm_visibility').insert({
           query: result.query,
           engine: result.engine,
           model: result.model,
@@ -1500,9 +1552,13 @@ export async function runFanOutVisibilityAudits(opts: {
           top_competitor: result.topCompetitor?.domain ?? null,
           competitor_share: result.topCompetitor?.share ?? null,
           engines_json: result.engines,
+          run_id: opts.command?.runId ?? null,
+          command_id: opts.command?.commandId ?? null,
+          query_ordinal: opts.command ? queryOrdinal : null,
         })
+        if (persisted.error) throw new Error(`Observation persistence failed: ${persisted.error.message}`)
       } catch {
-        // storage best-effort — the audit itself stands
+        if (opts.command) throw new Error('Observation persistence failed; provider claims prevent automatic reinvocation')
       }
     }
     const measuredAudits = audits.filter((audit) => !failedAuditResult(audit))
@@ -1521,7 +1577,8 @@ export async function runFanOutVisibilityAudits(opts: {
       measurementState: total ? 'measured' : 'unavailable',
       byCluster,
     }
-  } catch {
+  } catch (error) {
+    if (opts.command) throw error
     return empty
   }
 }

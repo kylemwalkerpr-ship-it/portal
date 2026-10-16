@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 const mockGenerateContentText = jest.fn()
 const mockCreateSupabaseAdminClient = jest.fn()
@@ -7,6 +8,7 @@ const mockRemediateVisibilityAudits = jest.fn()
 const mockLoadPlansDashboard = jest.fn()
 const mockLoadKnowledgeFeed = jest.fn()
 let mockGrokConfigured = false
+let mockDeepseekConfigured = true
 
 jest.mock('@/lib/contentAiProvider', () => ({
   generateContentText: (...args: unknown[]) => mockGenerateContentText(...args),
@@ -15,7 +17,7 @@ jest.mock('@/lib/contentAiProvider', () => ({
 jest.mock('@/lib/contentAiRegistry', () => ({
   COMMISSIONED_PROVIDERS: [
     { pin: 'grok', isConfigured: () => mockGrokConfigured },
-    { pin: 'deepseek-v41-flash', isConfigured: () => true },
+    { pin: 'deepseek-v41-flash', isConfigured: () => mockDeepseekConfigured },
   ],
   LANE_DEFAULT_PIN: 'grok',
   commissionedProvider: (pin: string) => ({ pin }),
@@ -38,7 +40,9 @@ jest.mock('@/lib/seoEngine/knowledge', () => ({
   loadKnowledgeFeed: (...args: unknown[]) => mockLoadKnowledgeFeed(...args),
 }))
 
-import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
+import { auditQuery, runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
+import { runFanOutVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
+import { executeP11AuditCommand, profileP11Actor } from '@/lib/seoEngine/p11AuditCommand'
 import { P11_AUDIT_CONTRACT_VERSION, selectStrategicAuditTargets } from '@/lib/seoEngine/geoVisibilityTruth'
 import { isAuthoritativeOwnershipRow, type OwnershipRow } from '@/lib/seoFactory/ownership'
 
@@ -78,10 +82,59 @@ function structuredAnswer(query: string) {
   })
 }
 
+function commandSupabase(tables: Record<string, Array<Record<string, any>>>) {
+  let observationInsertAttempts = 0
+  class Query {
+    private action: 'select' | 'insert' | 'update' = 'select'
+    private values: Record<string, any> | Record<string, any>[] = {}
+    private filters: Array<[string, unknown]> = []
+    private countOnly = false
+    constructor(private table: string) {}
+    insert(value: Record<string, any> | Record<string, any>[]) { this.action = 'insert'; this.values = value; return this }
+    update(value: Record<string, any>) { this.action = 'update'; this.values = value; return this }
+    select(_fields?: string, options?: { head?: boolean; count?: string }) {
+      this.action = this.action === 'insert' || this.action === 'update' ? this.action : 'select'
+      this.countOnly = options?.head === true
+      return this
+    }
+    eq(column: string, value: unknown) { this.filters.push([column, value]); return this }
+    maybeSingle() { return this.execute(true) }
+    single() { return this.execute(true) }
+    then(resolve: (value: any) => unknown, reject: (reason: unknown) => unknown) { return this.execute(false).then(resolve, reject) }
+    private async execute(single: boolean): Promise<any> {
+      const rows = tables[this.table] || (tables[this.table] = [])
+      if (this.action === 'insert') {
+        const values = Array.isArray(this.values) ? this.values : [this.values]
+        if (this.table === 'seo_llm_visibility') {
+          observationInsertAttempts += values.length
+          return { data: null, error: { code: 'XX000', message: 'simulated observation insert failure' }, count: null }
+        }
+        for (const value of values) {
+          const duplicate = this.table === 'seo_llm_audit_commands'
+            ? rows.some((row) => row.actor_scope === value.actor_scope && row.idempotency_key === value.idempotency_key)
+            : this.table === 'seo_llm_audit_provider_claims'
+              ? rows.some((row) => row.command_id === value.command_id && row.query_ordinal === value.query_ordinal && row.provider_pin === value.provider_pin)
+              : false
+          if (duplicate) return { data: null, error: { code: '23505', message: 'duplicate durable key' }, count: null }
+          rows.push({ id: randomUUID(), created_at: new Date().toISOString(), ...value })
+        }
+        return { data: single ? rows[rows.length - 1] : rows.slice(-values.length), error: null, count: null }
+      }
+      const matches = rows.filter((row) => this.filters.every(([key, value]) => row[key] === value))
+      if (this.countOnly) return { data: null, count: matches.length, error: null }
+      if (this.action === 'update') for (const row of matches) Object.assign(row, this.values)
+      const result = this.action === 'update' ? matches : rows.filter((row) => this.filters.every(([key, value]) => row[key] === value))
+      return { data: single ? result[0] || null : result, count: null, error: null }
+    }
+  }
+  return { from: (table: string) => new Query(table), get observationInsertAttempts() { return observationInsertAttempts } }
+}
+
 describe('P11 ownership-bound GEO execution', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockGrokConfigured = false
+    mockDeepseekConfigured = true
     mockRemediateVisibilityAudits.mockResolvedValue([])
     mockLoadPlansDashboard.mockResolvedValue({ plans: [{ primary_term: 'forbidden adaptive query' }] })
     mockLoadKnowledgeFeed.mockResolvedValue({ items: [{ title: 'forbidden knowledge query' }] })
@@ -202,6 +255,54 @@ describe('P11 ownership-bound GEO execution', () => {
     expect(inserts[0].coverage).toEqual(expect.objectContaining({ attempted: 0, successful: 0, blocked: 1, shareOfVoice: null }))
   })
 
+  it('keeps legacy non-command observation persistence best-effort', async () => {
+    mockCreateSupabaseAdminClient.mockReturnValue({
+      from: () => ({ insert: async () => ({ data: null, error: { message: 'legacy observation write failed' } }) }),
+    })
+    const result = await runVisibilityAudits({ queries: ['unowned legacy query'], maxAudits: 1 })
+    expect(result.attempted).toBe(1)
+    expect(result.failed).toBe(1)
+    expect(mockGenerateContentText).not.toHaveBeenCalled()
+  })
+
+  it('claims and makes one unpinned fallback call, persisting the actual provider and model', async () => {
+    mockGrokConfigured = false
+    mockDeepseekConfigured = false
+    const calls: unknown[] = []
+    const command = {
+      claimProvider: jest.fn(async (_ordinal: number, pin: string) => { calls.push(['claim', pin]); return true }),
+      finishProviderClaim: jest.fn(async (_ordinal: number, pin: string, status: string, result: unknown) => { calls.push(['finish', pin, status, result]) }),
+    }
+    mockGenerateContentText.mockResolvedValue({
+      text: JSON.stringify({ answer: 'Answer', answerFormat: 'direct_answer', sources: [{ url: 'https://example.com/a', domain: 'example.com', position: 1 }], confidence: 0.7, flags: [] }),
+      provider: 'actual-provider', model: 'actual-model',
+    })
+
+    const result = await auditQuery('one fallback question', undefined, null, 2, command as any, 3)
+
+    expect(mockGenerateContentText).toHaveBeenCalledTimes(1)
+    const providerRequest = mockGenerateContentText.mock.calls[0][0] as Record<string, unknown>
+    expect(providerRequest).not.toHaveProperty('aiProvider')
+    expect(providerRequest).not.toHaveProperty('exclusive')
+    expect(command.claimProvider).toHaveBeenCalledWith(3, 'lane-default-unpinned')
+    expect(command.finishProviderClaim).toHaveBeenCalledWith(3, 'lane-default-unpinned', 'completed', expect.objectContaining({ engine: 'actual-provider', model: 'actual-model' }))
+    expect(result.engines[0]).toMatchObject({ engine: 'actual-provider', model: 'actual-model' })
+    expect(calls[0]).toEqual(['claim', 'lane-default-unpinned'])
+  })
+
+  it('does not call the unpinned provider when its durable logical claim already exists', async () => {
+    mockGrokConfigured = false
+    mockDeepseekConfigured = false
+    const command = {
+      claimProvider: jest.fn(async () => false),
+      finishProviderClaim: jest.fn(),
+    }
+    await expect(auditQuery('one fallback question', undefined, null, 2, command as any, 0))
+      .rejects.toThrow('Existing provider claim blocks invocation')
+    expect(mockGenerateContentText).not.toHaveBeenCalled()
+    expect(command.finishProviderClaim).not.toHaveBeenCalled()
+  })
+
   it('persists parse failure separately from provider unavailability and never turns either into a no-citation success', async () => {
     const inserts: Array<Record<string, unknown>> = []
     mockCreateSupabaseAdminClient.mockReturnValue(fakeSupabase(inserts, jest.fn()))
@@ -227,5 +328,70 @@ describe('P11 ownership-bound GEO execution', () => {
       shareOfVoice: null,
     }))
     expect(inserts[0].raw_cited_urls).toContain(target.authoritativeOwnerUrl)
+  })
+
+  it('blocks a durable runVisibilityAudits command when its real observation insert fails, then retries as pending', async () => {
+    const tables: Record<string, Array<Record<string, any>>> = {}
+    const db = commandSupabase(tables)
+    mockCreateSupabaseAdminClient.mockReturnValue(db)
+    const target = selectStrategicAuditTargets(registryRows, 1)[0]
+    mockGenerateContentText.mockImplementation(async (args: { aiProvider?: string; prompt?: string }) => ({
+      text: structuredAnswer(String(args.prompt || '')),
+      provider: args.aiProvider,
+      model: 'deepseek-flash',
+    }))
+    const actor = profileP11Actor('profile-observation')
+    const request = { queries: [target.query], maxAudits: 1, maxEngines: 2 }
+    const runner = jest.fn((command: any) => runVisibilityAudits({ ...request, command }))
+
+    await expect(executeP11AuditCommand({ actor, idempotencyKey: 'observation-failure-run', request, run: runner }))
+      .rejects.toThrow('Observation persistence failed; provider claims prevent automatic reinvocation')
+    expect(tables.seo_llm_audit_provider_claims).toHaveLength(1)
+    expect(tables.seo_llm_audit_provider_claims[0].status).toBe('completed')
+    expect(tables.seo_llm_audit_commands[0].status).toBe('blocked_indeterminate')
+    expect(mockGenerateContentText).toHaveBeenCalledTimes(1)
+    expect(db.observationInsertAttempts).toBe(1)
+
+    const retryRunner = jest.fn((command: any) => runVisibilityAudits({ ...request, command }))
+    const retry = await executeP11AuditCommand({ actor, idempotencyKey: 'observation-failure-run', request, run: retryRunner })
+    expect(retry).toMatchObject({ kind: 'pending', command: { status: 'blocked_indeterminate' } })
+    expect(retryRunner).not.toHaveBeenCalled()
+    expect(mockGenerateContentText).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks a durable runFanOutVisibilityAudits command when its real observation insert fails, then retries as pending', async () => {
+    const tables: Record<string, Array<Record<string, any>>> = {}
+    const db = commandSupabase(tables)
+    mockCreateSupabaseAdminClient.mockReturnValue(db)
+    mockLoadPlansDashboard.mockResolvedValue({ plans: [{
+      cluster_id: 'test-cluster',
+      primary_term: 'test visa query',
+      plan: { faq: ['How does this test visa process work?'] },
+      related_terms: [],
+    }] })
+    mockGenerateContentText.mockResolvedValue({
+      text: JSON.stringify({ answer: 'A direct answer', answerFormat: 'direct_answer', sources: [], confidence: 0.8, flags: [] }),
+      provider: 'deepseek-v41-flash',
+      model: 'deepseek-flash',
+    })
+    const actor = profileP11Actor('profile-fanout-observation')
+    const request = { fanOut: true, planLimit: 1, maxPerPlan: 2, maxAudits: 1 }
+    const runner = jest.fn((command: any) => runFanOutVisibilityAudits({ ...request, command }))
+
+    await expect(executeP11AuditCommand({ actor, idempotencyKey: 'fanout-observation-failure', request, run: runner }))
+      .rejects.toThrow('Observation persistence failed; provider claims prevent automatic reinvocation')
+    expect(mockLoadPlansDashboard).toHaveBeenCalledTimes(1)
+    expect(tables.seo_llm_audit_provider_claims).toHaveLength(1)
+    expect(tables.seo_llm_audit_provider_claims[0]).toMatchObject({ query_ordinal: 0, status: 'completed' })
+    expect(tables.seo_llm_audit_commands[0].status).toBe('blocked_indeterminate')
+    expect(mockGenerateContentText).toHaveBeenCalledTimes(1)
+    expect(db.observationInsertAttempts).toBe(1)
+
+    const retryRunner = jest.fn((command: any) => runFanOutVisibilityAudits({ ...request, command }))
+    const retry = await executeP11AuditCommand({ actor, idempotencyKey: 'fanout-observation-failure', request, run: retryRunner })
+    expect(retry).toMatchObject({ kind: 'pending', command: { status: 'blocked_indeterminate' } })
+    expect(retryRunner).not.toHaveBeenCalled()
+    expect(mockLoadPlansDashboard).toHaveBeenCalledTimes(1)
+    expect(mockGenerateContentText).toHaveBeenCalledTimes(1)
   })
 })

@@ -4,6 +4,7 @@ import { runPlanner } from '@/lib/seoEngine/planner'
 import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
 import { classifyEngineRunStatus, formatTopScores } from '@/lib/seoEngine/engineRunSummary'
 import { formatEnginePairTape } from '@/lib/seoEngine/engineAi'
+import { executeP11AuditCommand, scheduledP11IdempotencyKey, SEO_ENGINE_DAILY_ACTOR, type P11AuditRequest, type P11CommandContext } from '@/lib/seoEngine/p11AuditCommand'
 // Type-only: erased at compile time (the reconciliation module itself is still
 // imported dynamically below so this route never pulls the verification graph
 // until the interlink phase actually runs). Deriving the recorded summary from
@@ -39,6 +40,13 @@ function authorize(req: Request): boolean {
   const expected = process.env.CRON_SECRET
   const provided = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
   return Boolean(expected && provided && provided === expected)
+}
+
+async function runScheduledP11Audit(key: string, request: P11AuditRequest, run: (command: P11CommandContext) => Promise<unknown>) {
+  const outcome = await executeP11AuditCommand({ actor: SEO_ENGINE_DAILY_ACTOR, idempotencyKey: key, request, run })
+  if (outcome.kind === 'conflict') throw new Error('P11 scheduled audit idempotency key conflicts with its persisted request')
+  if (outcome.kind === 'pending') throw new Error(`P11 scheduled audit ${outcome.command.id} is ${outcome.command.status}; provider attempts will not be repeated`)
+  return outcome.result
 }
 
 export async function GET(req: NextRequest) {
@@ -93,14 +101,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, phase, plans: plans.length, pair })
     }
     if (phase === 'llm') {
-      const vis = await runVisibilityAudits({ maxAudits: 8 })
+      const vis = await runScheduledP11Audit(scheduledP11IdempotencyKey('llm'), { maxAudits: 8 }, (command) => runVisibilityAudits({ ...command.request, command })) as Awaited<ReturnType<typeof runVisibilityAudits>>
       // Fan-out sub-query audits per top cluster — feeds the aeoGeo family with
       // measured citation evidence (per-cluster map returned for attribution).
       let fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} as Record<string, { cited: number; total: number }> }
+      let fanOutCommandStarted = false
       try {
         const { runFanOutVisibilityAudits } = await import('@/lib/seoEngine/llmVisibility')
-        fanOut = await runFanOutVisibilityAudits({ planLimit: 8, maxPerPlan: 5, maxAudits: 16 })
-      } catch {
+        fanOutCommandStarted = true
+        fanOut = await runScheduledP11Audit(scheduledP11IdempotencyKey('llm-fanout'), { fanOut: true, planLimit: 8, maxPerPlan: 5, maxAudits: 16 }, (command) => runFanOutVisibilityAudits({ ...command.request, command })) as typeof fanOut
+      } catch (error) {
+        if (fanOutCommandStarted) throw error
         fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} }
       }
       await recordEngineRun('daily', vis.total ? 'success' : 'partial', {
@@ -294,7 +305,7 @@ export async function POST(req: NextRequest) {
       inFlight = tracker.summary.inFlight
       onTrackRate = tracker.summary.onTrackRate
       if (body.llmAudits !== false) {
-        const vis = await runVisibilityAudits({ maxAudits: 6 })
+        const vis = await runScheduledP11Audit(scheduledP11IdempotencyKey('all-llm'), { maxAudits: 6 }, (command) => runVisibilityAudits({ ...command.request, command })) as Awaited<ReturnType<typeof runVisibilityAudits>>
         llmAudits = vis.total
         cited = vis.cited
         llmFailed = vis.failed
