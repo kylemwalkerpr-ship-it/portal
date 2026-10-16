@@ -27,7 +27,10 @@ describe('market get-matched free intake', () => {
   it('sends a buyer confirmation and an admin lead alert, escaping user input', () => {
     const route = read('app/api/inquiries/route.ts')
     expect(route).toContain('LEAD_ALERT_EMAIL')
-    expect(route).toContain('escapeHtml(')
-    expect(route).toMatch(/not a law firm/i)
+    const emailSrc = read('lib/email.ts')
+    expect(route).toContain('buyerCaseReceivedEmail(')
+    expect(route).toContain('leadAlertEmailHtml(')
+    expect(emailSrc).toContain('escapeHtml(')
+    expect(emailSrc).toMatch(/not a law firm/i)
   })
 })

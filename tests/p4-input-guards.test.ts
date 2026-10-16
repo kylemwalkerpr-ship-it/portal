@@ -41,13 +41,16 @@ describe('Phase 4: intake input guards', () => {
 
   test('inquiries route rate-limits, bounds payloads and escapes attorney email', () => {
     const src = fs.readFileSync(path.join(__dirname, '../app/api/inquiries/route.ts'), 'utf8')
+    // Email markup moved to the shared v11 templates in lib/email.ts.
+    const emailSrc = fs.readFileSync(path.join(__dirname, '../lib/email.ts'), 'utf8')
     expect(src).toContain('INQUIRY_EMAIL_LIMIT_PER_HOUR')
     expect(src).toContain("eq('meta->>ip_hash', ipHash)")
     expect(src).toMatch(/status\s*:?\s*\)?[^\n]*429|, 429\)/)
     expect(src).toContain('MAX_INQUIRY_BODY_BYTES')
-    expect(src).toContain('<strong>${escapeHtml(fullName)}</strong> just sent you')
-    expect(src).not.toMatch(/<strong>\$\{fullName\}<\/strong>/)
-    expect(src).not.toMatch(/Urgency:<\/strong> \$\{urgency\}/)
+    expect(src).toContain('targetAttorneyInquiryEmailHtml(')
+    expect(emailSrc).toContain('<strong>${escapeHtml(args.fullName)}</strong> just sent you')
+    expect(src + emailSrc).not.toMatch(/<strong>\$\{(args\.)?fullName\}<\/strong>/)
+    expect(src + emailSrc).not.toMatch(/Urgency:<\/strong> \$\{(args\.)?urgency\}/)
   })
 })
 
