@@ -143,9 +143,9 @@ export default function Checkout({
   const idempotencyKeyRef = useRef<string | null>(null)
 
   const choices = useMemo(() => choicesFromMethods(
-    excludeInvoice ? methods.filter((method) => method.id !== 'invoice') : methods,
+    methods.filter((method) => method.id !== 'invoice'),
     savedCards,
-  ), [excludeInvoice, methods, savedCards])
+  ), [methods, savedCards])
   const selected = choices.find((choice) => choice.key === selectedKey)
     || choices.find((choice) => choice.method.isDefault)
     || choices[0]

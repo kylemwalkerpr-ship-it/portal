@@ -70,8 +70,7 @@
 .cw-market .seller-card .btn.primary,
 .cw-market .ys-shop-btn.primary,
 .cw-market .ys-shop-buy,
-.cw-market .ys-shop-empty button,
-.cw-market .ys-gig-checkout button {
+.cw-market .ys-shop-empty button {
   background: var(--ys-indigo, #111827) !important;
   color: #FFFFFF !important;
   box-shadow: none !important;
