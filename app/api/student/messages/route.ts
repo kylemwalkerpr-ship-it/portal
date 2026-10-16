@@ -1,9 +1,10 @@
 import { getCurrentStudent } from '@/lib/student'
 import { messageBodyFromFormData } from '@/lib/messageAttachments'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from '@/lib/fiverr'
+import type { NextRequest } from 'next/server'
 
-export async function GET(req: Request) {
-  const auth = await getCurrentStudent()
+export async function GET(req: NextRequest) {
+  const auth = await getCurrentStudent(req)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const url = new URL(req.url)
@@ -69,8 +70,8 @@ export async function GET(req: Request) {
   return Response.json({ messages: data ?? [], offers: [...normalized, ...((offers ?? []).map((o) => ({ ...o, source_type: 'consultant_offer' })))] })
 }
 
-export async function POST(req: Request) {
-  const auth = await getCurrentStudent()
+export async function POST(req: NextRequest) {
+  const auth = await getCurrentStudent(req)
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const contentType = req.headers.get('content-type') || ''
