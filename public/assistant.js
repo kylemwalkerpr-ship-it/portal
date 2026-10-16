@@ -877,9 +877,40 @@
     })
   }
 
+  // Public open API. Any "Live chat" / "Start chat" button on a YouSafe page
+  // opens YQAA through one of these instead of shipping its own chat modal:
+  //   window.YQAA.open()                      (also window.YouSafeAssistant)
+  //   window.dispatchEvent(new Event('yqaa:open'))
+  //   <a href="/support/" data-yqaa-open>Chat with Support</a>   (or href="#yqaa")
+  // A page that asks before this script has loaded sets
+  // window.__yqaaOpenRequested = true and the panel opens as soon as it mounts.
+  function toggleAssistant() { if (open) closeAssistant(); else openAssistant() }
+  var publicApi = {
+    open: function () { if (!open) openAssistant(); return true },
+    close: function () { if (open) closeAssistant(); return true },
+    toggle: function () { toggleAssistant(); return open },
+    isOpen: function () { return open },
+  }
+  window.YQAA = publicApi
+  window.YouSafeAssistant = publicApi
+  window.addEventListener('yqaa:open', publicApi.open)
+  window.addEventListener('yqaa:close', publicApi.close)
+  window.addEventListener('yqaa:toggle', toggleAssistant)
+  document.addEventListener('click', function (event) {
+    var target = event.target && event.target.closest ? event.target.closest('[data-yqaa-open],a[href="#yqaa"]') : null
+    if (!target || event.defaultPrevented) return
+    event.preventDefault()
+    publicApi.open()
+  })
+
   resizeInput()
   render()
   scheduleViewportSync()
   scheduleLauncherChrome()
   if (open) startPolling()
+  if (window.__yqaaOpenRequested) {
+    window.__yqaaOpenRequested = false
+    publicApi.open()
+  }
+  try { window.dispatchEvent(new Event('yqaa:ready')) } catch (_) {}
 })()
