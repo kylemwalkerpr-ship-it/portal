@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { handleOptions, jsonWithCors } from '@/lib/cors'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, buyerCaseReceivedEmail, leadAlertEmailHtml, targetAttorneyInquiryEmailHtml } from '@/lib/email'
 import { safetyGuard } from '@/lib/safety'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { bindBusinessEvent } from '@/lib/attribution/engine'
@@ -39,9 +39,6 @@ type InquiryBody = {
   contact?: { full_name?: string; email?: string; phone?: string; notes?: string }
   website?: string // honeypot from legacy form
 }
-
-const escapeHtml = (v: string): string =>
-  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
 const LEAD_ALERT_EMAIL = (): string => process.env.LEAD_ALERT_EMAIL || 'admin@yousafeconsultancy.com'
 
@@ -261,20 +258,13 @@ export async function POST(req: Request) {
   // the buyer is waiting on. General (non-targeted) inquiries previously
   // emailed nobody, so new public leads sat unseen in the table.
   {
-    const safeName = escapeHtml(fullName)
-    const safeCase = escapeHtml(caseLabel ?? caseType ?? 'Not specified')
     const intakeSource = clean(body.source, 60) || 'caseworks'
     if (!targetAttorneyProfileId) {
       try {
         await sendEmail({
           to: LEAD_ALERT_EMAIL(),
           subject: singleLine(`New lead: ${caseLabel ?? caseType ?? 'case inquiry'}${country ? ` (${country})` : ''}`),
-          html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
-<p><strong>${safeName}</strong> (${escapeHtml(email)}${phone ? `, ${escapeHtml(phone)}` : ''}) submitted a free case intake.</p>
-<p><strong>Case type:</strong> ${safeCase}<br/><strong>Country:</strong> ${escapeHtml(country ?? 'Not specified')}<br/><strong>Urgency:</strong> ${escapeHtml(urgency ?? 'Not specified')}<br/><strong>Recommended tier:</strong> ${escapeHtml(recommendedTier ?? 'n/a')}<br/><strong>Source:</strong> ${escapeHtml(intakeSource)}</p>
-<p><a href="https://portal.yousafeconsultancy.com/dashboard?inquiry=${inquiry.id}">Open the inquiry →</a></p>
-<p>Reply with a fixed-fee offer quickly; speed to first offer is the biggest driver of conversion.</p>
-</body></html>`,
+          html: leadAlertEmailHtml({ fullName, email, phone: phone || null, caseLabel: caseLabel ?? caseType ?? 'Not specified', country: country ?? null, urgency: urgency ?? null, recommendedTier, source: intakeSource, inquiryId: inquiry.id }),
         })
       } catch (e) {
         console.error('[inquiries] lead alert failed', (e as Error)?.message)
@@ -283,14 +273,7 @@ export async function POST(req: Request) {
     try {
       await sendEmail({
         to: email,
-        subject: 'We received your case: YouSafe Consultancy',
-        html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
-<p>Hi ${safeName},</p>
-<p>Thanks for telling us about your case (${safeCase}). A provider on the YouSafe Marketplace will review it and reply with a fixed-fee offer. We'll email you as soon as they do.</p>
-<p>Nothing is charged until you accept an offer, and payment is held in escrow until you approve the work.</p>
-<p>Create a free account to follow replies and message your provider: <a href="https://market.yousafeconsultancy.com/?ys_sign_up=1&amp;intent=client">market.yousafeconsultancy.com</a></p>
-<p style="color:#555;font-size:12px">YouSafe Consultancy provides document preparation and education services and operates a marketplace. It is not a law firm and does not guarantee any visa, permit, or application outcome.</p>
-</body></html>`,
+        ...buyerCaseReceivedEmail({ fullName, caseLabel: caseLabel ?? caseType ?? 'Not specified' }),
       })
     } catch (e) {
       console.error('[inquiries] buyer confirmation failed', (e as Error)?.message)
@@ -315,19 +298,10 @@ export async function POST(req: Request) {
 
     if (attorney?.email) {
       try {
-        const inquiryUrl = `https://portal.yousafeconsultancy.com/dashboard?inquiry=${inquiry.id}`
-        const greeting = attorney.full_name ? `Hello ${escapeHtml(attorney.full_name)},` : 'Hello,'
         await sendEmail({
           to: attorney.email,
           subject: `Direct inquiry from ${fullName}`,
-          html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
-<p>${greeting}</p>
-<p><strong>${escapeHtml(fullName)}</strong> just sent you a direct inquiry from your YouSafe profile.</p>
-<p><strong>Case type:</strong> ${escapeHtml(caseLabel ?? caseType ?? 'Not specified')}</p>
-${urgency ? `<p><strong>Urgency:</strong> ${escapeHtml(urgency)}</p>` : ''}
-<p><a href="${inquiryUrl}">Open in your inbox queue →</a></p>
-<p>— YouSafe Consultancy</p>
-</body></html>`,
+          html: targetAttorneyInquiryEmailHtml({ attorneyName: attorney.full_name ?? null, fullName, caseLabel: caseLabel ?? caseType ?? 'Not specified', urgency: urgency ?? null, inquiryId: inquiry.id }),
         })
       } catch (e) {
         console.error('[inquiries] target-attorney notify failed', e)
