@@ -25,7 +25,7 @@ export default function CheckoutPreviewPage() {
       </header>
       <div className="previewGrid">
         <section aria-label="Checkout preview" className="previewSection">
-          <h2>Card and wallet methods</h2>
+          <h2>YouSafe checkout</h2>
           <Checkout title="Consultation package" amountUsdCents={12500} description="A 60-minute consultation with a legal specialist." purpose="order" walletBalanceCents={4500} previewMethods={previewMethods} previewState="idle" variant="cart" onSubmit={async () => ({})} />
         </section>
         <section aria-label="Offer payment preview" className="previewSection">

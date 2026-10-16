@@ -376,7 +376,7 @@ export default function Checkout({
                     disabled={disabled}
                     onClick={() => { setSelectedKey(choice.key); setError(null); setState('idle') }}
                   >
-                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []}/> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
+                    {choice.method.id === 'card' ? <span className={styles.methodBrands}><CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []} activeBrand={detectedBrand} /></span> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
                     <span className={styles.methodCopy}><strong>{label}</strong><small>{detail}</small></span>
                     <span className={styles.radioMark} aria-hidden="true" />
                   </button>
@@ -394,11 +394,10 @@ export default function Checkout({
           {selected?.kind === 'new_card' && selected.method.mode === 'inline-token' && (
             <div className={styles.cardFields}>
               {!customer?.name && <label>Name on card<input type="text" autoComplete="cc-name" value={name} onChange={(event) => setName(event.target.value)} aria-describedby={`${checkoutId}-name-help`} /><small id={`${checkoutId}-name-help`}>Enter the name shown on your card.</small></label>}
-              <CardBrandIcons brands={selected.method.supportedBrands || supportedBrandsByProvider[selected.method.provider] || []} activeBrand={detectedBrand} />
               <p className={styles.fieldHelp}>Your card details are encrypted and handled securely.</p>
               {previewState ? (
                 <div className={styles.mockFields} aria-label="Mock card fields">
-                  <label>Card number<input value="4242 4242 4242 4242" readOnly /><small>16 digits on the front of your card (Amex 15).</small></label><label>Expiry<input value="01 / 20" readOnly aria-invalid="true" aria-describedby={`${checkoutId}-expiry-help ${checkoutId}-expiry-error`} /><small id={`${checkoutId}-expiry-help`}>MM/YY as printed on your card.</small><small id={`${checkoutId}-expiry-error`} role="alert">This card has expired.</small></label><label>Security code<input value="•••" readOnly /><small>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small></label>
+                  <label>Card number<input value="4242 4242 4242 4242" readOnly /><small>16 digits on the front of your card (Amex 15).</small></label><label>Expiry<input value="12 / 29" readOnly aria-describedby={`${checkoutId}-expiry-help`} /><small id={`${checkoutId}-expiry-help`}>MM/YY as printed on your card.</small></label><label>Security code<input value="•••" readOnly /><small>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small></label>
                   <small>Preview only · sample Visa number, no card details are collected</small>
                 </div>
               ) : (

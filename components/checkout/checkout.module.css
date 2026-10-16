@@ -49,6 +49,7 @@
 .brandIcon svg { width:44px; height:28px; display:block; }
 .brandActive { opacity:1; transform:translateY(-1px); }
 .brandDimmed { opacity:.28; }
+.methodBrands { display:flex; flex:0 0 auto; }
 .methodCopy { display:grid; flex:1; gap:3px; min-width:0; }
 .methodCopy strong { overflow-wrap:anywhere; font-size:15px; font-weight:650; }
 .methodCopy small { color:var(--checkout-muted); font-size:13px; line-height:1.4; }
@@ -118,6 +119,8 @@
   .frameShell { height:calc(100% - 56px); min-height:0; }
 }
 @media(max-width:480px) {
+  .method { flex-wrap:wrap; row-gap:10px; }
+  .methodBrands { flex-basis:100%; }
   .actions { flex-direction:column-reverse; align-items:stretch; gap:2px; }
   .primary { width:100%; min-width:0; }
   .mockFields label { display:grid; gap:6px; }
