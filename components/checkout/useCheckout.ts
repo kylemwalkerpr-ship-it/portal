@@ -17,6 +17,7 @@ export interface AvailablePaymentMethod {
   priority: number
   isDefault: boolean
   supportsVault: boolean
+  supportedBrands?: Array<'visa' | 'mastercard' | 'amex' | 'discover' | 'jcb' | 'unionpay'>
 }
 
 export interface CheckoutRateResponse {

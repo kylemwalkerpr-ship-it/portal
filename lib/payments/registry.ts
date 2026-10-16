@@ -17,6 +17,24 @@ export type PaymentProviderCapability = {
   mode: PaymentMode
   logoAsset: string
   methods: readonly PaymentMethodCapability[]
+  supportedBrands?: readonly CardBrand[]
+}
+
+export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'discover' | 'jcb' | 'unionpay'
+
+/** Buyer-facing marks supported by each card processor. */
+export const supportedBrandsByProvider: Record<string, readonly CardBrand[]> = {
+  pesapal: ['visa', 'mastercard', 'amex'],
+  nmi: ['visa', 'mastercard', 'amex', 'discover'],
+  authorizenet: ['visa', 'mastercard', 'amex', 'discover', 'jcb', 'unionpay'],
+}
+
+export function getBuyerMethodLabel(provider: string, method: string, fallback: string): string {
+  if (method === 'card') return 'Card payment'
+  if (method === 'wallet') return 'Wallet balance'
+  if (method === 'invoice') return 'Invoice request'
+  if (provider === 'pesapal' && method === 'mpesa') return 'M-Pesa'
+  return fallback.replace(/pesapal|\bnmi\b|payhip/gi, 'YouSafe')
 }
 
 const usd = ['USD'] as const

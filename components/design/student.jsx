@@ -787,7 +787,10 @@ function TopUpDialog({ onClose, onSuccess }) {
   // Master switch — when the platform has card top-ups disabled, show a
   // notice instead of the charge form. Server enforces this regardless.
   const [topupEnabled, setTopupEnabled] = React.useState(true);
-  const [pesapalTopup, setPesapalTopup] = React.useState(false);
+  const [hostedTopup, setHostedTopup] = React.useState(false);
+  const [topupName, setTopupName] = React.useState('');
+  const [topupEmail, setTopupEmail] = React.useState('');
+  const [topupPhone, setTopupPhone] = React.useState('');
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -798,16 +801,16 @@ function TopUpDialog({ onClose, onSuccess }) {
 
   React.useEffect(() => {
     fetch('/api/payments/methods?purpose=wallet_topup&currency=USD&amountUsd=5')
-      .then(r => r.json()).then(d => setPesapalTopup((d.methods || []).some(m => m.provider === 'pesapal'))).catch(() => setPesapalTopup(false));
+      .then(r => r.json()).then(d => setHostedTopup((d.methods || []).some(m => m.mode === 'hosted-redirect' && m.id === 'card'))).catch(() => setHostedTopup(false));
   }, []);
 
-  const handlePesapalTopup = async () => {
+  const handleHostedTopup = async () => {
     if (!validAmount || submitting) return;
     setSubmitting(true); setErrMsg(null);
     try {
-      const response = await fetch('/api/wallet/topup/pesapal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountCents: Math.round(amountNum * 100), idempotencyKey: crypto.randomUUID() }) });
+      const response = await fetch('/api/wallet/topup/pesapal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountCents: Math.round(amountNum * 100), email: topupEmail, name: topupName, phone: topupPhone, idempotencyKey: crypto.randomUUID() }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not start Pesapal checkout.');
+      if (!response.ok) throw new Error(result.error || 'Could not start card payment. Please try again.');
       window.location.assign(result.redirectUrl);
     } catch (error) { setErrMsg(error.message); setSubmitting(false); }
   };
@@ -875,7 +878,7 @@ function TopUpDialog({ onClose, onSuccess }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
             <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Top up wallet</div>
-            <div style={{ fontSize: '13px', color: C.textMuted }}>Add funds to your wallet using a saved card</div>
+          <div style={{ fontSize: '13px', color: C.textMuted }}>Add funds using a saved card or secure card payment</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: C.textMuted, lineHeight: 1 }}>×</button>
         </div>
@@ -899,19 +902,21 @@ function TopUpDialog({ onClose, onSuccess }) {
           <>
             {/* Amount */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</div>
+              <label htmlFor="wallet-topup-amount" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</label>
               <div style={{ position: 'relative', marginBottom: '10px' }}>
                 <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 700, color: C.textMuted }}>$</span>
                 <input
-                  type="number"
-                  min="1"
-                  step="0.01"
+                  id="wallet-topup-amount"
+                  type="text"
+                  inputMode="decimal"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  placeholder="0.00"
+                  placeholder="$0.00"
+                  aria-describedby="wallet-topup-amount-help"
                   style={{ width: '100%', padding: '12px 14px 12px 28px', fontSize: '18px', fontWeight: 600, background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                 />
               </div>
+              <div id="wallet-topup-amount-help" style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Minimum $1.00. Choose a preset or enter an amount.</div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {PRESETS.map(p => (
                   <button
@@ -976,10 +981,16 @@ function TopUpDialog({ onClose, onSuccess }) {
               </Btn>
               <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
             </div>
-            {pesapalTopup && <button onClick={handlePesapalTopup} disabled={!validAmount || submitting} style={{ width: '100%', marginTop: '10px', padding: '12px', borderRadius: '10px', border: `1px solid ${C.border2}`, background: C.surface2, color: C.text, cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Opening Pesapal…' : 'Pay with Pesapal'}</button>}
-            <div style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
-              🔒 Charged securely via NMI. Funds added to your wallet for future orders.
-            </div>
+            {hostedTopup && <div style={{ marginTop: '18px', padding: '16px', borderRadius: '12px', background: C.surface2, border: `1px solid ${C.border2}` }}>
+              <div style={{ fontWeight: 700, color: C.text, marginBottom: '4px' }}>Card payment</div>
+              <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '14px' }}>You’ll finish securely on our payment page.</div>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Name<input autoComplete="name" value={topupName} onChange={e => setTopupName(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Email address<input type="email" autoComplete="email" value={topupEmail} onChange={e => setTopupEmail(e.target.value)} aria-describedby="wallet-topup-email-help" style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
+              <div id="wallet-topup-email-help" style={{ fontSize: '12px', color: C.textMuted, marginTop: '-7px', marginBottom: '10px' }}>We’ll send your payment receipt here.</div>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>Phone (optional)<input type="tel" autoComplete="tel" value={topupPhone} onChange={e => setTopupPhone(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: C.surface, color: C.text }} /></label>
+              <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '12px' }} aria-label="Secure payment"><span aria-hidden="true">🔒 </span>Your details are protected with secure encryption.</div>
+              <button onClick={handleHostedTopup} disabled={!validAmount || !topupEmail.trim() || submitting} style={{ minHeight: '46px', padding: '11px 18px', borderRadius: '9px', border: 0, background: C.text, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Opening secure payment…' : 'Continue to secure payment'}</button>
+            </div>}
           </>
         )}
       </div>

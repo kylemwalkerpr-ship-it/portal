@@ -7,6 +7,8 @@ import CardFields, { type CardFieldsHandle, type CardTokenResult } from '@/compo
 import type { CheckoutState, AvailablePaymentMethod } from './useCheckout'
 import { useCheckout } from './useCheckout'
 import styles from './checkout.module.css'
+import CardBrandIcons from './CardBrandIcons'
+import { supportedBrandsByProvider } from '@/lib/payments/registry'
 
 export interface CheckoutSavedCard {
   id: string
@@ -303,7 +305,7 @@ export default function Checkout({
       ) : visibleState === 'pending' ? (
         <div className={styles.state} role="status" aria-live="polite">
           <h3>Confirming your payment</h3>
-          <p>Keep this page open while the payment provider finishes. We’ll show a receipt after the server confirms it.</p>
+          <p>Keep this page open while we confirm your payment. We’ll show a receipt as soon as it’s ready.</p>
           <button type="button" className={styles.secondary} onClick={cancelHosted}>Close checkout</button>
         </div>
       ) : visibleState === 'redirecting' ? (
@@ -334,12 +336,12 @@ export default function Checkout({
                       : choice.method.label
                 const detail = choice.kind === 'wallet'
                   ? walletBalanceCents === null ? 'Balance unavailable' : `${formatMoney(walletBalanceCents)} available${disabled ? ' · not enough to cover this total' : ''}`
-                  : choice.kind === 'saved_card'
-                    ? `${choice.method.label} · ${choice.card?.gateway || choice.method.provider}`
+                    : choice.kind === 'saved_card'
+                    ? `${choice.method.label} · saved securely`
                     : choice.kind === 'new_card'
                       ? 'Card details stay with the secure payment fields'
-                      : choice.method.provider === 'pesapal'
-                        ? 'Continue to a secure hosted payment page'
+                      : choice.method.mode === 'hosted-redirect'
+                        ? 'You’ll finish securely on our payment page'
                         : choice.method.label
                 return (
                   <button
@@ -352,7 +354,7 @@ export default function Checkout({
                     disabled={disabled}
                     onClick={() => { setSelectedKey(choice.key); setError(null); setState('idle') }}
                   >
-                    <img src={choice.method.logoAsset} alt="" width="28" height="28" />
+                    {choice.method.id === 'card' ? <CardBrandIcons brands={choice.method.supportedBrands || supportedBrandsByProvider[choice.method.provider] || []} /> : <span className={styles.methodGlyph} aria-hidden="true">{choice.method.id === 'wallet' ? '◈' : '↗'}</span>}
                     <span className={styles.methodCopy}><strong>{label}</strong><small>{detail}</small></span>
                     <span className={styles.radioMark} aria-hidden="true" />
                   </button>
@@ -363,13 +365,15 @@ export default function Checkout({
 
           {selected?.method.mode === 'hosted-redirect' && !customer?.email && (
             <div className={styles.cardFields}>
-              <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+                <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required aria-describedby={`${checkoutId}-email-help`} /><small id={`${checkoutId}-email-help`}>We’ll send your payment receipt here.</small></label>
             </div>
           )}
 
           {selected?.kind === 'new_card' && selected.method.mode === 'inline-token' && (
             <div className={styles.cardFields}>
               {!customer?.name && <label>Name<input type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} /></label>}
+              <CardBrandIcons brands={selected.method.supportedBrands || supportedBrandsByProvider[selected.method.provider] || []} />
+              <p className={styles.fieldHelp}>Your card details are encrypted and handled securely.</p>
               {previewState ? (
                 <div className={styles.mockFields} aria-label="Mock card fields">
                   <span>Card number ·•••• •••• ••••</span><span>Expiry · MM / YY</span><span>Security code · CVV</span>
@@ -403,7 +407,7 @@ export default function Checkout({
         <div className={styles.sheetBackdrop} role="dialog" aria-modal="true" aria-label="Secure hosted checkout">
           <div className={styles.sheet}>
             <div className={styles.sheetHeader}><strong>Secure payment</strong><button type="button" onClick={cancelHosted} aria-label="Close hosted checkout">×</button></div>
-            <div className={styles.frameShell}><iframe src={hostedUrl} title="Pesapal secure checkout" allow="payment *" referrerPolicy="strict-origin-when-cross-origin" /></div>
+            <div className={styles.frameShell}><iframe src={hostedUrl} title="YouSafe secure payment page" allow="payment *" referrerPolicy="strict-origin-when-cross-origin" /></div>
           </div>
         </div>
       )}

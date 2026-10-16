@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return jsonError('A checkout request is required.', 400)
   const methodKey = typeof body.methodKey === 'string' ? body.methodKey : ''
-  if (!methodKey.startsWith('pesapal:')) return jsonError('Pesapal is not the selected payment method.', 400)
+  if (!methodKey.startsWith('pesapal:')) return jsonError('Choose a valid payment method to continue.', 400)
 
   const sourceType = typeof body.sourceType === 'string' ? body.sourceType : ''
   const sourceId = typeof body.sourceId === 'string' ? body.sourceId : ''
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
   const email = submittedEmail || (typeof profile.email === 'string' ? profile.email : '')
   if (!email || !email.includes('@')) return finish({ error: { message: 'Add an email address to your account before paying.' } }, 400)
   const provider = getPaymentProvider('pesapal')
-  if (!provider.createHostedSession) return finish({ error: { message: 'Pesapal hosted checkout is unavailable.' } }, 503)
+  if (!provider.createHostedSession) return finish({ error: { message: 'Card payment is temporarily unavailable.' } }, 503)
 
   const reference = `ys:${randomUUID().replace(/-/g, '')}`
   const orderItem = resolvedItem && sourceCurrency !== chargeCurrency
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
       },
       redirectMode: body.redirectMode === 'TOP_WINDOW' ? 'TOP_WINDOW' : 'PARENT_WINDOW',
     })
-    if (session.merchantReference !== reference) throw new Error('Pesapal returned a mismatched merchant reference.')
+    if (session.merchantReference !== reference) throw new Error('Payment could not be verified. Please try again.')
     const { error: updateError } = await db.from('payment_attempts').update({
       provider_tracking_id: session.trackingId,
       status: 'submitted',
@@ -247,7 +247,7 @@ export async function POST(request: Request) {
         amountCents: chargeAmountCents,
         context: { merchantReference: reference, trackingId: session.trackingId, reason: 'Could not link hosted payment session.' },
       })
-      return finish({ error: { message: 'Pesapal checkout could not be safely recorded. Please contact support.' } }, 503)
+      return finish({ error: { message: 'Secure payment could not be safely recorded. Please contact support.' } }, 503)
     }
     return finish({
       ...session,
@@ -262,6 +262,6 @@ export async function POST(request: Request) {
     }, 201)
   } catch {
     await db.from('payment_attempts').update({ status: 'failed', updated_at: new Date().toISOString() }).eq('id', insertResult.data.id)
-    return finish({ error: { message: 'Pesapal could not start checkout. Please try again.' } }, 502)
+    return finish({ error: { message: 'Secure payment could not be started. Please try again.' } }, 502)
   }
 }

@@ -4,7 +4,7 @@
  *   { cardId, amountCents }          — charge a saved card
  *   { token, amountCents, saveCard } — charge a new card token (Collect.js)
  *
- * On successful charge → wallet.credit() with reference = NMI transaction_id.
+ * On successful charge → wallet.credit() with the transaction reference.
  */
 import { getCurrentStudent } from '@/lib/student'
 import { getPaymentProvider } from '@/lib/payments'

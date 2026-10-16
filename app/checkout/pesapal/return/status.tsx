@@ -10,7 +10,7 @@ export default function PesapalReturnStatus({ trackingId, merchantReference, can
 
   useEffect(() => {
     if (!trackingId || !merchantReference) {
-      setStatus({ status: cancelled ? 'cancelled' : 'pending', message: cancelled ? 'Checkout was closed before confirmation.' : 'Waiting for Pesapal to return your payment reference.' })
+      setStatus({ status: cancelled ? 'cancelled' : 'pending', message: cancelled ? 'Checkout was closed before confirmation.' : 'Waiting for your payment reference.' })
       return
     }
     const params = new URLSearchParams()
@@ -26,7 +26,7 @@ export default function PesapalReturnStatus({ trackingId, merchantReference, can
 
   const confirmed = status?.confirmed === true
   const title = confirmed ? 'Payment confirmed' : status?.status === 'failed' || status?.status === 'reversed' ? 'Payment not completed' : cancelled ? 'Checkout closed' : 'Confirming…'
-  const message = status?.message || 'Checking your payment status. Keep this page open while we confirm it.'
+  const message = /pesapal|\bnmi\b|payhip/i.test(status?.message || '') ? 'We could not confirm your payment yet. Please contact support before trying again.' : status?.message || 'Checking your payment status. Keep this page open while we confirm it.'
 
   return (
     <main className={styles.returnPage}>

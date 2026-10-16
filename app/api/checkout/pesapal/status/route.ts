@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const merchantReference = params.get('OrderMerchantReference') || ''
   const provider = getPaymentProvider('pesapal')
   if (!provider.getTransactionStatus) {
-    return Response.json({ status: 'pending', confirmed: false, message: 'Pesapal status checking is unavailable.' }, { status: 503 })
+    return Response.json({ status: 'pending', confirmed: false, message: 'Payment status checking is temporarily unavailable.' }, { status: 503 })
   }
 
   const result = await reconcilePesapalPayment({
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   return Response.json({
     status: result.status,
     confirmed: result.confirmed,
-    message: result.message,
+    message: /pesapal|\bnmi\b|payhip/i.test(result.message || '') ? 'We could not confirm your payment yet. Please contact support before trying again.' : result.message,
     ...(result.orderId ? { orderId: result.orderId } : {}),
     ...(result.noOp ? { noOp: true } : {}),
   }, { status: result.httpStatus, headers: { 'cache-control': 'no-store' } })

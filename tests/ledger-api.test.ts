@@ -657,7 +657,7 @@ test('refund: original_payment method skips wallet credit', async () => {
 
 test('refund: succeeds even when refund_ledger insert fails (non-critical)', async () => {
   // Make refund_ledger insert fail
-  const db = mockRefundDb()
+  const db: any = mockRefundDb()
   db.from = (table: string) => {
     const base = mockRefundDb().from(table)
     if (table === 'refund_ledger') {

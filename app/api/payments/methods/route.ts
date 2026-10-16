@@ -2,7 +2,7 @@ import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getAvailableMethods } from '@/lib/payments/availability'
 import { getPaymentProvider } from '@/lib/payments'
-import { isSupportedCurrency } from '@/lib/payments/registry'
+import { getBuyerMethodLabel, isSupportedCurrency, supportedBrandsByProvider } from '@/lib/payments/registry'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         methodKey: method.methodKey,
         provider: method.provider,
         id: method.id,
-        label: method.label,
+        label: getBuyerMethodLabel(method.provider, method.id, method.label),
         logoAsset: method.logoAsset,
         mode: method.mode,
         displayCurrency: method.displayCurrency,
@@ -66,6 +66,7 @@ export async function GET(request: Request) {
         supportsRefund: method.supportsRefund,
         supportsPartialRefund: method.supportsPartialRefund,
         supportsVault: method.supportsVault,
+        ...(method.id === 'card' ? { supportedBrands: supportedBrandsByProvider[method.provider] || [] } : {}),
         ...(clientConfig ? { clientConfig } : {}),
       }
     })
