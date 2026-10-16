@@ -80,7 +80,7 @@ describe('PATCH /api/admin/payment-settings', () => {
   it('returns 409 on a version conflict and records the rejection', async () => {
     mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'payment_settings_version_conflict' } })
     const { PATCH } = await import('@/app/api/admin/payment-settings/route')
-    const response = await PATCH(patch({ expectedVersion: 1, reason: 'disable card', providerChanges: [{ provider: 'nmi', enabled: false }] }))
+    const response = await PATCH(patch({ expectedVersion: 1, reason: 'adjust card priority', providerChanges: [{ provider: 'nmi', priority: 11 }] }))
     expect(response.status).toBe(409)
     expect(mockDb.from).toHaveBeenCalledWith('payment_settings_audit')
     expect(mockSendAlert).toHaveBeenCalledWith(expect.objectContaining({ action: 'rejected' }))

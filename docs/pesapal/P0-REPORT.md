@@ -73,3 +73,32 @@ The migration and invoice fallback assume the existing `public.profiles(id)` and
 - Run the requested Playwright viewport screenshots and axe review from the authorized browser test environment.
 - Run Jest, typecheck, lint, and build on the supervisor’s machine with dependencies available.
 - Stage and commit the complete work from an environment permitted to write the linked Git metadata.
+
+## P1 follow-up and P0 verification (2026-10-16)
+
+This follow-up records the later worktree environment. Its verification results supersede the earlier notes above that dependencies were unavailable, checks had not run, and Git metadata could not be staged.
+
+### Files changed
+
+- P0 verification and offer route fixes: `app/api/admin/payment-settings/route.ts`, `app/api/offers/[id]/accept/route.ts`, `app/api/checkout/order/route.ts`, `app/api/payments/methods/route.ts`, `app/api/wallet/payment-methods/route.ts`, `tests/payment-provider-regression.test.ts`, `tests/payment-settings-api.test.ts`, `tests/mobile-checkout.test.ts`.
+- Pesapal provider and hosted-session flow: `lib/payments/providers/pesapal.ts`, `lib/payments/index.ts`, `lib/payments/types.ts`, `app/api/checkout/pesapal/session/route.ts`, `app/api/checkout/pesapal/status/route.ts`, `app/checkout/pesapal/return/page.tsx`, `app/checkout/pesapal/return/status.tsx`.
+- Shared checkout and integrations: `components/checkout/Checkout.tsx`, `components/checkout/useCheckout.ts`, `components/checkout/checkout.module.css`, `components/messaging/OfferPaymentModal.tsx`, `components/marketplace/GigDetailPage.tsx`, `components/design/student.jsx`, `components/design/fiverr-workbench.jsx`, `app/marketplace/cart/page.tsx`.
+- FX estimate endpoint: `app/api/payments/fx/route.ts`.
+- Development fixture and provider tests: `app/dev/checkout-preview/page.tsx`, `tests/pesapal-provider.test.ts`.
+
+### Verification
+
+- `npx tsc --noEmit` — passed.
+- `npx jest --runInBand tests/payment-provider-regression.test.ts tests/payment-settings-api.test.ts tests/pesapal-provider.test.ts tests/payment-methods-api.test.ts tests/payment-enforcement.test.ts tests/mobile-checkout.test.ts tests/checkout-retirement-routing.test.ts tests/checkout-retirement-regression.test.ts tests/messenger-offer-panel.test.ts` — passed, 9 suites and 51 tests.
+- `git diff --check` — passed.
+- Design Taste source lint on `Checkout.tsx`, `checkout.module.css`, and the preview page — passed with no banned patterns.
+- `npx eslint` on changed source files crashed while `FlatCompat` formatted the legacy config (`TypeError: Converting circular structure to JSON`). The flat config was not changed. The browser inspector could not launch Chrome in this environment, so screenshot review was unavailable.
+- `jevctl gate` could not run because the TypeSafe API key was unavailable in the environment and macOS Keychain.
+- Local staging was attempted per the task authorization, but the workspace sandbox denied creation of the linked worktree index lock at `.git/worktrees/payments-p0/index.lock` (`Operation not permitted`). No commit or push was created.
+
+### P2 boundary and remaining stubs
+
+- `/api/checkout/pesapal/status` intentionally returns HTTP 501 until P2 reconciliation is built. The return page says “Confirming…” and tells customers not to retry until support confirms the outcome.
+- No Pesapal webhook/IPN route, payment-attempt persistence, polling/reconciliation, or server-side order fulfillment was added. Hosted-session creation currently returns a redirect URL and tracking ID only.
+- The adapter includes status lookup and submits refunds as asynchronous requests. There is no refund route or refund reconciliation; a caller must provide the merchant username required by Pesapal’s refund API.
+- All provider HTTP in `tests/pesapal-provider.test.ts` uses an injected mock. No live credentials or live network calls were used. `PESAPAL_ENV=sandbox` is rejected; this integration is live-only per the architecture decision.

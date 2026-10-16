@@ -4,7 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
 import { computeSEOScore } from '@/lib/seoUtils'
-import CardFields from '@/components/payments/CardFields'
+import Checkout from '@/components/checkout/Checkout'
 
 export { C, Btn, Badge, Card, Input, Select, ProgressBar }
 
@@ -507,18 +507,9 @@ export function GigDetailPage({ slug }) {
 }
 
 function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
-  const [payMethod, setPayMethod] = React.useState('wallet')
   const [walletBalance, setWalletBalance] = React.useState(null)
   const [cards, setCards] = React.useState([])
   const [settings, setSettings] = React.useState(null)
-  const [selectedCardId, setSelectedCardId] = React.useState('')
-  const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState('')
-  const [newCardToken, setNewCardToken] = React.useState(null)
-  const [cardError, setCardError] = React.useState(null)
-  const cardFieldsRef = React.useRef(null)
-  const lastTokenRef = React.useRef(null)
-  const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = React.useState(false)
 
   const providerType = String(gig.provider_type || '').toLowerCase() === 'attorney' ? 'attorney' : 'consultant'
   const subtotalCents = Number(tier.price || 0)
@@ -533,9 +524,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
     ? subtotalCents
     : Math.max(0, Math.round(subtotalCents * (providerSharePercent / 100)) || (subtotalCents - platformFeeCents))
   const totalCents = providerType === 'attorney' ? subtotalCents + platformFeeCents : subtotalCents
-  const priceDollars = totalCents / 100
-  const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
-  const selectedCard = cards.find(card => card.id === selectedCardId)
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -544,225 +532,68 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
       .catch(() => setWalletBalance(0))
     fetch('/api/wallet/payment-methods')
       .then(r => r.json())
-      .then(d => {
-        const next = d.cards ?? []
-        setCards(next)
-        setSelectedCardId(next[0]?.id || '')
-      })
+      .then(d => setCards(d.cards ?? []))
       .catch(() => setCards([]))
     requestJson('/api/admin/payment-settings')
       .then(setSettings)
       .catch(() => setSettings(null))
   }, [])
 
-  React.useEffect(() => {
-    if (walletBalance === null || hasSetDefaultPayMethod) return
-    const priceDollars = totalCents / 100
-    const canUseWallet = walletBalance >= priceDollars
-    let selected = 'wallet'
-    if (canUseWallet) {
-      selected = 'wallet'
-    } else if (cards.length > 0) {
-      selected = 'saved_card'
-    } else {
-      selected = 'new_card'
-    }
-    setPayMethod(selected)
-    setHasSetDefaultPayMethod(true)
-  }, [walletBalance, cards, totalCents, hasSetDefaultPayMethod])
-
-  // One idempotency key per checkout attempt — retries replay the stored
-  // server outcome instead of double-charging.
   const idemKeyRef = React.useRef(null)
-
-  const pay = async () => {
-    if (busy) return
-    if (payMethod === 'wallet' && !canUseWallet) {
-      setError('Your wallet balance is not enough for this order.')
-      return
-    }
-    if (payMethod === 'saved_card' && !selectedCardId) {
-      setError('Choose a saved card first.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    setCardError(null)
-    idemKeyRef.current ||= crypto.randomUUID()
-    try {
-      // For new-card flow, tokenize at click-time so the user sees one button.
-      let result = newCardToken ? lastTokenRef.current : null
-      if (payMethod === 'new_card' && !result) {
-        if (!cardFieldsRef.current) throw new Error('Card fields not ready')
-        await cardFieldsRef.current.tokenize()
-        result = lastTokenRef.current
-        if (!result) throw new Error('Tokenization did not return a token')
-      }
-      const body = {
+  const pay = async (selection) => {
+    const response = await fetch('/api/checkout/order', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
         sourceType: 'gig',
         sourceId: gig.id,
         tierId: tier.id,
-        paymentMethod: payMethod,
-        ...(payMethod === 'saved_card' && { paymentMethodId: selectedCardId }),
-        ...(payMethod === 'new_card'   && { token: result.token, gateway: result.gateway }),
-        idempotencyKey: idemKeyRef.current,
+        paymentMethod: selection.paymentMethod,
+        ...(selection.paymentMethodId ? { paymentMethodId: selection.paymentMethodId } : {}),
+        ...(selection.token ? { token: selection.token, gateway: selection.gateway } : {}),
+        idempotencyKey: idemKeyRef.current ||= crypto.randomUUID(),
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const error = payload?.error
+      return {
+        status: response.status,
+        code: error?.code || payload?.code,
+        message: error?.message || error || payload?.message || 'Payment could not be completed.',
       }
-      const payload = await requestJson('/api/checkout/order', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      })
-      idemKeyRef.current = null
-      if (payload.url) {
-        window.location.href = payload.url
-        return
-      }
-      onPaid?.()
-    } catch (e) {
-      setError(typeof e.message === 'string' ? e.message : 'Payment failed.')
-    } finally {
-      setBusy(false)
     }
+    idemKeyRef.current = null
+    return { orderId: payload.orderId || payload.order?.id, url: payload.url, payload }
   }
 
   return (
-    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(15,18,32,0.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }}>
-      <div style={{ width: '100%', maxWidth: '540px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden' }}>
-        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '14px' }}>
-          <div>
-            <div style={{ color: C.textMuted, fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 800 }}>Gig checkout</div>
-            <div style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, marginTop: '4px' }}>{gig.title}</div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close checkout" style={{ width: '34px', height: '34px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface2, cursor: 'pointer', color: C.text }}>x</button>
+    <Checkout
+      title={gig.title || 'Gig checkout'}
+      amountUsdCents={totalCents}
+      purpose="order"
+      description={`${tier.tier || 'Selected'} package · ${tier.delivery_days} day delivery · ${tier.revisions >= 999 ? 'Unlimited' : tier.revisions} revisions`}
+      summaryDetails={(
+        <div style={{ display: 'grid', gap: '7px', fontSize: '13px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span>{providerType === 'attorney' ? 'Provider fee' : 'Package price'}</span><strong>{money(subtotalCents)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span>Platform amount ({platformPercent}%)</span><strong>{money(platformFeeCents)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span>Provider receives{providerType === 'consultant' ? ` (${providerSharePercent}%)` : ''}</span><strong>{money(providerPayoutCents)}</strong></div>
+          <small style={{ color: C.textDim, lineHeight: 1.45 }}>
+            {providerType === 'attorney'
+              ? 'Attorney gigs add the platform amount on top of the provider fee.'
+              : 'Consultant gig platform amount is included in the package price.'}
+          </small>
         </div>
-        <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
-          <Card style={{ padding: '14px' }}>
-            <div style={{ fontWeight: 900, textTransform: 'capitalize' }}>{tier.tier}</div>
-            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{tier.delivery_days} day delivery · {tier.revisions >= 999 ? 'Unlimited' : tier.revisions} revisions</div>
-            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}`, display: 'grid', gap: '7px', fontSize: '13px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ color: C.textMuted }}>{providerType === 'attorney' ? 'Provider fee' : 'Package price'}</span>
-                <strong>{money(subtotalCents)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ color: C.textMuted }}>Platform amount ({platformPercent}%)</span>
-                <strong>{money(platformFeeCents)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ color: C.textMuted }}>Provider receives{providerType === 'consultant' ? ` (${providerSharePercent}%)` : ''}</span>
-                <strong>{money(providerPayoutCents)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: '8px', marginTop: '2px' }}>
-                <span style={{ fontWeight: 900 }}>You pay</span>
-                <span style={{ fontFamily: C.serif, fontSize: '26px' }}>{money(totalCents)}</span>
-              </div>
-              <div style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.45 }}>
-                {providerType === 'attorney'
-                  ? 'Attorney gigs add the platform amount on top of the provider fee.'
-                  : 'Consultant gig platform amount is included in the package price.'}
-              </div>
-            </div>
-          </Card>
-
-          {/* Wallet */}
-          <CheckoutButton
-            active={payMethod === 'wallet'}
-            disabled={!canUseWallet}
-            onClick={() => canUseWallet && setPayMethod('wallet')}
-            title="Wallet balance"
-            detail={walletBalance === null
-              ? 'Loading balance...'
-              : `${money((walletBalance || 0) * 100)} available${canUseWallet ? '' : ' · insufficient'}`}
-          />
-
-          {/* Saved card */}
-          <CheckoutButton
-            active={payMethod === 'saved_card'}
-            disabled={!cards.length}
-            onClick={() => { if (cards.length) setPayMethod('saved_card') }}
-            title="Saved card"
-            detail={cards.length === 0
-              ? 'No saved cards — add one from billing'
-              : selectedCard
-                ? `${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4} · exp ${String(selectedCard.exp_month).padStart(2,'0')}/${String(selectedCard.exp_year).slice(-2)}`
-                : 'Select a card below'}
-          />
-          {payMethod === 'saved_card' && cards.length > 0 && (
-            <select
-              value={selectedCardId}
-              onChange={e => setSelectedCardId(e.target.value)}
-              aria-label="Choose a saved card"
-              style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}
-            >
-              {cards.map(card => (
-                <option key={card.id} value={card.id}>
-                  {(card.brand || 'CARD').toUpperCase()} ••••{card.last4} · exp {String(card.exp_month).padStart(2,'0')}/{String(card.exp_year).slice(-2)}{card.is_default ? ' · default' : ''}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {/* New card */}
-          <CheckoutButton
-            active={payMethod === 'new_card'}
-            onClick={() => { setPayMethod('new_card') }}
-            title="New card"
-            detail="Enter card details securely"
-          />
-          {payMethod === 'new_card' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {cardError && (
-                <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '8px' }}>
-                  {cardError}
-                </div>
-              )}
-              <CardFields
-                ref={cardFieldsRef}
-                onError={setCardError}
-                onToken={(result) => { lastTokenRef.current = result; setNewCardToken(result.token); setCardError(null) }}
-              />
-            </div>
-          )}
-
-          {error && (
-            <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
-              {error}
-            </div>
-          )}
-          <Btn
-            variant="primary" fullWidth size="lg"
-            onClick={pay}
-            disabled={
-              busy ||
-              (payMethod === 'wallet'     && !canUseWallet) ||
-              (payMethod === 'saved_card' && !selectedCardId)
-            }
-          >
-            {busy ? 'Processing...' : payMethod === 'wallet'
-              ? `Pay ${money(totalCents)} from wallet`
-              : payMethod === 'saved_card' && selectedCard
-              ? `Pay ${money(totalCents)} with ${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4}`
-              : payMethod === 'new_card'
-              ? `Pay ${money(totalCents)} with new card`
-              : 'Choose a saved card'}
-          </Btn>
-          <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
-            By placing this order you agree to the{' '}
-            <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
-            and{' '}
-            <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function CheckoutButton({ active, disabled, onClick, title, detail }) {
-  return (
-    <button type="button" disabled={disabled} onClick={onClick} style={{ width: '100%', border: `2px solid ${active ? C.cyan : C.border}`, background: active ? C.cyanGlow : C.surface2, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', borderRadius: '12px', padding: '13px 14px', color: C.text, display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', fontFamily: 'inherit', textAlign: 'left' }}>
-      <span><span style={{ display: 'block', fontWeight: 900, fontSize: '14px' }}>{title}</span><span style={{ display: 'block', color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{detail}</span></span>
-      <span style={{ color: active ? C.cyan : C.textDim, fontWeight: 900 }}>{active ? '✓' : '○'}</span>
-    </button>
+      )}
+      source={{ sourceType: 'gig', sourceId: gig.id, tierId: tier.id }}
+      savedCards={cards}
+      walletBalanceCents={walletBalance === null ? null : Math.round(walletBalance * 100)}
+      variant="gig"
+      onSubmit={pay}
+      onComplete={(result) => onPaid?.(result)}
+      onClose={onClose}
+    />
   )
 }
 

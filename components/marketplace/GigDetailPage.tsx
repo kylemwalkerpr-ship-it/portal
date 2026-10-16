@@ -29,6 +29,7 @@ import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import { getCategoryById, getSubcategoryById } from '@/lib/categories'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { trackAttributionCta } from '@/lib/attribution/client'
+import Checkout, { type CheckoutResult, type CheckoutSelection } from '@/components/checkout/Checkout'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -263,9 +264,8 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
   const [descriptionExpanded, setDescriptionExpanded] = React.useState(false)
   const [checkoutOpen, setCheckoutOpen] = React.useState(false)
   const [checkoutBusy, setCheckoutBusy] = React.useState(false)
-  const [checkoutError, setCheckoutError] = React.useState('')
   const [walletCents, setWalletCents] = React.useState<number | null>(null)
-  const [placedOrderId, setPlacedOrderId] = React.useState<string | null>(null)
+  const [savedCards, setSavedCards] = React.useState<any[]>([])
 
   const { execute: gatedOrder, modal: orderModal } = useGatedAction('order', { gigId: gig?.id, tierId: selectedTierId })
   const { execute: gatedChat, modal: chatModal } = useGatedAction('chat', { gigId: gig?.id, providerId: gig?.provider_id })
@@ -340,8 +340,6 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
 
   const openCheckout = () => {
     setCheckoutOpen(true)
-    setCheckoutError('')
-    setPlacedOrderId(null)
     // P10: this is the CTA step of the chain (organic landing → CTA → service →
     // paid order). Consent-gated and deduped per CTA per UTC day; a denied
     // visitor sends nothing.
@@ -352,13 +350,16 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         if (typeof d?.balanceCents === 'number') setWalletCents(d.balanceCents)
       })
       .catch(() => {})
+    fetch('/api/wallet/payment-methods', { credentials: 'same-origin' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setSavedCards(Array.isArray(d.cards) ? d.cards : []))
+      .catch(() => setSavedCards([]))
   }
 
-  const handleOrder = async () => {
-    if (!selectedTierId || !gig || checkoutBusy) return
+  const handleOrder = async (selection: CheckoutSelection): Promise<CheckoutResult> => {
+    if (!selectedTierId || !gig || checkoutBusy) return { status: 409, message: 'This checkout is already in progress.' }
     idemKeyRef.current ||= crypto.randomUUID()
     setCheckoutBusy(true)
-    setCheckoutError('')
     try {
       const payload = await requestJson('/api/checkout/order', {
         method: 'POST',
@@ -366,7 +367,9 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
           sourceType: 'gig',
           sourceId: gig.id,
           tierId: selectedTierId,
-          paymentMethod: 'wallet',
+          paymentMethod: selection.paymentMethod,
+          ...(selection.paymentMethodId ? { paymentMethodId: selection.paymentMethodId } : {}),
+          ...(selection.token ? { token: selection.token, gateway: selection.gateway } : {}),
           idempotencyKey: idemKeyRef.current,
         }),
       })
@@ -374,17 +377,17 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
       postGigMetric({ gig_id: gig.id, event_type: 'purchase' })
       const orderId = payload?.orderId || payload?.order?.id || null
       const url = payload?.url || (orderId ? marketplaceOrdersHref(orderId) : null)
-      setPlacedOrderId(orderId)
       if (url) {
         window.setTimeout(() => { window.location.href = url }, 700)
       }
+      return { orderId: orderId || undefined, url: url || undefined }
     } catch (e: any) {
-      setCheckoutError(e.message || 'Checkout could not be started.')
-      setError(e.message || 'Checkout could not be started.')
+      if (e.status && e.status !== 409) idemKeyRef.current = null
       if (e.status === 402) {
         const cents = e.payload?.balanceCents ?? e.payload?.error?.balanceCents
         if (typeof cents === 'number') setWalletCents(cents)
       }
+      return { status: e.status || 500, code: e.payload?.error?.code || e.payload?.code, message: e.message || 'Checkout could not be started.' }
     } finally {
       setCheckoutBusy(false)
     }
@@ -766,81 +769,19 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         }
       `}</style>
 
-      {checkoutOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm order"
-          onClick={() => { if (!checkoutBusy && !placedOrderId) setCheckoutOpen(false) }}
-          style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }}
-        >
-          <div
-            className="ys-gig-checkout"
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 'min(440px, 100%)', background: T.vellum, color: T.ink, borderRadius: 16, padding: '22px 22px 20px', boxShadow: '0 24px 60px rgba(15,23,42,0.28)', fontFamily: F.ui }}
-          >
-            {placedOrderId ? (
-              <>
-                <div style={{ fontFamily: F.display, fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Order placed</div>
-                <p style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.55, margin: '0 0 16px' }}>
-                  Payment is held in escrow. Opening your order…
-                </p>
-                <a
-                  href={marketplaceOrdersHref(placedOrderId)}
-                  style={{ display: 'inline-flex', padding: '10px 18px', borderRadius: 999, background: T.indigo, color: '#fff', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}
-                >
-                  View order
-                </a>
-              </>
-            ) : (
-              <>
-                <div style={{ fontFamily: F.display, fontSize: 24, fontWeight: 600, marginBottom: 6 }}>Confirm your order</div>
-                <p style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.55, margin: '0 0 16px' }}>
-                  {selectedTier?.name || selectedTier?.tier || 'Selected package'} · {gig.title}
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, marginBottom: 8 }}>
-                  <span>Total</span>
-                  <strong>
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: String(selectedTier?.currency || 'usd').toUpperCase() }).format(Number(selectedTier?.price || 0) / 100)}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: T.inkSoft, marginBottom: 14 }}>
-                  <span>Wallet balance</span>
-                  <span>{walletCents == null ? '…' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(walletCents / 100)}</span>
-                </div>
-                <div style={{ fontSize: 12, color: T.inkSoft, lineHeight: 1.55, marginBottom: 14 }}>
-                  🔒 Held in escrow until you approve delivery. Cancel for a full wallet refund if the specialist has not started.
-                </div>
-                {checkoutError && (
-                  <div style={{ background: 'rgba(178,34,52,0.08)', border: '1px solid rgba(178,34,52,0.22)', borderRadius: 8, padding: '10px 12px', color: T.brick, fontSize: 13, marginBottom: 12 }}>
-                    {checkoutError}
-                    {/insufficient/i.test(checkoutError) && (
-                      <div style={{ marginTop: 8 }}>
-                        <a href="/dashboard?page=billing" style={{ color: T.indigo, fontWeight: 600 }}>Add funds to wallet</a>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  disabled={checkoutBusy}
-                  onClick={handleOrder}
-                  style={{ width: '100%', minHeight: 44, border: 0, borderRadius: 999, background: T.indigo, color: '#fff', fontWeight: 600, fontSize: 14, cursor: checkoutBusy ? 'wait' : 'pointer', fontFamily: F.ui, marginBottom: 8 }}
-                >
-                  {checkoutBusy ? 'Placing order…' : 'Pay from wallet'}
-                </button>
-                <button
-                  type="button"
-                  disabled={checkoutBusy}
-                  onClick={() => setCheckoutOpen(false)}
-                  style={{ width: '100%', minHeight: 44, border: 0, borderRadius: 999, background: 'transparent', color: T.inkSoft, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: F.ui }}
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+      {checkoutOpen && gig && selectedTier && (
+        <Checkout
+          title="Confirm your order"
+          amountUsdCents={Number(selectedTier.price || 0)}
+          purpose="order"
+          description={`${selectedTier.name || selectedTier.tier || 'Selected package'} · ${gig.title}`}
+          source={{ sourceType: 'gig', sourceId: gig.id, tierId: selectedTierId }}
+          savedCards={savedCards}
+          walletBalanceCents={walletCents}
+          variant="gig"
+          onSubmit={handleOrder}
+          onClose={() => setCheckoutOpen(false)}
+        />
       )}
 
       <ChatSidePane

@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   if (paymentMethod === 'invoice' || paymentMethod === 'invoice_request') {
     try {
       await assertMethodAllowed('manual:invoice', {
-        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: sourceType === 'gig' ? 'order' : 'offer',
       }, auth.db)
     } catch (error) {
       if (error instanceof MethodUnavailableError) {
@@ -126,11 +126,12 @@ export async function POST(req: Request) {
     }
   }
 
-  // For non-gig source types, we keep the original wallet-only behavior here.
-  // Gigs support all three payment methods (wallet, saved_card, new_card).
-  if (sourceType !== 'gig' && paymentMethod !== 'wallet') {
-    return respond({ error: `Payment method ${paymentMethod} is only supported for gig purchases.` }, 400)
+  // Unified offers use their atomic accept endpoint for wallet/card payments.
+  // Legacy attorney and consultant quotes share this route's existing charge flow.
+  if (sourceType === 'unified_offer' && paymentMethod !== 'wallet') {
+    return respond({ error: 'Use the offer acceptance flow for this payment method.' }, 400)
   }
+  const methodPurpose = sourceType === 'gig' ? 'order' : 'offer'
 
   try {
     if (paymentMethod === 'saved_card' || paymentMethod === 'new_card') {
@@ -153,7 +154,7 @@ export async function POST(req: Request) {
 
         try {
           await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
-            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
           }, auth.db)
         } catch (error) {
           if (error instanceof MethodUnavailableError) {
@@ -177,7 +178,7 @@ export async function POST(req: Request) {
             amountCents: resolved.totalCents,
             currency: 'usd',
             customer: { email, name },
-            metadata: { source: 'gig_checkout', gigId: resolved.gigId || null },
+            metadata: { source: sourceType, sourceId: resolved.sourceId },
           })
       } else {
         const token = body.token
@@ -186,7 +187,7 @@ export async function POST(req: Request) {
         const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(auth.profileId, auth.db)
         try {
           await assertMethodAllowed(`${gateway.toLowerCase()}:card`, {
-            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
           }, auth.db)
         } catch (error) {
           if (error instanceof MethodUnavailableError) {
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
               },
             ],
             customer: { email, name },
-            metadata: { source: 'gig_checkout' },
+            metadata: { source: sourceType },
           })
       }
 
@@ -265,14 +266,14 @@ export async function POST(req: Request) {
         )
       }
 
-      await creditEarningSafe(auth.db, resolved, order.id, 'gig')
+      await creditEarningSafe(auth.db, resolved, order.id, resolved.sourceType === 'gig' ? 'gig' : 'offer')
       return respond({ success: true, orderId: order.id, url: marketplaceOrdersHref(order.id), transactionId: result.transactionId }, 200, order.id)
     }
 
     // ── Default wallet payment flow ─────────────────────────────────────────
     try {
       await assertMethodAllowed('manual:wallet', {
-        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
       }, auth.db)
     } catch (error) {
       if (error instanceof MethodUnavailableError) {

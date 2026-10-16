@@ -15,6 +15,7 @@ export async function GET() {
       cards: cards.map(c => ({
         id: c.id,
         vault_id: c.vault_id,
+        gateway: c.gateway,
         brand: c.brand ?? 'card',
         last4: c.last4,
         exp_month: c.exp_month,

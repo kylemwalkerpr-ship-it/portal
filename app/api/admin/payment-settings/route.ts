@@ -180,13 +180,13 @@ export async function PATCH(request: Request) {
   }
 
   const parsed = parsePaymentSettingsPatch(body)
-  if (!parsed.ok) {
+  if (parsed.ok === false) {
     await writeRejectedAttempt({ db, actorProfileId, actorRole, reason, target, detail: parsed.error })
     return fail(parsed.error, 400)
   }
 
   const patch = parsed.value
-  let currentSettings
+  let currentSettings: Awaited<ReturnType<typeof getPaymentSettings>>
   try {
     currentSettings = await getPaymentSettings(db)
   } catch {

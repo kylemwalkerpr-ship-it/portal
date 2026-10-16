@@ -19,7 +19,7 @@ function publicClientConfig(providerId: string) {
       ...(config.apiLoginId ? { apiLoginId: config.apiLoginId } : {}),
     }
   } catch {
-    // P0 registers Pesapal capabilities but deliberately has no adapter/config.
+    // A capability without a registered adapter has no public client config.
     return undefined
   }
 }

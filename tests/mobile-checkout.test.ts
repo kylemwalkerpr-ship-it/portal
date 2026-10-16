@@ -123,9 +123,11 @@ describe('POST /api/mobile/checkout/order', () => {
 
   it('400 missing Idempotency-Key', async () => {
     const { extractIdempotencyKey } = await import('@/lib/idempotency')
-    ;(extractIdempotencyKey as jest.Mock).mockReturnValueOnce(null)
+    const extractKeyMock = extractIdempotencyKey as jest.Mock
+    extractKeyMock.mockReturnValue(null)
     const { POST } = await import('@/app/api/mobile/checkout/order/route')
     const res = await request(jsonServer(POST)).post('/checkout/order').set('Authorization', 'Bearer t').send({ sourceType: 'gig', sourceId: 'g1', tierId: 't1' })
+    extractKeyMock.mockReturnValue('idem-test-key-12345678')
     expect(res.status).toBe(400)
   })
 

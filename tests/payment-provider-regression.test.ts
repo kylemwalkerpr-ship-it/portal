@@ -20,7 +20,7 @@ describe('seeded payment provider regression contract', () => {
     expect(catalogue).toMatch(/provider\.chargeVaulted\(/)
     expect(order).toMatch(/provider\.chargeVaulted\(/)
     expect(topup).toMatch(/provider\.chargeVaulted\(/)
-    expect(mobile).toMatch(/getPaymentProvider\(cardRow\.gateway\)/)
+    expect(mobile).toMatch(/selectedMethodKey = `\$\{String\(cardRow\.gateway \|\| ''\)\.toLowerCase\(\)\}:card`/)
     expect(mobile).toMatch(/body\.gateway = preflight\.gateway/)
   })
 
