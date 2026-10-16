@@ -831,7 +831,7 @@ function TopUpDialog({ onClose, onSuccess }) {
 
   const PRESETS = [10, 25, 50, 100, 250];
   const amountNum = parseFloat(amount);
-  const validAmount = !Number.isNaN(amountNum) && amountNum >= 1;
+  const validAmount = !Number.isNaN(amountNum) && amountNum >= 5;
   const canSubmit = validAmount && !!selectedCardId && !submitting;
 
   // One idempotency key per top-up attempt — retries replay the stored
@@ -874,7 +874,7 @@ function TopUpDialog({ onClose, onSuccess }) {
   };
 
   return (
-    <div
+    <div className="wallet-topup-dialog"
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
     >
@@ -923,7 +923,7 @@ function TopUpDialog({ onClose, onSuccess }) {
                   style={{ width: '100%', padding: '12px 14px', fontSize: '18px', fontWeight: 600, background: '#fff', border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontFamily: 'inherit', boxSizing: 'border-box' }}
                 />
               </div>
-              <div id="wallet-topup-amount-help" style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>Minimum $1.00. Choose a preset or enter an amount.</div>
+              <div id="wallet-topup-amount-help" style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>Enter at least $5.00. Choose a preset or enter an amount.</div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {PRESETS.map(p => (
                   <button
@@ -981,9 +981,9 @@ function TopUpDialog({ onClose, onSuccess }) {
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '16px' }}>⚠ {errMsg}</div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px' }}>
-              <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
-              <Btn variant="primary" size="md" onClick={handleSubmit} disabled={!canSubmit}>
+        <div className="wallet-topup-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px' }}>
+              <Btn className="wallet-topup-cancel" variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
+              <Btn className="wallet-topup-primary" variant="brand" size="md" onClick={handleSubmit} disabled={!canSubmit} style={{ minWidth: '220px', marginLeft: 'auto', borderRadius: '12px' }}>
                 {submitting ? 'Charging…' : validAmount ? `Charge $${amountNum.toFixed(2)}` : 'Enter an amount'}
               </Btn>
             </div>

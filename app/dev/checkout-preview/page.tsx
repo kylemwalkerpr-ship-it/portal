@@ -42,7 +42,7 @@ export default function CheckoutPreviewPage() {
             <div className="topupHeader"><div><span className="topupEyebrow">WALLET</span><h3>Add funds</h3><p>Choose an amount to keep your next purchase moving.</p></div><span className="walletGlyph" aria-hidden="true">◈</span></div>
             <div className="topupSummary"><span>New wallet balance</span><strong>$85.00</strong><small>Includes your selected $25.00 top-up.</small></div>
             <label htmlFor="preview-topup-amount">Top-up amount</label>
-            <p className="topupHelp" id="preview-topup-help">Enter at least $1.00. Choose a common amount or type your own.</p>
+            <p className="topupHelp" id="preview-topup-help">Enter at least $5.00. Choose a common amount or type your own.</p>
             <input id="preview-topup-amount" aria-describedby="preview-topup-help" value="$25.00" readOnly />
             <div className="presets" aria-label="Suggested amounts">{['$10', '$25', '$50', '$100'].map((n) => <button type="button" key={n} aria-pressed={n === '$25'}>{n}</button>)}</div>
             <div className="brandRow" aria-label="Accepted cards"><span className="visaWord">VISA</span><span className="mcMark"><i /><i /></span><span className="amexWord">AMEX</span></div>
@@ -87,7 +87,9 @@ export default function CheckoutPreviewPage() {
         .returnPair :global(.returnPage) { min-height:0; padding:0; background:transparent; }
         .returnPair :global(.returnCard) { padding:20px; }
         @media(max-width:820px) { .previewGrid { grid-template-columns:1fr; }.returnPair { grid-template-columns:1fr; } }
-        @media(max-width:390px) { .previewPage { padding:28px 12px 48px; }.previewSection { padding:12px; }.topupCard { padding:20px 16px; }.topupActions { align-items:stretch; flex-direction:column-reverse; }.strongButton { margin-left:0; width:100%; }.quietButton { width:100%; } }
+        @media(max-width:480px) { body:has(.previewPage) .ysa-launcher, body:has(.previewPage) .ys-chat-launcher { display:none !important; } }
+        @media(max-width:480px) { .topupActions { align-items:stretch; flex-direction:column-reverse; }.strongButton { margin-left:0; width:100%; }.quietButton { align-self:flex-start; width:auto; padding-left:0; } }
+        @media(max-width:390px) { .previewPage { padding:28px 12px 48px; }.previewSection { padding:12px; }.topupCard { padding:20px 16px; } }
       `}</style>
     </main>
   )

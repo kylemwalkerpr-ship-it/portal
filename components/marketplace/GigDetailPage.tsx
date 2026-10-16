@@ -783,6 +783,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
             variant="gig"
             onSubmit={handleOrder}
             onClose={() => setCheckoutOpen(false)}
+            onCancel={() => setCheckoutOpen(false)}
           />
         </div>
       )}

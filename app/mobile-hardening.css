@@ -518,3 +518,27 @@
     border-radius: 14px !important;
   }
 }
+@media (max-width: 480px) {
+  body[data-payment-screen='true'] .ysa-launcher,
+  body[data-payment-screen='true'] .ys-chat-launcher {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .wallet-topup-actions {
+    flex-direction: column-reverse !important;
+    align-items: stretch !important;
+  }
+
+  .wallet-topup-actions .wallet-topup-primary {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .wallet-topup-actions .wallet-topup-cancel {
+    width: auto !important;
+    align-self: flex-start;
+    padding-left: 0 !important;
+  }
+}

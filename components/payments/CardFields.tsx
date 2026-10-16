@@ -111,6 +111,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   const [cfg, setCfg] = useState<PaymentConfig | null>(null)
   const [sdkReady, setSdkReady] = useState(false)
   const [error, setErrorState] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ number?: string; exp?: string; cvv?: string }>({})
   const onTokenRef = useRef(onToken)
   const onErrorRef = useRef(onError)
   onTokenRef.current = onToken
@@ -213,6 +214,9 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           validationCallback: (fieldName: string, valid: boolean, message: string) => {
             if (fieldName === 'ccnumber' || fieldName === 'ccexp' || fieldName === 'cvv') {
               nmiFieldValidityRef.current[fieldName] = valid
+              const key = fieldName === 'ccnumber' ? 'number' : fieldName === 'ccexp' ? 'exp' : 'cvv'
+              const safeMessage = /pesapal|\bnmi\b|payhip|authorize[.]net/i.test(message) ? 'Check this card field.' : message
+              setFieldErrors((current) => ({ ...current, [key]: valid ? undefined : (safeMessage || 'Check this card field.') }))
             }
             if (!valid && message) nmiLastValidationMsgRef.current = message
           },
@@ -304,6 +308,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           if (!sdkReady) return reject(new Error('Payment fields not ready'))
           if (pendingResolveRef.current) return reject(new Error('Tokenization already in progress'))
           setErrorState(null)
+          setFieldErrors({})
           pendingResolveRef.current = { resolve, reject }
 
           if (cfg.provider === 'nmi') {
@@ -343,12 +348,14 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             if (digits.length < 13) {
               pendingResolveRef.current = null
               const m = 'Enter a valid card number'
+              setFieldErrors({ number: m })
               reportError(m)
               return reject(new Error(m))
             }
             if (!expMatch || !expMatch[1] || !expMatch[2]) {
               pendingResolveRef.current = null
               const m = 'Enter expiry as MM/YY'
+              setFieldErrors({ exp: m })
               reportError(m)
               return reject(new Error(m))
             }
@@ -357,6 +364,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             if (cvv.length < 3) {
               pendingResolveRef.current = null
               const m = 'Enter the card CVV'
+              setFieldErrors({ cvv: m })
               reportError(m)
               return reject(new Error(m))
             }
@@ -435,16 +443,12 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   if (cfg.provider === 'nmi') {
     return (
       <div>
-        {error && (
-            <div id={`${fieldIds.number}-error`} role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>
-            {error}
-          </div>
-        )}
+        {error && !Object.values(fieldErrors).some(Boolean) && <div role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>{error}</div>}
         <div style={{ display: 'grid', gap: 12 }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<div id={fieldIds.number} className={fieldClassName} style={containerStyle} role="group" aria-label="Card number" aria-describedby={`${fieldIds.number}-help`} /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>Enter the number printed on your card.</small></label>
+          <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<div id={fieldIds.number} className={fieldClassName} style={containerStyle} role="group" aria-label="Card number" aria-invalid={Boolean(fieldErrors.number)} aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`} /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small id={`${fieldIds.number}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry date<div id={fieldIds.exp} className={fieldClassName} style={containerStyle} role="group" aria-label="Expiry date" aria-describedby={`${fieldIds.exp}-help`} /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>Month and year, as shown on your card.</small></label>
-            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<div id={fieldIds.cvv} className={fieldClassName} style={containerStyle} role="group" aria-label="Security code" aria-describedby={`${fieldIds.cvv}-help`} /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card.</small></label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry<div id={fieldIds.exp} className={fieldClassName} style={containerStyle} role="group" aria-label="Expiry" aria-invalid={Boolean(fieldErrors.exp)} aria-describedby={`${fieldIds.exp}-help${fieldErrors.exp ? ` ${fieldIds.exp}-error` : ''}`} /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>MM/YY as printed on your card.</small>{fieldErrors.exp && <small id={`${fieldIds.exp}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.exp}</small>}</label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<div id={fieldIds.cvv} className={fieldClassName} style={containerStyle} role="group" aria-label="Security code" aria-invalid={Boolean(fieldErrors.cvv)} aria-describedby={`${fieldIds.cvv}-help${fieldErrors.cvv ? ` ${fieldIds.cvv}-error` : ''}`} /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small>{fieldErrors.cvv && <small id={`${fieldIds.cvv}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.cvv}</small>}</label>
           </div>
         </div>
       </div>
@@ -454,7 +458,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   if (cfg.provider === 'authorizenet') {
     return (
       <div>
-        {error && (
+        {error && !Object.values(fieldErrors).some(Boolean) && (
             <div id={`${fieldIds.number}-error`} role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>
             {error}
           </div>
@@ -469,9 +473,9 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             placeholder="Card number"
             value={cardNumber}
             onChange={(e) => { const brand = detectCardBrand(e.target.value); setCardNumber(formatCardNumber(e.target.value, brand)); onBrandDetected?.(brand) }}
-            aria-invalid={Boolean(error)}
-            aria-describedby={`${fieldIds.number}-help${error ? ` ${fieldIds.number}-error` : ''}`}
-          /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>Enter the number printed on your card.</small></label>
+              aria-invalid={Boolean(fieldErrors.number)}
+              aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`}
+          /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small role="alert" id={`${fieldIds.number}-error`} style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry date<input
               id={fieldIds.exp}
@@ -482,9 +486,9 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
               value={exp}
               aria-label="Expiry date"
               onChange={(e) => setExp(formatExpiry(e.target.value))}
-              aria-invalid={Boolean(error)}
-              aria-describedby={`${fieldIds.exp}-help${error ? ` ${fieldIds.number}-error` : ''}`}
-            /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>Month and year, as shown on your card.</small></label>
+              aria-invalid={Boolean(fieldErrors.exp)}
+              aria-describedby={`${fieldIds.exp}-help${fieldErrors.exp ? ` ${fieldIds.exp}-error` : ''}`}
+            /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>MM/YY as printed on your card.</small>{fieldErrors.exp && <small role="alert" id={`${fieldIds.exp}-error`} style={{ color: '#761b1b' }}>{fieldErrors.exp}</small>}</label>
             <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<input
               id={fieldIds.cvv}
               className={fieldClassName}
@@ -496,9 +500,9 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
               value={cvv}
               aria-label="Security code"
               onChange={(e) => setCvv(formatCvc(e.target.value, detectCardBrand(cardNumber)))}
-              aria-invalid={Boolean(error)}
-              aria-describedby={`${fieldIds.cvv}-help${error ? ` ${fieldIds.number}-error` : ''}`}
-            /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card.</small></label>
+              aria-invalid={Boolean(fieldErrors.cvv)}
+              aria-describedby={`${fieldIds.cvv}-help${fieldErrors.cvv ? ` ${fieldIds.cvv}-error` : ''}`}
+            /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small>{fieldErrors.cvv && <small role="alert" id={`${fieldIds.cvv}-error`} style={{ color: '#761b1b' }}>{fieldErrors.cvv}</small>}</label>
           </div>
         </div>
       </div>

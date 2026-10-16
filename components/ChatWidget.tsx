@@ -2,6 +2,10 @@
 
 import { useEffect } from 'react'
 
+export function isPaymentScreen(pathname: string) {
+  return /^\/(?:checkout(?:\/|$)|marketplace\/cart(?:\/|$)|dev\/checkout-preview(?:\/|$)|offers\/[^/]+\/pay(?:\/|$))/.test(pathname)
+}
+
 /**
  * Portal mount for the same system-wide assistant used by every YouSafe site.
  * The actual UI, page-context capture, SuperGrok call, and live-support handoff
@@ -10,8 +14,24 @@ import { useEffect } from 'react'
 export default function ChatWidget() {
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if ((window as any).__youSafeAssistantMounted) return
-    if (document.querySelector('script[data-yousafe-assistant="1"]')) return
+    const updatePaymentContext = () => {
+      const hasOpenCheckout = Boolean(document.querySelector('.checkout, .ys-offer-checkout-frame, .wallet-topup-dialog, .topupCard, [data-checkout-open="true"]'))
+      document.body.dataset.paymentScreen = String(isPaymentScreen(window.location.pathname) || hasOpenCheckout)
+    }
+    updatePaymentContext()
+    const paymentObserver = new MutationObserver(updatePaymentContext)
+    paymentObserver.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('popstate', updatePaymentContext)
+    if ((window as any).__youSafeAssistantMounted) return () => {
+      paymentObserver.disconnect()
+      window.removeEventListener('popstate', updatePaymentContext)
+      delete document.body.dataset.paymentScreen
+    }
+    if (document.querySelector('script[data-yousafe-assistant="1"]')) return () => {
+      paymentObserver.disconnect()
+      window.removeEventListener('popstate', updatePaymentContext)
+      delete document.body.dataset.paymentScreen
+    }
 
     ;(window as any).YOUSAFE_ASSISTANT_CONFIG = {
       ...((window as any).YOUSAFE_ASSISTANT_CONFIG || {}),
@@ -46,6 +66,9 @@ export default function ChatWidget() {
     return () => {
       events.forEach((name) => window.removeEventListener(name, load))
       window.clearTimeout(timer)
+      paymentObserver.disconnect()
+      window.removeEventListener('popstate', updatePaymentContext)
+      delete document.body.dataset.paymentScreen
     }
   }, [])
 

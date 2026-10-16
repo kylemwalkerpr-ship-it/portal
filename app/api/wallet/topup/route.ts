@@ -46,8 +46,8 @@ export async function POST(req: Request) {
   }
 
   const amountCents = Number(body.amountCents)
-  if (!Number.isInteger(amountCents) || amountCents < 100) {
-    return Response.json({ error: 'Amount must be an integer of at least 100 cents (USD 1.00)' }, { status: 400 })
+  if (!Number.isInteger(amountCents) || amountCents < 500) {
+    return Response.json({ error: 'Minimum top-up is $5.00.' }, { status: 400 })
   }
 
   // Idempotency: a duplicate request (double-click / retry) with the same key

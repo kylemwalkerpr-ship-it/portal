@@ -57,6 +57,7 @@ export interface CheckoutProps {
   onSubmit?: (selection: CheckoutSelection) => Promise<CheckoutResult | void>
   onComplete?: (result: CheckoutResult) => void
   onClose?: () => void
+  onCancel?: () => void
 }
 
 type Choice = {
@@ -118,6 +119,7 @@ export default function Checkout({
   onSubmit,
   onComplete,
   onClose,
+  onCancel = onClose || (() => {}),
 }: CheckoutProps) {
   const { methods, rates, methodsLoading, methodsError, refreshMethods } = useCheckout({
     amountUsdCents,
@@ -391,12 +393,12 @@ export default function Checkout({
 
           {selected?.kind === 'new_card' && selected.method.mode === 'inline-token' && (
             <div className={styles.cardFields}>
-              {!customer?.name && <label>Name<input type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} aria-describedby={`${checkoutId}-name-help`} /><small id={`${checkoutId}-name-help`}>Enter the name shown on your card.</small></label>}
+              {!customer?.name && <label>Name on card<input type="text" autoComplete="cc-name" value={name} onChange={(event) => setName(event.target.value)} aria-describedby={`${checkoutId}-name-help`} /><small id={`${checkoutId}-name-help`}>Enter the name shown on your card.</small></label>}
               <CardBrandIcons brands={selected.method.supportedBrands || supportedBrandsByProvider[selected.method.provider] || []} activeBrand={detectedBrand} />
               <p className={styles.fieldHelp}>Your card details are encrypted and handled securely.</p>
               {previewState ? (
                 <div className={styles.mockFields} aria-label="Mock card fields">
-                  <span>Card number · 4242 4242 4242 4242</span><span>Expiry · 08 / 29</span><span>Security code · •••</span>
+                  <label>Card number<input value="4242 4242 4242 4242" readOnly /><small>16 digits on the front of your card (Amex 15).</small></label><label>Expiry<input value="01 / 20" readOnly aria-invalid="true" aria-describedby={`${checkoutId}-expiry-help ${checkoutId}-expiry-error`} /><small id={`${checkoutId}-expiry-help`}>MM/YY as printed on your card.</small><small id={`${checkoutId}-expiry-error`} role="alert">This card has expired.</small></label><label>Security code<input value="•••" readOnly /><small>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small></label>
                   <small>Preview only · sample Visa number, no card details are collected</small>
                 </div>
               ) : (
@@ -418,7 +420,7 @@ export default function Checkout({
           {visibleState === 'method_unavailable' && <p className={styles.repick}>Available methods have been refreshed. Choose another option to continue.</p>}
 
           <div className={styles.actions}>
-          {onClose && <button type="button" className={styles.cancel} onClick={onClose} disabled={busy}>Cancel</button>}
+          <button type="button" className={styles.cancel} onClick={onCancel} disabled={busy}>Cancel</button>
           <button type="button" className={styles.primary} onClick={submit} disabled={busy || methodsLoading || !selected}>
             {visibleState === 'submitting' ? 'Processing…' : selected?.kind === 'wallet' ? `Pay ${formatMoney(amountUsdCents)} from wallet` : selected?.kind === 'saved_card' ? `Pay with ${selected.card?.brand || 'saved card'} ending ${selected.card?.last4}` : selected?.kind === 'invoice' ? 'Request an invoice' : selected?.method.mode === 'hosted-redirect' ? 'Continue to secure checkout' : `Pay ${formatMoney(amountUsdCents)} USD`}
           </button>

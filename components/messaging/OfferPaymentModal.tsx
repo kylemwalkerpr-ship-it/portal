@@ -148,6 +148,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid, previewData 
           onSubmit={submit}
           onComplete={complete}
           onClose={onClose}
+          onCancel={onClose}
         />
       ) : null}
       <p className="ys-offer-checkout-terms" data-preview={previewData ? 'true' : undefined}>

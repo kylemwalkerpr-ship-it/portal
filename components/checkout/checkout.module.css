@@ -106,7 +106,7 @@
   .methodsHeading { margin-top:20px; }
   .actions { flex-direction:column-reverse; align-items:stretch; gap:2px; }
   .primary { width:100%; min-width:0; }
-  .cancel,.secondary { width:100%; }
+  .cancel,.secondary { width:auto; align-self:flex-start; }
   .summary { padding:19px 17px 16px 20px; }
   .summaryLine { align-items:flex-start; }
   .summaryLine strong { text-align:right; }
@@ -115,5 +115,11 @@
   .sheetBackdrop { padding:max(8px,env(safe-area-inset-top)) 0 max(8px,env(safe-area-inset-bottom)); }
   .sheet { width:100%; height:100%; border-radius:0; }
   .frameShell { height:calc(100% - 56px); min-height:0; }
+}
+@media(max-width:480px) {
+  .actions { flex-direction:column-reverse; align-items:stretch; gap:2px; }
+  .primary { width:100%; min-width:0; }
+  .mockFields label { display:grid; gap:6px; }
+  .mockFields input { width:100%; box-sizing:border-box; }
 }
 @media(prefers-reduced-motion:reduce) { .method,.brandIcon { transition:none; } }

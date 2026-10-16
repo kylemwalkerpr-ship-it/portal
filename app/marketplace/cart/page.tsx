@@ -271,6 +271,7 @@ function CartPageInner() {
               excludeInvoice
               variant="cart"
               onSubmit={handleCheckout}
+              onCancel={() => router.back()}
             />
           </div>
         </>
