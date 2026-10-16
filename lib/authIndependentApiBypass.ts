@@ -4,8 +4,13 @@ import {
   type ClerkRequestCookie,
 } from './clerkHandoffState'
 
-const AUTH_INDEPENDENT_PUBLIC_API_GET_PATHS: ReadonlySet<string> = new Set([
-  '/api/payments/config',
+const AUTH_INDEPENDENT_PUBLIC_API_METHODS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['/api/payments/config', new Set(['GET'])],
+  // First-party attribution collection is intentionally anonymous and
+  // self-enforces same-origin + consent in the handlers. Running Clerk before
+  // these hot POSTs adds session-processing CPU without contributing auth.
+  ['/api/attribution/session', new Set(['GET', 'POST'])],
+  ['/api/attribution/events', new Set(['POST'])],
 ])
 
 type RequestCookieSource =
@@ -28,8 +33,8 @@ export function shouldBypassClerkForAuthIndependentApiRequest(
   searchParams: URLSearchParams | null | undefined,
   cookies: RequestCookieSource,
 ): boolean {
-  if (method !== 'GET') return false
-  if (!AUTH_INDEPENDENT_PUBLIC_API_GET_PATHS.has(pathname)) return false
+  const methods = AUTH_INDEPENDENT_PUBLIC_API_METHODS.get(pathname)
+  if (!methods?.has(method)) return false
   if (isClerkInternalAuthRequest(pathname, searchParams)) return false
   const requestCookies = typeof cookies === 'function' ? cookies() : cookies
   if (requestHasClerkHandoffCookie(requestCookies)) return false
