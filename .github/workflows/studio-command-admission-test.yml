@@ -1,0 +1,207 @@
+name: Studio Command Admission Isolated Tests
+
+on:
+  pull_request:
+    paths:
+      - 'lib/studioRuntime/**'
+      - 'app/api/content-studio/v3/runs/**'
+      - 'supabase/migrations/20261001000000_studio_command_admission.sql'
+      - 'tests/content-studio-v3/**'
+      - 'tests/sql/studio-command-admission.sql'
+      - 'scripts/test-studio-command-admission.mjs'
+      - '.github/workflows/studio-command-admission-test.yml'
+      - 'docs/content-studio/release/2026-10-01-command-admission-evidence.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'jest.config.cjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgres-17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.11@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: studio_fixture_only_password
+          POSTGRES_DB: studio_admission_test_${{ github.run_id }}_${{ github.run_attempt }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      STUDIO_TEST_DATABASE_URL: postgresql://postgres:studio_fixture_only_password@127.0.0.1:5432/studio_admission_test_${{ github.run_id }}_${{ github.run_attempt }}
+      STUDIO_TEST_IMAGE_PIN: postgres:17.11@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+      STUDIO_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PGPASSWORD: studio_fixture_only_password
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Initialize sanitized receipt
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          IMAGE_PIN: postgres:17.11@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+        run: |
+          mkdir -p "$RUNNER_TEMP/studio-admission-artifact"
+          node -e 'const fs=require("node:fs"); const cp=require("node:child_process"); const candidate=process.env.CANDIDATE_SHA; const checked=cp.execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(); const r={kind:"studio-command-admission-ci-evidence",candidateSha:candidate,checkedOutSha:checked,checkedOutShaMatchesCandidate:checked===candidate,githubRunId:process.env.GITHUB_RUN_ID,githubRunAttempt:process.env.GITHUB_RUN_ATTEMPT,postgresImage:{pin:process.env.IMAGE_PIN,indexDigest:"sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",linuxAmd64Manifest:"sha256:e31e3d5327d1806f6177827c9710643e4f35f7ab3f14d26d05332753d3e95ee0"},versions:{node:process.version,psql:"NOT_RUN",postgresServer:"NOT_RUN"},outcomes:{npmCi:"NOT_RUN",wholeRepositoryTypeScript:"NOT_RUN",focusedStrictTypeScript:"NOT_RUN",focusedJest:"NOT_RUN",isolatedPostgres:"NOT_RUN"},sqlSessionsAndEvents:{status:"NOT_RUN"}}; fs.writeFileSync(process.env.RUNNER_TEMP+"/studio-admission-artifact/studio-command-admission-ci-receipt.json",JSON.stringify(r,null,2)+"\n"); if(checked!==candidate) process.exitCode=1;'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - id: npm_ci
+        name: Install locked candidate dependencies
+        continue-on-error: true
+        run: npm ci --legacy-peer-deps
+      - id: static_checks
+        name: Static migration admission checks
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/migration-order.mjs --check
+          node scripts/migration-ledger-policy.mjs --check
+          git diff --check
+          node <<'NODE'
+          const fs=require('node:fs')
+          const files=[
+            '.github/workflows/studio-command-admission-test.yml',
+            'app/api/content-studio/v3/runs/route.ts','app/api/content-studio/v3/runs/routeCore.ts',
+            'docs/content-studio/release/2026-10-01-command-admission-evidence.md',
+            'lib/studioRuntime/commandAdmission.ts','lib/studioRuntime/contracts.ts','lib/studioRuntime/repository.ts',
+            'scripts/test-studio-command-admission.mjs','supabase/migrations/20261001000000_studio_command_admission.sql',
+            'tests/content-studio-v3/commandAdmission.test.ts','tests/content-studio-v3/runAdmissionRoute.test.ts',
+            'tests/sql/studio-command-admission.sql',
+          ]
+          for(const file of files){const text=fs.readFileSync(file,'utf8');if(/\r/.test(text)||/(^|\n)[^\n]*[ \t]+$/m.test(text)||/(^|\n)(<<<<<<<|=======|>>>>>>>)( |$)/m.test(text))throw new Error(`packet whitespace/conflict check failed: ${file}`)}
+          NODE
+      - id: pg_identity
+        name: Capture isolated PostgreSQL identity
+        if: always()
+        continue-on-error: true
+        run: |
+          node --version
+          psql --version
+          psql "$STUDIO_TEST_DATABASE_URL" -X --no-psqlrc -Atqc 'SHOW server_version'
+          checked_out_sha=$(git rev-parse HEAD)
+          test "$checked_out_sha" = "$STUDIO_CANDIDATE_SHA"
+          echo "checked out approved candidate SHA: $checked_out_sha"
+      - id: whole_tsc
+        name: Whole repository TypeScript project check
+        if: always()
+        continue-on-error: true
+        run: ./node_modules/.bin/tsc --noEmit --incremental false --project tsconfig.json
+      - id: focused_tsc
+        name: Focused strict packet TypeScript project check
+        if: always()
+        continue-on-error: true
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const root = process.cwd()
+          const files = [
+            'lib/studioRuntime/contracts.ts', 'lib/studioRuntime/repository.ts', 'lib/studioRuntime/commandAdmission.ts',
+            'app/api/content-studio/v3/runs/route.ts', 'app/api/content-studio/v3/runs/routeCore.ts',
+            'tests/content-studio-v3/commandAdmission.test.ts', 'tests/content-studio-v3/runAdmissionRoute.test.ts',
+          ]
+          const config = {
+            extends: path.join(root, 'tsconfig.json'),
+            compilerOptions: { noEmit: true, incremental: false, strict: true, types: ['node', 'jest'],
+              typeRoots: [path.join(root, 'node_modules', '@types')] },
+            include: files.map(file => path.join(root, file)),
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'studio-admission-tsconfig.json'), JSON.stringify(config, null, 2))
+          NODE
+          ./node_modules/.bin/tsc --project "$RUNNER_TEMP/studio-admission-tsconfig.json"
+      - id: packet_jest
+        name: Focused Jest packet tests with checked-in config
+        if: always()
+        continue-on-error: true
+        run: ./node_modules/.bin/jest --config jest.config.cjs --runInBand tests/content-studio-v3/commandAdmission.test.ts tests/content-studio-v3/runAdmissionRoute.test.ts
+      - id: isolated_pg
+        name: Real PostgreSQL 17 isolated sessions
+        if: always()
+        continue-on-error: true
+        run: node scripts/test-studio-command-admission.mjs
+      - name: Write exact-head structured outcome receipt
+        if: always()
+        env:
+          NPM_CI_RESULT: ${{ steps.npm_ci.outcome }}
+          STATIC_RESULT: ${{ steps.static_checks.outcome }}
+          IDENTITY_RESULT: ${{ steps.pg_identity.outcome }}
+          WHOLE_TSC_RESULT: ${{ steps.whole_tsc.outcome }}
+          FOCUSED_TSC_RESULT: ${{ steps.focused_tsc.outcome }}
+          JEST_RESULT: ${{ steps.packet_jest.outcome }}
+          POSTGRES_RESULT: ${{ steps.isolated_pg.outcome }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          IMAGE_PIN: postgres:17.11@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'); const path=require('node:path'); const cp=require('node:child_process');
+          const out=path.join(process.env.RUNNER_TEMP,'studio-admission-artifact','studio-command-admission-ci-receipt.json');
+          const harness=path.join(process.env.RUNNER_TEMP,'studio-command-admission-receipt.json');
+          let sql={status:process.env.POSTGRES_RESULT==='skipped'?'NOT_RUN':'FAIL_HARNESS_BOOTSTRAP_NO_RECEIPT',failures:process.env.POSTGRES_RESULT==='skipped'?[]:['PostgreSQL harness did not write its sanitized receipt']};
+          if(fs.existsSync(harness)){try{const h=JSON.parse(fs.readFileSync(harness,'utf8')); sql={status:process.env.POSTGRES_RESULT==='success'?'PASS':'FAIL',serverVersion:h.serverVersion,clientVersion:h.clientVersion,checks:h.checks,sessionEvents:h.sessionEvents,failures:h.failure?[h.failure]:[]}}catch{sql={status:'FAIL',failures:['harness receipt malformed']}}}
+          const checkedOutSha=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); const checkedOutShaMatchesCandidate=checkedOutSha===process.env.CANDIDATE_SHA;
+          const receipt={kind:'studio-command-admission-ci-evidence',candidateSha:process.env.CANDIDATE_SHA,checkedOutSha,checkedOutShaMatchesCandidate,githubRunId:process.env.GITHUB_RUN_ID,githubRunAttempt:process.env.GITHUB_RUN_ATTEMPT,postgresImage:{pin:process.env.IMAGE_PIN,indexDigest:'sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f',linuxAmd64Manifest:'sha256:e31e3d5327d1806f6177827c9710643e4f35f7ab3f14d26d05332753d3e95ee0'},versions:{node:process.version,psql:sql.clientVersion||'NOT_RUN',postgresServer:sql.serverVersion||'NOT_RUN'},outcomes:{npmCi:process.env.NPM_CI_RESULT||'NOT_RUN',staticMigrationChecks:process.env.STATIC_RESULT||'NOT_RUN',postgresIdentity:process.env.IDENTITY_RESULT||'NOT_RUN',wholeRepositoryTypeScript:process.env.WHOLE_TSC_RESULT||'NOT_RUN',focusedStrictTypeScript:process.env.FOCUSED_TSC_RESULT||'NOT_RUN',focusedJest:process.env.JEST_RESULT||'NOT_RUN',isolatedPostgres:process.env.POSTGRES_RESULT||'NOT_RUN'},sqlSessionsAndEvents:sql};
+          fs.writeFileSync(out,JSON.stringify(receipt,null,2)+'\n');
+          if(!checkedOutShaMatchesCandidate) process.exitCode=1;
+          NODE
+      - name: Add concise independent lane outcomes
+        if: always()
+        env:
+          NPM_CI_RESULT: ${{ steps.npm_ci.outcome }}
+          STATIC_RESULT: ${{ steps.static_checks.outcome }}
+          IDENTITY_RESULT: ${{ steps.pg_identity.outcome }}
+          WHOLE_TSC_RESULT: ${{ steps.whole_tsc.outcome }}
+          FOCUSED_TSC_RESULT: ${{ steps.focused_tsc.outcome }}
+          JEST_RESULT: ${{ steps.packet_jest.outcome }}
+          POSTGRES_RESULT: ${{ steps.isolated_pg.outcome }}
+        run: |
+          {
+            echo '## Studio command admission verification'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| npm ci --legacy-peer-deps | $NPM_CI_RESULT |"
+            echo "| Static migration checks | $STATIC_RESULT |"
+            echo "| PostgreSQL identity | $IDENTITY_RESULT |"
+            echo "| Whole repository TypeScript project | $WHOLE_TSC_RESULT |"
+            echo "| Focused strict TypeScript project | $FOCUSED_TSC_RESULT |"
+            echo "| Focused Jest | $JEST_RESULT |"
+            echo "| Isolated PostgreSQL | $POSTGRES_RESULT |"
+            echo "| Candidate SHA / checked-out SHA | $STUDIO_CANDIDATE_SHA / $(git rev-parse HEAD) |"
+            echo "| Workflow run / attempt | $GITHUB_RUN_ID / $GITHUB_RUN_ATTEMPT |"
+            echo "| PostgreSQL image | $STUDIO_TEST_IMAGE_PIN |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload sanitized structured exact-head receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: studio-command-admission-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/studio-admission-artifact/studio-command-admission-ci-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require all independent verification lanes to pass
+        if: always()
+        env:
+          NPM_CI_RESULT: ${{ steps.npm_ci.outcome }}
+          STATIC_RESULT: ${{ steps.static_checks.outcome }}
+          IDENTITY_RESULT: ${{ steps.pg_identity.outcome }}
+          WHOLE_TSC_RESULT: ${{ steps.whole_tsc.outcome }}
+          FOCUSED_TSC_RESULT: ${{ steps.focused_tsc.outcome }}
+          JEST_RESULT: ${{ steps.packet_jest.outcome }}
+          POSTGRES_RESULT: ${{ steps.isolated_pg.outcome }}
+        run: |
+          for result in "$NPM_CI_RESULT" "$STATIC_RESULT" "$IDENTITY_RESULT" "$WHOLE_TSC_RESULT" "$FOCUSED_TSC_RESULT" "$JEST_RESULT" "$POSTGRES_RESULT"; do
+            if [ "$result" != success ]; then echo "A verification lane did not pass: $result" >&2; exit 1; fi
+          done
