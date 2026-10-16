@@ -18,6 +18,7 @@ import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs
 import { getManifest } from '@/lib/templatePdfManifests'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
 
 export async function POST(
   req: Request,
@@ -89,6 +90,18 @@ export async function POST(
 
   const priceCents = getTemplatePackPriceCents(slug)
   if (priceCents <= 0) return fail('Invalid template price.', 400)
+
+  try {
+    await assertMethodAllowed('manual:wallet', {
+      profile: { id: auth.profile.id }, currency: 'USD', amount: priceCents / 100, purpose: 'template_fill',
+    }, admin)
+  } catch (error) {
+    await release()
+    if (error instanceof MethodUnavailableError) {
+      return Response.json({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, { status: error.status })
+    }
+    throw error
+  }
 
   const manifest = getManifest(slug)
   if (!manifest) return fail('No fillable form manifest for this template.', 400)

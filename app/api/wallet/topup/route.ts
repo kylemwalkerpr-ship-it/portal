@@ -7,7 +7,9 @@
  * On successful charge → wallet.credit() with reference = NMI transaction_id.
  */
 import { getCurrentStudent } from '@/lib/student'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { getPaymentProvider } from '@/lib/payments'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 import { credit, getOrCreateWallet } from '@/lib/wallet'
 import { addCard } from '@/lib/payment-methods'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
 
   const profile = auth.profile
   const customer = { id: profile.id, email: profile.email, name: profile.full_name }
-  const newCardGateway = (typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()).toLowerCase()
+  const newCardGateway = (typeof body.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(profile.id, adminDb)).toLowerCase()
 
   try {
     let chargeResult
@@ -85,6 +87,16 @@ export async function POST(req: Request) {
         return respond({ error: 'Card not found' }, 404)
       }
 
+      try {
+        await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'wallet_topup',
+        }, db)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(cardRow.gateway)
       chargeResult = await provider.chargeVaulted({
         vaultId: cardRow.vault_id,
@@ -97,6 +109,16 @@ export async function POST(req: Request) {
 
     // ── New card token path ─────────────────────────────────────────────────
     else if (typeof body.token === 'string' && body.token) {
+      try {
+        await assertMethodAllowed(`${newCardGateway}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'wallet_topup',
+        }, adminDb)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(newCardGateway)
       chargeResult = await provider.charge({
         token: body.token,

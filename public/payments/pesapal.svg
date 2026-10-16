@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" role="img" aria-labelledby="title">
+  <title id="title">Pesapal</title>
+  <rect width="120" height="32" rx="5" fill="#fff"/>
+  <path d="M12 8h7.2c4.2 0 6.8 2.3 6.8 6s-2.6 6-6.8 6h-3.4v4H12zm7 8.7c1.9 0 3-.9 3-2.7s-1.1-2.7-3-2.7h-3.2v5.4z" fill="#1c7948"/>
+  <text x="32" y="20" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#235c41">Pesapal</text>
+</svg>

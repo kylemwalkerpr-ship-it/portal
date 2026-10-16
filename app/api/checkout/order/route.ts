@@ -5,7 +5,10 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { getPaymentProvider } from '@/lib/payments'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { createInvoiceRequestOrder } from '@/lib/payments/invoiceRequest'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import {
   claimIdempotencyKey,
@@ -96,6 +99,33 @@ export async function POST(req: Request) {
   const resolved = await resolveCheckoutItem(auth.db, sourceType, sourceId, auth.profileId, tierId)
   if ('error' in resolved) return respond({ error: resolved.error }, resolved.status)
 
+  if (paymentMethod === 'invoice' || paymentMethod === 'invoice_request') {
+    try {
+      await assertMethodAllowed('manual:invoice', {
+        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+      }, auth.db)
+    } catch (error) {
+      if (error instanceof MethodUnavailableError) {
+        if (!error.invoiceRequestFallback) return respond({ error: error.message, code: error.code }, error.status)
+        try {
+          const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+          return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+        } catch (invoiceError) {
+          console.error('[checkout/order] invoice fallback failed:', invoiceError)
+          return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+        }
+      }
+      throw error
+    }
+    try {
+      const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId, { alertAdmin: false })
+      return respond({ success: true, method: 'invoice_request', status: 'pending_invoice', orderId: invoiceOrder.id }, 201, invoiceOrder.id)
+    } catch (invoiceError) {
+      console.error('[checkout/order] invoice request failed:', invoiceError)
+      return respond({ error: 'The invoice request could not be created.' }, 500)
+    }
+  }
+
   // For non-gig source types, we keep the original wallet-only behavior here.
   // Gigs support all three payment methods (wallet, saved_card, new_card).
   if (sourceType !== 'gig' && paymentMethod !== 'wallet') {
@@ -121,6 +151,25 @@ export async function POST(req: Request) {
           .single()
         if (cardErr || !cardRow) return respond({ error: 'Saved card not found.' }, 404)
 
+        try {
+          await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+          }, auth.db)
+        } catch (error) {
+          if (error instanceof MethodUnavailableError) {
+            if (error.invoiceRequestFallback) {
+              try {
+                const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+                return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+              } catch (invoiceError) {
+                console.error('[checkout/order] invoice fallback failed:', invoiceError)
+                return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+              }
+            }
+            return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+          }
+          throw error
+        }
         const provider = getPaymentProvider(cardRow.gateway)
         chargeFn = () =>
           provider.chargeVaulted({
@@ -134,7 +183,26 @@ export async function POST(req: Request) {
         const token = body.token
         if (!token) return respond({ error: 'Missing card token.' }, 400)
 
-        const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+        const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(auth.profileId, auth.db)
+        try {
+          await assertMethodAllowed(`${gateway.toLowerCase()}:card`, {
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+          }, auth.db)
+        } catch (error) {
+          if (error instanceof MethodUnavailableError) {
+            if (error.invoiceRequestFallback) {
+              try {
+                const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+                return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+              } catch (invoiceError) {
+                console.error('[checkout/order] invoice fallback failed:', invoiceError)
+                return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+              }
+            }
+            return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+          }
+          throw error
+        }
         const provider = getPaymentProvider(gateway)
         chargeFn = () =>
           provider.charge({
@@ -202,6 +270,25 @@ export async function POST(req: Request) {
     }
 
     // ── Default wallet payment flow ─────────────────────────────────────────
+    try {
+      await assertMethodAllowed('manual:wallet', {
+        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: 'order',
+      }, auth.db)
+    } catch (error) {
+      if (error instanceof MethodUnavailableError) {
+        if (error.invoiceRequestFallback) {
+          try {
+            const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+            return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+          } catch (invoiceError) {
+            console.error('[checkout/order] invoice fallback failed:', invoiceError)
+            return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+          }
+        }
+        return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+      }
+      throw error
+    }
     const wallet = await getOrCreateWallet(auth.profileId)
     if (wallet.balance_cents < resolved.totalCents) {
       return respond(

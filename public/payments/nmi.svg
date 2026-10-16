@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" role="img" aria-labelledby="title">
+  <title id="title">NMI</title>
+  <rect width="120" height="32" rx="5" fill="#fff"/>
+  <path d="M12 23V9h3.4l7.2 8.9V9H26v14h-3.3l-7.3-9v9z" fill="#27364a"/>
+  <path d="M34 23V9h3.2l4.2 7.1L45.6 9h3.2v14h-3.4v-8.3l-4 6.6h-.2l-4-6.5V23z" fill="#27364a"/>
+  <path d="M55 9h3.5v14H55z" fill="#3c3b6e"/>
+  <text x="66" y="21" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#27364a">PAYMENTS</text>
+</svg>
