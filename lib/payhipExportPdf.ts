@@ -208,7 +208,7 @@ export async function generatePayhipProductPdf(
     thickness: 0.5,
     color: RULE,
   })
-  guidance.drawText(`Payhip master generated ${isoDate(generatedAt)} - verify official requirements again on the day of filing.`, {
+  guidance.drawText(`YouSafe master generated ${isoDate(generatedAt)} - verify official requirements again on the day of filing.`, {
     x: margin,
     y: footerY,
     size: 7.5,

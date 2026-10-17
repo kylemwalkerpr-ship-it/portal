@@ -219,7 +219,7 @@ export function generateShopBlogPageTsx(product: ShopSeoProduct): string {
   parts.push(`                <a href="${payhipUrl}"`)
   parts.push(`                  className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary px-8 py-3 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"`)
   parts.push(`                  target="_blank" rel="noopener noreferrer">`)
-  parts.push(`                  <ShoppingBag className="mr-2 h-5 w-5" /> Buy on Payhip — ${price}`)
+  parts.push(`                  <ShoppingBag className="mr-2 h-5 w-5" /> Buy now — ${price}`)
   parts.push(`                </a>`)
   parts.push(`              </section>`)
   parts.push(``)

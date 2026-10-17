@@ -56,7 +56,7 @@ export function getPayhipBatch1BlogPublishPackage(
       purpose: 'marketplace-detail',
     },
     {
-      label: 'Buy the exact preparation workbook on Payhip',
+      label: 'Buy the exact preparation workbook',
       href: exactProductUrl(product),
       purpose: 'product',
     },
@@ -81,7 +81,7 @@ export function getPayhipBatch1BlogPublishPackage(
     'Continue with YouSafe:',
     `Detailed guide: ${apexUrl(product)}`,
     `Marketplace details: ${marketUrl(product)}`,
-    `Exact Payhip product: ${exactProductUrl(product)}`,
+    `Exact product: ${exactProductUrl(product)}`,
     ...product.apex.authorityLinks.map((link) => `${link.label}: ${link.href}`),
     ...links
       .filter((link) => link.purpose === 'cross-sell')

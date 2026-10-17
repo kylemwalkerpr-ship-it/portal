@@ -786,7 +786,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
       ? `Fixed price & delivery time on every listing · most requested: ${turnaround.min === turnaround.max ? `${turnaround.min}` : `${turnaround.min}–${turnaround.max}`} days`
       : 'Fixed price & delivery time on every listing',
   })
-  trustItems.push({ label: 'Packs: instant download via Payhip' })
+  trustItems.push({ label: 'Packs: instant download' })
   if (chipTotal > 0) trustItems.push({ label: `${chipTotal.toLocaleString('en-US')} active services` })
 
   return (
@@ -873,7 +873,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
       <section className="cw-files-band" aria-label="Open the file shop">
         <div className="wrap cw-files-band-inner">
           <div>
-            <p className="kicker">36 instant downloads · $7–79 · secure Payhip checkout</p>
+            <p className="kicker">36 instant downloads · $7–79 · secure checkout</p>
             <h2>Preparation packs and practical files, now in one shop</h2>
             <p className="lede">Shop USA and Canada immigration organizers alongside business templates, workbooks, and short guides.</p>
           </div>

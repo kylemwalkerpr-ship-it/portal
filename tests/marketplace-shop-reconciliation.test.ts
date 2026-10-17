@@ -81,7 +81,7 @@ describe('recovered Cloudflare shop additions', () => {
     expect(productPage).toContain('https://shop.yousafeconsultancy.com/b/${commercial.payhipId}')
     expect(productPage).toContain(': product.payhip_url')
     expect(productPage).toContain('href={payhipUrl}')
-    expect(productPage).toContain('Buy on Payhip')
+    expect(productPage).toContain('Buy now')
     expect(productPage).toContain('Official government sources')
     expect(productPage).toContain("href=\"/categories/immigration\"")
     expect(productPage).not.toContain('/marketplace/cart')
@@ -112,6 +112,17 @@ describe('recovered Cloudflare shop additions', () => {
 })
 
 describe('Marketplace design regression protection during shop reconciliation', () => {
+  test('buyer-facing Market landing and shop copy hides the payment provider name', () => {
+    expect(landing).toContain('Packs: instant download')
+    expect(landing).toContain('36 instant downloads · $7–79 · secure checkout')
+    expect(landing).not.toMatch(/Payhip/i)
+    expect(shopPage).toContain('Pay once, download instantly.')
+    expect(shopPage).not.toMatch(/Payhip/i)
+    expect(shopUi).toContain('Secure checkout')
+    expect(shopUi).toContain('<Stat n="Secure" label="checkout" />')
+    expect(shopUi).not.toContain('Payhip')
+  })
+
   test('keeps the current discovery/category architecture intact', () => {
     expect(discovery).toContain('const buildBrowserQuery = React.useCallback')
     expect(filters).toContain('ys-filter-desktop-row')

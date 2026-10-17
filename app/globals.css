@@ -1398,3 +1398,20 @@ html:not([data-ys-palette]) .cw-market {
 .cw-market .chat-side-pane.yousafe-messenger {
   color: var(--text, #0F172A) !important;
 }
+
+
+/* Keep floating support and consent controls behind Clerk authentication modals. */
+body:has(.cl-modalBackdrop) .ysa-launcher,
+body:has([class*="cl-modalBackdrop"]) .ysa-launcher,
+body:has(.cl-modalBackdrop) .ysa-panel,
+body:has([class*="cl-modalBackdrop"]) .ysa-panel,
+body:has(.cl-modalBackdrop) .ys-chat-launcher,
+body:has([class*="cl-modalBackdrop"]) .ys-chat-launcher,
+body:has(.cl-modalBackdrop) .ys-floating-message-launcher,
+body:has([class*="cl-modalBackdrop"]) .ys-floating-message-launcher,
+body:has(.cl-modalBackdrop) [data-cookie-settings],
+body:has([class*="cl-modalBackdrop"]) [data-cookie-settings],
+body:has(.cl-modalBackdrop) [data-cookie-banner],
+body:has([class*="cl-modalBackdrop"]) [data-cookie-banner] {
+  display: none !important;
+}
