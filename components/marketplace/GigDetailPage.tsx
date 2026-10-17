@@ -802,7 +802,7 @@ export function GigDetailPage({ slug, initialGig = null }: GigDetailPageProps) {
         // Wallet copy is rendered by the shared Checkout option as “Pay from wallet”.
         <div className="ys-gig-checkout">
           <Checkout
-            title="Confirm your order"
+            title="Order Confirmation"
             amountUsdCents={Number(selectedTier.price || 0)}
             purpose="order"
             orderTitle={gig.title}

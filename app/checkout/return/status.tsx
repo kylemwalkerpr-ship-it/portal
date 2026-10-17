@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import styles from '@/components/checkout/checkout.module.css'
+import { confirmedMarketplaceOrderHref } from '@/lib/orderLinks'
 
-type ReturnStatus = { status?: string; confirmed?: boolean; message?: string }
+type ReturnStatus = { status?: string; confirmed?: boolean; message?: string; orderId?: string }
 
 export default function CheckoutReturnStatus({ trackingId, merchantReference, cancelled, previewStatus }: { trackingId: string; merchantReference: string; cancelled: boolean; previewStatus?: ReturnStatus }) {
   const [status, setStatus] = useState<ReturnStatus | null>(previewStatus || null)
@@ -25,10 +26,16 @@ export default function CheckoutReturnStatus({ trackingId, merchantReference, ca
       .catch(() => setStatus({ status: 'pending', message: 'We could not check this payment yet. Do not retry until support confirms the result.' }))
   }, [trackingId, merchantReference, cancelled, previewStatus])
 
+  useEffect(() => {
+    if (previewStatus) return
+    const destination = confirmedMarketplaceOrderHref(status)
+    if (destination) window.location.replace(destination)
+  }, [status, previewStatus])
+
   const confirmed = status?.confirmed === true
   const failed = status?.status === 'failed' || status?.status === 'reversed'
   const title = confirmed ? 'Payment confirmed' : failed ? 'Payment not completed' : cancelled ? 'Checkout closed' : 'Confirming…'
-  const message = confirmed ? 'Your payment is confirmed and your order is ready.' : failed ? 'The payment was not completed. You can return to your dashboard for help.' : cancelled ? 'Checkout was closed before confirmation.' : 'We’re checking your payment. Keep this page open while we confirm it.'
+  const message = confirmed ? 'Your payment is confirmed. Opening your order…' : failed ? 'The payment was not completed. You can return to your dashboard for help.' : cancelled ? 'Checkout was closed before confirmation.' : 'We’re checking your payment. Keep this page open while we confirm it.'
 
   return (
     <main className={styles.returnPage}>

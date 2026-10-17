@@ -15,6 +15,11 @@ export function marketplaceOrdersHref(orderId?: string | null): string {
   return `/?${params.toString()}`
 }
 
+export function confirmedMarketplaceOrderHref(status?: { confirmed?: boolean; orderId?: string | null } | null): string | null {
+  const orderId = status?.orderId?.trim()
+  return status?.confirmed === true && orderId ? marketplaceOrdersHref(orderId) : null
+}
+
 export function dashboardOrdersHref(orderId?: string | null): string {
   const params = new URLSearchParams()
   params.set('page', 'orders')

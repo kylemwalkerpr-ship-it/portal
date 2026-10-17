@@ -14,7 +14,7 @@ describe('buyer checkout copy', () => {
     expect(labels).toEqual(['Card payment', 'Card payment', 'YouSafe'])
   })
 
-  it('keeps provider names out of buyer-rendered copy and accessibility labels', () => {
+  it('discloses PesaPal for hosted checkout and hides unrelated provider names', () => {
     const files = [
       'components/checkout/Checkout.tsx',
       'components/checkout/CardBrandIcons.tsx',
@@ -39,6 +39,7 @@ describe('buyer checkout copy', () => {
       visit(ast)
       return copy.join(' ')
     }).join(' ')
-    expect(buyerCopy).not.toMatch(/pesapal|\bnmi\b|payhip/i)
+    expect(buyerCopy).toMatch(/securely processed by pesapal/i)
+    expect(buyerCopy).not.toMatch(/\bnmi\b|payhip/i)
   })
 })
