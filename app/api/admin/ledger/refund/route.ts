@@ -23,6 +23,7 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { refundToWallet, walletRefundCeilingCents } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { chargeRefundConflict } from '@/lib/walletRefundGuard'
 
 async function authViaServiceToken(req: Request) {
   const header = req.headers.get('authorization') || ''
@@ -128,12 +129,40 @@ export async function POST(req: Request) {
   if (capCents !== null && amountCents > capCents) {
     return fail(
       `Refund of ${amountCents}¢ exceeds the refundable ceiling of ${capCents}¢ — refunds cannot exceed what the customer paid in.`,
-      422,
+      sourceTable === 'wallet_transactions' && sourceId ? 409 : 422,
       { maxRefundCents: capCents, requestedCents: amountCents },
     )
   }
 
+  // Claim a charge refund before writing any secondary ledger/audit records.
+  // The RPC locks the debit row and commits the credit and refund stamp as one unit.
+  let walletTx: any = null
+  let walletRefundProcessed = false
+  if (method === 'wallet' && sourceTable === 'wallet_transactions' && sourceId) {
+    const { data: source, error: sourceError } = await db.from('wallet_transactions').select('id, profile_id, amount_cents, type, metadata').eq('id', sourceId).maybeSingle()
+    if (sourceError) return fail('Could not verify the charge refund state.', 503)
+    if (!source || source.type !== 'debit' || source.profile_id !== profileId) return fail('Wallet charge not found.', 404)
+    const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata as Record<string, unknown> : {}
+    if (chargeRefundConflict(metadata, Number(source.amount_cents), amountCents)) return fail('Charge has already been refunded or the amount exceeds its refundable balance.', 409)
+    const { data, error } = await db.rpc('wallet_refund_tx', {
+      p_debit_tx_id: sourceId, p_amount_cents: amountCents, p_reference: `refund:${sourceId}`,
+      p_description: reason || 'Admin wallet charge refund',
+      p_metadata: { admin_id: adminProfileId, refund_method: 'wallet', order_id: orderId },
+    })
+    if (error?.code === 'PGRST202' || /function .*wallet_refund_tx.*(not found|schema cache)/i.test(error?.message || '')) return fail('Refund safety function is unavailable.', 503)
+    if (error?.code === '23505') walletTx = null
+    else if (error) return fail(error.message || 'Wallet refund failed.', error.code === 'P0001' ? 409 : 503)
+    else walletTx = Array.isArray(data) ? data[0] : data
+    walletRefundProcessed = true
+  }
+
   const warnings: string[] = []
+  let priorOrderRefundCount = 0
+  if (orderId) {
+    const { count, error } = await db.from('refund_ledger').select('id', { count: 'exact', head: true }).eq('order_id', orderId)
+    if (error) return fail('Could not verify previous order refunds.', 503)
+    priorOrderRefundCount = count ?? 0
+  }
 
   // ── 1. Write to canonical_ledger (append-only) ────────────────────────────────
   // Get the current balance for this profile
@@ -188,15 +217,14 @@ export async function POST(req: Request) {
   }
 
   // ── 2. Credit wallet (if method === 'wallet') ─────────────────────────────────
-  let walletTx: any = null
-  if (method === 'wallet') {
+  if (method === 'wallet' && !walletRefundProcessed) {
     try {
       walletTx = await refundToWallet(
         profileId,
         amountCents,
         reason || `Refund${orderId ? ` for order ${orderId}` : ''}`,
         {
-          reference: orderId || undefined,
+          reference: orderId ? `refund:order:${orderId}:${priorOrderRefundCount}` : `refund:admin:${sourceId || Date.now()}`,
           orderCapCents: capCents ?? undefined,
           metadata: { admin_id: adminProfileId, refund_method: 'wallet', order_id: orderId },
         }

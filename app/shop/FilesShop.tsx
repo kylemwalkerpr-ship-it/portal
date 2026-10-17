@@ -102,7 +102,7 @@ export default function FilesShop() {
       <div className="ys-shop-bar">
         <div className="ys-shop-wrap">
           <span>⚡ Instant download</span>
-          <span>🔒 Secure Payhip checkout</span>
+          <span>🔒 Secure checkout</span>
           <span>♾️ Pay once — keep the file forever</span>
         </div>
       </div>
@@ -124,7 +124,7 @@ export default function FilesShop() {
               <p className="ys-shop-lede">
                 Start with what you need: immigration preparation, business, marketing, personal
                 planning, career, or wedding and creative resources. File format stays clearly labelled
-                on every product, and checkout remains securely on Payhip.
+                on every product, and checkout remains secure.
               </p>
               <div className="ys-shop-cta-row">
                 <a className="ys-shop-btn primary" href="#catalog">Shop by category</a>
@@ -135,7 +135,7 @@ export default function FilesShop() {
               <Stat n={String(publishedProducts.length)} label="files in catalog" />
               <Stat n={String(FILE_SHOP_BUYER_CATEGORIES.length)} label="buyer-friendly categories" />
               <Stat n="0" label="subscriptions" />
-              <Stat n="Payhip" label="secure checkout" />
+              <Stat n="Secure" label="checkout" />
             </aside>
           </div>
         </div>
@@ -266,7 +266,7 @@ export default function FilesShop() {
       <section className="ys-shop-trust" aria-labelledby="trust-heading">
         <div className="ys-shop-wrap">
           <p className="ys-shop-kicker">How it works</p>
-          <h2 id="trust-heading">Buy on Payhip, keep the file.</h2>
+          <h2 id="trust-heading">Buy once, keep the file.</h2>
           <div className="ys-shop-trust-grid">
             <article>
               <span>01</span>
@@ -280,8 +280,8 @@ export default function FilesShop() {
             </article>
             <article>
               <span>03</span>
-              <h3>Checkout on Payhip</h3>
-              <p>Complete secure checkout and receive the purchased file through Payhip.</p>
+              <h3>Secure checkout</h3>
+              <p>Complete secure checkout and receive the purchased file securely.</p>
             </article>
           </div>
           <p className="ys-shop-return">

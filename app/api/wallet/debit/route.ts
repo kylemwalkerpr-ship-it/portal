@@ -12,7 +12,8 @@
  * Previously the debit happened first, so if an order insert or PDF
  * generation failed, the user's money was taken with no order record.
  */
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -23,8 +24,10 @@ import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey } fr
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(req: Request) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
 
   // Capture raw body for diagnostic logging on 400 errors
   let body: Record<string, unknown>

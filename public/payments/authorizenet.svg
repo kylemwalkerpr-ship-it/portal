@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 32" role="img" aria-labelledby="title">
+  <title id="title">Authorize.Net</title>
+  <rect width="140" height="32" rx="5" fill="#fff"/>
+  <path d="M10 23 17 8h3l7 15h-4l-1.4-3.2h-6.2L14 23zm6.7-6.2h3.5l-1.8-4.2z" fill="#315c82"/>
+  <text x="31" y="20" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#20394f">Authorize.Net</text>
+</svg>

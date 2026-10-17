@@ -11,6 +11,39 @@
   --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/* Cookie controls stay above mobile sticky actions and compact on small phones. */
+.cookie-settings-icon { display: none; }
+@media (max-width: 480px) {
+  [data-cookie-banner] {
+    max-height: 35vh;
+    overflow-y: auto;
+    padding: 10px 12px !important;
+  }
+  .cookie-consent-actions {
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+  }
+  .cookie-consent-actions button {
+    min-width: 0;
+    min-height: 40px !important;
+    padding: 8px 10px !important;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+  [data-cookie-settings] {
+    width: 44px;
+    height: 44px;
+    min-height: 44px !important;
+    padding: 0 !important;
+    display: grid;
+    place-items: center;
+    bottom: max(88px, calc(env(safe-area-inset-bottom) + 84px)) !important;
+  }
+  .cookie-settings-label { display: none; }
+  .cookie-settings-icon { display: inline; font-size: 19px; line-height: 1; }
+}
+
 .yousafe-skip-link {
   position: absolute;
   left: -10000px;
@@ -1364,4 +1397,21 @@ html:not([data-ys-palette]) .cw-market {
 }
 .cw-market .chat-side-pane.yousafe-messenger {
   color: var(--text, #0F172A) !important;
+}
+
+
+/* Keep floating support and consent controls behind Clerk authentication modals. */
+body:has(.cl-modalBackdrop) .ysa-launcher,
+body:has([class*="cl-modalBackdrop"]) .ysa-launcher,
+body:has(.cl-modalBackdrop) .ysa-panel,
+body:has([class*="cl-modalBackdrop"]) .ysa-panel,
+body:has(.cl-modalBackdrop) .ys-chat-launcher,
+body:has([class*="cl-modalBackdrop"]) .ys-chat-launcher,
+body:has(.cl-modalBackdrop) .ys-floating-message-launcher,
+body:has([class*="cl-modalBackdrop"]) .ys-floating-message-launcher,
+body:has(.cl-modalBackdrop) [data-cookie-settings],
+body:has([class*="cl-modalBackdrop"]) [data-cookie-settings],
+body:has(.cl-modalBackdrop) [data-cookie-banner],
+body:has([class*="cl-modalBackdrop"]) [data-cookie-banner] {
+  display: none !important;
 }

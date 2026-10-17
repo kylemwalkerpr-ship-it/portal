@@ -22,6 +22,9 @@ import StudentBilling from './student-billing'
 import StudentDocuments from './student-documents'
 import StudentTemplateFiller from '../student/StudentTemplateFiller'
 import CardFields from '@/components/payments/CardFields'
+import Checkout from '@/components/checkout/Checkout'
+import CardBrandIcons from '@/components/checkout/CardBrandIcons'
+import { formatCurrencyAmount } from '@/lib/payments/inputMask'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -786,6 +789,11 @@ function TopUpDialog({ onClose, onSuccess }) {
   // Master switch — when the platform has card top-ups disabled, show a
   // notice instead of the charge form. Server enforces this regardless.
   const [topupEnabled, setTopupEnabled] = React.useState(true);
+  const [hostedTopup, setHostedTopup] = React.useState(false);
+  const [hostedTopupBrands, setHostedTopupBrands] = React.useState([]);
+  const [topupName, setTopupName] = React.useState('');
+  const [topupEmail, setTopupEmail] = React.useState('');
+  const [topupPhone, setTopupPhone] = React.useState('');
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -793,6 +801,22 @@ function TopUpDialog({ onClose, onSuccess }) {
       .then(d => { if (d && d.topupEnabled === false) setTopupEnabled(false); })
       .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    fetch('/api/payments/methods?purpose=wallet_topup&currency=USD&amountUsd=5')
+      .then(r => r.json()).then(d => { const method = (d.methods || []).find(m => m.mode === 'hosted-redirect' && m.id === 'card'); setHostedTopup(Boolean(method)); setHostedTopupBrands(method?.supportedBrands || []); }).catch(() => { setHostedTopup(false); setHostedTopupBrands([]); });
+  }, []);
+
+  const handleHostedTopup = async () => {
+    if (!validAmount || submitting) return;
+    setSubmitting(true); setErrMsg(null);
+    try {
+      const response = await fetch('/api/wallet/topup/pesapal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountCents: Math.round(amountNum * 100), email: topupEmail, name: topupName, phone: topupPhone, idempotencyKey: crypto.randomUUID() }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not start card payment. Please try again.');
+      window.location.assign(result.redirectUrl);
+    } catch (error) { setErrMsg(error.message); setSubmitting(false); }
+  };
 
   React.useEffect(() => {
     fetch('/api/wallet/payment-methods')
@@ -807,7 +831,7 @@ function TopUpDialog({ onClose, onSuccess }) {
 
   const PRESETS = [10, 25, 50, 100, 250];
   const amountNum = parseFloat(amount);
-  const validAmount = !Number.isNaN(amountNum) && amountNum >= 1;
+  const validAmount = !Number.isNaN(amountNum) && amountNum >= 5;
   const canSubmit = validAmount && !!selectedCardId && !submitting;
 
   // One idempotency key per top-up attempt — retries replay the stored
@@ -843,21 +867,25 @@ function TopUpDialog({ onClose, onSuccess }) {
     } finally { setSubmitting(false); }
   };
 
-  const brandColor = b => ({ visa: '#1a1f71', mastercard: '#eb001b', amex: '#007bc1' }[b] ?? C.textMuted);
+  const normalizedBrand = b => {
+    const brand = String(b || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (brand === 'americanexpress') return 'amex';
+    return ['visa', 'mastercard', 'amex', 'discover', 'jcb', 'unionpay'].includes(brand) ? brand : 'unknown';
+  };
 
   return (
-    <div
+    <div className="wallet-topup-dialog"
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: C.surface, borderRadius: '16px', padding: '28px', maxWidth: '460px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        style={{ background: 'linear-gradient(145deg, #fff, #f7f5ef)', border: '1px solid rgba(196,160,83,.35)', borderRadius: '22px', padding: 'clamp(20px, 5vw, 32px)', maxWidth: '560px', width: '100%', maxHeight: 'calc(100dvh - 32px)', overflow: 'auto', boxShadow: '0 24px 72px rgba(15,23,42,.24)' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
             <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Top up wallet</div>
-            <div style={{ fontSize: '13px', color: C.textMuted }}>Add funds to your wallet using a saved card</div>
+          <div style={{ fontSize: '13px', color: C.textMuted }}>Add funds using a saved card or secure card payment</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: C.textMuted, lineHeight: 1 }}>×</button>
         </div>
@@ -881,26 +909,29 @@ function TopUpDialog({ onClose, onSuccess }) {
           <>
             {/* Amount */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</div>
+              <label htmlFor="wallet-topup-amount" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</label>
               <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 700, color: C.textMuted }}>$</span>
                 <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  style={{ width: '100%', padding: '12px 14px 12px 28px', fontSize: '18px', fontWeight: 600, background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  id="wallet-topup-amount"
+                  type="text"
+                  inputMode="decimal"
+                  value={amount ? formatCurrencyAmount(amount, 'USD') : ''}
+                  onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
+                  placeholder="$0.00"
+                  aria-describedby="wallet-topup-amount-help"
+                  aria-invalid={Boolean(amount && !validAmount)}
+                  style={{ width: '100%', padding: '12px 14px', fontSize: '18px', fontWeight: 600, background: '#fff', border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontFamily: 'inherit', boxSizing: 'border-box' }}
                 />
               </div>
+              <div id="wallet-topup-amount-help" style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>Enter at least $5.00. Choose a preset or enter an amount.</div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {PRESETS.map(p => (
                   <button
                     key={p}
                     onClick={() => setAmount(String(p))}
+                    aria-pressed={amount === String(p)}
                     style={{
-                      padding: '6px 14px', borderRadius: '20px', border: `1px solid ${amount === String(p) ? C.cyan : C.border}`,
+                      minHeight: '42px', padding: '6px 16px', borderRadius: '999px', border: `1px solid ${amount === String(p) ? C.cyan : C.border}`,
                       background: amount === String(p) ? `${C.cyan}15` : C.surface2, color: amount === String(p) ? C.cyan : C.textMuted,
                       fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
                     }}
@@ -936,9 +967,7 @@ function TopUpDialog({ onClose, onSuccess }) {
                         onChange={() => setSelectedCardId(card.id)}
                         style={{ accentColor: C.cyan }}
                       />
-                      <div style={{ width: '36px', height: '24px', borderRadius: '4px', background: brandColor(card.brand), color: '#fff', fontSize: '9px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {(card.brand || 'card').slice(0, 4).toUpperCase()}
-                      </div>
+                      {normalizedBrand(card.brand) !== 'unknown' && <CardBrandIcons brands={[normalizedBrand(card.brand)]} activeBrand={normalizedBrand(card.brand)} />}
                       <div style={{ flex: 1, fontSize: '14px' }}>
                         •••• {card.last4} <span style={{ color: C.textMuted, fontSize: '12px' }}>· {card.exp_month}/{card.exp_year}</span>
                       </div>
@@ -952,15 +981,22 @@ function TopUpDialog({ onClose, onSuccess }) {
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '16px' }}>⚠ {errMsg}</div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <Btn variant="primary" size="md" onClick={handleSubmit} disabled={!canSubmit} fullWidth>
+        <div className="wallet-topup-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px' }}>
+              <Btn className="wallet-topup-cancel" variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
+              <Btn className="wallet-topup-primary" variant="brand" size="md" onClick={handleSubmit} disabled={!canSubmit} style={{ minWidth: '220px', marginLeft: 'auto', borderRadius: '12px' }}>
                 {submitting ? 'Charging…' : validAmount ? `Charge $${amountNum.toFixed(2)}` : 'Enter an amount'}
               </Btn>
-              <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
             </div>
-            <div style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
-              🔒 Charged securely via NMI. Funds added to your wallet for future orders.
-            </div>
+            {hostedTopup && <div style={{ marginTop: '18px', padding: '16px', borderRadius: '12px', background: C.surface2, border: `1px solid ${C.border2}` }}>
+              <div style={{ fontWeight: 700, color: C.text, marginBottom: '4px' }}>Card payment</div>
+              <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '14px' }}>You’ll finish securely on our payment page.</div>
+              {hostedTopupBrands.length > 0 && <CardBrandIcons brands={hostedTopupBrands} />}
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Name<input autoComplete="name" value={topupName} onChange={e => setTopupName(e.target.value)} aria-describedby="wallet-topup-name-help" style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-name-help" style={{ color: C.textMuted, fontWeight: 400 }}>Enter the name for your payment receipt.</small></label>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>Email address<input type="email" autoComplete="email" value={topupEmail} onChange={e => setTopupEmail(e.target.value)} aria-describedby="wallet-topup-email-help" aria-invalid={Boolean(errMsg && !topupEmail.trim())} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-email-help" style={{ color: C.textMuted, fontWeight: 400 }}>We’ll send your payment receipt here.</small></label>
+              <label style={{ display: 'grid', gap: '5px', fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Phone (optional)<input type="tel" autoComplete="tel" value={topupPhone} onChange={e => setTopupPhone(e.target.value)} aria-describedby="wallet-topup-phone-help" style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: `1px solid ${C.border2}`, borderRadius: '9px', background: C.surface, color: C.text }} /><small id="wallet-topup-phone-help" style={{ color: C.textMuted, fontWeight: 400 }}>Add a number if you’d like it included with your receipt.</small></label>
+              <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr', alignItems: 'center', columnGap: '10px', marginBottom: '14px', padding: '12px', border: '1px solid rgba(15,23,42,.08)', borderRadius: '12px', background: 'rgba(255,255,255,.72)' }} aria-label="Secured by YouSafe"><span aria-hidden="true" style={{ display: 'grid', width: '36px', height: '36px', placeItems: 'center', borderRadius: '12px 12px 12px 4px', background: 'var(--ys-indigo, #272852)', color: '#fff' }}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><strong style={{ fontSize: '14px' }}>Secured by YouSafe</strong><small style={{ gridColumn: '2', color: C.textMuted }}>Your payment details are protected.</small></div>
+              <button onClick={handleHostedTopup} disabled={!validAmount || !topupEmail.trim() || submitting} style={{ display: 'block', minHeight: '50px', marginLeft: 'auto', padding: '12px 22px', borderRadius: '11px', border: 0, background: 'var(--ys-indigo, #272852)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>{submitting ? 'Preparing payment…' : 'Continue to secure payment'}</button>
+            </div>}
           </>
         )}
       </div>
@@ -1043,134 +1079,73 @@ function BillingWithNmi() {
 }
 
 function OrderCheckoutDialog({ request, onClose, onPaid }) {
-  const [payMethod, setPayMethod] = React.useState('wallet');
   const [walletBalance, setWalletBalance] = React.useState(null);
   const [cards, setCards] = React.useState([]);
-  const [selectedCardId, setSelectedCardId] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const total = Number(request?.total || 0);
-  const canUseWallet = walletBalance !== null && walletBalance >= total;
-  const selectedCard = cards.find(card => card.id === selectedCardId);
+  const totalCents = Math.round(Number(request?.total || 0) * (request?.sourceType === 'unified_offer' ? 1 : 100));
+  const checkoutKeyRef = React.useRef(null);
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
       .then(r => r.json())
-      .then(d => setWalletBalance(Number(d.available?.usd ?? d.available ?? 0)))
+      .then(d => setWalletBalance(Math.round(Number(d.available?.usd ?? d.available ?? 0) * 100)))
       .catch(() => setWalletBalance(0));
     fetch('/api/wallet/payment-methods')
       .then(r => r.json())
-      .then(d => {
-        const next = d.cards ?? [];
-        setCards(next);
-        setSelectedCardId(next[0]?.id || '');
-      })
+      .then(d => setCards(d.cards ?? []))
       .catch(() => setCards([]));
   }, []);
 
-  // One idempotency key per checkout attempt — retries replay the stored
-  // server outcome instead of double-charging.
-  const idemKeyRef = React.useRef(null);
-
-  const pay = async () => {
-    if (!request || busy) return;
-    if (payMethod === 'wallet' && !canUseWallet) {
-      setError('Your wallet balance is not enough for this order.');
-      return;
-    }
-    if (payMethod === 'saved_card' && !selectedCardId) {
-      setError('Choose a saved card first.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    idemKeyRef.current ||= crypto.randomUUID();
-    try {
-      const res = await fetch('/api/checkout/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceType: request.sourceType,
-          sourceId: request.sourceId,
-          tierId: request.tierId,
-          paymentMethod: payMethod,
-          paymentMethodId: selectedCardId,
-          idempotencyKey: idemKeyRef.current,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Checkout failed.');
-      idemKeyRef.current = null;
-      if (data.url) {
-        window.location.href = data.url;
-        return;
+  const pay = async (selection) => {
+    const invoice = selection.paymentMethod === 'invoice';
+    const useAtomicOfferAccept = request.sourceType === 'unified_offer' && !invoice;
+    if (!useAtomicOfferAccept) checkoutKeyRef.current ||= crypto.randomUUID();
+    const response = await fetch(useAtomicOfferAccept ? `/api/offers/${request.sourceId}/accept` : '/api/checkout/order', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(useAtomicOfferAccept ? {
+        paymentMethod: selection.paymentMethod,
+        ...(selection.paymentMethodId ? { paymentMethodId: selection.paymentMethodId } : {}),
+        ...(selection.token ? { token: selection.token, gateway: selection.gateway } : {}),
+      } : {
+        sourceType: request.sourceType,
+        sourceId: request.sourceId,
+        tierId: request.tierId,
+        paymentMethod: selection.paymentMethod,
+        ...(selection.paymentMethodId ? { paymentMethodId: selection.paymentMethodId } : {}),
+        ...(selection.token ? { token: selection.token, gateway: selection.gateway } : {}),
+        idempotencyKey: checkoutKeyRef.current,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = data?.error?.code ? data.error : data?.data?.error || data?.error;
+      if (!useAtomicOfferAccept && data?.fallback === 'invoice_request' && data?.orderId) {
+        checkoutKeyRef.current = null;
+        return { orderId: data.orderId, payload: data };
       }
-      await onPaid?.(data.orderId);
-      onClose();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
+      return { status: response.status, code: error?.code || data?.code, message: error?.message || error || 'Checkout failed.' };
     }
+    if (!useAtomicOfferAccept) checkoutKeyRef.current = null;
+    const result = data?.data ?? data;
+    return { orderId: result.orderId || result.order?.id, url: result.url, payload: result };
   };
 
   if (!request) return null;
-
   return (
-    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(15,18,32,0.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }}>
-      <div style={{ width: '100%', maxWidth: '560px', background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 24px 70px rgba(15,18,32,0.22)' }}>
-        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '14px' }}>
-          <div>
-            <div style={{ color: C.textMuted, fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 800 }}>Secure checkout</div>
-            <div style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, marginTop: '4px' }}>{request.title}</div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close checkout" style={{ width: '34px', height: '34px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface2, cursor: 'pointer', color: C.text }}>x</button>
-        </div>
-        <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
-          <Card style={{ padding: '14px' }}>
-            <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{request.description || 'Fixed-scope order'}</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
-              <span style={{ fontWeight: 800 }}>Total</span>
-              <span style={{ fontFamily: C.serif, fontSize: '26px', color: C.text }}>{formatMoney(total, request.currency || 'usd')}</span>
-            </div>
-          </Card>
-
-          <div style={{ display: 'grid', gap: '10px' }}>
-            <CheckoutChoice active={payMethod === 'wallet'} disabled={!canUseWallet} onClick={() => canUseWallet && setPayMethod('wallet')} title="Wallet balance" detail={walletBalance === null ? 'Loading balance...' : `${formatMoney(walletBalance, 'usd')} available${canUseWallet ? '' : ' - insufficient'}`} />
-            <CheckoutChoice active={payMethod === 'saved_card'} disabled={!cards.length} onClick={() => cards.length && setPayMethod('saved_card')} title="Saved card" detail={selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'} />
-            {payMethod === 'saved_card' && cards.length > 0 && (
-              <select value={selectedCardId} onChange={e => setSelectedCardId(e.target.value)} style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}>
-                {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4} - exp {card.exp_month}/{card.exp_year}</option>)}
-              </select>
-            )}
-
-          </div>
-
-          {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
-          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy}>
-            {busy ? 'Processing...' : `Pay ${formatMoney(total, request.currency || 'usd')}`}
-          </Btn>
-          <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
-            By placing this order you agree to the{' '}
-            <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
-            and{' '}
-            <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CheckoutChoice({ active, disabled, onClick, title, detail }) {
-  return (
-    <button type="button" disabled={disabled} onClick={onClick} style={{ width: '100%', border: `2px solid ${active ? C.cyan : C.border}`, background: active ? `${C.cyan}10` : C.surface2, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', borderRadius: '12px', padding: '13px 14px', color: C.text, display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', fontFamily: 'inherit', textAlign: 'left' }}>
-      <span>
-        <span style={{ display: 'block', fontWeight: 800, fontSize: '14px' }}>{title}</span>
-        <span style={{ display: 'block', color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{detail}</span>
-      </span>
-      <span style={{ color: active ? C.cyan : C.textDim, fontWeight: 900 }}>{active ? '✓' : '○'}</span>
-    </button>
+    <Checkout
+      title={request.title || 'Offer checkout'}
+      amountUsdCents={totalCents}
+      purpose="offer"
+      description={request.description || 'Custom offer'}
+      source={{ sourceType: request.sourceType, sourceId: request.sourceId }}
+      savedCards={cards}
+      walletBalanceCents={walletBalance}
+      variant="modal"
+      onSubmit={pay}
+      onComplete={async (result) => { await onPaid?.(result.orderId); onClose(); }}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2335,17 +2310,8 @@ function StudentApp({ onLogout, userId, userName }) {
       const inUsd = from === 'usd' ? value : value / rateOf(from);
       return to === 'usd' ? inUsd : inUsd * rateOf(to);
     };
-    const [payMethod, setPayMethod] = React.useState('wallet'); // 'wallet' | 'saved_card' | 'new_card'
     const [savedCards, setSavedCards] = React.useState([]);
-    const [cardsLoading, setCardsLoading] = React.useState(false);
-    const [selectedCardId, setSelectedCardId] = React.useState('');
     const [walletBalance, setWalletBalance] = React.useState(null);
-    const [paying, setPaying] = React.useState(false);
-    const [payError, setPayError] = React.useState(null);
-    const [newCardToken, setNewCardToken] = React.useState(null);
-    const [checkoutCardErr, setCheckoutCardErr] = React.useState(null);
-    const checkoutCardFieldsRef = React.useRef(null);
-    const checkoutLastTokenRef = React.useRef(null);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     // Catalogue search + sort + recently-viewed (added in Section 10 polish)
     const [searchQ, setSearchQ] = React.useState('');
@@ -2409,8 +2375,6 @@ function StudentApp({ onLogout, userId, userName }) {
       });
       setSelectedTemplate(null);
       setShowCheckout(true);
-      setPayMethod('wallet');
-      setPayError(null);
     };
     const openCheckoutForService = service => {
       const details = getServiceDetails(service);
@@ -2418,8 +2382,6 @@ function StudentApp({ onLogout, userId, userName }) {
       setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
       setSelectedService(null);
       setShowCheckout(true);
-      setPayMethod('wallet');
-      setPayError(null);
     };
 
     React.useEffect(() => {
@@ -2458,11 +2420,7 @@ function StudentApp({ onLogout, userId, userName }) {
         .finally(() => setTemplatesLoading(false));
     }, []);
 
-    // One idempotency key per pay attempt (see handleWalletPay / card pays).
-    // Declared here (component top level) to respect the rules of hooks.
-    // Kept across a failed attempt so a retry replays instead of re-charging.
-    const walletPayKeyRef = React.useRef(null);
-    const cardPayKeyRef = React.useRef(null);
+    const checkoutPayKeyRef = React.useRef(null);
 
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
@@ -2472,321 +2430,83 @@ function StudentApp({ onLogout, userId, userName }) {
         .then(d => setWalletBalance(d.available?.usd ?? d.available ?? 0))
         .catch(() => setWalletBalance(0));
 
-      setCardsLoading(true);
       fetch('/api/wallet/payment-methods')
         .then(r => r.json())
         .then(d => {
           const cards = d.cards ?? [];
           setSavedCards(cards);
-          setSelectedCardId(current => current || cards[0]?.id || '');
         })
-        .catch(() => setSavedCards([]))
-        .finally(() => setCardsLoading(false));
+        .catch(() => setSavedCards([]));
     }, [showCheckout]);
 
     if (showCheckout && cart) {
       const cartIsTemplate = normalizeProductType(cart.product_type) === 'template';
-      const priceNum = Number(cart.price || 0);
-      const amountCents = priceNum * 100;
-      const serviceCurrency = String(cart.currency || 'usd').toLowerCase();
-      const displayPriceNum = convertPrice(priceNum, serviceCurrency);
-      const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
-      const selectedCard = savedCards.find(card => card.id === selectedCardId);
-      const canUseSavedCard = Boolean(selectedCardId);
+      const usdPrice = Number(cart.usd_price ?? cart.price ?? 0);
+      const checkoutItem = cartIsTemplate
+        ? { slug: cart.slug || cart.id, quantity: 1 }
+        : { serviceId: cart.id, quantity: 1 };
 
-      const handleWalletPay = async () => {
-        setPaying(true); setPayError(null);
-        walletPayKeyRef.current ||= crypto.randomUUID();
-        try {
-          const item = cartIsTemplate
-            ? { slug: cart.slug || cart.id, quantity: 1 }
-            : { serviceId: cart.id, quantity: 1 };
-          const res = await fetch('/api/wallet/debit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: [item], idempotencyKey: walletPayKeyRef.current }),
-          });
-          const data = await res.json();
-          // Consume the key on any definitive outcome so a later retry (e.g.
-          // after topping up) is a fresh attempt instead of replaying the
-          // stored failure. Keep it only on 409 in-flight / network error.
-          if (res.status !== 409) walletPayKeyRef.current = null;
-          if (!res.ok) throw new Error(data.error || 'Payment failed');
-          setShowCheckout(false); setCart(null); setOrderPlaced(true);
-          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
-          refreshStudentData();
-          setTimeout(() => setOrderPlaced(false), 6000);
-          if (cartIsTemplate && cart?.slug) {
-            setSelectedTemplateSlug(cart.slug);
-            setPage('templates');
-          }
-        } catch (e) {
-          setPayError(e.message);
-        } finally { setPaying(false); }
-      };
-
-      const handleSavedCardPay = async () => {
-        if (!selectedCardId) {
-          setPayError('Choose a saved card first.');
-          return;
+      const submitCatalogueCheckout = async (selection) => {
+        if (selection.paymentMethod === 'invoice') return { status: 400, message: 'Invoice checkout is not available for this item.' };
+        const idempotencyKey = checkoutPayKeyRef.current ||= crypto.randomUUID();
+        const isWallet = selection.paymentMethod === 'wallet';
+        const response = await fetch(isWallet ? '/api/wallet/debit' : '/api/payments/charge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(selection.paymentMethodId ? { paymentMethodId: selection.paymentMethodId } : {}),
+            ...(selection.token ? { token: selection.token, gateway: selection.gateway } : {}),
+            items: [checkoutItem],
+            idempotencyKey,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status !== 409) checkoutPayKeyRef.current = null;
+        if (!response.ok) {
+          const error = data?.error;
+          return {
+            status: response.status,
+            code: error?.code || data?.code,
+            message: error?.message || error || data?.message || 'Payment could not be completed.',
+          };
         }
-
-        setPaying(true); setPayError(null);
-        cardPayKeyRef.current ||= crypto.randomUUID();
-        try {
-          const item = cartIsTemplate
-            ? { slug: cart.slug || cart.id, quantity: 1 }
-            : { serviceId: cart.id, quantity: 1 };
-          const res = await fetch('/api/payments/charge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              paymentMethodId: selectedCardId,
-              items: [item],
-              idempotencyKey: cardPayKeyRef.current,
-            }),
-          });
-          const data = await res.json();
-          // Definitive outcome → consume the key (a retry is a NEW attempt).
-          // Keep it only on 409 in-flight or network failure (throw above),
-          // where the first attempt's outcome is still unknown.
-          if (res.status !== 409) cardPayKeyRef.current = null;
-          if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
-
-          setShowCheckout(false); setCart(null); setOrderPlaced(true);
-          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
-          refreshStudentData();
-          setTimeout(() => setOrderPlaced(false), 6000);
-          if (cartIsTemplate && cart?.slug) {
-            setSelectedTemplateSlug(cart.slug);
-            setPage('templates');
-          }
-        } catch (e) {
-          setPayError(e.message);
-        } finally { setPaying(false); }
+        return { orderId: data?.order?.id || data?.orderId || data?.id, payload: data };
       };
 
-      const handleNewCardPay = async () => {
-        setPaying(true); setPayError(null); setCheckoutCardErr(null);
-        try {
-          // Tokenize at click-time so the user only sees one button. The
-          // CardFields ref drives the gateway SDK; checkoutLastTokenRef
-          // captures the freshest result for the API call.
-          let result = newCardToken ? checkoutLastTokenRef.current : null;
-          if (!result) {
-            if (!checkoutCardFieldsRef.current) throw new Error('Card fields not ready');
-            await checkoutCardFieldsRef.current.tokenize();
-            result = checkoutLastTokenRef.current;
-            if (!result) throw new Error('Tokenization did not return a token');
-          }
-          const item = cartIsTemplate
-            ? { slug: cart.slug || cart.id, quantity: 1 }
-            : { serviceId: cart.id, quantity: 1 };
-          cardPayKeyRef.current ||= crypto.randomUUID();
-          const res = await fetch('/api/payments/charge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: result.token,
-              gateway: result.gateway,
-              items: [item],
-              idempotencyKey: cardPayKeyRef.current,
-            }),
-          });
-          const data = await res.json();
-          if (res.status !== 409) cardPayKeyRef.current = null;
-          if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
-
-          setShowCheckout(false); setCart(null); setOrderPlaced(true);
-          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
-          refreshStudentData();
-          setTimeout(() => setOrderPlaced(false), 6000);
-          if (cartIsTemplate && cart?.slug) {
-            setSelectedTemplateSlug(cart.slug);
-            setPage('templates');
-          }
-        } catch (e) {
-          setPayError(e.message);
-        } finally { setPaying(false); }
+      const completeCatalogueCheckout = () => {
+        setShowCheckout(false);
+        setCart(null);
+        setOrderPlaced(true);
+        setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
+        refreshStudentData();
+        setTimeout(() => setOrderPlaced(false), 6000);
+        if (cartIsTemplate && cart?.slug) {
+          setSelectedTemplateSlug(cart.slug);
+          setPage('templates');
+        }
       };
 
       return (
-        <div style={{ padding: '28px', maxWidth: '560px' }}>
-          <Btn variant="ghost" size="sm" onClick={() => { setShowCheckout(false); setPayError(null); }} style={{ marginBottom: '20px' }}>← Back to catalogue</Btn>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '24px' }}>{cartIsTemplate ? 'Template Checkout' : 'Checkout'}</h2>
-          {/* Service summary */}
-          <Card style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <div style={{ fontSize: '32px' }}>{cart.icon}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '15px' }}>{cart.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cartIsTemplate ? 'Digital Template' : (cart.category || 'General')}</div>
-                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>
-                  {cartIsTemplate ? 'Instant-access digital preparation aid' : `⏱ ${deliveryLabel(cart.delivery_days)}`}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
-                  {formatMoney(displayPriceNum, effectiveDisplayCurrency)}
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
-                </div>
-                <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px' }}>
-                  {serviceCurrency !== effectiveDisplayCurrency
-                    ? `≈ ${formatMoney(priceNum, serviceCurrency)} · charged in ${serviceCurrency.toUpperCase()}`
-                    : `charged in ${serviceCurrency.toUpperCase()}`}
-                </div>
-              </div>
-            </div>
-          </Card>
-          {/* Payment method selector */}
-          <Card style={{ marginBottom: '16px' }}>
-            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Choose payment method</div>
-            {/* Wallet option */}
-            <div
-              onClick={() => canUseWallet && setPayMethod('wallet')}
-              style={{
-                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'wallet' ? C.cyan : C.border}`,
-                background: payMethod === 'wallet' ? `${C.cyan}10` : C.surface2,
-                cursor: canUseWallet ? 'pointer' : 'not-allowed', opacity: canUseWallet ? 1 : 0.5,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={{ fontSize: '20px' }}>💰</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Wallet</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>
-                    Balance: {walletBalance === null ? '…' : `$${walletBalance.toFixed(2)}`}
-                    {!canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
-                  </div>
-                </div>
-              </div>
-              {payMethod === 'wallet' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
-            </div>
-            {/* Saved card option */}
-            <div
-              onClick={() => canUseSavedCard && setPayMethod('saved_card')}
-              style={{
-                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'saved_card' ? C.cyan : C.border}`,
-                background: payMethod === 'saved_card' ? `${C.cyan}10` : C.surface2,
-                cursor: canUseSavedCard ? 'pointer' : 'not-allowed', opacity: canUseSavedCard ? 1 : 0.55,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={{ fontSize: '20px' }}>💳</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Saved Card</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>
-                    {cardsLoading ? 'Loading saved cards…' : selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'}
-                  </div>
-                </div>
-              </div>
-              {payMethod === 'saved_card' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
-            </div>
-            {payMethod === 'saved_card' && savedCards.length > 0 && (
-              <div style={{ display: 'grid', gap: '8px', margin: '-2px 0 10px 0' }}>
-                {savedCards.map(card => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => setSelectedCardId(card.id)}
-                    style={{
-                      width: '100%', padding: '11px 12px', borderRadius: '999px', border: `1px solid ${selectedCardId === card.id ? C.cyan : C.border}`,
-                      background: selectedCardId === card.id ? `${C.cyan}0f` : '#fff', display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'center', cursor: 'pointer', color: C.text, gap: '10px',
-                    }}
-                  >
-                    <span style={{ width: '20px', height: '20px', borderRadius: '999px', border: `2px solid ${selectedCardId === card.id ? C.cyan : C.border2}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {selectedCardId === card.id && <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: C.cyan }} />}
-                    </span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, flex: 1, textAlign: 'left' }}>{card.brand?.toUpperCase?.() || 'CARD'} •••• {card.last4}</span>
-                    <span style={{ fontSize: '12px', color: C.textMuted }}>Exp {card.exp_month}/{card.exp_year}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {/* New card option */}
-            <div
-              onClick={() => { setPayMethod('new_card'); }}
-              style={{
-                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'new_card' ? C.cyan : C.border}`,
-                background: payMethod === 'new_card' ? `${C.cyan}10` : C.surface2,
-                cursor: 'pointer',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={{ fontSize: '20px' }}>💳</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with New Card</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>Enter card details securely</div>
-                </div>
-              </div>
-              {payMethod === 'new_card' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
-            </div>
-            {payMethod === 'new_card' && (
-              <div style={{ margin: '-2px 0 10px 0' }}>
-                {checkoutCardErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '10px' }}>⚠ {checkoutCardErr}</div>}
-                <CardFields
-                  ref={checkoutCardFieldsRef}
-                  onError={setCheckoutCardErr}
-                  onToken={(result) => { checkoutLastTokenRef.current = result; setNewCardToken(result.token); setCheckoutCardErr(null); }}
-                />
-              </div>
-            )}
-
-          </Card>
-          {/* Order summary */}
-          <Card style={{ marginBottom: '24px' }}>
-            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
-            {[
-              [cartIsTemplate ? 'Template' : 'Service', cart.title],
-              ['Delivery', cartIsTemplate ? (cart.delivery_type || 'Digital Template') : deliveryLabel(cart.delivery_days)],
-              ['Currency', `${effectiveDisplayCurrency.toUpperCase()}${effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? ` · 1 USD ≈ ${usdToCadRate.toFixed(2)} CAD` : ''}`],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-                <span style={{ color: C.textMuted }}>{k}</span>
-                <span style={{ fontWeight: 600 }}>{v}</span>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span>
-              <span style={{ color: C.cyan, textAlign: 'right' }}>
-                {formatMoney(displayPriceNum, effectiveDisplayCurrency)}
-                <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
-                {effectiveDisplayCurrency === 'cad' && (
-                  <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 600, marginTop: '2px' }}>
-                    ≈ {formatMoney(priceNum, serviceCurrency)} · charged in {serviceCurrency.toUpperCase()}
-                  </div>
-                )}
-              </span>
-            </div>
-          </Card>
-          {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
-          {payMethod === 'wallet' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
-              {paying ? 'Processing…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
-            </Btn>
-          ) : payMethod === 'saved_card' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard}>
-              {paying ? 'Processing…' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
-            </Btn>
-          ) : (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying}>
-              {paying ? 'Processing…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card`}
-            </Btn>
-          )}
-          <p style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
+        <div style={{ padding: '28px', maxWidth: '680px', margin: '0 auto' }}>
+          <Checkout
+            title={cartIsTemplate ? 'Template checkout' : 'Checkout'}
+            amountUsdCents={Math.max(0, Math.round(usdPrice * 100))}
+            purpose="catalogue_checkout"
+            description={`${cart.title} · ${cartIsTemplate ? 'Digital template' : cart.category || 'Service'}`}
+            source={{ sourceType: 'catalogue', items: [checkoutItem] }}
+            savedCards={savedCards}
+            walletBalanceCents={walletBalance === null ? null : Math.round(Number(walletBalance) * 100)}
+            excludeInvoice
+            variant="page"
+            onSubmit={submitCatalogueCheckout}
+            onComplete={completeCatalogueCheckout}
+            onClose={() => setShowCheckout(false)}
+          />
+          <p style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px', lineHeight: 1.5 }}>
             By placing this order you agree to the{' '}
             <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
             and{' '}
             <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
-          </p>
-          <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '8px' }}>
-            {cartIsTemplate
-              ? 'Digital templates are preparation aids only. Checkout is processed in USD; CAD is a display estimate.'
-              : 'Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.'}
           </p>
         </div>
       );

@@ -1,13 +1,16 @@
 import { NextRequest } from 'next/server'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { getPaymentProvider } from '@/lib/payments'
 import { TEMPLATE_PACKS, getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey, recordPaymentIncident } from '@/lib/idempotency'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { bindBusinessEvent } from '@/lib/attribution/engine'
 import { classifyProductCluster } from '@/lib/attribution/source'
 import { randomUUID } from 'crypto'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -46,9 +49,8 @@ export async function POST(request: NextRequest) {
   if ('error' in auth) {
     return Response.json({ ok: false, message: auth.error }, { status: auth.status })
   }
-  if (auth.role !== 'client') {
-    return Response.json({ ok: false, message: 'Only students can charge' }, { status: 403 })
-  }
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ ok: false, message: buyerError.error }, { status: buyerError.status })
 
   let body: ChargeBody
   try {
@@ -163,7 +165,7 @@ export async function POST(request: NextRequest) {
   //   - New card: use the gateway the client tokenized against, falling back
   //     to the platform default.
   const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  let chargeGateway = (body.gateway || getDefaultGatewayId()).toLowerCase()
+  let chargeGateway = (body.gateway || await getConfiguredDefaultGateway(profile.id, db)).toLowerCase()
 
   let result
   try {
@@ -181,6 +183,16 @@ export async function POST(request: NextRequest) {
       }
 
       chargeGateway = (cardRow.gateway || chargeGateway).toLowerCase()
+      try {
+        await assertMethodAllowed(`${chargeGateway}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'catalogue_checkout',
+        }, db)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return finish({ ok: false, code: error.code, message: error.message, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(chargeGateway)
       result = await provider.chargeVaulted({
         vaultId: cardRow.vault_id,
@@ -191,6 +203,16 @@ export async function POST(request: NextRequest) {
       })
     } else if (typeof body.token === 'string' && body.token) {
       // New card token path
+      try {
+        await assertMethodAllowed(`${chargeGateway}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'catalogue_checkout',
+        }, db)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return finish({ ok: false, code: error.code, message: error.message, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(chargeGateway)
       result = await provider.charge({
         token: body.token,

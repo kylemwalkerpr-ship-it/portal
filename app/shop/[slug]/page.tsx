@@ -138,7 +138,7 @@ export default async function ImmigrationShopProductPage({ params }: { params: P
           <strong>${product.price_usd.toFixed(2)}</strong>
           <span>USD · Digital delivery</span>
           <a href={payhipUrl} rel="noopener noreferrer nofollow" target="_blank">
-            Buy on Payhip
+            Buy now
           </a>
           <small>Preparation and organization support only. No immigration outcome is guaranteed.</small>
         </aside>

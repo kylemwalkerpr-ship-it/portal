@@ -169,7 +169,10 @@ const nextConfig: NextConfig = {
     // Preserve authority from the retired public `/marketplace` namespace.
     // Next applies these before Proxy/middleware and carries query parameters
     // through to the clean standalone Marketplace URL.
-    return legacyMarketplaceRedirects
+    return [
+      ...legacyMarketplaceRedirects,
+      { source: '/checkout/pesapal/return', destination: '/checkout/return', permanent: true },
+    ]
   },
   async rewrites() {
     return {

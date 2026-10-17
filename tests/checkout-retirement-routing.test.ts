@@ -21,4 +21,22 @@ describe('checkout retirement routing contract', () => {
     expect(sitemap).toContain('url: `${base}/shop/${product.slug}`')
     expect(sitemap).not.toContain('/templates/${')
   })
+
+  test('retired provider return URL redirects to the clean buyer route and keeps query parameters', () => {
+    const config = read('next.config.ts')
+    expect(config).toContain("source: '/checkout/pesapal/return', destination: '/checkout/return', permanent: true")
+    expect(read('app/api/checkout/pesapal/session/route.ts')).toContain('`${origin}/checkout/return`')
+    expect(read('app/api/wallet/topup/pesapal/route.ts')).toContain('`${origin}/checkout/return?cancelled=1`')
+    expect(fs.existsSync(path.join(root, 'app/checkout/return/page.tsx'))).toBe(true)
+    expect(fs.existsSync(path.join(root, 'app/checkout/pesapal/return/page.tsx'))).toBe(false)
+  })
+
+  test('card brands are dimmed until the matching brand is detected', () => {
+    const icons = read('components/checkout/CardBrandIcons.tsx')
+    const mask = read('components/checkout/Checkout.tsx')
+    expect(icons).toContain('styles.brandDimmed')
+    expect(icons).toContain('styles.brandActive')
+    expect(mask).toContain('activeBrand={detectedBrand}')
+    expect(read('components/checkout/checkout.module.css')).toContain('.brandDimmed { opacity:.28; }')
+  })
 })

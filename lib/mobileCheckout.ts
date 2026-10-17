@@ -9,6 +9,7 @@ import { extractIdempotencyKey, claimIdempotencyKey, completeIdempotencyKey, rec
 import { credit, debit, getOrCreateWallet } from './wallet'
 import { creditEarning } from './earnings'
 import { getDefaultGatewayId, getPaymentProvider } from './payments'
+import { guardBuyer } from './payments/buyerGuard'
 
 // ─────────────────────────────────────────────────────────────
 // Auth helpers
@@ -39,8 +40,8 @@ export async function resolveMobileBuyer(
     .single()
   if (error || !profile) return { status: 'forbidden', message: 'Profile not found.', httpStatus: 404 }
 
-  const isBuyer = profile.role === 'client' || profile.role === 'student'
-  if (!isBuyer) return { status: 'forbidden', message: 'Forbidden', httpStatus: 403 }
+  const buyerError = guardBuyer({ profileId: profile.id, role: profile.role })
+  if (buyerError) return { status: 'forbidden', message: buyerError.error, httpStatus: buyerError.status === 401 ? 403 : buyerError.status }
   if (profile.status === 'suspended') return { status: 'forbidden', message: 'Account suspended', httpStatus: 403 }
 
   return { status: 'authenticated', db, profile }

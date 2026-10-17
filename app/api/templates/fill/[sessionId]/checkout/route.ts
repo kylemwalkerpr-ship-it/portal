@@ -12,19 +12,23 @@
  * The wallet debit happens LAST — after all DB writes succeed.
  */
 import { fail, ok } from '@/lib/apiEnvelope'
-import { getCurrentStudent } from '@/lib/student'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { getManifest } from '@/lib/templatePdfManifests'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
 
 export async function POST(
   req: Request,
   context: { params: Promise<{ sessionId: string }> },
 ) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return fail(buyerError.error, buyerError.status)
 
   const { sessionId } = await context.params
   if (!sessionId) return fail('Session ID required.', 400)
@@ -89,6 +93,18 @@ export async function POST(
 
   const priceCents = getTemplatePackPriceCents(slug)
   if (priceCents <= 0) return fail('Invalid template price.', 400)
+
+  try {
+    await assertMethodAllowed('manual:wallet', {
+      profile: { id: auth.profile.id }, currency: 'USD', amount: priceCents / 100, purpose: 'template_fill',
+    }, admin)
+  } catch (error) {
+    await release()
+    if (error instanceof MethodUnavailableError) {
+      return Response.json({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, { status: error.status })
+    }
+    throw error
+  }
 
   const manifest = getManifest(slug)
   if (!manifest) return fail('No fillable form manifest for this template.', 400)

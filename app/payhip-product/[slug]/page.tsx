@@ -137,8 +137,8 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
             <p>{product.deliveryLabel}</p>
             <strong>${product.price.toFixed(2)}</strong>
             <span>USD · One-time purchase</span>
-            <a href={payhipUrl} target="_blank" rel="noopener noreferrer nofollow">Buy on Payhip</a>
-            <small>Buyer file, price and cover were verified during the Payhip Phase-A QA pass.</small>
+            <a href={payhipUrl} target="_blank" rel="noopener noreferrer nofollow">Buy now</a>
+            <small>Buyer file, price and cover were verified during our quality review.</small>
           </div>
         </aside>
       </section>
@@ -238,7 +238,7 @@ export default async function PayhipProductPage({ params }: { params: Promise<{ 
           <p className="ys-ap-kicker">Truth boundary</p>
           <h2>Know what the product does—and what it does not do</h2>
           <p>{boundary}</p>
-          <a href={payhipUrl} target="_blank" rel="noopener noreferrer nofollow">Open exact Payhip product →</a>
+          <a href={payhipUrl} target="_blank" rel="noopener noreferrer nofollow">Open the product page →</a>
         </aside>
       </div>
     </main>

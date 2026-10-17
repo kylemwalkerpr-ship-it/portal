@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { detectCardBrand, formatCardNumber, formatExpiry, formatCvc, type DetectedCardBrand } from '@/lib/payments/inputMask'
 
 // Monotonic instance counter — gives us stable, simple IDs that don't depend
 // on useId()'s colon-prefixed format. Collect.js querySelector + iframe
@@ -61,6 +62,7 @@ export interface CardFieldsProps {
   fieldClassName?: string
   /** Optional inline-style override for field containers. */
   fieldStyle?: React.CSSProperties
+  onBrandDetected?: (brand: DetectedCardBrand) => void
 }
 
 interface PaymentConfig {
@@ -98,7 +100,7 @@ function loadScript(scriptUrl: string, tokenizationKey?: string): Promise<void> 
 }
 
 const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFields(
-  { gateway, onToken, onError, fieldClassName, fieldStyle },
+  { gateway, onToken, onError, fieldClassName, fieldStyle, onBrandDetected },
   ref,
 ) {
   // Stable per-instance id allocated once on mount. Re-used by all 3 field
@@ -109,6 +111,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   const [cfg, setCfg] = useState<PaymentConfig | null>(null)
   const [sdkReady, setSdkReady] = useState(false)
   const [error, setErrorState] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ number?: string; exp?: string; cvv?: string }>({})
   const onTokenRef = useRef(onToken)
   const onErrorRef = useRef(onError)
   onTokenRef.current = onToken
@@ -134,12 +137,13 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   const pendingResolveRef = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null)
 
   const reportError = useCallback((msg: string) => {
-    setErrorState(msg)
-    onErrorRef.current?.(msg)
+    const safeMessage = /pesapal|\bnmi\b|payhip/i.test(msg) ? 'Card payment could not be completed. Please try again or choose another payment method.' : msg
+    setErrorState(safeMessage)
+    onErrorRef.current?.(safeMessage)
     const pending = pendingResolveRef.current
     if (pending) {
       pendingResolveRef.current = null
-      pending.reject(new Error(msg))
+          pending.reject(new Error(msg))
     }
   }, [])
 
@@ -210,11 +214,14 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           validationCallback: (fieldName: string, valid: boolean, message: string) => {
             if (fieldName === 'ccnumber' || fieldName === 'ccexp' || fieldName === 'cvv') {
               nmiFieldValidityRef.current[fieldName] = valid
+              const key = fieldName === 'ccnumber' ? 'number' : fieldName === 'ccexp' ? 'exp' : 'cvv'
+              const safeMessage = /pesapal|\bnmi\b|payhip|authorize[.]net/i.test(message) ? 'Check this card field.' : message
+              setFieldErrors((current) => ({ ...current, [key]: valid ? undefined : (safeMessage || 'Check this card field.') }))
             }
             if (!valid && message) nmiLastValidationMsgRef.current = message
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          callback: (response: any) => {
+            callback: (response: any) => {
             const pending = pendingResolveRef.current
             if (response?.token) {
               const result: CardTokenResult = {
@@ -225,6 +232,9 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
                 expMonth: response.card?.exp?.slice(0, 2),
                 expYear: response.card?.exp?.slice(2, 4),
               }
+              const cardType = String(response.card?.type || '').toLowerCase()
+              const brand = /visa/.test(cardType) ? 'visa' : /master/.test(cardType) ? 'mastercard' : /amex|american/.test(cardType) ? 'amex' : /discover/.test(cardType) ? 'discover' : 'unknown'
+              onBrandDetected?.(brand)
               onTokenRef.current(result)
               if (pending) {
                 pendingResolveRef.current = null
@@ -298,6 +308,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           if (!sdkReady) return reject(new Error('Payment fields not ready'))
           if (pendingResolveRef.current) return reject(new Error('Tokenization already in progress'))
           setErrorState(null)
+          setFieldErrors({})
           pendingResolveRef.current = { resolve, reject }
 
           if (cfg.provider === 'nmi') {
@@ -337,12 +348,14 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             if (digits.length < 13) {
               pendingResolveRef.current = null
               const m = 'Enter a valid card number'
+              setFieldErrors({ number: m })
               reportError(m)
               return reject(new Error(m))
             }
             if (!expMatch || !expMatch[1] || !expMatch[2]) {
               pendingResolveRef.current = null
               const m = 'Enter expiry as MM/YY'
+              setFieldErrors({ exp: m })
               reportError(m)
               return reject(new Error(m))
             }
@@ -351,6 +364,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             if (cvv.length < 3) {
               pendingResolveRef.current = null
               const m = 'Enter the card CVV'
+              setFieldErrors({ cvv: m })
               reportError(m)
               return reject(new Error(m))
             }
@@ -403,7 +417,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           }
 
           pendingResolveRef.current = null
-          reject(new Error(`Unsupported gateway: ${cfg.provider}`))
+          reject(new Error('This card payment option is unavailable.'))
         })
       },
     }),
@@ -429,16 +443,12 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   if (cfg.provider === 'nmi') {
     return (
       <div>
-        {error && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#EF4444', marginBottom: 10 }}>
-            {error}
-          </div>
-        )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div id={fieldIds.number} className={fieldClassName} style={containerStyle} />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div id={fieldIds.exp} className={fieldClassName} style={{ ...containerStyle, flex: 1 }} />
-            <div id={fieldIds.cvv} className={fieldClassName} style={{ ...containerStyle, flex: 1 }} />
+        {error && !Object.values(fieldErrors).some(Boolean) && <div role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>{error}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<div id={fieldIds.number} className={fieldClassName} style={containerStyle} role="group" aria-label="Card number" aria-invalid={Boolean(fieldErrors.number)} aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`} /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small id={`${fieldIds.number}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry<div id={fieldIds.exp} className={fieldClassName} style={containerStyle} role="group" aria-label="Expiry" aria-invalid={Boolean(fieldErrors.exp)} aria-describedby={`${fieldIds.exp}-help${fieldErrors.exp ? ` ${fieldIds.exp}-error` : ''}`} /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>MM/YY as printed on your card.</small>{fieldErrors.exp && <small id={`${fieldIds.exp}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.exp}</small>}</label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<div id={fieldIds.cvv} className={fieldClassName} style={containerStyle} role="group" aria-label="Security code" aria-invalid={Boolean(fieldErrors.cvv)} aria-describedby={`${fieldIds.cvv}-help${fieldErrors.cvv ? ` ${fieldIds.cvv}-error` : ''}`} /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small>{fieldErrors.cvv && <small id={`${fieldIds.cvv}-error`} role="alert" style={{ color: '#761b1b' }}>{fieldErrors.cvv}</small>}</label>
           </div>
         </div>
       </div>
@@ -448,13 +458,13 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   if (cfg.provider === 'authorizenet') {
     return (
       <div>
-        {error && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#EF4444', marginBottom: 10 }}>
+        {error && !Object.values(fieldErrors).some(Boolean) && (
+            <div id={`${fieldIds.number}-error`} role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#761b1b', marginBottom: 10 }}>
             {error}
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Card number<input
             id={fieldIds.number}
             className={fieldClassName}
             style={containerStyle}
@@ -462,35 +472,44 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             autoComplete="cc-number"
             placeholder="Card number"
             value={cardNumber}
-            onChange={(e) => setCardNumber(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
+            onChange={(e) => { const brand = detectCardBrand(e.target.value); setCardNumber(formatCardNumber(e.target.value, brand)); onBrandDetected?.(brand) }}
+              aria-invalid={Boolean(fieldErrors.number)}
+              aria-describedby={`${fieldIds.number}-help${fieldErrors.number ? ` ${fieldIds.number}-error` : ''}`}
+          /><small id={`${fieldIds.number}-help`} style={{ fontWeight: 400 }}>16 digits on the front of your card (Amex 15).</small>{fieldErrors.number && <small role="alert" id={`${fieldIds.number}-error`} style={{ color: '#761b1b' }}>{fieldErrors.number}</small>}</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Expiry date<input
               id={fieldIds.exp}
               className={fieldClassName}
               style={{ ...containerStyle, flex: 1 }}
               autoComplete="cc-exp"
               placeholder="MM / YY"
               value={exp}
-              onChange={(e) => setExp(e.target.value)}
-            />
-            <input
+              aria-label="Expiry date"
+              onChange={(e) => setExp(formatExpiry(e.target.value))}
+              aria-invalid={Boolean(fieldErrors.exp)}
+              aria-describedby={`${fieldIds.exp}-help${fieldErrors.exp ? ` ${fieldIds.exp}-error` : ''}`}
+            /><small id={`${fieldIds.exp}-help`} style={{ fontWeight: 400 }}>MM/YY as printed on your card.</small>{fieldErrors.exp && <small role="alert" id={`${fieldIds.exp}-error`} style={{ color: '#761b1b' }}>{fieldErrors.exp}</small>}</label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 14, fontWeight: 600 }}>Security code<input
               id={fieldIds.cvv}
               className={fieldClassName}
               style={{ ...containerStyle, flex: 1 }}
               inputMode="numeric"
+              type="password"
               autoComplete="cc-csc"
-              placeholder="CVV"
+              placeholder="CVC"
               value={cvv}
-              onChange={(e) => setCvv(e.target.value)}
-            />
+              aria-label="Security code"
+              onChange={(e) => setCvv(formatCvc(e.target.value, detectCardBrand(cardNumber)))}
+              aria-invalid={Boolean(fieldErrors.cvv)}
+              aria-describedby={`${fieldIds.cvv}-help${fieldErrors.cvv ? ` ${fieldIds.cvv}-error` : ''}`}
+            /><small id={`${fieldIds.cvv}-help`} style={{ fontWeight: 400 }}>The 3 digits on the back of your card (Amex: the 4 digits on the front).</small>{fieldErrors.cvv && <small role="alert" id={`${fieldIds.cvv}-error`} style={{ color: '#761b1b' }}>{fieldErrors.cvv}</small>}</label>
           </div>
         </div>
       </div>
     )
   }
 
-  return <div style={{ fontSize: 13, color: '#666' }}>Unsupported payment gateway: {cfg.provider}</div>
+  return <div style={{ fontSize: 13, color: '#761b1b' }}>Card payment is unavailable right now.</div>
 })
 
 export default CardFields

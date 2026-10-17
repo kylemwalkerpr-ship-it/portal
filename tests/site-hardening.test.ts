@@ -26,6 +26,14 @@ describe('site hardening', () => {
     expect(analytics).toContain('readClientConsent')
     expect(analytics).toContain("consent === 'granted'")
     expect(analytics).toContain("effectiveConsent !== 'granted'")
+    expect(banner).toContain("document.body?.hasAttribute('data-checkout-open')")
+    expect(banner).toContain("[role=\"dialog\"][aria-modal=\"true\"]")
+    expect(banner).toContain('new MutationObserver(sync)')
+    expect(banner).toContain('var(--ys-vellum, #FFFFFF)')
+    expect(banner).toContain('var(--ys-ink, #0F172A)')
+    expect(banner).toContain('writeConsentCookie(value)')
+    expect(read('app/globals.css')).toContain('@media (max-width: 480px)')
+    expect(read('app/globals.css')).toContain('max-height: 35vh')
   })
 
   it('publishes a real business contact address on the public marketplace', () => {

@@ -2,10 +2,14 @@ import { getClerkUserId } from '@/lib/auth'
 import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { createPaidOrder, resolveCheckoutItem, type CheckoutSourceType } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { getPaymentProvider } from '@/lib/payments'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { createInvoiceRequestOrder } from '@/lib/payments/invoiceRequest'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
 import {
   claimIdempotencyKey,
@@ -54,7 +58,8 @@ export async function POST(req: Request) {
   try {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
-  if (auth.role !== 'client') return Response.json({ error: 'Only students can check out.' }, { status: 403 })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
 
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -96,11 +101,39 @@ export async function POST(req: Request) {
   const resolved = await resolveCheckoutItem(auth.db, sourceType, sourceId, auth.profileId, tierId)
   if ('error' in resolved) return respond({ error: resolved.error }, resolved.status)
 
-  // For non-gig source types, we keep the original wallet-only behavior here.
-  // Gigs support all three payment methods (wallet, saved_card, new_card).
-  if (sourceType !== 'gig' && paymentMethod !== 'wallet') {
-    return respond({ error: `Payment method ${paymentMethod} is only supported for gig purchases.` }, 400)
+  if (paymentMethod === 'invoice' || paymentMethod === 'invoice_request') {
+    try {
+      await assertMethodAllowed('manual:invoice', {
+        profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: sourceType === 'gig' ? 'order' : 'offer',
+      }, auth.db)
+    } catch (error) {
+      if (error instanceof MethodUnavailableError) {
+        if (!error.invoiceRequestFallback) return respond({ error: error.message, code: error.code }, error.status)
+        try {
+          const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+          return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+        } catch (invoiceError) {
+          console.error('[checkout/order] invoice fallback failed:', invoiceError)
+          return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+        }
+      }
+      throw error
+    }
+    try {
+      const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId, { alertAdmin: false })
+      return respond({ success: true, method: 'invoice_request', status: 'pending_invoice', orderId: invoiceOrder.id }, 201, invoiceOrder.id)
+    } catch (invoiceError) {
+      console.error('[checkout/order] invoice request failed:', invoiceError)
+      return respond({ error: 'The invoice request could not be created.' }, 500)
+    }
   }
+
+  // Unified offers use their atomic accept endpoint for wallet/card payments.
+  // Legacy attorney and consultant quotes share this route's existing charge flow.
+  if (sourceType === 'unified_offer' && paymentMethod !== 'wallet') {
+    return respond({ error: 'Use the offer acceptance flow for this payment method.' }, 400)
+  }
+  const methodPurpose = sourceType === 'gig' ? 'order' : 'offer'
 
   try {
     if (paymentMethod === 'saved_card' || paymentMethod === 'new_card') {
@@ -121,6 +154,25 @@ export async function POST(req: Request) {
           .single()
         if (cardErr || !cardRow) return respond({ error: 'Saved card not found.' }, 404)
 
+        try {
+          await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
+          }, auth.db)
+        } catch (error) {
+          if (error instanceof MethodUnavailableError) {
+            if (error.invoiceRequestFallback) {
+              try {
+                const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+                return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+              } catch (invoiceError) {
+                console.error('[checkout/order] invoice fallback failed:', invoiceError)
+                return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+              }
+            }
+            return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+          }
+          throw error
+        }
         const provider = getPaymentProvider(cardRow.gateway)
         chargeFn = () =>
           provider.chargeVaulted({
@@ -128,13 +180,32 @@ export async function POST(req: Request) {
             amountCents: resolved.totalCents,
             currency: 'usd',
             customer: { email, name },
-            metadata: { source: 'gig_checkout', gigId: resolved.gigId || null },
+            metadata: { source: sourceType, sourceId: resolved.sourceId },
           })
       } else {
         const token = body.token
         if (!token) return respond({ error: 'Missing card token.' }, 400)
 
-        const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+        const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(auth.profileId, auth.db)
+        try {
+          await assertMethodAllowed(`${gateway.toLowerCase()}:card`, {
+            profile: { id: auth.profileId }, currency: 'USD', amount: resolved.totalCents / 100, purpose: methodPurpose,
+          }, auth.db)
+        } catch (error) {
+          if (error instanceof MethodUnavailableError) {
+            if (error.invoiceRequestFallback) {
+              try {
+                const invoiceOrder = await createInvoiceRequestOrder(auth.db, resolved, auth.profileId)
+                return respond({ error: error.message, code: error.code, fallback: 'invoice_request', orderId: invoiceOrder.id }, error.status, invoiceOrder.id)
+              } catch (invoiceError) {
+                console.error('[checkout/order] invoice fallback failed:', invoiceError)
+                return respond({ error: 'No payment method is available and an invoice could not be requested.', code: error.code }, 503)
+              }
+            }
+            return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+          }
+          throw error
+        }
         const provider = getPaymentProvider(gateway)
         chargeFn = () =>
           provider.charge({
@@ -150,7 +221,7 @@ export async function POST(req: Request) {
               },
             ],
             customer: { email, name },
-            metadata: { source: 'gig_checkout' },
+            metadata: { source: sourceType },
           })
       }
 
@@ -197,11 +268,14 @@ export async function POST(req: Request) {
         )
       }
 
-      await creditEarningSafe(auth.db, resolved, order.id, 'gig')
+      await creditEarningSafe(auth.db, resolved, order.id, resolved.sourceType === 'gig' ? 'gig' : 'offer')
       return respond({ success: true, orderId: order.id, url: marketplaceOrdersHref(order.id), transactionId: result.transactionId }, 200, order.id)
     }
 
     // ── Default wallet payment flow ─────────────────────────────────────────
+    // Wallet funds are already held by the portal; gateway availability
+    // settings govern external payment methods and must not block a wallet
+    // debit after the checkout has verified the customer's balance.
     const wallet = await getOrCreateWallet(auth.profileId)
     if (wallet.balance_cents < resolved.totalCents) {
       return respond(
@@ -234,7 +308,7 @@ export async function POST(req: Request) {
           auth.profileId,
           resolved.totalCents,
           `Refund: failed checkout for ${resolved.title}`,
-          `refund:${tx.id}`,
+          `autorefund:${sourceId}:${tx.id}`,
           { reason: 'order_creation_failed', debitTxId: tx.id },
         )
       } catch (refundErr) {

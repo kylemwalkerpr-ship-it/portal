@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { data, error } = await db
       .from('orders')
-      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, client_id, amount_paid, total_amount, currency')
+      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, refunded_amount, client_id, amount_paid, total_amount, currency')
       .eq('id', orderId)
       .single() as any
     if (error || !data) return fail('Order not found.', 404)
@@ -84,6 +84,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (requestedAmount > currentEscrow) {
     return fail(`Refund amount exceeds escrow balance (${currentEscrow}).`, 422)
   }
+  const capturedCents = Math.round(Number(order.amount_paid || 0)) || Math.round(Number(order.total_amount || 0) * 100)
+  const priorRefundedCents = Math.round(Number((order as any).refunded_amount || 0) * 100)
+  if (priorRefundedCents + Math.round(requestedAmount * 100) > capturedCents) return fail('Refund exceeds the order total.', 409)
+  const { count: priorRefundCount, error: countError } = await db.from('escrow_events').select('id', { count: 'exact', head: true }).eq('order_id', orderId).eq('event_type', 'refund')
+  if (countError) return fail('Could not verify prior refunds.', 503)
 
   const remaining = currentEscrow - requestedAmount
   const isFullRefund = remaining <= 0
@@ -105,7 +110,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         refundCents,
         `Refund for order ${orderId}`,
         {
-          reference: orderId,
+          reference: `refund:order:${orderId}:${priorRefundCount ?? 0}`,
           orderCapCents: refundCents,
           metadata: { reason, adminId: profileId, orderId },
         }

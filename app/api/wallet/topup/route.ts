@@ -4,10 +4,13 @@
  *   { cardId, amountCents }          — charge a saved card
  *   { token, amountCents, saveCard } — charge a new card token (Collect.js)
  *
- * On successful charge → wallet.credit() with reference = NMI transaction_id.
+ * On successful charge → wallet.credit() with the transaction reference.
  */
-import { getCurrentStudent } from '@/lib/student'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
+import { getPaymentProvider } from '@/lib/payments'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 import { credit, getOrCreateWallet } from '@/lib/wallet'
 import { addCard } from '@/lib/payment-methods'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -19,8 +22,10 @@ import {
 } from '@/lib/idempotency'
 
 export async function POST(req: Request) {
-  const auth = await getCurrentStudent()
+  const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return Response.json({ error: buyerError.error }, { status: buyerError.status })
 
   // Master switch — card top-ups can be temporarily disabled platform-wide.
   // Authoritative gate; the UI also hides the form, but this protects the
@@ -44,8 +49,8 @@ export async function POST(req: Request) {
   }
 
   const amountCents = Number(body.amountCents)
-  if (!Number.isInteger(amountCents) || amountCents < 100) {
-    return Response.json({ error: 'Amount must be an integer of at least 100 cents (USD 1.00)' }, { status: 400 })
+  if (!Number.isInteger(amountCents) || amountCents < 500) {
+    return Response.json({ error: 'Minimum top-up is $5.00.' }, { status: 400 })
   }
 
   // Idempotency: a duplicate request (double-click / retry) with the same key
@@ -66,7 +71,7 @@ export async function POST(req: Request) {
 
   const profile = auth.profile
   const customer = { id: profile.id, email: profile.email, name: profile.full_name }
-  const newCardGateway = (typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()).toLowerCase()
+  const newCardGateway = (typeof body.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(profile.id, adminDb)).toLowerCase()
 
   try {
     let chargeResult
@@ -85,6 +90,16 @@ export async function POST(req: Request) {
         return respond({ error: 'Card not found' }, 404)
       }
 
+      try {
+        await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'wallet_topup',
+        }, db)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(cardRow.gateway)
       chargeResult = await provider.chargeVaulted({
         vaultId: cardRow.vault_id,
@@ -97,6 +112,16 @@ export async function POST(req: Request) {
 
     // ── New card token path ─────────────────────────────────────────────────
     else if (typeof body.token === 'string' && body.token) {
+      try {
+        await assertMethodAllowed(`${newCardGateway}:card`, {
+          profile: { id: profile.id }, currency: 'USD', amount: amountCents / 100, purpose: 'wallet_topup',
+        }, adminDb)
+      } catch (error) {
+        if (error instanceof MethodUnavailableError) {
+          return respond({ error: error.message, code: error.code, ...(error.invoiceRequestFallback ? { fallback: 'invoice_request' } : {}) }, error.status)
+        }
+        throw error
+      }
       const provider = getPaymentProvider(newCardGateway)
       chargeResult = await provider.charge({
         token: body.token,

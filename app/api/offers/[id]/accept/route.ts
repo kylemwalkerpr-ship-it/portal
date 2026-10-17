@@ -1,18 +1,22 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, centsToDollars } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { guardBuyer } from '@/lib/payments/buyerGuard'
 import { debit, getOrCreateWallet, refundToWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
 import { readAttributionToken } from '@/lib/attribution/cookies'
-import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
+import { getPaymentProvider } from '@/lib/payments'
+import { assertMethodAllowed, MethodUnavailableError } from '@/lib/payments/availability'
+import { getConfiguredDefaultGateway } from '@/lib/payments/settings'
 import { listCards } from '@/lib/payment-methods'
 import { marketplaceOrdersHref } from '@/lib/orderLinks'
 
 async function handler(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
-  if (auth.role !== 'client') return fail('Only students can accept offers.', 403)
+  const buyerError = guardBuyer(auth)
+  if (buyerError) return fail(buyerError.error, buyerError.status)
 
   const { id } = await context.params
 
@@ -67,6 +71,13 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
 
   // ── Branch: wallet ────────────────────────────────────────────────────
   if (paymentMethod === 'wallet') {
+    try {
+      await assertMethodAllowed('manual:wallet', { profile: { id: auth.profileId }, currency: 'USD', amount: total / 100, purpose: 'offer' }, auth.db)
+    } catch (availabilityError) {
+      await releaseClaim()
+      if (availabilityError instanceof MethodUnavailableError) return fail(availabilityError.message, availabilityError.status, { code: availabilityError.code })
+      throw availabilityError
+    }
     const wallet = await getOrCreateWallet(auth.profileId)
     if (wallet.balance_cents < total) {
       await releaseClaim()
@@ -127,7 +138,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         // Reversing the wallet debit we just made, so the cap is that exact
         // charge (works even if the wallet was funded by comps rather than a
         // genuine deposit).
-        await refundToWallet(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, { orderCapCents: total, metadata: { offerId: offer.id, reason: 'order_create_failed' } })
+        await refundToWallet(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, { reference: `autorefund:${offer.id}:${debitTx.id}`, orderCapCents: total, metadata: { offerId: offer.id, debitTxId: debitTx.id, reason: 'order_create_failed' } })
       } catch (refundErr) {
         console.error('[offers/accept] CRITICAL: refund after failed order also failed:', refundErr)
       }
@@ -175,6 +186,16 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     if (cardErr || !cardRow) {
       await releaseClaim()
       return fail('Card not found', 404)
+    }
+
+    try {
+      await assertMethodAllowed(`${String(cardRow.gateway || '').toLowerCase()}:card`, {
+        profile: { id: auth.profileId }, currency: 'USD', amount: total / 100, purpose: 'offer',
+      }, auth.db)
+    } catch (availabilityError) {
+      await releaseClaim()
+      if (availabilityError instanceof MethodUnavailableError) return fail(availabilityError.message, availabilityError.status, { code: availabilityError.code })
+      throw availabilityError
     }
 
     const provider = getPaymentProvider(cardRow.gateway)
@@ -268,7 +289,16 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       return fail('Card token is required for new card payment.', 400)
     }
 
-    const gateway = typeof body?.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+    const gateway = typeof body?.gateway === 'string' && body.gateway ? body.gateway : await getConfiguredDefaultGateway(auth.profileId, auth.db)
+    try {
+      await assertMethodAllowed(`${gateway.toLowerCase()}:card`, {
+        profile: { id: auth.profileId }, currency: 'USD', amount: total / 100, purpose: 'offer',
+      }, auth.db)
+    } catch (availabilityError) {
+      await releaseClaim()
+      if (availabilityError instanceof MethodUnavailableError) return fail(availabilityError.message, availabilityError.status, { code: availabilityError.code })
+      throw availabilityError
+    }
     const provider = getPaymentProvider(gateway)
     const profile = auth.profile
     const customer = {
@@ -431,11 +461,12 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const wallet = await getOrCreateWallet(auth.profileId)
 
   // Fetch saved cards (graceful degradation)
-  let savedCards: Array<{ id: string; brand: string | null; last4: string; exp_month: number | null; exp_year: number | null; is_default: boolean }> = []
+  let savedCards: Array<{ id: string; gateway: string; brand: string | null; last4: string; exp_month: number | null; exp_year: number | null; is_default: boolean }> = []
   try {
     const cards = await listCards(auth.profileId)
     savedCards = cards.map(c => ({
       id: c.id,
+      gateway: c.gateway,
       brand: c.brand,
       last4: c.last4,
       exp_month: c.exp_month,

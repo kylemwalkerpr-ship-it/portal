@@ -75,6 +75,8 @@ NEXT_PUBLIC_GA_MEASUREMENT_ID = "G-FTKZCVNW4B"
 # NMI_SECURITY_KEY is NOT here — it is an encrypted Worker secret set with
 # `wrangler secret put NMI_SECURITY_KEY`.
 PAYMENT_PROVIDER = "authorizenet"
+# Owner (Kyle) - payment settings owner + allowed to place test orders as buyer.
+PAYMENT_SETTINGS_OWNER_IDS = "d90e74a5-b4cf-4f3e-81ed-9ef71e7235a7"
 NMI_TOKENIZATION_KEY = "H4p48s-f4v55B-8Km4eJ-8yR74U"
 # Reseller-issued white-label gateway host — both Collect.js and the Payment
 # API live here. NMI's default secure.nmi.com would reject our merchant

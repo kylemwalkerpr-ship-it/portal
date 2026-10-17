@@ -11,6 +11,7 @@ import type { PaymentProvider } from './types'
 import { nmiProvider } from './providers/nmi'
 import { manualProvider } from './providers/manual'
 import { authorizenetProvider } from './providers/authorizenet'
+import { pesapalProvider } from './providers/pesapal'
 
 export * from './types'
 
@@ -18,6 +19,7 @@ const PROVIDERS: Record<string, PaymentProvider> = {
   nmi: nmiProvider,
   authorizenet: authorizenetProvider,
   manual: manualProvider,
+  pesapal: pesapalProvider,
 }
 
 const DEFAULT_PROVIDER = 'nmi'

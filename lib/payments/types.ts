@@ -48,6 +48,43 @@ export interface ChargeRequest {
   metadata?: Record<string, string>
 }
 
+export interface HostedSessionRequest {
+  merchantReference: string
+  amountCents: number
+  currency: string
+  description: string
+  callbackUrl: string
+  cancellationUrl?: string
+  notificationId: string
+  customer: CustomerInfo & { phone?: string; countryCode?: string }
+  redirectMode?: 'TOP_WINDOW' | 'PARENT_WINDOW'
+}
+
+export interface HostedSessionResult {
+  redirectUrl: string
+  trackingId: string
+  merchantReference: string
+}
+
+export type HostedPaymentStatus = 'invalid' | 'pending' | 'completed' | 'failed' | 'reversed'
+
+export interface HostedStatusResult {
+  status: HostedPaymentStatus
+  statusCode: number | null
+  amountCents: number | null
+  currency: string | null
+  merchantReference: string | null
+  confirmationCode: string | null
+  paymentMethod: string | null
+  paymentAccount: string | null
+  createdAt: string | null
+}
+
+export interface RefundOptions {
+  username?: string
+  remarks?: string
+}
+
 export interface ChargeResult {
   ok: boolean
   status: 'paid' | 'declined' | 'error' | 'pending'
@@ -63,6 +100,7 @@ export interface RefundResult {
   ok: boolean
   transactionId: string | null
   message: string
+  status?: 'pending' | 'completed' | 'failed'
 }
 
 /** Display-only card details — last4/brand/expiry. Not sensitive; used purely
@@ -141,7 +179,13 @@ export interface PaymentProvider {
   charge(req: ChargeRequest): Promise<ChargeResult>
 
   /** Refund a settled transaction. Omit `amountCents` for a full refund. */
-  refund(transactionId: string, amountCents?: number): Promise<RefundResult>
+  refund(transactionId: string, amountCents?: number, options?: RefundOptions): Promise<RefundResult>
+
+  /** Start a provider-hosted payment session. Available only in hosted mode. */
+  createHostedSession?(req: HostedSessionRequest): Promise<HostedSessionResult>
+
+  /** Fetch the authoritative status for a hosted payment. */
+  getTransactionStatus?(trackingId: string): Promise<HostedStatusResult>
 
   // ── Card-on-file (vault) ──────────────────────────────────────────────
   // Used by the student wallet: store a card once, then charge it for
