@@ -14,7 +14,7 @@ describe('buyer checkout copy', () => {
     expect(labels).toEqual(['Card payment', 'Card payment', 'YouSafe'])
   })
 
-  it('discloses PesaPal for hosted checkout and hides unrelated provider names', () => {
+  it('keeps hosted checkout chrome YouSafe branded', () => {
     const files = [
       'components/checkout/Checkout.tsx',
       'components/checkout/CardBrandIcons.tsx',
@@ -39,7 +39,34 @@ describe('buyer checkout copy', () => {
       visit(ast)
       return copy.join(' ')
     }).join(' ')
-    expect(buyerCopy).toMatch(/securely processed by pesapal/i)
-    expect(buyerCopy).not.toMatch(/\bnmi\b|payhip/i)
+    expect(buyerCopy).toMatch(/Secured by YouSafe/i)
+    expect(buyerCopy).not.toMatch(/pesapal|\bnmi\b|payhip/i)
+    const checkout = fs.readFileSync(path.join(process.cwd(), 'components/checkout/Checkout.tsx'), 'utf8')
+    const hostedChrome = checkout.slice(checkout.indexOf('const hostedPayment ='), checkout.indexOf('return (\n    <>', checkout.indexOf('const hostedPayment =')))
+    expect(hostedChrome).toContain('Complete your payment')
+    expect(hostedChrome).toContain('Secure card payment')
+    expect(hostedChrome).not.toMatch(/Securely processed by PesaPal|Loading PesaPal|title="PesaPal/i)
+    expect(hostedChrome).toContain('target="_top"')
+    expect(checkout).toContain('Secured by YouSafe')
+  })
+
+  it('keeps the embedded return frame-buster and hosted sheet sizing rules', () => {
+    const status = fs.readFileSync(path.join(process.cwd(), 'app/checkout/return/status.tsx'), 'utf8')
+    expect(status).toContain('window.top !== window.self')
+    expect(status).toContain('window.top.location.href = window.location.href')
+    expect(status).toContain('Finishing your payment…')
+    const css = fs.readFileSync(path.join(process.cwd(), 'components/checkout/checkout.module.css'), 'utf8')
+    expect(css).toContain('width:min(100%,500px)')
+    expect(css).toContain('@media(max-width:560px)')
+    expect(css).toContain('.sheetBackdrop { inset:0; padding:0; }')
+    expect(css).toContain('height:100dvh')
+  })
+})
+
+describe('embedded payment sheet layering', () => {
+  const fs = require('fs') as typeof import('fs')
+  it('portals the payment sheet to body and hides floating chat UI while checkout is open', () => {
+    expect(fs.readFileSync('components/checkout/Checkout.tsx', 'utf8')).toContain('createPortal(hostedPayment, document.body)')
+    expect(fs.readFileSync('app/globals.css', 'utf8')).toContain('body[data-checkout-open] .ysa-launcher')
   })
 })

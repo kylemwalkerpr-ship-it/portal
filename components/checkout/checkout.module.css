@@ -107,18 +107,33 @@
 .methodSkeleton span { display:block; height:68px; border-radius:12px; background:var(--checkout-soft); }
 .overlay { position:fixed; inset:0; z-index:900; display:grid; place-items:center; overflow:auto; padding:24px; background:rgb(15 23 42 / 60%); }
 .modal,.offer,.gig { max-height:calc(100dvh - 48px); overflow:auto; }
-.sheetBackdrop { position:fixed; inset:0; z-index:910; display:grid; place-items:center; padding:20px; background:rgb(15 23 42 / 58%); }
-.sheet { display:flex; flex-direction:column; width:min(100%,700px); height:min(88dvh,800px); max-height:calc(100dvh - 48px); min-height:min(540px,calc(100dvh - 48px)); overflow:hidden; border-radius:18px; background:#fff; box-shadow:0 22px 70px rgb(0 0 0 / 30%); }
-.sheetHeader { display:flex; flex:0 0 56px; align-items:center; justify-content:space-between; gap:12px; padding:0 16px; border-bottom:1px solid var(--checkout-rule); }
-.frameHeading { display:grid; gap:2px; min-width:0; color:var(--checkout-ink); }
-.frameHeading strong { font-size:15px; }
-.frameHeading small { color:var(--checkout-muted); font-size:12px; }
-.sheetHeader button { width:40px; height:40px; border:0; border-radius:50%; background:var(--checkout-soft); font-size:22px; cursor:pointer; }
+.sheetBackdrop { --checkout-paper: var(--ys-paper, #F7F8FA); --checkout-soft: var(--ys-paper2, #F1F3F5); --checkout-ink: var(--ys-ink, #0F172A); --checkout-muted: var(--ys-inkSoft, #526072); --checkout-rule: var(--ys-rule, #D8DDE3); position:fixed; inset:0; z-index:910; font-family:var(--font-inter),Inter,-apple-system,BlinkMacSystemFont,sans-serif; display:grid; place-items:center; padding:24px; background:rgb(39 40 82 / 68%); }
+.sheet { display:flex; flex-direction:column; width:min(100%,500px); height:min(calc(100dvh - 48px),760px); min-height:0; overflow:hidden; border:1px solid rgb(39 40 82 / 14%); border-radius:18px; background:var(--checkout-paper); box-shadow:0 24px 72px rgb(17 18 51 / 35%); }
+.sheetHeader { position:relative; display:flex; flex:0 0 auto; align-items:center; gap:12px; min-height:76px; padding:12px 14px 12px 16px; border-bottom:1px solid var(--checkout-rule); background:#fff; }
+.sheetLogo { display:block; flex:0 0 64px; width:64px; height:auto; object-fit:contain; }
+.frameHeading { display:grid; flex:1 1 auto; gap:2px; min-width:0; color:#272852; }
+.frameHeading strong { font-size:16px; line-height:1.2; }
+.sheetAmount { color:#272852; font-size:22px; font-weight:800; letter-spacing:-.025em; font-variant-numeric:tabular-nums; }
+.frameHeading small { color:#526072; font-size:12px; }
+.sheetSecured { display:flex; align-items:center; gap:5px; font-weight:650; }
+.sheetSecured svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.sheetHeader button { display:grid; flex:0 0 44px; margin-left:auto; width:44px; height:44px; place-items:center; border:0; border-radius:50%; background:#f1f3f5; color:#272852; font-size:24px; cursor:pointer; }
+.sheetHeader button:focus-visible,.frameFallbackButton:focus-visible,.frameFallback a:focus-visible { outline:3px solid #7a5000; outline-offset:3px; }
 .frameShell { position:relative; flex:1; min-height:0; background:var(--checkout-paper); }
 .frameShell iframe { display:block; width:100%; height:100%; border:0; background:#fff; }
-.frameLoading { position:absolute; z-index:1; inset:0; display:grid; place-items:center; padding:24px; background:var(--checkout-paper); color:var(--checkout-muted); font-size:14px; text-align:center; pointer-events:none; }
-.frameFallback { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:center; gap:4px; margin:0; padding:10px 16px; border-top:1px solid var(--checkout-rule); background:#fff; color:var(--checkout-muted); font-size:13px; line-height:1.4; text-align:center; }
-.frameFallback a { color:var(--ys-indigo,#272852); font-weight:650; text-underline-offset:3px; }
+.frameLoading { position:absolute; z-index:1; inset:0; display:grid; place-items:start center; overflow:auto; padding:clamp(20px,5vw,34px); background:var(--checkout-paper); pointer-events:none; }
+.skeletonCard { display:grid; width:min(100%,390px); gap:15px; padding:22px; border:1px solid #d8dde3; border-radius:14px; background:#fff; box-shadow:0 8px 24px rgb(39 40 82 / 7%); }
+.skeletonBar,.skeletonField,.skeletonRow i,.skeletonButton { display:block; border-radius:7px; background:linear-gradient(100deg,#e8eaf0 20%,#f4f4f7 45%,#e8eaf0 70%); background-size:220% 100%; animation:checkout-shimmer 1.5s ease-in-out infinite; }
+.skeletonBar { width:54%; height:16px; margin-bottom:4px; }
+.skeletonField { height:48px; border:1px solid #d8dde3; }
+.skeletonRow { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.skeletonRow i { height:48px; border:1px solid #d8dde3; }
+.skeletonButton { height:50px; margin-top:5px; border-radius:9px; background-color:#272852; }
+@keyframes checkout-shimmer { to { background-position-x:-220%; } }
+.frameFallback { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:center; gap:4px; margin:0; padding:11px 16px max(11px,env(safe-area-inset-bottom)); border-top:1px solid var(--checkout-rule); background:#fff; color:#526072; font-size:13px; line-height:1.4; text-align:center; }
+.frameFallback a { color:#272852; font-weight:700; text-underline-offset:3px; }
+.frameFallbackButton { position:absolute; z-index:2; top:50%; left:50%; display:inline-flex; min-height:50px; align-items:center; justify-content:center; transform:translate(-50%,-50%); padding:0 24px; border-radius:10px; background:#272852; color:#fff; font-weight:750; text-decoration:none; box-shadow:0 5px 18px rgb(39 40 82 / 22%); }
+.frameFallbackButton:hover { background:#1d1e43; }
 .previewState { margin-top:12px; color:var(--checkout-muted); font-size:13px; }
 .returnPage { display:grid; min-height:100dvh; place-items:center; padding:24px; background:var(--ys-paper,#F7F8FA); color:var(--ys-ink,#0F172A); font-family:var(--font-inter),Inter,-apple-system,BlinkMacSystemFont,sans-serif; }
 .returnCard { width:min(100%,560px); padding:clamp(24px,6vw,44px); border:1px solid rgb(196 160 83 / 28%); border-radius:22px; background:linear-gradient(140deg,#fff,#f7f5ef); box-shadow:0 20px 56px rgb(15 23 42 / 10%); }
@@ -145,6 +160,16 @@
   .frameShell { flex:1; min-height:0; height:auto; }
   .frameFallback { padding:10px max(14px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left)); }
 }
+@media(max-width:560px) {
+  .sheetBackdrop { inset:0; padding:0; }
+  .sheet { width:100%; height:100dvh; max-height:none; border:0; border-radius:0; }
+  .sheetHeader { min-height:calc(112px + env(safe-area-inset-top)); padding:calc(14px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 12px max(14px,env(safe-area-inset-left)); gap:10px; }
+  .sheetLogo { flex-basis:60px; width:60px; }
+  .frameHeading strong { font-size:15px; }
+  .sheetAmount { font-size:20px; }
+  .sheetHeader button { margin-left:auto; }
+  .frameFallback { padding-right:max(14px,env(safe-area-inset-right)); padding-bottom:max(11px,env(safe-area-inset-bottom)); padding-left:max(14px,env(safe-area-inset-left)); }
+}
 @media(max-width:480px) {
 .checkout .method { flex-wrap:wrap; row-gap:10px; }
   .methodBrands { flex-basis:100%; }
@@ -153,7 +178,7 @@
   .mockFields label { display:grid; gap:6px; }
   .mockFields input { width:100%; box-sizing:border-box; }
 }
-@media(prefers-reduced-motion:reduce) { .method,.brandIcon { transition:none; } }
+@media(prefers-reduced-motion:reduce) { .method,.brandIcon { transition:none; } .skeletonBar,.skeletonField,.skeletonRow i,.skeletonButton { animation:none; } }
 
 /* Compact modal layout overrides are kept after the shared page checkout rules. */
 .modal,.offer,.gig { width:min(100%,500px); max-height:calc(100vh - 32px); overflow:auto; padding:20px; border-radius:18px; }
@@ -195,3 +220,6 @@
   .checkout .primary { width:auto; min-width:0; }
   .checkout .cancel { width:auto; align-self:center; }
 }
+.gig .trustRow,.offer .trustRow,.modal .trustRow,.cart .trustRow { min-width:0; overflow:hidden; }
+.gig .trustRow > span:last-child,.offer .trustRow > span:last-child,.modal .trustRow > span:last-child,.cart .trustRow > span:last-child { overflow:hidden; }
+.gig .trustRow small,.offer .trustRow small,.modal .trustRow small,.cart .trustRow small { overflow:hidden; text-overflow:ellipsis; }
