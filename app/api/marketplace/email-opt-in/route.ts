@@ -10,7 +10,10 @@ type Body = {
 
 function kv(): KVNamespace | undefined {
   try {
-    return (process.env as { PAGE_CACHE?: KVNamespace }).PAGE_CACHE
+    const { getCloudflareContext } = require('@opennextjs/cloudflare') as {
+      getCloudflareContext: () => { env?: { PAGE_CACHE?: KVNamespace } }
+    }
+    return getCloudflareContext()?.env?.PAGE_CACHE
   } catch {
     return undefined
   }
