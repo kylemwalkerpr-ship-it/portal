@@ -9,7 +9,7 @@ import '../marketplace-landing.css'
 const canonicalUrl = getMarketplaceCanonicalUrl('/zh')
 const englishUrl = getMarketplaceCanonicalUrl('/')
 
-const title = 'YouSafe 留学生英文修改与 F-1 文件审核'
+const title = 'YouSafe 留学生英文修改与文件审核服务'
 const description =
   '英语不是母语？我们帮你把想法改成地道、清晰的学术英语，不代写，只修改。服务美国、英国、加拿大和澳大利亚的学生。'
 
