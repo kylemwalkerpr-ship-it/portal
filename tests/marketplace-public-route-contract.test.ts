@@ -24,7 +24,9 @@ describe('standalone Marketplace public URL contract', () => {
     const shop = read('app/shop/page.tsx')
 
     expect(home).toContain("getMarketplaceCanonicalUrl('/')")
-    expect(home).toContain('alternates: { canonical: canonicalUrl }')
+    expect(home).toContain('canonical: canonicalUrl')
+    expect(home).toContain("'zh-Hans': getMarketplaceCanonicalUrl('/zh')")
+    expect(home).toContain("'x-default': canonicalUrl")
     expect(categories).toContain("getMarketplaceCanonicalUrl('/categories')")
     expect(categories).toContain('alternates: { canonical: canonicalUrl }')
     expect(providers).toContain("getMarketplaceCanonicalUrl('/providers')")

@@ -20,6 +20,7 @@ const NAV_LINKS: FooterLink[] = [
   { label: 'Contact', href: 'https://usa.yousafeconsultancy.com/contact/' },
   { label: 'Help', href: '/#faq' },
   { label: 'Sitemap', href: '/sitemap.xml' },
+  { label: '中文', href: '/zh' },
 ]
 
 const LEGAL_LINKS: FooterLink[] = [

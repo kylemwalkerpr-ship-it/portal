@@ -8,13 +8,21 @@ import { sizedImageUrl } from '@/lib/imageVariants'
  * build-static landing document (no hydration work, no per-request compute).
  * Data comes from lib/marketHomeMostRequested.ts, resolved at build time.
  */
-export function MostRequestedRail({ cards }: { cards: MostRequestedCard[] }) {
+export function MostRequestedRail({
+  cards,
+  heading = 'Most requested',
+  headingId = 'most-requested-heading',
+}: {
+  cards: MostRequestedCard[]
+  heading?: string
+  headingId?: string
+}) {
   if (cards.length === 0) return null
   return (
-    <section className="cw-most-requested" aria-labelledby="most-requested-heading" data-most-requested={cards.length}>
+    <section className="cw-most-requested" aria-labelledby={headingId} data-most-requested={cards.length}>
       <div className="wrap">
         <div className="cw-mr-head">
-          <h2 id="most-requested-heading">Most requested</h2>
+          <h2 id={headingId}>{heading}</h2>
           <a href="/gigs">Browse all services →</a>
         </div>
         <ul className="cw-mr-grid">

@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   title: 'YouSafe Marketplace — Verified Immigration & Tenancy Help',
   description:
     'Browse vetted US, UK, Canada and Australia immigration consultants and attorneys, plus tenancy help. Compare pricing, languages and reviews for free.',
-  alternates: { canonical: canonicalUrl },
+  alternates: { canonical: canonicalUrl, languages: { en: canonicalUrl, 'zh-Hans': getMarketplaceCanonicalUrl('/zh'), 'x-default': canonicalUrl } },
   robots: { index: true, follow: true },
   openGraph: {
     url: canonicalUrl,
