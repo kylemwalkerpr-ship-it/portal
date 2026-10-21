@@ -1,5 +1,6 @@
 'use client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { rememberMarketJurisdiction } from '@/lib/marketJurisdiction'
 
 type Code = 'all' | 'us' | 'uk' | 'ca' | 'au'
 
@@ -22,6 +23,7 @@ export function CountryTabs({ active }: { active: Code }) {
   const sp = useSearchParams()
 
   function go(code: Code) {
+    rememberMarketJurisdiction(code)
     const params = new URLSearchParams(sp?.toString() ?? '')
     if (code === 'all') params.delete('country')
     else params.set('country', code)
@@ -54,6 +56,7 @@ export function CountryPicker({ active }: { active: Code }) {
   const sp = useSearchParams()
 
   function onChange(code: Code) {
+    rememberMarketJurisdiction(code)
     const params = new URLSearchParams(sp?.toString() ?? '')
     if (code === 'all') params.delete('country')
     else params.set('country', code)

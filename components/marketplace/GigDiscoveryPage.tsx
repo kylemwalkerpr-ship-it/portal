@@ -21,6 +21,7 @@ import {
   recordMarketplaceSearch,
 } from '@/lib/marketplaceSearchIntelligence'
 import { T, F } from './tokens'
+import { normalizeMarketJurisdiction, rememberMarketJurisdiction } from '@/lib/marketJurisdiction'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -677,10 +678,21 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setFilterDrawerOpen(false)
   }
 
+  // User-initiated jurisdiction filter changes also update the persisted
+  // Market preference (lib/marketJurisdiction.ts). Clearing to none records
+  // "all" so MarketJurisdictionSync does not re-apply an older stored value;
+  // a multi-select leaves the stored single preference untouched.
+  const chooseJurisdictions = (next: string[]) => {
+    setSelectedJurisdictions(next)
+    const one = next.length === 1 ? normalizeMarketJurisdiction(next[0]) : null
+    if (next.length === 0) rememberMarketJurisdiction('all')
+    else if (one) rememberMarketJurisdiction(one)
+  }
+
   const handleClearFilters = () => {
     setSelectedCategories([])
     setSelectedProviderTypes([])
-    setSelectedJurisdictions([])
+    chooseJurisdictions([])
     setMinPrice('')
     setMaxPrice('')
     setSelectedRating('')
@@ -705,7 +717,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
       setSelectedProviderTypes(selectedProviderTypes.filter(t => t !== id))
     } else if (id.startsWith('jurisdiction_')) {
       const code = id.replace('jurisdiction_', '')
-      setSelectedJurisdictions(selectedJurisdictions.filter((j) => j !== code))
+      chooseJurisdictions(selectedJurisdictions.filter((j) => j !== code))
     } else if (id === 'rating') {
       setSelectedRating('')
     } else if (id.startsWith('delivery_')) {
@@ -838,7 +850,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
               selectedDeliveryTimes={selectedDeliveryTimes}
               onCategoriesChange={(v) => { setSelectedCategories(v); setPage(1) }}
               onProviderTypesChange={(v) => { setSelectedProviderTypes(v); setPage(1) }}
-              onJurisdictionsChange={(v) => { setSelectedJurisdictions(v); setPage(1) }}
+              onJurisdictionsChange={(v) => { chooseJurisdictions(v); setPage(1) }}
               onPriceChange={(min, max) => {
                 setMinPrice(min)
                 setMaxPrice(max)
@@ -1051,7 +1063,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
             selectedDeliveryTimes={selectedDeliveryTimes}
             onCategoriesChange={setSelectedCategories}
             onProviderTypesChange={setSelectedProviderTypes}
-            onJurisdictionsChange={setSelectedJurisdictions}
+            onJurisdictionsChange={chooseJurisdictions}
             onPriceChange={(min, max) => {
               setMinPrice(min)
               setMaxPrice(max)
