@@ -8,6 +8,17 @@ type ReturnStatus = { status?: string; confirmed?: boolean; message?: string; or
 
 export default function CheckoutReturnStatus({ trackingId, merchantReference, cancelled, previewStatus }: { trackingId: string; merchantReference: string; cancelled: boolean; previewStatus?: ReturnStatus }) {
   const [status, setStatus] = useState<ReturnStatus | null>(previewStatus || null)
+  const [embedded, setEmbedded] = useState(() => typeof window !== 'undefined' && window.top !== window.self)
+
+  useEffect(() => {
+    if (window.top === window.self) return
+    setEmbedded(true)
+    try {
+      window.top.location.href = window.location.href
+    } catch {
+      // The top level may be cross-origin; the hosted payment page can still navigate it.
+    }
+  }, [])
 
   useEffect(() => {
     if (previewStatus) return
@@ -36,6 +47,10 @@ export default function CheckoutReturnStatus({ trackingId, merchantReference, ca
   const failed = status?.status === 'failed' || status?.status === 'reversed'
   const title = confirmed ? 'Payment confirmed' : failed ? 'Payment not completed' : cancelled ? 'Checkout closed' : 'Confirming…'
   const message = confirmed ? 'Your payment is confirmed. Opening your order…' : failed ? 'The payment was not completed. You can return to your dashboard for help.' : cancelled ? 'Checkout was closed before confirmation.' : 'We’re checking your payment. Keep this page open while we confirm it.'
+
+  if (embedded) {
+    return <main className={styles.returnPage}><p role="status" aria-live="polite">Finishing your payment…</p></main>
+  }
 
   return (
     <main className={styles.returnPage}>

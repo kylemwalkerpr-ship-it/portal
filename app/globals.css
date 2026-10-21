@@ -1415,3 +1415,14 @@ body:has(.cl-modalBackdrop) [data-cookie-banner],
 body:has([class*="cl-modalBackdrop"]) [data-cookie-banner] {
   display: none !important;
 }
+
+/* Keep floating chat UI clear of the checkout / embedded payment sheet. */
+body[data-checkout-open] .ysa-launcher,
+body[data-checkout-open] .ysa-panel,
+body[data-checkout-open] .ys-chat-launcher,
+body[data-checkout-open] .ys-floating-message-launcher,
+body:has([role="dialog"][aria-modal="true"]) .ysa-launcher,
+body:has([role="dialog"][aria-modal="true"]) .ys-chat-launcher,
+body:has([role="dialog"][aria-modal="true"]) .ys-floating-message-launcher {
+  display: none !important;
+}

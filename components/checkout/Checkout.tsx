@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useId } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import CardFields, { type CardFieldsHandle, type CardTokenResult } from '@/components/payments/CardFields'
 import type { CheckoutState, AvailablePaymentMethod } from './useCheckout'
@@ -201,6 +202,7 @@ export default function Checkout({
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null)
   const [hostedUrl, setHostedUrl] = useState<string | null>(null)
   const [hostedFrameLoaded, setHostedFrameLoaded] = useState(false)
+  const [hostedFallbackVisible, setHostedFallbackVisible] = useState(false)
   const [detectedBrand, setDetectedBrand] = useState<DetectedCardBrand>('unknown')
   const [handoffUrl, setHandoffUrl] = useState<string | null>(null)
   const hostedDialogRef = useRef<HTMLDivElement>(null)
@@ -226,9 +228,25 @@ export default function Checkout({
   const ratesAvailable = ['GBP', 'CAD', 'AUD'].filter((currency) => Number.isFinite(rates[currency]) && rates[currency] > 0)
   const cancelHosted = useCallback(() => {
     setHostedUrl(null)
+    setHostedFrameLoaded(false)
+    setHostedFallbackVisible(false)
     setState('cancelled')
     setError('You closed hosted checkout. If you approved a payment, wait for confirmation before trying again.')
   }, [])
+
+  useEffect(() => {
+    if (!hostedUrl) return
+    const previousOverflow = document.body.style.overflow
+    const hadCheckoutOpen = document.body.hasAttribute('data-checkout-open')
+    document.body.setAttribute('data-checkout-open', 'true')
+    document.body.style.overflow = 'hidden'
+    const timeout = hostedUrl === 'pesapal-preview' ? undefined : window.setTimeout(() => setHostedFallbackVisible(true), 12_000)
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout)
+      document.body.style.overflow = previousOverflow
+      if (!hadCheckoutOpen) document.body.removeAttribute('data-checkout-open')
+    }
+  }, [hostedUrl])
 
   useEffect(() => {
     if (previewState && selected?.kind === 'new_card' && selected.method.mode === 'inline-token') setDetectedBrand('visa')
@@ -335,10 +353,13 @@ export default function Checkout({
             const redirectUrl = safePesapalRedirectUrl(data.redirectUrl)
             if (!redirectUrl) throw new Error('PesaPal returned an invalid checkout address.')
             setHostedFrameLoaded(false)
+            setHostedFallbackVisible(false)
             setHostedUrl(redirectUrl)
             setState('redirecting')
             return
           }
+          setHostedFrameLoaded(false)
+          setHostedFallbackVisible(false)
           setHostedUrl('pesapal-preview')
           setState('redirecting')
           return
@@ -365,6 +386,7 @@ export default function Checkout({
         const redirectUrl = safePesapalRedirectUrl(data.redirectUrl)
         if (!redirectUrl) throw new Error('PesaPal returned an invalid checkout address.')
         setHostedFrameLoaded(false)
+        setHostedFallbackVisible(false)
         setHostedUrl(redirectUrl)
         setState('redirecting')
         return
@@ -449,7 +471,7 @@ export default function Checkout({
         {ratesAvailable.length > 0 && <p className={styles.fxFootnote}>Prices are based on USD. Local currency amounts are estimates.</p>}
       </div>
 
-      <div className={styles.trustRow}><span className={styles.lockMark} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><span><strong>Secured by YouSafe</strong><small>Card details are entered directly in PesaPal’s secure form.</small></span></div>
+      <div className={styles.trustRow}><span className={styles.lockMark} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg></span><span><strong>Secured by YouSafe</strong><small>Your payment details are protected.</small></span></div>
 
       {visibleState === 'receipt' ? (
         <div className={styles.state} role="status">
@@ -502,7 +524,7 @@ export default function Checkout({
                     : choice.kind === 'new_card'
                       ? 'Card details stay with the secure payment fields'
                       : choice.method.mode === 'hosted-redirect'
-                        ? 'PesaPal’s secure form opens here'
+                        ? 'Secure payment form opens here'
                         : buyerSafeMessage(choice.method.label)
                 return (
                   <button
@@ -576,31 +598,34 @@ export default function Checkout({
     <div className={styles.sheetBackdrop} role="dialog" aria-modal="true" aria-labelledby={`${checkoutId}-hosted-title`}>
       <div ref={hostedDialogRef} className={styles.sheet} tabIndex={-1}>
         <div className={styles.sheetHeader}>
+          <img className={styles.sheetLogo} src="/logo.svg" width="112" height="28" alt="YouSafe" />
           <div className={styles.frameHeading}>
             <strong id={`${checkoutId}-hosted-title`}>Complete your payment</strong>
-            <small>Securely processed by PesaPal</small>
+            <span className={styles.sheetAmount}>{formatMoney(amountUsdCents, 'USD')} USD</span>
+            <small className={styles.sheetSecured}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg>Secured by YouSafe</small>
           </div>
-          <button type="button" onClick={cancelHosted} aria-label="Close hosted checkout">×</button>
+          <button type="button" onClick={cancelHosted} aria-label="Close payment">×</button>
         </div>
         <div className={styles.frameShell}>
           {!hostedFrameLoaded && hostedUrl !== 'pesapal-preview' && (
-            <div className={styles.frameLoading} role="status" aria-live="polite">Loading PesaPal’s secure checkout…</div>
+            <div className={styles.frameLoading} role="status" aria-label="Loading secure payment form" aria-live="polite">
+              <div className={styles.skeletonCard} aria-hidden="true"><span className={styles.skeletonBar} /><span className={styles.skeletonField} /><span className={styles.skeletonField} /><span className={styles.skeletonRow}><i /><i /></span><span className={styles.skeletonButton} /></div>
+            </div>
           )}
+          {hostedFallbackVisible && !hostedFrameLoaded && hostedUrl !== 'pesapal-preview' && <a className={styles.frameFallbackButton} href={hostedUrl} target="_top">Open secure payment page</a>}
           <iframe
             src={hostedUrl === 'pesapal-preview' ? undefined : hostedUrl}
             srcDoc={hostedUrl === 'pesapal-preview' ? PESAPAL_FRAME_PREVIEW : undefined}
-            title="PesaPal secure payment form"
+            title="Secure card payment"
             allow="payment *"
             referrerPolicy="strict-origin-when-cross-origin"
-            onLoad={() => setHostedFrameLoaded(true)}
+            onLoad={() => { setHostedFrameLoaded(true); setHostedFallbackVisible(false) }}
           />
         </div>
         {hostedUrl === 'pesapal-preview' ? (
           <p className={styles.frameFallback}>Choose Card in the preview to see sample fields. They are disabled and do not collect details.</p>
         ) : (
-          <p className={styles.frameFallback}>
-            If the payment form doesn’t load, <a href={hostedUrl} target="_blank" rel="noopener noreferrer">open secure checkout in a new tab</a>.
-          </p>
+          <p className={styles.frameFallback}>Having trouble? <a href={hostedUrl} target="_top">Open secure payment page</a></p>
         )}
       </div>
     </div>
@@ -611,7 +636,7 @@ export default function Checkout({
       {(variant === 'modal' || variant === 'gig') && !previewState
         ? <div className={styles.overlay} onMouseDown={(event) => { if (!busy && event.target === event.currentTarget) onClose?.() }}>{content}</div>
         : content}
-      {hostedPayment}
+      {hostedPayment && typeof document !== 'undefined' ? createPortal(hostedPayment, document.body) : hostedPayment}
     </>
   )
 }
