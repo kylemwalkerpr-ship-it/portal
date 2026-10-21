@@ -79,6 +79,23 @@ npx supabase db push   # picks up supabase/migrations/20260806_hardening.sql
 
 Cloudflare will then deploy with the full hardening.
 
+## Production Worker deploy while GitHub Actions is down
+
+`npm run deploy` stays GitHub-main-only (`scripts/deploy-production.mjs`). Do not
+edit that guard. While the **Deploy YouSafe Portal** workflow cannot publish,
+the only production Worker deploy is:
+
+```bash
+npm run deploy:local
+```
+
+`scripts/deploy-local.sh` runs `npm run build`, then
+`populate-static-incremental-cache` (prerendered gig, category, and provider
+HTML), then `wrangler deploy`, then a GET of every sitemap URL. Any non-200
+fails the script and prints `npx wrangler rollback <version>` for the version
+that was live before the deploy. A bare `wrangler deploy` skips the cache and
+404s those pages. Stop using this script once Actions deploys `main` again.
+
 ## Cloudflare Pages deploy token (regional landings)
 
 GitHub Actions secret `CLOUDFLARE_API_TOKEN` must include **Cloudflare Pages Edit**
