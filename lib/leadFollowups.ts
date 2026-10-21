@@ -1,3 +1,4 @@
+import { renderEmailLayout } from './emailLayout'
 /**
  * Follow-up emails for free /get-matched intake leads who have not created an
  * account yet. Two touches only: about 24h and about 72h after the intake.
@@ -94,7 +95,6 @@ export function signUpUrl(): string {
 export function buildFollowupEmail(input: FollowupEmailInput): { subject: string; html: string } {
   const name = esc(input.fullName.split(' ')[0] || 'there')
   const caseLabel = esc(input.caseLabel || 'your case')
-  const signUp = esc(signUpUrl())
   const offerLine =
     input.pendingOffers > 0
       ? `<p><strong>A provider has already sent you a fixed-fee offer.</strong> Create a free account with this email address to read it and reply.</p>`
@@ -107,7 +107,6 @@ export function buildFollowupEmail(input: FollowupEmailInput): { subject: string
     body = `<p>Hi ${name},</p>
 <p>Yesterday you told us about ${caseLabel}.</p>
 ${offerLine}
-<p><a href="${signUp}" style="display:inline-block;background:#3c3b6e;color:#fff;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:600">Create my free account</a></p>
 <p>Nothing is charged until you accept an offer, and payment is held in escrow until you approve the work.</p>`
   } else {
     subject = input.pendingOffers > 0 ? 'Your offer is still waiting' : 'Still need help with your case?'
@@ -118,15 +117,18 @@ ${offerLine}
 <p>A few days ago you told us about ${caseLabel}.</p>
 ${offerLine}
 ${review}
-<p><a href="${signUp}" style="display:inline-block;background:#3c3b6e;color:#fff;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:600">Create my free account</a></p>
 <p>This is the last reminder we'll send about this request.</p>`
   }
 
-  const html = `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;line-height:1.55">
-${body}
-<p style="color:#555;font-size:12px">YouSafe Consultancy provides document preparation and education services and operates a marketplace. It is not a law firm and does not guarantee any visa, permit, or application outcome.</p>
-<p style="color:#555;font-size:12px">You're getting this because you submitted a free case intake on market.yousafeconsultancy.com. <a href="${esc(input.unsubscribeUrl)}">Stop these reminders</a>.</p>
-</body></html>`
+  const html = renderEmailLayout({
+    preheader: subject,
+    bodyHtml: body,
+    cta: { label: 'Create my free account', href: signUpUrl() },
+    footerHtml: [
+      'YouSafe Consultancy provides document preparation and education services and operates a marketplace. It is not a law firm and does not guarantee any visa, permit, or application outcome.',
+      `You're getting this because you submitted a free case intake on market.yousafeconsultancy.com. <a href="${esc(input.unsubscribeUrl)}" style="color:#3a6b52;">Stop these reminders</a>.`,
+    ],
+  })
   return { subject, html }
 }
 
