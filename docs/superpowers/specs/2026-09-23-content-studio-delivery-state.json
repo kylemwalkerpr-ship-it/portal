@@ -1,6 +1,6 @@
 {
   "schemaVersion": "studio.delivery/1",
-  "architectureVersion": "CS-2026.09.23.8",
+  "architectureVersion": "CS-2026.09.24.1",
   "executorPolicy": {
     "schemaVersion": "studio.executor-policy/2",
     "supervisor": "GPT_SOL",
@@ -376,5 +376,13 @@
       "reportedAt": "2026-09-23",
       "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
     }
+  },
+  "implementationEntry": {
+    "mode": "SCOPED_A0_AND_DEPENDENT_BUILD_OPEN",
+    "authorizedAt": "2026-09-24",
+    "authorityRef": "user-direction:2026-09-24:admit-content-studio-build-without-external-P9-P13-closures",
+    "nextPacket": "A0.2_READ_ONLY_RUNTIME_BASELINE",
+    "phaseGateRule": "P9_P11_OUTCOMES_OPEN_P12_ACTIVATION_P13_CLUSTER_CREATE",
+    "productionActions": "SEPARATE_AUTHORIZATION_REQUIRED"
   }
 }
