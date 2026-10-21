@@ -1,6 +1,48 @@
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseKey, supabaseAuthMode } from './supabaseKey'
 
+function hasServiceRoleJwtClaim(key: string): boolean {
+  if (!key.startsWith('eyJ')) return false
+  const parts = key.split('.')
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) return false
+
+  try {
+    const decode = (part: string) => {
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/')
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+      return JSON.parse(new TextDecoder().decode(bytes))
+    }
+    const header = decode(parts[0]) as { alg?: unknown } | null
+    const claims = decode(parts[1]) as { role?: unknown } | null
+    return Boolean(
+      header && typeof header === 'object' && typeof header.alg === 'string' &&
+      header.alg.length > 0 && header.alg !== 'none' &&
+      claims && typeof claims === 'object' && claims.role === 'service_role',
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolve only the supported legacy service-role JWT credential path.
+ * The general admin client below intentionally retains its historical anon
+ * fallback; privileged gate/feed tables must never use that degraded client.
+ */
+export function resolveSupabaseServiceRoleJwt(): string | null {
+  return [process.env.SUPABASE_SERVICE_ROLE_JWT, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .map((candidate) => typeof candidate === 'string' ? candidate.trim() : '')
+    .find((candidate) => candidate !== '' && hasServiceRoleJwtClaim(candidate)) || null
+}
+
+/** Create a client only when a configured credential claims service_role. */
+export function createSupabaseServiceRoleClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || ''
+  const key = resolveSupabaseServiceRoleJwt()
+  if (!url || !key) return null
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+
 export function createSupabaseAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

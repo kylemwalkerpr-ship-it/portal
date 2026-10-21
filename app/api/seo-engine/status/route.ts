@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { getSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
+import { createSupabaseServiceRoleClient, getSupabaseAdminClient, isServiceRoleAchieved } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 import { reportSpecCoverage } from '@/lib/seoEngine/specCoverage'
@@ -62,6 +62,17 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: NO_STORE })
 
     const supabase = getSupabaseAdminClient()
+    const gateDb = createSupabaseServiceRoleClient()
+    const gateTotalQuery = gateDb ? countExact(gateDb, 'seo_gate_runs') : Promise.resolve(0)
+    const gatePassedQuery = gateDb
+      ? countExact(gateDb, 'seo_gate_runs', (q) => q.eq('passed', true))
+      : Promise.resolve(0)
+    const recentGatesQuery = gateDb
+      ? gateDb.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] })
+    const latestGateQuery = gateDb
+      ? latestRow(gateDb, 'seo_gate_runs', 'id,score,passed,created_at', 'created_at')
+      : Promise.resolve(null)
     const [
       cells, knowledge, plans, runs, config,
       linksPlanned, linksApplied, rankCount, llmSummary,
@@ -82,16 +93,16 @@ export async function GET(req: NextRequest) {
       // (which fetches up to 5000 wide rows + runs the remediation generator).
       // Deep computation stays in /api/seo-engine/llm-visibility.
       loadVisibilityStatusSummary(),
-      countExact(supabase, 'seo_gate_runs'),
-      countExact(supabase, 'seo_gate_runs', (q) => q.eq('passed', true)),
-      supabase.from('seo_gate_runs').select('score,passed').order('created_at', { ascending: false }).limit(20),
+      gateTotalQuery,
+      gatePassedQuery,
+      recentGatesQuery,
       countExact(supabase, 'content_jobs', (q) => q.not('seo_score', 'is', null)),
       countExact(supabase, 'content_jobs', (q) => q.gte('seo_score', 65)),
       loadRankingScores({ limit: 1 }),
       latestRow(supabase, 'seo_knowledge', 'id,title,kind,fetched_at', 'fetched_at'),
       latestRow(supabase, 'seo_cluster_plans', 'id,primary_term,status,created_at', 'created_at'),
       latestRow(supabase, 'seo_interlinks', 'id,status,source_slug,created_at', 'created_at'),
-      latestRow(supabase, 'seo_gate_runs', 'id,score,passed,created_at', 'created_at'),
+      latestGateQuery,
     ])
 
     const gateRows = ((recentGates.data as Array<{ score?: number; passed?: boolean }>) || [])

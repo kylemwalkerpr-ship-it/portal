@@ -19,7 +19,7 @@
  *      always a blocker on critical stages.
  */
 
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase'
 import { scoreCompliance, type ComplianceResult, type ComplianceCategory } from './compliance'
 import { getStage, isCountry, type Country } from './ontology'
 
@@ -206,7 +206,11 @@ export async function enforceGate(subject: GateSubject, draft?: string, meta: Dr
 
   let recorded = false
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = createSupabaseServiceRoleClient()
+    if (!supabase) {
+      console.warn('[seo_gate_runs] insert skipped: service-role credential unavailable')
+      return { passed, score: compliance.score, threshold, compliance, blockers, signals, recorded, mandatory }
+    }
     const byCategory: Record<string, { met: number; total: number }> = {}
     for (const cat of Object.keys(compliance.byCategory) as ComplianceCategory[]) {
       byCategory[cat] = { met: compliance.byCategory[cat].met, total: compliance.byCategory[cat].total }
@@ -245,7 +249,8 @@ export async function recordJobQualityGate(opts: {
   stage?: string | null
 }): Promise<boolean> {
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = createSupabaseServiceRoleClient()
+    if (!supabase) return false
     const { error } = await supabase.from('seo_gate_runs').insert({
       subject_type: 'job',
       subject_id: opts.jobId || null,
@@ -301,7 +306,8 @@ export async function loadGateRuns(limit = 30): Promise<{
   avgScore: number
 }> {
   try {
-    const supabase = createSupabaseAdminClient()
+    const supabase = createSupabaseServiceRoleClient()
+    if (!supabase) return { runs: [], passRate: 0, avgScore: 0 }
     const { data } = await supabase
       .from('seo_gate_runs')
       .select('id,subject_type,subject_id,cluster_id,stage,country,score,passed,threshold,blockers,created_at')

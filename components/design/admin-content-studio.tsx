@@ -7027,7 +7027,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       'seo_cluster_plans',
       'seo_interlinks',
       'seo_llm_visibility',
-      'seo_gate_runs',
       'seo_engine_runs',
       'seo_ranking_scores',
     ], 'public', kick, onStatus)
