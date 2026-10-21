@@ -1,16 +1,17 @@
 import { getClerkUserId } from './auth'
-import { createSupabaseAdminClient } from './supabase'
+import { getSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
+import type { NextRequest } from 'next/server'
 
 export type StudentAuth =
   | { error: string; status: 401 | 403 | 404 }
-  | { db: ReturnType<typeof createSupabaseAdminClient>; profile: Record<string, any> }
+  | { db: ReturnType<typeof getSupabaseAdminClient>; profile: Record<string, any> }
 
-export async function getCurrentStudent(): Promise<StudentAuth> {
-  const clerkUserId = await getClerkUserId()
+export async function getCurrentStudent(request?: NextRequest): Promise<StudentAuth> {
+  const clerkUserId = await getClerkUserId(request)
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 }
 
-  const db = createSupabaseAdminClient()
+  const db = getSupabaseAdminClient()
   let profileRes: any = await db
     .from('profiles')
     .select('id, role, status, email, full_name, vertical, avatar_url')
