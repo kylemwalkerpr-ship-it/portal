@@ -3,6 +3,7 @@ import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { EmailOptIn } from '@/components/marketplace/EmailOptIn'
 import { MostRequestedRail } from '@/components/marketplace/MarketHomeOffers'
 import type { MostRequestedCard } from '@/lib/marketHomeMostRequested'
+import { loadLandingData } from '../PublicMarketplaceLanding'
 import '../marketplace-landing.css'
 
 const canonicalUrl = getMarketplaceCanonicalUrl('/zh')
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
   },
 }
 
-const cards: MostRequestedCard[] = [
+const cardCopy: MostRequestedCard[] = [
   {
     key: 'sop',
     kind: 'gig',
@@ -96,7 +97,12 @@ const cards: MostRequestedCard[] = [
   },
 ]
 
-export default function ZhLandingPage() {
+export default async function ZhLandingPage() {
+  const { coverBySlug } = await loadLandingData()
+  const cards = cardCopy.map((card) => {
+    const slug = card.href.replace(/^\/gigs\//, '')
+    return { ...card, imageUrl: coverBySlug[slug] ?? null }
+  })
   return (
     <section lang="zh-Hans">
       <script

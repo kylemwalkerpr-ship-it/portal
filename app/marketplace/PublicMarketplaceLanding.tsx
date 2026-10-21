@@ -130,6 +130,8 @@ interface LandingData {
   mostRequested: MostRequestedCard[]
   /** Delivery-day range across the rail's gig tiers; null when no gig card resolved. */
   mostRequestedTurnaround: { min: number; max: number } | null
+  /** Build-time cover URL by gig slug. Same resolveCoverUrl value the English rail uses. */
+  coverBySlug: Record<string, string | null>
 }
 
 function emptySlice(label: string, currency: string): Slice {
@@ -239,6 +241,7 @@ function fallbackLandingData(): LandingData {
     // Pack cards resolve from static manifests, so the rail still renders.
     mostRequested: resolveMostRequestedCards([]),
     mostRequestedTurnaround: null,
+    coverBySlug: {},
   }
 }
 
@@ -469,7 +472,12 @@ async function computeLandingData(): Promise<LandingData | null> {
   const mostRequested = resolveMostRequestedCards(allGigs)
   const mostRequestedTurnaround = gigDeliveryRange(allGigs)
 
-  return { slices, jurisdictions, reviews, facets: facetCounts, mostRequested, mostRequestedTurnaround }
+  const coverBySlug: Record<string, string | null> = {}
+  for (const gig of allGigs) {
+    if (gig.slug) coverBySlug[gig.slug] = gig.cover_image_url ?? null
+  }
+
+  return { slices, jurisdictions, reviews, facets: facetCounts, mostRequested, mostRequestedTurnaround, coverBySlug }
 }
 
 /* ───────────────────────── KV read-through ─────────────────────── */
@@ -485,7 +493,7 @@ const LANDING_CACHE_PATH = '/marketplace-landing'
 // Bumped v1 -> v2 with the first-page projection: the old entry holds the whole
 // inventory, so it must never be served again (it would put all ~217 gigs back
 // into the document). `isLandingData` below rejects it a second time.
-const LANDING_CACHE_QUERY = 'v2'
+const LANDING_CACHE_QUERY = 'v3'
 
 function isLandingData(value: unknown): value is LandingData {
   const v = value as LandingData | null
@@ -502,7 +510,9 @@ function isLandingData(value: unknown): value is LandingData {
       Array.isArray(v.reviews) &&
       Array.isArray(v.jurisdictions) &&
       // A snapshot written before the curated rail existed is a cache miss.
-      Array.isArray(v.mostRequested),
+      Array.isArray(v.mostRequested) &&
+      v.coverBySlug &&
+      typeof v.coverBySlug === 'object',
   )
 }
 

@@ -129,7 +129,7 @@ describe('landing source contract', () => {
   })
 
   it('never serves a pre-fix (whole-inventory) cached snapshot', () => {
-    expect(landingSource).toContain("const LANDING_CACHE_QUERY = 'v2'")
+    expect(landingSource).toContain("const LANDING_CACHE_QUERY = 'v3'")
     expect(landingSource).toContain('v.slices.all.featured.length <= FEATURED_PAGE_SIZE')
   })
 
