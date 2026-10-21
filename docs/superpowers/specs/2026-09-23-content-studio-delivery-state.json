@@ -1,18 +1,31 @@
 {
   "schemaVersion": "studio.delivery/1",
-  "architectureVersion": "CS-2026.09.23.8",
+  "architectureVersion": "CS-2026.09.23.9",
   "executorPolicy": {
-    "schemaVersion": "studio.executor-policy/2",
+    "schemaVersion": "studio.executor-policy/3",
     "supervisor": "GPT_SOL",
     "executor": "CODEX_LUNA",
     "executorFamily": "LUNA",
     "modelResolution": {
       "mode": "RE_RESOLVE_AT_ADMISSION",
-      "resolvedModelId": "gpt-5.6-luna",
+      "resolvedModelId": "gpt-6-luna",
       "resolvedAt": "2026-09-23",
-      "evidence": "dated-capability-observation:2026-09-23:Codex-CLI-0.156.1:gpt-5.6-luna"
+      "evidence": "dated-capability-observation:2026-09-23:Codex-CLI-0.156.1:RDC:gpt-6-luna"
     },
-    "effortCatalog": {
+    "transport": "RDC_CODEX_CLI",
+    "orchestration": {
+      "mode": "SEPARATE_CLI_SESSION",
+      "nestedCapability": "NOT_PROBED",
+      "nativeChild": false
+    },
+    "automaticFallback": false,
+    "modelId": "gpt-6-luna",
+    "maxConcurrentAgents": 3,
+    "writerConflictDomain": "ONE_WRITER",
+    "reviewerIdentity": "DISTINCT_EXECUTOR",
+    "requireIndependentReview": true,
+    "mergeAuthority": "GPT_SOL",
+    "effortCapability": {
       "advertised": [
         "low",
         "medium",
@@ -21,25 +34,47 @@
         "max"
       ],
       "verifiedInEnvironment": [
-        "high"
-      ]
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "probeMode": "STRICT_READ_ONLY_ONE_SHOT",
+      "probeResults": [
+        {
+          "effort": "low",
+          "result": "OK",
+          "exitCode": 0
+        },
+        {
+          "effort": "medium",
+          "result": "OK",
+          "exitCode": 0
+        },
+        {
+          "effort": "high",
+          "result": "OK",
+          "exitCode": 0
+        },
+        {
+          "effort": "xhigh",
+          "result": "OK",
+          "exitCode": 0
+        },
+        {
+          "effort": "max",
+          "result": "OK",
+          "exitCode": 0
+        }
+      ],
+      "catalogRefreshObservation": "TIMEOUT_WITH_EXPLICIT_INVOCATION_SUCCESS",
+      "explicitInvocationCompleted": true
     },
-    "selectedEffort": "high",
-    "selectionRationale": "Substantial cross-document machine-policy/schema/provenance normalization with release-gate implications and prior concurrent-recovery history; high is the lowest positively exercised adequate effort for this packet.",
-    "selectedEffortAccess": "VERIFIED",
-    "transport": "RDC_CODEX_CLI",
-    "orchestration": {
-      "mode": "SEPARATE_CLI_SESSION",
-      "nestedCapability": "AVAILABLE_NOT_USED",
-      "nativeChild": false
-    },
-    "automaticFallback": false,
-    "modelId": "gpt-5.6-luna",
-    "maxConcurrentAgents": 3,
-    "writerConflictDomain": "ONE_WRITER",
-    "reviewerIdentity": "DISTINCT_EXECUTOR",
-    "requireIndependentReview": true,
-    "mergeAuthority": "GPT_SOL"
+    "effortSelection": {
+      "mode": "LOWEST_SUFFICIENT_PER_TASK_ADMISSION",
+      "taskAdmission": null
+    }
   },
   "workerBudget": {
     "cpuTargetExclusiveMs": 10,
@@ -376,5 +411,20 @@
       "reportedAt": "2026-09-23",
       "sourceCommit": "3d916b09671ab726de2fc1aa3b87f79e7712c6ac"
     }
+  },
+  "a01Release": {
+    "prNumber": 283,
+    "mergedAtCommit": "22c685e38d46367eec18332f264b7f1480d8305e",
+    "workflowId": "35822388398",
+    "workflowStatus": "SUCCEEDED",
+    "workerVersion": "b5e39685-baa2-4789-acfa-10e7f990d2ad",
+    "buildId": "LU03P9-X1WyePB7inlqsO",
+    "productionHealth": "PASSED",
+    "exactMainSmoke": {
+      "status": "PASSED",
+      "passed": 4,
+      "total": 4
+    },
+    "broaderImplementationAuthorized": false
   }
 }
