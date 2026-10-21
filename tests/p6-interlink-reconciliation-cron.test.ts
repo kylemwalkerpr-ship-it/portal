@@ -41,6 +41,23 @@ jest.mock('@/lib/supabase', () => ({
   })),
 }))
 
+// Keep this P6 orchestration suite independent of the P11 command database.
+// The cron wrapper still runs its callback once, as the route contract does.
+jest.mock('@/lib/seoEngine/p11AuditCommand', () => ({
+  SEO_ENGINE_DAILY_ACTOR: { scope: 'system:seo-engine-daily', profileId: null },
+  scheduledP11IdempotencyKey: (action: string) => `scheduled:${action}:2026-09-23`,
+  executeP11AuditCommand: jest.fn(async (args: any) => {
+    const result = await args.run({
+      commandId: '00000000-0000-4000-8000-000000000011',
+      runId: '00000000-0000-4000-8000-000000000012',
+      request: args.request,
+      claimProvider: async () => true,
+      finishProviderClaim: async () => undefined,
+    })
+    return { kind: 'result', command: { id: '00000000-0000-4000-8000-000000000011', status: 'completed' }, result }
+  }),
+}))
+
 jest.mock('@/lib/seoEngine/knowledge', () => ({
   ingestKnowledge: jest.fn(),
   recordEngineRun: jest.fn(async () => ({ ok: true })),
