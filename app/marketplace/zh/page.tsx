@@ -69,7 +69,7 @@ export default function ZhLandingPage() {
         服务美国、英国、加拿大和澳大利亚的学生。可用中文提交需求，修改稿为英文。
       </p>
       <p style={{ fontSize: 15, lineHeight: 1.6, maxWidth: 720, marginTop: 16 }}>
-        F-1/OPT 审核由 Kyle Walker 提供。他不是律师。审核仅涉及美国规定，不构成法律建议；情况复杂时，请咨询移民律师。
+        F-1/OPT 材料审核由美国执业律师 Kyle Walker 提供，仅涉及美国法律。
       </p>
     </section>
   )
