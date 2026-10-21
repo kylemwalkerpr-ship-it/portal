@@ -186,6 +186,17 @@ const nextConfig: NextConfig = {
           source: `/shop/${slug}`,
           destination: `/payhip-product/${slug}`,
         })),
+        // Market clean URLs are middleware-rewritten onto app/marketplace/*,
+        // but OpenNext looks up prerendered dynamic routes from beforeFiles,
+        // not from that middleware rewrite. With dynamicParams = false, a
+        // cache miss on the public path is a hard 404 even though the HTML
+        // was built at /marketplace/{gigs,categories,providers}/:id.
+        // Host-scoped so the portal host is unchanged. Auth-lane rules stay first.
+        ...(['gigs', 'categories', 'providers'] as const).map((section) => ({
+          source: `/${section}/:id`,
+          destination: `/marketplace/${section}/:id`,
+          has: [{ type: 'host' as const, value: 'market.yousafeconsultancy.com' }],
+        })),
       ],
       afterFiles: [],
       fallback: [],
