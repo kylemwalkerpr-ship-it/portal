@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   ANALYTICS_CONSENT_COOKIE,
   ANALYTICS_CONSENT_MAX_AGE_SECONDS,
@@ -21,6 +23,12 @@ describe('shared analytics consent contract', () => {
       'yousafe-analytics-consent=accepted; Domain=.yousafeconsultancy.com; Path=/; Max-Age=15552000; Secure; SameSite=Lax',
     )
     expect(serializeAnalyticsConsentCookie('denied')).toContain('yousafe-analytics-consent=rejected;')
+  })
+
+  it('keeps the choice in localStorage as well as the domain cookie', () => {
+    const source = readFileSync(resolve(__dirname, '../lib/attribution/client.ts'), 'utf8')
+    expect(source).toContain("window.localStorage.setItem(CONSENT_STORAGE_KEY, value === 'granted' ? 'granted' : 'denied')")
+    expect(source).not.toContain('localStorage.removeItem(CONSENT_STORAGE_KEY)')
   })
 })
 

@@ -65,7 +65,6 @@ export function readClientConsent(): AnalyticsConsent {
   }
   if (legacy !== 'unknown') {
     writeConsentCookie(legacy)
-    try { window.localStorage.removeItem(CONSENT_STORAGE_KEY) } catch {}
     document.cookie = 'yousafe_consent=; Path=/; Max-Age=0; SameSite=Lax; Secure'
   }
   return legacy
@@ -79,6 +78,11 @@ export function writeConsentCookie(value: AnalyticsConsent) {
     cookie = cookie.replace('; Domain=.yousafeconsultancy.com', '').replace('; Secure', '')
   }
   document.cookie = cookie
+  try {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, value === 'granted' ? 'granted' : 'denied')
+  } catch {
+    // Storage can be unavailable in privacy modes. The domain cookie still stands.
+  }
 }
 
 /**

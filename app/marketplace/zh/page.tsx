@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { EmailOptIn } from '@/components/marketplace/EmailOptIn'
 
 const canonicalUrl = getMarketplaceCanonicalUrl('/zh')
 
@@ -71,6 +72,7 @@ export default function ZhLandingPage() {
       <p style={{ fontSize: 15, lineHeight: 1.6, maxWidth: 720, marginTop: 16 }}>
         F-1/OPT 材料审核由美国执业律师 Kyle Walker 提供，仅涉及美国法律。
       </p>
+      <EmailOptIn locale="zh" source="https://market.yousafeconsultancy.com/zh" />
     </section>
   )
 }

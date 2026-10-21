@@ -37,6 +37,7 @@ import {
 import { resolveCoverUrl } from '@/lib/galleryImages'
 import { providerDisplayName } from '@/lib/providerDisplayName'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
+import { EmailOptIn } from '@/components/marketplace/EmailOptIn'
 import { MarketplaceHomeSeo } from '@/components/marketplace/MarketIndexSeo'
 import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
@@ -1061,6 +1062,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country, pag
         </div>
       </section>
 
+      <EmailOptIn locale="en" source="https://market.yousafeconsultancy.com/" />
       <MarketplaceFooter />
       <MarketplaceHomeSeo />
     </div>
