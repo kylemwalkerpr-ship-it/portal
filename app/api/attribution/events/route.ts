@@ -11,7 +11,7 @@
  * Marketplace rule that a public browser collector never writes a conversion.
  */
 import { fail, ok } from '@/lib/apiEnvelope'
-import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getSupabaseAdminClient } from '@/lib/supabase'
 import { CLIENT_DECLARABLE_EVENT_TYPES, isAttributionEventType, isBusinessEventType } from '@/lib/attribution/contract'
 import { readAttributionToken } from '@/lib/attribution/cookies'
 import { recordClientEvent, sanitizeCtaId } from '@/lib/attribution/engine'
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     return ok({ tracked: false, reason: 'no_consented_session' })
   }
 
-  const db = createSupabaseAdminClient()
+  const db = getSupabaseAdminClient()
   const result = await recordClientEvent(db, {
     token,
     eventType,
