@@ -13,6 +13,7 @@ import StatusRing from './StatusRing'
 import StatusViewer from './StatusViewer'
 import MessengerSettings from './MessengerSettings'
 import ArchivedView from './ArchivedView'
+import { fetchArchivedConversationsPage } from '@/lib/messaging/archivedConversations'
 import StarredView from './StarredView'
 import InquiryComposer from './InquiryComposer'
 import ProfilePreviewDrawer from './ProfilePreviewDrawer'
@@ -84,6 +85,13 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Archived + Starred modal state (phase 2.2)
   const [showArchived, setShowArchived] = React.useState(false)
+  const [archivedConversations, setArchivedConversations] = React.useState<any[]>([])
+  const [archivedLoading, setArchivedLoading] = React.useState(false)
+  const [archivedError, setArchivedError] = React.useState('')
+  const [archivedPage, setArchivedPage] = React.useState(1)
+  const [archivedHasMore, setArchivedHasMore] = React.useState(false)
+  const [restoringArchivedId, setRestoringArchivedId] = React.useState<string | null>(null)
+  const archivedSeqRef = React.useRef(0)
   const [showStarred, setShowStarred] = React.useState(false)
 
   // In-chat search + call-request UI state (wired by the chrome buttons in
@@ -274,6 +282,34 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   }, [tab, debouncedQ, page, activeId])
 
   React.useEffect(() => { loadList(false) }, [loadList])
+
+  // Archived messages use a separate paged query. The default inbox excludes
+  // archives even when counts.archived reports their existence.
+  const loadArchived = React.useCallback(async (nextPage = 1) => {
+    const seq = ++archivedSeqRef.current
+    setArchivedLoading(true)
+    setArchivedError('')
+    try {
+      const result = await fetchArchivedConversationsPage<any>(nextPage)
+      if (seq !== archivedSeqRef.current) return
+      setArchivedConversations((previous) => nextPage === 1
+        ? result.conversations
+        : [...previous, ...result.conversations.filter((entry: any) => !previous.some((old: any) => old.id === entry.id))])
+      setArchivedPage(nextPage)
+      setArchivedHasMore(result.hasMore)
+    } catch (error) {
+      if (seq === archivedSeqRef.current) {
+        setArchivedError(error instanceof Error ? error.message : 'Could not load archived conversations.')
+      }
+    } finally {
+      if (seq === archivedSeqRef.current) setArchivedLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (showArchived) void loadArchived(1)
+    else archivedSeqRef.current += 1 // prevent late requests repainting a closed modal
+  }, [showArchived, loadArchived])
 
   // Soft poll every 12s
   React.useEffect(() => {
@@ -1514,18 +1550,30 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       <ArchivedView
         open={showArchived}
         onClose={() => setShowArchived(false)}
-        conversations={conversations.filter((c) => !!c.archived_at)}
+        conversations={archivedConversations}
+        loading={archivedLoading}
+        error={archivedError}
+        hasMore={archivedHasMore}
+        restoringId={restoringArchivedId}
+        onRetry={() => void loadArchived(archivedPage)}
+        onLoadMore={() => { if (!archivedLoading) void loadArchived(archivedPage + 1) }}
         onUnarchive={async (convId) => {
-          setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, archived_at: null } : c))
+          if (restoringArchivedId) return
+          setRestoringArchivedId(convId)
+          setArchivedError('')
           try {
-            await fetch(`/api/messages/conversations/${convId}/archive`, {
+            const response = await fetch(`/api/messages/conversations/${convId}/archive`, {
               method: 'POST', credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ archived: false }),
             })
-            await loadList(true)
-          } catch {
-            await loadList(false)
+            const result = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(result?.error?.message || 'Could not unarchive conversation.')
+            await Promise.all([loadList(true), loadArchived(1)])
+          } catch (error) {
+            setArchivedError(error instanceof Error ? error.message : 'Could not unarchive conversation.')
+          } finally {
+            setRestoringArchivedId(null)
           }
         }}
       />

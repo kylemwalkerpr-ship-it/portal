@@ -2,12 +2,13 @@
 
 import React from 'react'
 
-interface ArchivedConversation {
+export interface ArchivedConversation {
   id: string
   archived_at: string | null
-  counterpart?: { full_name?: string; avatar_url?: string; avatar_color?: string } | null
-  last_message_snippet?: string
-  [key: string]: any
+  last_message_at?: string | null
+  counterpart?: { name?: string; full_name?: string; avatar_url?: string; avatar_color?: string } | null
+  last_message?: string | null
+  last_message_snippet?: string | null
 }
 
 interface ArchivedViewProps {
@@ -15,6 +16,12 @@ interface ArchivedViewProps {
   onClose: () => void
   conversations: ArchivedConversation[]
   onUnarchive: (convId: string) => void
+  loading?: boolean
+  error?: string
+  hasMore?: boolean
+  onRetry?: () => void
+  onLoadMore?: () => void
+  restoringId?: string | null
 }
 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
@@ -32,7 +39,10 @@ function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: (
   )
 }
 
-export default function ArchivedView({ open, onClose, conversations, onUnarchive }: ArchivedViewProps) {
+export default function ArchivedView({
+  open, onClose, conversations, onUnarchive, loading = false, error = '',
+  hasMore = false, onRetry, onLoadMore, restoringId = null,
+}: ArchivedViewProps) {
   if (!open) return null
   const sorted = [...conversations].sort(
     (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
@@ -40,9 +50,9 @@ export default function ArchivedView({ open, onClose, conversations, onUnarchive
 
   return (
     <Backdrop onClose={onClose}>
-      <div className="modal archived-modal">
+      <div className="modal archived-modal" role="dialog" aria-modal="true" aria-label="Archived messages">
         <div className="modal-head">
-          <button className="iconbtn" onClick={onClose} aria-label="Close">
+          <button className="iconbtn" onClick={onClose} aria-label="Close archived messages">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
@@ -50,12 +60,14 @@ export default function ArchivedView({ open, onClose, conversations, onUnarchive
           <div>Archived ({sorted.length})</div>
           <div style={{ width: 32 }} />
         </div>
-        <div className="modal-list">
-          {sorted.length === 0 && (
+        <div className="modal-list" aria-busy={loading}>
+          {error && <div className="modal-empty" role="alert">{error} {onRetry && <button type="button" onClick={onRetry}>Retry</button>}</div>}
+          {loading && sorted.length === 0 && <div className="modal-empty" role="status">Loading archived conversations…</div>}
+          {!loading && !error && sorted.length === 0 && (
             <div className="modal-empty">No archived chats. Right-click any chat → Archive.</div>
           )}
           {sorted.map((c) => {
-            const name = c.counterpart?.full_name || 'Conversation'
+            const name = c.counterpart?.name || c.counterpart?.full_name || 'Conversation'
             const initials = name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
             const bg = c.counterpart?.avatar_color || '#3C3B6E'
             return (
@@ -67,14 +79,23 @@ export default function ArchivedView({ open, onClose, conversations, onUnarchive
                 </div>
                 <div className="modal-row-body">
                   <div className="modal-row-name">{name}</div>
-                  <div className="modal-row-sub">{c.last_message_snippet || ''}</div>
+                  <div className="modal-row-sub">{c.last_message || c.last_message_snippet || ''}</div>
                 </div>
                 <div className="modal-row-actions">
-                  <button onClick={() => onUnarchive(c.id)}>Unarchive</button>
+                  <button type="button" disabled={!!restoringId} onClick={() => onUnarchive(c.id)}>
+                    {restoringId === c.id ? 'Restoring…' : 'Unarchive'}
+                  </button>
                 </div>
               </div>
             )
           })}
+          {hasMore && onLoadMore && (
+            <div className="modal-empty">
+              <button type="button" disabled={loading} onClick={onLoadMore}>
+                {loading ? 'Loading…' : 'Load more archived conversations'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Backdrop>
