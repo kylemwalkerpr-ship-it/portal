@@ -12,8 +12,15 @@ SITEMAP_URL="${SITEMAP_URL:-https://market.yousafeconsultancy.com/sitemap.xml}"
 ROLLBACK_CMD=""
 
 record_live_version() {
-  local version
-  version="$(npx wrangler deployments list 2>/dev/null | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1 || true)"
+  local version deployments latest_version_line
+  if ! deployments="$(npx wrangler deployments list 2>&1)"; then
+    echo "deploy-local: Wrangler deployments lookup failed; refusing deploy without a verified rollback version." >&2
+    exit 1
+  fi
+  # Wrangler prints deployment history oldest first. Use the final deployment,
+  # never the first matching UUID (which is an older, unsafe rollback target).
+  latest_version_line="$(printf '%s\n' "$deployments" | grep 'Version(s):' | tail -n 1 || true)"
+  version="$(printf '%s\n' "$latest_version_line" | sed -nE 's/.*\(100%\)[[:space:]]*([0-9a-f-]{36}).*/\1/p')"
   if [[ -z "${version}" ]]; then
     echo "deploy-local: could not read the current worker version. Refusing to deploy without a rollback target." >&2
     exit 1
