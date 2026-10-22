@@ -220,6 +220,7 @@ jobs:
           # Shared secret the weekly-payouts cron route checks (Bearer). Same
           # value as the CRON_SECRET repo secret used by weekly-payouts.yml.
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          YOUSAFE_GROWTH_SOURCE_OWNER_TOKEN: ${{ secrets.YOUSAFE_GROWTH_SOURCE_OWNER_TOKEN }}
           # Core auth/database secrets — historically set once manually and
           # silently lost when the Worker is recreated or secrets expire,
           # which made EVERY existing profile look like a brand-new user

@@ -1,0 +1,59 @@
+{
+  "contract_version": "yousafe.acquisition-offers.v1",
+  "tenant_id": "yousafe",
+  "commerce_owner_ref": "owner:portal:conversion-attribution",
+  "utm": {
+    "source": "yousafe",
+    "medium": "organization_outreach",
+    "campaign_field": "campaign_id",
+    "content_field": "cohort"
+  },
+  "cohorts": [
+    "manual_research",
+    "treg_assisted"
+  ],
+  "offers": [
+    {
+      "policy_ref": "policy:yousafe-thesis-proofreading",
+      "campaign_id": "yousafe-thesis-proofreading-20261017",
+      "gig_id": "76608532-0a3a-42e6-ae03-10d0d70c07d2",
+      "stage": "primary_pilot",
+      "priority": 1
+    },
+    {
+      "policy_ref": "policy:yousafe-proposal-editing",
+      "campaign_id": "yousafe-proposal-editing-20261017",
+      "gig_id": "1364739b-a425-484c-9af2-0197ea15666c",
+      "stage": "primary_pilot",
+      "priority": 2
+    },
+    {
+      "policy_ref": "policy:yousafe-admissions-editing",
+      "campaign_id": "yousafe-admissions-editing-20261017",
+      "gig_id": "f77e35d4-a3e5-44a2-be90-85ae35236824",
+      "stage": "primary_pilot",
+      "priority": 3
+    },
+    {
+      "policy_ref": "policy:yousafe-scholarship-editing",
+      "campaign_id": "yousafe-scholarship-editing-20261017",
+      "gig_id": "e069c0fd-dc2c-4b54-afb7-9e6c3057f5a3",
+      "stage": "secondary_test",
+      "priority": null
+    },
+    {
+      "policy_ref": "policy:yousafe-academic-cv",
+      "campaign_id": "yousafe-academic-cv-20261017",
+      "gig_id": "d59bd9d1-d882-4424-8f9a-831da83bf0b0",
+      "stage": "secondary_test",
+      "priority": null
+    },
+    {
+      "policy_ref": "policy:yousafe-opt-review",
+      "campaign_id": "yousafe-opt-review-20261017",
+      "gig_id": "4fe28af9-942f-4f2e-90f8-128b382bd0bb",
+      "stage": "secondary_test",
+      "priority": null
+    }
+  ]
+}

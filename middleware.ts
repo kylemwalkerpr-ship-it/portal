@@ -53,6 +53,8 @@ const isPublicRoute = createRouteMatcher([
   // so they must bypass Clerk middleware to reach their own auth check.
   // Each handler enforces CRON_SECRET internally.
   '/api/cron(.*)',
+  // Exact machine endpoint; the handler enforces its dedicated Bearer token.
+  '/api/internal/source-owner/commerce',
   '/api/articles/feed',
   '/api/translate(.*)',
   '/api/chat(.*)',
