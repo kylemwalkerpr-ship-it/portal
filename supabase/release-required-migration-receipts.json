@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "requirements": [
+    {
+      "filename": "20260923120000_p11_audit_idempotency.sql",
+      "source_git_sha": "c8ef82ee0635124ad9114ca0fef675c775d1b6cc",
+      "reason": "Reviewed migration receipt required before production deploy"
+    }
+  ]
+}
