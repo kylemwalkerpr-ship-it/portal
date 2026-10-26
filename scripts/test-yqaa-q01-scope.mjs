@@ -47,7 +47,7 @@ function reply({ messages, committed = false }) {
     const result = () => ({ data: table === 'yqaa_reply_commits'
       ? committed ? { reply_message_id: 'durable' } : null : messages, error: null })
     const q = { select: () => q, eq: (k, v) => { filters.push([k, v]); return q },
-      order: () => q, limit: () => q, maybeSingle: async () => result(),
+      gt: () => q, order: () => q, limit: () => q, maybeSingle: async () => result(),
       then: resolve => Promise.resolve(result()).then(resolve) }
     return q
   } }
@@ -55,6 +55,9 @@ function reply({ messages, committed = false }) {
     createSupabaseAdminClient: () => db, pendingLocks: new Map(), lastTriggerAt: new Map(), DEBOUNCE_MS: 8000,
     getConversationAiState: async () => ({ ai_mode: 'auto', metadata: {} }),
     resolveProviderAndClient: async () => ({ client: { id: 'client' }, provider: { id: 'provider' } }),
+    loadYqaaConsent: async () => ({ version: 1 }),
+    readYqaaMemory: async () => ({ consent: { version: 1 }, facts: [], excluded_source_ids: [] }),
+    consentCheckedAtCommit: () => true, privacyScopedMessages: rows => rows,
     console, Date,
   })
   return { fn, queries }

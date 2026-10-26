@@ -12,6 +12,7 @@ import AutoGrowInput from './AutoGrowInput'
 import StatusRing from './StatusRing'
 import StatusViewer from './StatusViewer'
 import MessengerSettings from './MessengerSettings'
+import YqaaPrivacyControls from './YqaaPrivacyControls'
 import ArchivedView from './ArchivedView'
 import StarredView from './StarredView'
 import InquiryComposer from './InquiryComposer'
@@ -1270,7 +1271,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const showPricingApproval = ['attorney', 'consultant'].includes(role) && pricingApproval && ['pending', 'approved', 'declined', 'used'].includes(pricingApproval.status)
   const providerAttention = activeConv?.provider_attention
   const showProviderAttention = providerAttention?.requested && (providerAttention.pending || providerAttention.human_replied)
-  const banner = (isArchived && !isDeleted) || showPricingApproval || showProviderAttention ? (
+  const existingBanner = (isArchived && !isDeleted) || showPricingApproval || showProviderAttention ? (
     <div style={{ display: 'grid', gap: 8 }}>
     {showProviderAttention && <div role="status" aria-live="polite" style={{
       padding: '10px 14px',
@@ -1327,6 +1328,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     </div>}
     </div>
   ) : null
+
+  const banner = <>
+    {activeId && !isDeleted && ['client', 'student'].includes(role || '') && ['attorney', 'consultant'].includes(activeConv?.counterpart?.role || '') && <YqaaPrivacyControls key={activeId} conversationId={activeId} />}
+    {existingBanner}
+  </>
 
   // ── Composer ────────────────────────────────────────────────────────
   const composer = activeId && (
