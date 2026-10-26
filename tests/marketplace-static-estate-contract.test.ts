@@ -256,7 +256,8 @@ describe('/ — marketplace root is true SSG', () => {
   it('keeps deterministic static canonical root metadata', () => {
     expect(marketplaceRoot).toMatch(/export\s+const\s+metadata\b|export\s+async\s+function\s+generateMetadata/)
     expect(marketplaceRoot).toContain("getMarketplaceCanonicalUrl('/')")
-    expect(marketplaceRoot).toContain('alternates: { canonical: canonicalUrl }')
+    expect(marketplaceRoot).toContain('canonical: canonicalUrl')
+    expect(marketplaceRoot).toContain('languages:')
     expect(marketplaceRoot).toContain('robots: { index: true, follow: true }')
   })
 

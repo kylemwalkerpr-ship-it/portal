@@ -79,7 +79,11 @@ const middlewareSource = () => readFileSync(join(ROOT, 'middleware.ts'), 'utf8')
 const SESSION_TOKEN = 'a'.repeat(43)
 const OTHER_TOKEN = 'b'.repeat(43)
 const HANDOFF_SECRET = 'p10-test-handoff-secret-0123456789abcdef'
-const FIXED_NOW = Date.parse('2026-09-22T12:00:00.000Z')
+// Rolling clock: a pinned 2026-09-22 instant made the 30-day seeded sessions
+// expire on 2026-10-22, so every test that omitted `now` saw an expired
+// session. Keep one clock per run; tests that need a pinned instant pass it
+// explicitly via `now: FIXED_NOW`.
+const FIXED_NOW = Date.now()
 
 function jsonRequest(url: string, body: unknown, cookies?: Record<string, string>, headers: Record<string, string> = {}) {
   const cookieHeader = cookies
