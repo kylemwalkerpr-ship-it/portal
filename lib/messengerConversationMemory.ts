@@ -55,6 +55,8 @@ export type YqaaNegotiationMemory = {
 const MAX_NEGOTIATION_HISTORY = 10
 
 export type YqaaConversationMemory = {
+  /** Privacy epoch that authorized this derived snapshot; never grants consent. */
+  consent_version?: number
   /** 1 = pre-companion rows (still readable). 2 = companion rows with journey/negotiation. */
   version: 1 | 2
   updated_at: string

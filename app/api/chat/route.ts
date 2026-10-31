@@ -100,12 +100,12 @@ async function loadViewerSnapshot(): Promise<ViewerSnapshot> {
     if (!clerkUserId) return { visitor: null, role: null }
 
     const db = createSupabaseAdminClient()
-    const { data: profile } = await db
+    const { data: profile, error } = await db
       .from('profiles')
       .select('full_name, email, role, status')
       .eq('clerk_user_id', clerkUserId)
       .maybeSingle()
-    if (!profile) return { visitor: null, role: null }
+    if (error || !profile || profile.status !== 'active') return { visitor: null, role: null }
 
     const name = profile.full_name?.trim() || null
     const email = profile.email?.trim() || null

@@ -1,3 +1,4 @@
+import { consentCheckedAtCommit, loadYqaaConsent, privacyScopedMessages, readYqaaMemory, factScopedMessages, renderYqaaFacts } from '@/lib/yqaaPrivacy'
 /**
  * YQAA engine for provider↔client DMs.
  *
@@ -1229,14 +1230,36 @@ export async function maybeAutoReply(opts: {
       return { replied: false, skipped: 'not_provider_client_thread', aiMode }
     }
 
-    const { data: messages } = await db
+    // Consent is checked before pricing, attachment reads, retrieval or generation.
+    // The SQL commit wrapper checks the same version under the conversation lock.
+    let consent
+    try { consent = await loadYqaaConsent(db, opts.conversationId) }
+    catch { return { replied: false, skipped: 'privacy_unavailable', aiMode } }
+    if (!consentCheckedAtCommit(consent, {
+      scopeId: opts.conversationId, subjectId: client.id, providerId: provider.id,
+      expectedVersion: consent?.version ?? 0,
+    })) return { replied: false, skipped: 'consent_required', aiMode }
+    // Recheck canonical roles/status before retained source bodies enter the worker.
+    try {
+      const authorized = await readYqaaMemory(db, opts.conversationId, client.id)
+      if (!consentCheckedAtCommit(authorized.consent, {
+        scopeId: opts.conversationId, subjectId: client.id, providerId: provider.id,
+        expectedVersion: consent!.version,
+      })) return { replied: false, skipped: 'consent_required', aiMode }
+    } catch { return { replied: false, skipped: 'privacy_unavailable', aiMode } }
+    const { data: messages, error: historyError } = await db
       .from('conversation_messages')
       .select('id, sender_id, type, body, attachment_url, attachment_name, metadata, created_at')
       .eq('conversation_id', opts.conversationId)
-      .order('created_at', { ascending: true })
+      // Apply the boundary in SQL: retained narrative must not enter the worker,
+      // and pre-consent rows must not consume the bounded context window.
+      .gt('created_at', consent!.memory_after)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(120)
 
-    const msgs = (messages || []).filter((m: any) => !m?.metadata?.ai_typing)
+    if (historyError) return { replied: false, skipped: 'privacy_history_unavailable', aiMode }
+    let msgs = [...(messages || [])].reverse().filter((m: any) => !m?.metadata?.ai_typing)
     const lastMsg = msgs[msgs.length - 1]
     if (!lastMsg) return { replied: false, skipped: 'empty_thread', aiMode }
     const triggerMessageId = opts.triggerMessageId || (lastMsg.sender_id === client.id ? lastMsg.id : null)
@@ -1260,6 +1283,11 @@ export async function maybeAutoReply(opts: {
         return { replied: false, skipped: 'persistence_unavailable', aiMode }
       }
     }
+    if (!privacyScopedMessages([triggerMessage], consent!).length) {
+      return { replied: false, skipped: 'privacy_boundary', aiMode }
+    }
+    msgs = privacyScopedMessages(msgs, consent!)
+
     const now = Date.now()
     const last = lastTriggerAt.get(key) || 0
     if (!opts.force && now - last < DEBOUNCE_MS) return { replied: false, skipped: 'debounced', aiMode }
@@ -1269,6 +1297,20 @@ export async function maybeAutoReply(opts: {
 
     if (!opts.force && lastMsg.sender_id !== client.id) return { replied: false, skipped: 'last_not_client', aiMode }
 
+    // Learning uses canonical SQL source rows and advances the epoch whenever
+    // facts change. A concurrent withdrawal/correction cannot authorize this run.
+    const retrievalConsentVersion = consent!.version
+    let factState
+    try {
+      factState = await readYqaaMemory(db, opts.conversationId, client.id, consent!.version)
+      if (!consentCheckedAtCommit(factState.consent, {
+        scopeId: opts.conversationId, subjectId: client.id, providerId: provider.id,
+        expectedVersion: factState.consent?.version ?? 0,
+      })) return { replied: false, skipped: 'consent_required', aiMode }
+      consent = factState.consent
+      msgs = factScopedMessages(privacyScopedMessages(msgs, consent!), factState)
+      if (!msgs.some((m: any) => m.id === triggerMessageId)) return { replied: false, skipped: 'superseded_trigger', aiMode }
+    } catch { return { replied: false, skipped: 'privacy_unavailable', aiMode } }
     const meta = conv.metadata || {}
     // A new client turn is eligible even immediately after an AI reply.
     // Durable trigger commits, pending locks, and trigger debounce above
@@ -1342,7 +1384,7 @@ export async function maybeAutoReply(opts: {
         messages: msgs,
         clientId: client.id,
         pricing,
-        metadata: conv.metadata,
+        metadata: { ...conv.metadata, ai_memory: !factState.reset_snapshot && conv.metadata?.ai_memory?.consent_version === retrievalConsentVersion ? conv.metadata.ai_memory : null },
       })
       const providerLabel = provider.full_name || 'your provider'
       const priorAiBodies = msgs
@@ -1537,6 +1579,7 @@ export async function maybeAutoReply(opts: {
             lastPosture: replyCompanion?.posture ?? null,
           })
         : { ...conversationMemory, journey_stage: journeyStage, emotion_band: emotionBand }
+      memory = { ...memory, consent_version: consent!.version }
       await recordAiDiagnostic(db, opts.conversationId, {
         ai_memory: memory,
         ai_last_scope_hash: adaptive?.scope.scope_hash ?? null,
@@ -1554,6 +1597,7 @@ export async function maybeAutoReply(opts: {
         adaptive ? renderNegotiationAuthority(adaptive) : '',
         replyCompanion ? renderDecisionAuthority(replyCompanion) : '',
         renderConversationMemory(memory),
+        renderYqaaFacts(factState),
       ].filter(Boolean).join('\n\n')
 
       const userPrompt = [
@@ -1935,6 +1979,7 @@ export async function maybeAutoReply(opts: {
           sender_id: provider.id,
           body: replyText,
           metadata: {
+            yqaa_consent_version: consent!.version,
             ai_generated: true,
             ai_assistant: true,
             ai_brand: 'YQAA',

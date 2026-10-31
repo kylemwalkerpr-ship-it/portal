@@ -50,18 +50,26 @@ export async function escalateToSupport(opts: {
   visitor: SupportVisitor | null
   topic?: string
   conversationId?: string | null
+  /** Conversation capability only; never evidence of a portal account link. */
+  visitorToken?: string | null
   signal?: AbortSignal
 }): Promise<SupportHandoffResult> {
+  const conversationId = opts.conversationId?.trim() || null
+  const visitorToken = opts.visitorToken?.trim() || null
+  // Never guess a subject from contact details or a conversation ID. A visitor
+  // capability authorizes only that support thread, not cross-site memory.
+  if (conversationId && !visitorToken) throw new Error('Support continuation requires a visitor token')
+  if (!conversationId && visitorToken) throw new Error('Support token requires its conversation')
   const res = await fetch(SUPPORT_WIDGET_API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(visitorToken ? { 'X-Chat-Token': visitorToken } : {}) },
     signal: opts.signal,
     body: JSON.stringify({
       message: opts.message,
       visitor: opts.visitor || undefined,
       topic: opts.topic || 'portal',
       requestAgent: true,
-      conversationId: opts.conversationId || undefined,
+      conversationId: conversationId || undefined,
     }),
   })
   if (!res.ok) {
